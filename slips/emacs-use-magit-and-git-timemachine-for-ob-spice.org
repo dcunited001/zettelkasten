@@ -1,0 +1,142 @@
+:PROPERTIES:
+:ID:       73b61132-7c7c-45fa-a30a-7ef02536958c
+:END:
+#+TITLE:     Emacs: Use magit and git-timemachine for ob-spice
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: note
+
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:8fb0a586-9c0f-4f36-b1ab-dc5c26681d15][OSS: Open Source]]
+
+Guide to discovering context and finding the right edit points within a large
+open source project, particularly to determine how the API changed, so commits can be made for a much smaller project.
+
+* Initial Thouguts
+
+This should serve perfectly as practice for introducing a simple change to an
+emacs project. There are some challenges associated, at least for a beginner:
+
++ The size of the =org-mode= project.
+  - but this actually turns into an advantage, since there are so many examples
+    of the =org-mode= and =org-babel= API's wrapped within a single project.
+  - This means there's no need to integrate a tool like =repo= or to clone 10
+    projects just to piece together everything.
+  - These repositories also exist in my
+    =~/.emacs.doom/.local/straight/repos/org/lisp= directory (and as a git
+    repository)
+    - but to keep things clean (i don't want to check out various branches here)
+      and simple (my Emacs has already crashed once ....F#Cf%@%K!) I would
+      rather have another checkout.
+  - it is also possible to work with a fork via the =straight= API
+    - clone the repo on github
+    - then specify the following within =packages.el
+
+#+begin_src emacs-lisp
+(package! og-package-name :recipe (:type git
+                                   :host github :repo "og-author/og-package-name"
+                                   :fork (:host gitlab :repo "you/og-package-name")
+                                   :branch fix-org-babel-api ;; the branch cannot be within the fork definition
+        ))
+#+end_src
+
+if the fork is on the same host, has same project name and =straight-host-usernames= is set:
+
+#+begin_src emacs-lisp
+(package! og-package-name :recipe (:type git
+                                   :host github :repo "og-author/og-package-name"
+                                   :branch fix-org-babel-api
+                                   :fork t)
+#+end_src
+
++ It's difficult to discover references to symbols in previous versions of an
+  API, which I guess is partly the purpose of the Changelog.
+  - =magit= and =git-timemachine= help alot
++ I haven't had much experience with =ng-spice=, so I may encounter something
+  down the road that is too much effort (since I really need to study
+  already...)
+  - Also, I'm not sure how this will integrate with my =ng-spice= and
+    =NgSpice-jl= workflow, since I haven't used those tools yet. Hopefully this
+    doesn't require anything to fancy.
+  - I plan on using =ob-spice= to write the spice files. This will be from
+    within =org-babel= blocks.
+  - However, to run the simulations (and possibly integrate with other libs like
+    =ACME.jl=) I will be using Julia from Pluto and thus totally outside
+    org-mode.
+    - But for the purposes of documenting/learning NgSpice itself, this is
+      actually a clean enough interface b/w =org-mode= and =NgSpice.jl= with
+      =Pluto=
+
+* The Problem
+
++ Here, the [[https://github.com/stardiviner/ob-spice][stardiviner/ob-spice]] project supports an older version of a defun in
+  =org-babel= that facilites the retrieval of key values for babel source blocks.
+  - The changes should be simple, but it depends on what is replacing the
+    =org-babel-get-header= function in new versions.
+
+** First Steps
+
++ Google searches return mostly nothing, but that's because references to key
+  name (and the one that replaces) were sparse to begin with and are nowhere
+  near the top of the "social salience stack".
+  - Google should be a last resort anyways and it's better to look into the
+    actual source code.
+  - The main =org-babel= repo can be found at:
+    - git://git.savannah.gnu.org/git/emacs/org-mode.git
+    - https://git.savannah.gnu.org/cgit/emacs/org-mode.git
+
+** Triage
+
+ After cloning the repo
+  + A quick =find-grep= shows the only active references to
+    =org-babel-get-header= are in the changelogs.
+
+*** Magit
+Another option is to use =magit= functions (somehow) to search
+files/patches/logs associated to any commit in the current release's list of
+refs. Such searches are found in the GUI of Sourcetree and GitKraken, but the
+functionality is simpler to use in magit ... that is, if you know where to find
+it and I haven't crossed that bridge yet.
+
+*** =git-timemachine=
+
+In Doom Emacs, =C-c v t= is a function you'll find quickly if you use
+=org-babel= to tangle your files with =C-c C-v t=. It lets you navigate between
+commits with =n= and =p= and also gives an interface to =git blame=.
+
+* Diagnosis
+
+For =org-mode= and =ob-spice=
+
++ Since the changelog implies that the last release tag to have
+  =org-babel-get-header= is =8.3.6=, I checkout that release with =C-c v g=,
+  then =b b=, then =release_8.3.6=. Then I check to see whether
+  =org-babel--get-vars= exists simultaneously, which is the function that
+  replaces it.
++ Now there are two threads to follow:
+  - what is the best way to convert from the old to the new?
+  - what happens to =defuns= appropos to the new =org-babel--get-vars= as the
+    project progresses into new releases?
+  - And a third task (coming from eldoc's gripes with ob-spice)
+    + eldoc is reporting that org-babel-eval cannot be used here, but this may be related to =org-babel-load-languages= on my machine.
+
+** Discovring needed updates to the new API
+
++ A quick =find-grep= on the =org-mode/lisp= directory shows that
+  =org-babel--get-vars= is already adopted:
+  - By no languages in =release_8.3.6=
+  - And by most languages =release_9.0.10=
++ using =git-timemachine= to blame should illuminate the context around these
+  usages and show how the developers moved from one to another.
+
+** Discovering Changes Relevant to usage of =org-babel--get-vars=
+
+
+
+** Checking into how =ob-spice= uses =org-babel-eval=
+
+* Treatment
+
+
+
+* Afterthoughts

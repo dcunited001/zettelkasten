@@ -1,0 +1,114 @@
+:PROPERTIES:
+:ID:       73a16c79-0390-43c9-913c-bf0eb2f43dd4
+:END:
+#+TITLE:     Sway/XDG: Configure Emacs Server/Client
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
++ [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
+  - Sway
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
+
+
+* Status
+** Emacsserver can now load from systemd
+
+
+
+* Remaining Issues
+
+
+** TODO add templates for =emacs.*.service= to source control
+** TODO add templates for =emacs.*.desktop= to source control
++ this is partially done
++ [ ] remove stale links
+
+
+
+
+** Emacsclient can't access Sourcecode Pro font & crashes
+Resolved (removed it and ensured a guix/emacs-accessible font was loaded)
+
+** Emacsclient can't be started from XDG desktop
+
+It crashes and the server logs this issue
+
+#+begin_example
+Unable to init server: Broadway display type not supported: $DISPLAY
+#+end_example
+
+*** The solution was to remove $DISPLAY from the *.desktop params (it's xserver)
+
+** Systemd can't start the default =emacs.service= or =emacs.fg.service= files
+
++ The default format for the systemd service seems to have been incorrect (it
+  was =Type=notify= and backgrounded)
++ There may have been a different issue with the examples posted for the
+  =--daemon= invoked =emacs.service=
+  + or it may simply be unstable in sway/pGTK
+  + it could have also been a font issue
+
+** ... but the moral of the story is: I_CAN_NOW_READ_CRASH_LOGS....
++ or even submit them...
+
+* Overview
+
+I tried opening emacsclient from the terminal. This works, whether the running
+server has an environment spawned pre-WM or post-Sway
+
+*** Differences b/w systemd --user environment and the shell environment that spawns post-sway:
+
++ To test this, i ran emacs as daemon from a separate VTY, which has mostly the
+  same env output as my systemd unit.
++ This is probably not an issue, but there are still some Wayland/GTK-specific
+  environment variables that need to be tuned for the Emacs server process
+
+*** Problems with the systemd unit.
+
++ The one created by arch references =/usr/bin/emacs --fg-daemon= instead of
+  =--daemon= like most online examples.
+  - SystemD tracks the processes it spawns, so I'm not sure it matters except
+    for input/output handling.
+
+*** (3) Problems with Guix
+
+I think I've got this handled. I changed the =emacs.service= definition, so that
+it references =/home/me/.guix-profile/bin/emacs --daemon=. Guix does modify the
+paths for bash, man & info, so i still have to fix that.
+
+*** (4) Problems with the XDG =emacsclient.desktop= file(s)
+
+My =emacs.service= unit never fully activates when i start it, whether it is
+running with =--daemon= or =--fg-daemon=.
+
+- When I try a client in the terminal, that's fine.
+- When I try via an XDG startup item, the =systemctl --user start emacs.service=
+  errors out. this =systemctl= process never actually completes activation which
+  i checked with =systemctl --user status emacs.service=.
+
+*** (5) Problems with how =nwggrid= and =wofi= interact with XDG spec-defined processes (like running desktop items, etc)
+
++ i have had problems where =wofi= isn't starting processes properly.
+  - so when i try to run =nnn= or =htop= using the =$mod+d= shortcut in sway
+    (mapped to wofi), nothing happens.
+  - when i try to run them with =nwggrid=, the terminal-oriented applications
+    like =nnn= and =neovim= start just fine.
+
+* Issues
+
+*** Debugging XDG
+
+**** TODO add info on =xdg-desktop-validate= and other tools
+
+*** Wayland Display
++ does the emacs server need to know this?
+  - if so, variables like =$DISPLAY= must be set before it starts
+
+**** TODO fix =.desktop= so it starts emacs using =--display= param when =$@= files are not passed.
+- [ ] copy a template to dotfiles
+
+*** Misc
++ The =systemctl --user= service environment can be rectified with =bash -l -c=
++ XDG =.desktop= entries must escape bash vars with =\\$FOOBAR=
+  - ...and they MUST be quoted

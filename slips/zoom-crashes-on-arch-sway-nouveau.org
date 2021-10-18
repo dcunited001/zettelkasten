@@ -1,0 +1,560 @@
+:PROPERTIES:
+:ID:       73f63479-2481-4099-972b-24a133eeceb6
+:END:
+#+TITLE:     Zoom Crashes On Arch Sway Nouveau
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
+
++ [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
+
+
+* Guides
+
+* Issues
++ [[https://hugo.barrera.io/journal/2020/06/14/zoom-screensharing-on-archlinux/][Zoom screen sharing via virtual webcam hack]]
+  - avoids relying on x11
+
+
+[[mentions\]\]][This guide]] mentions unsetting =QT_QPA_PLATFORM=
+
+
+* Zoom Crashes
+
+Some users report using the browser client...
+
+** It crashes pretty hard in wayland. In several ways.
+
+Configuring floating window mode seems to have fixed a few minor issues
+
+There are a few issues:
+
++ Logging in via Google always fails the first time
+  - Then after close/reopen seems to be cached and without fails
++ Adjusting some video settings caused a crash
+  - Sometimes this is a hard crash where not even the Linux VTY are accessible
+  - I'm not sure what failure mode corresponds to this Nouveau/Zoom stack trace
++ Connecting to a Zoom causes a crash
+  - after video dialogue, but while waiting for host to permit access
+  - This may be fixed now after some activation email from Zoom ... ?
++ Doing anything with screensharing will probably cause a crash
+
+
+** Nouveau problems
+
+**** Backtrace
+
+#+begin_example journalctl
+░░ Subject: A start job for unit grub-btrfs.service has finished successfully
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ A start job for unit grub-btrfs.service has finished successfully.
+░░
+░░ The job identifier is 2816.
+Oct 05 12:37:46 mrpbh audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=grub-btrfs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:37:46 mrpbh audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=grub-btrfs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:37:46 mrpbh kernel: audit: type=1130 audit(1633451866.776:215): pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=grub-btrfs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:37:46 mrpbh kernel: audit: type=1131 audit(1633451866.776:216): pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=grub-btrfs comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:37:49 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="GetConnectionUnixUser" error name="(unset)" requested_reply="0" destinat>
+Oct 05 12:37:49 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="AddMatch" error name="(unset)" requested_reply="0" destination="org.free>
+Oct 05 12:37:49 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="GetNameOwner" error name="(unset)" requested_reply="0" destination="org.>
+Oct 05 12:37:49 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="AddMatch" error name="(unset)" requested_reply="0" destination="org.free>
+Oct 05 12:37:49 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="GetNameOwner" error name="(unset)" requested_reply="0" destination="org.>
+Oct 05 12:37:49 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="GetConnectionUnixProcessID" error name="(unset)" requested_reply="0" des>
+Oct 05 12:37:50 mrpbh sudo[58111]: pam_unix(sudo:session): session closed for user root
+Oct 05 12:37:50 mrpbh audit[58111]: USER_END pid=58111 uid=1000 auid=1000 ses=3 msg='op=PAM:session_close grantors=pam_limits,pam_unix,pam_permit acct="root" exe="/usr/bin/sudo" hostname=? addr=? terminal=/dev/pts/1 res=success'
+Oct 05 12:37:50 mrpbh audit[58111]: CRED_DISP pid=58111 uid=1000 auid=1000 ses=3 msg='op=PAM:setcred grantors=pam_faillock,pam_permit,pam_env,pam_faillock acct="root" exe="/usr/bin/sudo" hostname=? addr=? terminal=/dev/pts/1 res=success'
+Oct 05 12:37:50 mrpbh kernel: audit: type=1106 audit(1633451870.411:217): pid=58111 uid=1000 auid=1000 ses=3 msg='op=PAM:session_close grantors=pam_limits,pam_unix,pam_permit acct="root" exe="/usr/bin/sudo" hostname=? addr=? terminal=/dev/pts/1 res=success'
+Oct 05 12:37:50 mrpbh kernel: audit: type=1104 audit(1633451870.411:218): pid=58111 uid=1000 auid=1000 ses=3 msg='op=PAM:setcred grantors=pam_faillock,pam_permit,pam_env,pam_faillock acct="root" exe="/usr/bin/sudo" hostname=? addr=? terminal=/dev/pts/1 res=success'
+Oct 05 12:37:52 mrpbh PackageKit[3467]: get-updates transaction /7_baeaddda from uid 1000 finished with success after 2684ms
+Oct 05 12:37:57 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="RemoveMatch" error name="(unset)" requested_reply="0" destination="org.f>
+Oct 05 12:37:57 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.39" (uid=0 pid=3467 comm="/usr/lib/packagekitd ") interface="org.freedesktop.DBus" member="RemoveMatch" error name="(unset)" requested_reply="0" destination="org.f>
+Oct 05 12:37:58 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.8" (uid=0 pid=560 comm="/usr/bin/NetworkManager --no-daemon ") interface="org.freedesktop.DBus" member="GetConnectionUnixUser" error name="(unset)" requested_reply>
+Oct 05 12:37:58 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.8" (uid=0 pid=560 comm="/usr/bin/NetworkManager --no-daemon ") interface="org.freedesktop.DBus" member="GetConnectionUnixProcessID" error name="(unset)" requested_>
+Oct 05 12:38:04 mrpbh prelockd[570]: currently locked 157.1M, 171 files
+Oct 05 12:40:01 mrpbh kernel: usb 1-5.1.2: USB disconnect, device number 10
+Oct 05 12:40:22 mrpbh audit[60964]: ANOM_ABEND auid=1000 uid=1000 gid=1000 ses=3 pid=60964 comm="zoom" exe="/opt/zoom/zoom" sig=11 res=1
+Oct 05 12:40:22 mrpbh kernel: audit: type=1701 audit(1633452022.582:219): auid=1000 uid=1000 gid=1000 ses=3 pid=60964 comm="zoom" exe="/opt/zoom/zoom" sig=11 res=1
+Oct 05 12:40:22 mrpbh systemd[1]: Created slice Slice /system/systemd-coredump.
+░░ Subject: A start job for unit system-systemd\x2dcoredump.slice has finished successfully
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ A start job for unit system-systemd\x2dcoredump.slice has finished successfully.
+░░
+░░ The job identifier is 2938.
+Oct 05 12:40:22 mrpbh audit: BPF prog-id=75 op=LOAD
+Oct 05 12:40:22 mrpbh audit: BPF prog-id=76 op=LOAD
+Oct 05 12:40:22 mrpbh audit: BPF prog-id=77 op=LOAD
+Oct 05 12:40:22 mrpbh kernel: audit: type=1334 audit(1633452022.592:220): prog-id=75 op=LOAD
+Oct 05 12:40:22 mrpbh kernel: audit: type=1334 audit(1633452022.592:221): prog-id=76 op=LOAD
+Oct 05 12:40:22 mrpbh kernel: audit: type=1334 audit(1633452022.592:222): prog-id=77 op=LOAD
+Oct 05 12:40:22 mrpbh systemd[1]: Started Process Core Dump (PID 63973/UID 0).
+░░ Subject: A start job for unit systemd-coredump@0-63973-0.service has finished successfully
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ A start job for unit systemd-coredump@0-63973-0.service has finished successfully.
+░░
+░░ The job identifier is 2937.
+Oct 05 12:40:22 mrpbh audit[1]: SERVICE_START pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=systemd-coredump@0-63973-0 comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:40:22 mrpbh kernel: audit: type=1130 audit(1633452022.594:223): pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=systemd-coredump@0-63973-0 comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:40:23 mrpbh systemd-coredump[63974]: [🡕] Process 60964 (zoom) of user 1000 dumped core.
+
+                                               Found module linux-vdso.so.1 with build-id: bf0267f6930a91cee54b8264d71b315ca98d1eaf
+                                               Found module libogg.so.0 with build-id: ca0cae30a809f10db1f16e54a23b4e5ff7b2c54c
+                                               Found module libvorbis.so.0 with build-id: ad0a6c1af8f219b4e314090b6e8847223d424cbe
+                                               Found module libopus.so.0 with build-id: 649d3ddab8764d7caf73648004a35cb13e23a5e1
+                                               Found module libFLAC.so.8 with build-id: e568dc3d434723c72d6d302eb0b2559f27e91faa
+                                               Found module libvorbisenc.so.2 with build-id: 28ed815b8b1d322e6bf2bfdce4b0af2789b74335
+                                               Found module libasyncns.so.0 with build-id: 6acff139d56b5139ce5eb50a66c62b215e1d332d
+                                               Found module libsndfile.so.1 with build-id: 72d5531e74ed3e9afe49e95e449c40cb8984a258
+                                               Found module libpulsecommon-15.0.so with build-id: a2e110b7a0b3bb46e42515afd55a61d78185835b
+                                               Found module libpulse.so.0 with build-id: 10bd0ce0cfbb9405cee189faa1830cf34cab61a8
+                                               Found module libnss_dns.so.2 with build-id: b0d90fd1794c177c70f1e457c11ec1a7f87a41ed
+                                               Found module libnss_resolve.so.2 with build-id: 00d395a5719baafcccb930933f95387c2e365748
+                                               Found module libresolv.so.2 with build-id: c915c72668282861a813f7ea3c0780f37b681dc0
+                                               Found module libnss_mdns_minimal.so.2 with build-id: 8eb55de0d3252a36920a5d74c2da924a902cfff4
+                                               Found module libnss_myhostname.so.2 with build-id: 85e3af36be89e3dd478bb0f4ecfc70cac35f5cfa
+                                               Found module libnss_mymachines.so.2 with build-id: 69bbf25886965f8796b670d6c345749a85613f55
+                                               Found module libqnmbearer.so with build-id: 7540f2043ad5090b110b372b430611b6aa1fed5a
+                                               Found module libqgenericbearer.so with build-id: d7421c1513b39abe00fcb3d069a10c9b9abf3bcd
+                                               Found module libqconnmanbearer.so with build-id: 676dad93ff5d8c8f12d0464ac56551dc3d010af7
+                                               Found module libbradient.so with build-id: 7c8ca2cac699c51cf9368dc7885fff9387b48fe1
+                                               Found module libxdg-shell.so with build-id: 520a2c61095c66faa648742826df3343f3820231
+                                               Found module libqwebp.so with build-id: 906d3583cec998bdbd0569d6a1cda90950c9565c
+                                               Found module libqwbmp.so with build-id: cc418a1d062eba0ee2fb63c0e2e4b09664c65f82
+                                               Found module libqtiff.so with build-id: 3aa2f7d7e003f16305a175ee3dc22e6e0db636a9
+                                               Found module libqtga.so with build-id: 9160ee5d8923acadf867ad4dc965e516c1897bc0
+                                               Found module libqjpeg.so with build-id: 3ba6e54f4a00a1e70b1a448830f13973ae513b88
+                                               Found module libqico.so with build-id: f448f4390e688280b04766c97edf2fa7b03e4ff3
+                                               Found module libqicns.so with build-id: f2718fc99bf776914627eadb3698584e1dd5db20
+                                               Found module libqgif.so with build-id: c6a9c1b6853ae504109f284b6f61eb70e32cf3c5
+                                               Found module libqtquickcontrolsplugin.so with build-id: 97f3c7b018c0f88e153b02575dce9bd8caadfd0d
+                                               Found module libnss_files.so.2 with build-id: 1a36dfc01d3a1010b2ee79766a24a8090a3266d5
+                                               Found module libicudata.so.69 with build-id: 0ab994a49ef1848499c4af333b3266f28432a922
+                                               Found module libicuuc.so.69 with build-id: 5cf18c56e2f64efdac32cf61fb9c0c48e9bb1797
+                                               Found module libxml2.so.2 with build-id: b9441ffabb52b50c290152592f17cd78a381d493
+                                               Found module libncursesw.so.6 with build-id: 4118a7b0a2a0de8f6359df5b61c6c59a9e13a4d5
+                                               Found module libedit.so.0 with build-id: 4b0babfcad161c2ad0af6e59e2493258db23a331
+                                               Found module libvulkan.so.1 with build-id: 07b49771f04f350af7587839fcec8b52fa4f3164
+                                               Found module libdrm_nouveau.so.2 with build-id: 90ddb582b57a61a46d1ebf6c993675f70dac7443
+                                               Found module libdrm_amdgpu.so.1 with build-id: a89ceb7c9082e5276f39023716eb4d194e75f6b8
+                                               Found module libelf.so.1 with build-id: cc912d9cef94d907317afba5edd9176e9828e776
+                                               Found module libdrm_radeon.so.1 with build-id: f6eef9ddb9d1db72080e709ce423f6bad7ea06f7
+                                               Found module libsensors.so.5 with build-id: dc8b2c1c0d8525411aca188ea3cc3fb86d381d30
+                                               Found module libLLVM-12.so with build-id: d1f4954a30a9c39d86e0b944607e0ca8020d651e
+                                               Found module nouveau_dri.so with build-id: 61aafa97fd156291d5b7c94a3bfb5b05abdd0d81
+                                               Found module libxshmfence.so.1 with build-id: 8876d9ccf620858795724ca24b9e567585a77cec
+                                               Found module libxcb-sync.so.1 with build-id: dda14591103b01b1311906053bf1ca9e82ade35c
+                                               Found module libxcb-present.so.0 with build-id: 68f5465258750e2397b1333b3ffc01ee33caa4e1
+                                               Found module libxcb-dri3.so.0 with build-id: 9407a2480e09dc5a1dd9d9a0652fa8d32b328c91
+                                               Found module libwayland-server.so.0 with build-id: 232648aebf61c9b61940ac383dbe27984deea6b2
+                                               Found module libdrm.so.2 with build-id: 3aeff5403ca8d7589eabc05752eb613937f454a1
+                                               Found module libxcb-dri2.so.0 with build-id: 2dd6e65129a809dab828a1d26215a3f7a363fcc8
+                                               Found module libX11-xcb.so.1 with build-id: 0db4f94d8ae31b8dc9a83f825a9171656f1e532c
+                                               Found module libglapi.so.0 with build-id: 57828fb70af7c1f2aa70b096d748851a1fd39a9c
+                                               Found module libgbm.so.1 with build-id: b72491bd8eaab26b9f2d440fa7459985c6bebdc6
+                                               Found module libEGL_mesa.so.0 with build-id: 879b9f1341ac0802decb875400facfdbfd7f5cab
+                                               Found module libwayland-egl.so.1 with build-id: 1c761f5ec5429abb88e4f6ff71815358e58c393c
+                                               Found module libEGL.so.1 with build-id: 473944aea0e3dbc5d595dee647702a3cdc0aed78
+                                               Found module libqt-plugin-wayland-egl.so with build-id: 5fcbab577ebdb76c69595d5a8182837c42a04dac
+                                               Found module libqtquicktemplates2plugin.so with build-id: 92dd37b3da77bfcd0cf65a74576647a432fde3c2
+                                               Found module libwindowplugin.so with build-id: aef3e04be769ea6e60e21ba42f27bfc3902b64f1
+                                               Found module libqquicklayoutsplugin.so with build-id: b7a74aab11d5d8c47219148999c3642163370aa4
+                                               Found module libQt5QuickControls2.so.5 with build-id: 6b77745dc1dbdc873a6fcaabace7a5950b27d207
+                                               Found module libQt5QuickTemplates2.so.5 with build-id: b154588da137cf4c65064cf08813395eb49e98e8
+                                               Found module libqtquickcontrols2plugin.so with build-id: 5769edd9b70df4ec8e4c763158f195d2b6f8725a
+                                               Found module libqtquick2plugin.so with build-id: 9155695321dbcc8e99b3828d84d19a7c728b09c4
+                                               Found module libQt5Svg.so.5 with build-id: 319c6cbb7bb9469b9ebb9105d93de294c72cd93c
+                                               Found module libqsvg.so with build-id: 8c2e25849470d52d135011a189a38fbd3a98f4eb
+                                               Found module libbrotlicommon.so.1 with build-id: f68934f94312f770550ebc6c5acfd6359b098b07
+                                               Found module libgraphite2.so.3 with build-id: 47761dc11e553f519cde97ed9ee985be12ccdae2
+                                               Found module libbrotlidec.so.1 with build-id: f871e6f204ab8d48099915126ba01be989a8000f
+                                               Found module libharfbuzz.so.0 with build-id: f954dfb80265c0dd2484e766282305a739b8239d
+                                               Found module libpng16.so.16 with build-id: 2dc0bce07f199bf983c07a05fb95a6f4af83a9b3
+                                               Found module libbz2.so.1.0 with build-id: 919597c477c9b2cb9cdbb7745ed6494ac0e6da60
+                                               Found module libexpat.so.1 with build-id: 8850138eae6d9d4d43c5c4b2ac48393bc4279037
+                                               Found module libffi.so.7 with build-id: de60e99f39569d11d09160bbdcd486cedc87d2b6
+                                               Found module libxkbcommon.so.0 with build-id: 1f1bc7527e57c886c3df5803068122e1971d4724
+                                               Found module libfreetype.so.6 with build-id: 65e7f4a1e5557b0ceeaa433e5356f857fe9c669b
+                                               Found module libfontconfig.so.1 with build-id: 1103a641395c7d3b42e49b793d3a9ea927c77bf6
+                                               Found module libwayland-client.so.0 with build-id: 58038363d7ea1fd5e6532f6e5f90b1a3ce09388a
+                                               Found module libwayland-cursor.so.0 with build-id: a8b45436314425ee9a92efaff68bd2b79f870e77
+                                               Found module libQt5WaylandClient.so.5 with build-id: 5f974942716eebbe325211afe60c450c2861043b
+                                               Found module libqwayland-generic.so with build-id: 1c3f7922dd77210f9c5268be381ee405d5002bc1
+                                               Found module libgpg-error.so.0 with build-id: ba85170c2d9343ea05eea8fa2048c212ff4ef552
+                                               Found module libgcrypt.so.20 with build-id: db45f5d5e0f7af1e77324fea1885f974619ad268
+                                               Found module libcap.so.2 with build-id: e56ad9da369b1a7ba6c62d8d31c5a779f07fbbb1
+                                               Found module liblz4.so.1 with build-id: e63600ab23b2f6997f42fac2fa56e1f02ce159a1
+                                               Found module libzstd.so.1 with build-id: 4b10444c1560ebc574af4d5f488b7408b22d450e
+                                               Found module liblzma.so.5 with build-id: 8b615460aa230708c5183f16bede67aa0437d95e
+                                               Found module libGLX.so.0 with build-id: 0f40ceaa036edc65147e9559b94e0219472493fc
+                                               Found module libGLdispatch.so.0 with build-id: 195b34c1bb271f3b1162c897cfbcfb859e656b93
+                                               Found module libgthread-2.0.so.0 with build-id: 959c30007e43b239203c1b55b4050ded9e05adcf
+                                               Found module libicudata.so.56 with build-id: 34aac32bb4d3c0f44e72e57cf253a871240a1154
+                                               Found module libicuuc.so.56 with build-id: 80916a3578c4abf8d9433986b7ca87ee58797eb5
+                                               Found module libicui18n.so.56 with build-id: ea6a2369dae8e186543b5e0fa413cb7ee7058c84
+                                               Found module libz.so.1 with build-id: 81bf6e728a6d6f5b105b0f8b25f6c614ce10452a
+                                               Found module libsystemd.so.0 with build-id: f776aaa16b4e2ba7056d01d928e4b2726ffe2b8b
+                                               Found module libpcre.so.1 with build-id: 845483dd0acba86de9f0313102bebbaf3ce52767
+                                               Found module libXi.so.6 with build-id: 16603be937a02a7e61b0b0395d064be7efd86f49
+                                               Found module libxcb-util.so.1 with build-id: 4188ebc629b472b560849c5792a69c1803c3d1a4
+                                               Found module libXdmcp.so.6 with build-id: 8ca0792d23c8b8b4c0864297512349292bea5955
+                                               Found module libXau.so.6 with build-id: 1c67764663e07bec24d8951e5fd93f4d165979ff
+                                               Found module libgcc_s.so.1 with build-id: 7f8508bb914546ada778809b64b99d234337d835
+                                               Found module ld-linux-x86-64.so.2 with build-id: 040cc3dd10461562f177df39e3be2f3704258c3c
+                                               Found module libc.so.6 with build-id: 4b406737057708c0e4c642345a703c47a61c73dc
+                                               Found module libm.so.6 with build-id: 2b8fd1f869ecab4e0b55e92f2f151897f6818acf
+                                               Found module libstdc++.so.6 with build-id: 8ab0e57054dd1dcba681f217016afc6a4e639783
+                                               Found module libpthread.so.0 with build-id: 07c8f95b4f3251d08550217ad8a1f31066229996
+                                               Found module libGL.so.1 with build-id: 8b3028bab286029945569a0dfcf695f0f61d9c3b
+                                               Found module libQt5Core.so.5 with build-id: 099f2b263b947b8f4a713312f186f22769906f56
+                                               Found module libQt5DBus.so.5 with build-id: 7befda230d2596a9ee8cb5670ba898bad0c47b80
+                                               Found module libQt5Network.so.5 with build-id: fc5e70dc9cc4ccb387c9a39e48588f4ab5ed9c73
+                                               Found module libQt5Qml.so.5 with build-id: 76c08db9ae6fe2dae2d809ca7943a93b9b258f5e
+                                               Found module libQt5Gui.so.5 with build-id: 86652f534904dd33044a46df2fff1eda4c637801
+                                               Found module libQt5X11Extras.so.5 with build-id: 559c5280f2599c3e25dd3a6db748d196e7fa5a75
+                                               Found module libQt5Widgets.so.5 with build-id: 61d108405ac2211c868986d9de75df53ecc79183
+                                               Found module libQt5Quick.so.5 with build-id: 1c0a46af722719e3cf5c0313ed595881ecfd2921
+                                               Found module libQt5QuickWidgets.so.5 with build-id: a5a170414de62b45e0a5fb0f40c05d63c230901c
+                                               Found module libdbus-1.so.3 with build-id: 74f2ab9c60512f3a93c932c3f627564d42e0b11e
+                                               Found module libglib-2.0.so.0 with build-id: 1fe1592d097fa28822c23e96d9f357583b48424d
+                                               Found module libXtst.so.6 with build-id: 96411faea62997274e362f263e65082e601a787b
+                                               Found module libXfixes.so.3 with build-id: 0a05c7e8714522bfbdd7c0027c3e2a94965664b0
+                                               Found module libxcb-xtest.so.0 with build-id: 0d2b8b11b2a3bd5c2df151aef6d5280d1781b828
+                                               Found module libxcb-keysyms.so.1 with build-id: 333e5eb4075795f947c924a2085f17e2e2ae7147
+                                               Found module libxcb-image.so.0 with build-id: ee7f8577926fe7c1d6972036c2f8e6f727e43b1b
+                                               Found module libxcb-randr.so.0 with build-id: b6c1c7d4b28863b55ade251813db7f246b7ffe8b
+                                               Found module libxcb-shm.so.0 with build-id: fb797f299a446f559a95afcc168227482cc800d1
+                                               Found module libxcb-shape.so.0 with build-id: f1b3376c4534fab0469feb1cd19f022ff98df533
+                                               Found module libxcb-xfixes.so.0 with build-id: a6b197ace5b9b59f913f5969eb419a88d1194f47
+                                               Found module libXext.so.6 with build-id: d70f24beb4fad748d6becffdcc13e51be0a2ebfa
+                                               Found module libxcb.so.1 with build-id: 0d1ef11740a5daad2ee331e812a51aa6574af222
+                                               Found module librt.so.1 with build-id: 75484da2d6f1515189eefa076e0a40328834cd16
+                                               Found module libX11.so.6 with build-id: e9192497aa39fab51358826d1a1b5fb77edc5081
+                                               Found module libdl.so.2 with build-id: 5abc547e7b0949f89f3c0e21ab0c8331a7440a8a
+                                               Found module zoom with build-id: d3b1f03e062484c3b7bc403796d773c470c56e09
+                                               Stack trace of thread 60964:
+                                               #0  0x00007f7c041d38f9 _ZN7QString20fromLocal8Bit_helperEPKci (libQt5Core.so.5 + 0x12d8f9)
+                                               #1  0x00007f7c0413f17c _ZN8QSysInfo15machineHostNameEv (libQt5Core.so.5 + 0x9917c)
+                                               #2  0x00007f7c04b9a1f9 _ZN9QHostInfo13localHostNameEv (libQt5Network.so.5 + 0xcb1f9)
+                                               #3  0x0000561c51a3a181 n/a (zoom + 0x83a181)
+                                               #4  0x0000561c53dad424 n/a (zoom + 0x2bad424)
+                                               #5  0x0000561c53dad757 n/a (zoom + 0x2bad757)
+                                               #6  0x00007f7c04012870 __restore_rt (libpthread.so.0 + 0x13870)
+                                               #7  0x00007f7c03b15d22 raise (libc.so.6 + 0x3cd22)
+                                               #8  0x00007f7c03aff862 abort (libc.so.6 + 0x26862)
+                                               #9  0x00007f7c0412bfec _ZNK14QMessageLogger5fatalEPKcz (libQt5Core.so.5 + 0x85fec)
+                                               #10 0x00007f7c00bc717f _ZNK15QtWaylandClient15QWaylandDisplay10checkErrorEv (libQt5WaylandClient.so.5 + 0x5517f)
+                                               #11 0x00007f7c00bc720e _ZN15QtWaylandClient15QWaylandDisplay13flushRequestsEv (libQt5WaylandClient.so.5 + 0x5520e)
+                                               #12 0x00007f7c04346fd9 _ZN11QMetaObject8activateEP7QObjectiiPPv (libQt5Core.so.5 + 0x2a0fd9)
+                                               #13 0x00007f7c0437293e _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc93e)
+                                               #14 0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #15 0x00007f7c043227f0 _ZN16QCoreApplication4execEv (libQt5Core.so.5 + 0x27c7f0)
+                                               #16 0x0000561c5164da8b n/a (zoom + 0x44da8b)
+                                               #17 0x00007f7c03b00b25 __libc_start_main (libc.so.6 + 0x27b25)
+                                               #18 0x0000561c517ac788 n/a (zoom + 0x5ac788)
+
+                                               Stack trace of thread 60971:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x00007f7c0716f6d9 n/a (libglib-2.0.so.0 + 0xa86d9)
+                                               #2  0x00007f7c07118bc1 g_main_context_iteration (libglib-2.0.so.0 + 0x51bc1)
+                                               #3  0x00007f7c043728ff _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc8ff)
+                                               #4  0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #5  0x00007f7c0414ac2c _ZN7QThread4execEv (libQt5Core.so.5 + 0xa4c2c)
+                                               #6  0x00007f7c04858b45 _ZN22QDBusConnectionManager3runEv (libQt5DBus.so.5 + 0x15b45)
+                                               #7  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #8  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #9  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 63969:
+                                               #0  0x00007f7c040148ca __futex_abstimed_wait_common64 (libpthread.so.0 + 0x158ca)
+                                               #1  0x00007f7c0400e270 pthread_cond_wait@@GLIBC_2.3.2 (libpthread.so.0 + 0xf270)
+                                               #2  0x00007f7c04153673 _ZN14QWaitCondition4waitEP6QMutex14QDeadlineTimer (libQt5Core.so.5 + 0xad673)
+                                               #3  0x00007f7c04153999 _ZN14QWaitCondition4waitEP6QMutexm (libQt5Core.so.5 + 0xad999)
+                                               #4  0x00007f7c0697c4fd _ZN15QSGRenderThread27processEventsAndWaitForMoreEv (libQt5Quick.so.5 + 0x1bd4fd)
+                                               #5  0x00007f7c0697c931 _ZN15QSGRenderThread3runEv (libQt5Quick.so.5 + 0x1bd931)
+                                               #6  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #7  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #8  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 61049:
+                                               #0  0x00007f7c040148ca __futex_abstimed_wait_common64 (libpthread.so.0 + 0x158ca)
+                                               #1  0x00007f7c0400e270 pthread_cond_wait@@GLIBC_2.3.2 (libpthread.so.0 + 0xf270)
+                                               #2  0x00007f7c04153673 _ZN14QWaitCondition4waitEP6QMutex14QDeadlineTimer (libQt5Core.so.5 + 0xad673)
+                                               #3  0x00007f7c04153999 _ZN14QWaitCondition4waitEP6QMutexm (libQt5Core.so.5 + 0xad999)
+                                               #4  0x00007f7c0697c4fd _ZN15QSGRenderThread27processEventsAndWaitForMoreEv (libQt5Quick.so.5 + 0x1bd4fd)
+                                               #5  0x00007f7c0697c931 _ZN15QSGRenderThread3runEv (libQt5Quick.so.5 + 0x1bd931)
+                                               #6  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #7  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #8  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 60973:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x0000561c5322a751 n/a (zoom + 0x202a751)
+                                               #2  0x0000561c5322393e n/a (zoom + 0x202393e)
+                                               #3  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #4  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 61043:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x00007f7c0716f6d9 n/a (libglib-2.0.so.0 + 0xa86d9)
+                                               #2  0x00007f7c07118bc1 g_main_context_iteration (libglib-2.0.so.0 + 0x51bc1)
+                                               #3  0x00007f7c043728ff _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc8ff)
+                                               #4  0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #5  0x00007f7c0414ac2c _ZN7QThread4execEv (libQt5Core.so.5 + 0xa4c2c)
+                                               #6  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #7  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #8  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 61046:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x00007f7c0716f6d9 n/a (libglib-2.0.so.0 + 0xa86d9)
+                                               #2  0x00007f7c07118bc1 g_main_context_iteration (libglib-2.0.so.0 + 0x51bc1)
+                                               #3  0x00007f7c043728ff _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc8ff)
+                                               #4  0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #5  0x00007f7c0414ac2c _ZN7QThread4execEv (libQt5Core.so.5 + 0xa4c2c)
+                                               #6  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #7  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #8  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 60970:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x00007f7c0716f6d9 n/a (libglib-2.0.so.0 + 0xa86d9)
+                                               #2  0x00007f7c07118bc1 g_main_context_iteration (libglib-2.0.so.0 + 0x51bc1)
+                                               #3  0x00007f7c043728ff _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc8ff)
+                                               #4  0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #5  0x00007f7c0414ac2c _ZN7QThread4execEv (libQt5Core.so.5 + 0xa4c2c)
+                                               #6  0x00007f7c0517f825 _ZN17QQmlThreadPrivate3runEv (libQt5Qml.so.5 + 0x308825)
+                                               #7  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #8  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #9  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 63584:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x00007f7c0716f6d9 n/a (libglib-2.0.so.0 + 0xa86d9)
+                                               #2  0x00007f7c07118bc1 g_main_context_iteration (libglib-2.0.so.0 + 0x51bc1)
+                                               #3  0x00007f7c043728ff _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc8ff)
+                                               #4  0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #5  0x00007f7c0414ac2c _ZN7QThread4execEv (libQt5Core.so.5 + 0xa4c2c)
+                                               #6  0x00007f7c0517f825 _ZN17QQmlThreadPrivate3runEv (libQt5Qml.so.5 + 0x308825)
+                                               #7  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #8  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #9  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 63970:
+                                               #0  0x00007f7c040148ca __futex_abstimed_wait_common64 (libpthread.so.0 + 0x158ca)
+                                               #1  0x00007f7c0400e270 pthread_cond_wait@@GLIBC_2.3.2 (libpthread.so.0 + 0xf270)
+                                               #2  0x00007f7c04153673 _ZN14QWaitCondition4waitEP6QMutex14QDeadlineTimer (libQt5Core.so.5 + 0xad673)
+                                               #3  0x00007f7c04153999 _ZN14QWaitCondition4waitEP6QMutexm (libQt5Core.so.5 + 0xad999)
+                                               #4  0x00007f7c0697c4fd _ZN15QSGRenderThread27processEventsAndWaitForMoreEv (libQt5Quick.so.5 + 0x1bd4fd)
+                                               #5  0x00007f7c0697c931 _ZN15QSGRenderThread3runEv (libQt5Quick.so.5 + 0x1bd931)
+                                               #6  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #7  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #8  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 63585:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x00007f7c0716f6d9 n/a (libglib-2.0.so.0 + 0xa86d9)
+                                               #2  0x00007f7c07118bc1 g_main_context_iteration (libglib-2.0.so.0 + 0x51bc1)
+                                               #3  0x00007f7c043728ff _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc8ff)
+                                               #4  0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #5  0x00007f7c0414ac2c _ZN7QThread4execEv (libQt5Core.so.5 + 0xa4c2c)
+                                               #6  0x00007f7c0517f825 _ZN17QQmlThreadPrivate3runEv (libQt5Qml.so.5 + 0x308825)
+                                               #7  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #8  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #9  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 61045:
+                                               #0  0x00007f7c03bccb2f __poll (libc.so.6 + 0xf3b2f)
+                                               #1  0x00007f7c0716f6d9 n/a (libglib-2.0.so.0 + 0xa86d9)
+                                               #2  0x00007f7c07118bc1 g_main_context_iteration (libglib-2.0.so.0 + 0x51bc1)
+                                               #3  0x00007f7c043728ff _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE (libQt5Core.so.5 + 0x2cc8ff)
+                                               #4  0x00007f7c04319daa _ZN10QEventLoop4execE6QFlagsINS_17ProcessEventsFlagEE (libQt5Core.so.5 + 0x273daa)
+                                               #5  0x00007f7c0414ac2c _ZN7QThread4execEv (libQt5Core.so.5 + 0xa4c2c)
+                                               #6  0x00007f7c0414c163 _ZN14QThreadPrivate5startEPv (libQt5Core.so.5 + 0xa6163)
+                                               #7  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #8  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+
+                                               Stack trace of thread 61041:
+                                               #0  0x00007f7c040148ca __futex_abstimed_wait_common64 (libpthread.so.0 + 0x158ca)
+                                               #1  0x00007f7c0400e270 pthread_cond_wait@@GLIBC_2.3.2 (libpthread.so.0 + 0xf270)
+                                               #2  0x00007f7bde24397c n/a (nouveau_dri.so + 0x1c897c)
+                                               #3  0x00007f7bde23d058 n/a (nouveau_dri.so + 0x1c2058)
+                                               #4  0x00007f7c04008259 start_thread (libpthread.so.0 + 0x9259)
+                                               #5  0x00007f7c03bd75e3 __clone (libc.so.6 + 0xfe5e3)
+░░ Subject: Process 60964 (zoom) dumped core
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░ Documentation: man:core(5)
+░░
+░░ Process 60964 (zoom) crashed and dumped core.
+░░
+░░ This usually indicates a programming error in the crashing program and
+░░ should be reported to its vendor as a bug.
+Oct 05 12:40:23 mrpbh systemd[1]: systemd-coredump@0-63973-0.service: Deactivated successfully.
+░░ Subject: Unit succeeded
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ The unit systemd-coredump@0-63973-0.service has successfully entered the 'dead' state.
+Oct 05 12:40:23 mrpbh kernel: audit: type=1131 audit(1633452023.233:224): pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=systemd-coredump@0-63973-0 comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:40:23 mrpbh audit[1]: SERVICE_STOP pid=1 uid=0 auid=4294967295 ses=4294967295 msg='unit=systemd-coredump@0-63973-0 comm="systemd" exe="/usr/lib/systemd/systemd" hostname=? addr=? terminal=? res=success'
+Oct 05 12:40:23 mrpbh audit: BPF prog-id=77 op=UNLOAD
+Oct 05 12:40:23 mrpbh audit: BPF prog-id=76 op=UNLOAD
+Oct 05 12:40:23 mrpbh audit: BPF prog-id=75 op=UNLOAD
+Oct 05 12:40:23 mrpbh kernel: audit: type=1334 audit(1633452023.263:225): prog-id=77 op=UNLOAD
+Oct 05 12:40:23 mrpbh kernel: audit: type=1334 audit(1633452023.263:226): prog-id=76 op=UNLOAD
+Oct 05 12:40:23 mrpbh kernel: audit: type=1334 audit(1633452023.263:227): prog-id=75 op=UNLOAD
+Oct 05 12:40:31 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.8" (uid=0 pid=560 comm="/usr/bin/NetworkManager --no-daemon ") interface="org.freedesktop.DBus" member="GetConnectionUnixUser" error name="(unset)" requested_reply>
+Oct 05 12:40:31 mrpbh dbus-daemon[559]: [system] Would reject message, 3 matched rules; type="method_call", sender=":1.8" (uid=0 pid=560 comm="/usr/bin/NetworkManager --no-daemon ") interface="org.freedesktop.DBus" member="GetConnectionUnixProcessID" error name="(unset)" requested_>
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_dev_intvar_get :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_cfg80211_get_tx_power :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_dev_intvar_get :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_cfg80211_get_tx_power :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_dev_intvar_get :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_cfg80211_get_tx_power :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_dev_intvar_get :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:44 mrpbh kernel: ERROR @wl_cfg80211_get_tx_power :
+Oct 05 12:40:44 mrpbh kernel: error (-1)
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: TRAP ch 10 [007f311000 zoom[64016]]
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: DISPATCH 80000002 [CLASS_SUBCH_MISMATCH]
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 000c data 00000040
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 02000000 [SEMAPHORE] ch 10 [007f311000 zoom[64016]] subc 0 mthd 001c data 00000000
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0030 data 200302f3
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0034 data 00000000
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0038 data 00000000
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 003c data 00000000
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0040 data 80100904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0044 data 80200904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0048 data 80300904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 004c data 80400904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0054 data 80600904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0058 data 80700904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 005c data 80800904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0060 data 80900904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0064 data 80a00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0068 data 80b00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 006c data 80c00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0070 data 80d00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0074 data 80e00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0078 data 8010090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00400000 [METHODCRC] ch 10 [007f311000 zoom[64016]] subc 0 mthd 007c data 8020090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0084 data 8040090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0088 data 20010850
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 008c data 00000051
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0090 data 8070090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0094 data 8080090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 0098 data 8090090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 009c data 80a0090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00a0 data 80b0090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00a4 data 80c0090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00a8 data 80d0090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00ac data 80e0090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00b0 data 80100914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00b4 data 80200914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00b8 data 80300914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00bc data 80400914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00c0 data a01908e3
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00c4 data 00000000
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00c8 data 3b379301
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00cc data 00000000
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00d0 data 00000000
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00d4 data 80a00914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00d8 data 80b00914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00dc data 80c00914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00e0 data 80d00914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00e4 data 80e00914
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00e8 data 8010091c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00ec data 8020091c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00f0 data 8030091c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00f4 data 8040091c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00f8 data 80300904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: fifo: PBDMA0: 00200000 [METHOD] ch 10 [007f311000 zoom[64016]] subc 0 mthd 00fc data 80400904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0100 data 80500904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0104 data 80600904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0108 data 80700904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 010c data 80800904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0110 data 80900904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0114 data 80a00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0118 data 80b00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 011c data 80c00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0120 data 80d00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0124 data 80e00904
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0128 data 8010090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 012c data 8020090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0130 data 8030090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0134 data 8040090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0138 data 8050090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 013c data 8060090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0140 data 8070090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0144 data 8080090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0148 data 8090090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 014c data 80a0090c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0150 data 80b0090c
+
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 05d4 data 200208e3
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 05d8 data 0000007c
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 05dc data ffffffff
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 05e0 data 200208e3
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 05e4 data 00000080
+Oct 05 12:40:53 mrpbh systemd-journald[320]: Missed 5 kernel messages
+░░ Subject: Journal messages have been missed
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ Kernel messages have been lost as the journal system has been unable
+░░ to process them quickly enough.
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 05fc data 00000088
+Oct 05 12:40:53 mrpbh systemd-journald[320]: Missed 10 kernel messages
+░░ Subject: Journal messages have been missed
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ Kernel messages have been lost as the journal system has been unable
+░░ to process them quickly enough.
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0628 data 200208e3
+Oct 05 12:40:53 mrpbh systemd-journald[320]: Missed 6 kernel messages
+░░ Subject: Journal messages have been missed
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ Kernel messages have been lost as the journal system has been unable
+░░ to process them quickly enough.
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0644 data 00010000
+Oct 05 12:40:53 mrpbh systemd-journald[320]: Missed 7 kernel messages
+░░ Subject: Journal messages have been missed
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ Kernel messages have been lost as the journal system has been unable
+░░ to process them quickly enough.
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0664 data ffffffff
+Oct 05 12:40:53 mrpbh systemd-journald[320]: Missed 6 kernel messages
+░░ Subject: Journal messages have been missed
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ Kernel messages have been lost as the journal system has been unable
+░░ to process them quickly enough.
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 0680 data 200208e3
+Oct 05 12:40:53 mrpbh systemd-journald[320]: Missed 6 kernel messages
+░░ Subject: Journal messages have been missed
+░░ Defined-By: systemd
+░░ Support: https://lists.freedesktop.org/mailman/listinfo/systemd-devel
+░░
+░░ Kernel messages have been lost as the journal system has been unable
+░░ to process them quickly enough.
+Oct 05 12:40:53 mrpbh kernel: nouveau 0000:01:00.0: gr: ILLEGAL_CLASS ch 10 [007f311000 zoom[64016]] subc 0 class 0000 mthd 069c data 00000038
+Oct 05 12:40:53 mrpbh systemd-journald[320]: Missed 7 kernel messages
+#+end_example

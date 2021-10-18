@@ -1,0 +1,94 @@
+:PROPERTIES:
+:ID:       cbd85e85-5c8b-4b98-9dd8-f8883b9dc8f7
+:END:
+#+TITLE:     Install Guix on Arch
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION:
+
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* TODO Tasks
++ [ ] Are the systemd services fucked up?
++ [ ] How to implement =/etc/profile.d= in =$HOME=
+  - safest way? simplest way?
+  - Guix & Guix-Home compatible way?
++ [ ] Set up guix environment to automatically load profile
+  - then restart
+
+* Potential Problems
++ Reinstalling/updating the package through Yay may clobber the systemd service definitions (among other things)
++ Not updating systemd service definitions
++ Doing a =guix pull= too early
+  - I'm not sure whether
+
+** In =/etc/profile.d/guix.sh=
++ Not setting this up is a problem
++ Not restarting after it's set up
+  - It's a login shell
++ Assuming all users needing a login shell have a valid profile
+  - they would need access to binaries built with
+  =guix install=
+  - see the archwiki =/etc/profile.d/guix.sh= script
+    * it assumes other users needing login will have this
++ Exporting the =GUIX_PROFILE= variable
+  - the example archwiki script assigns default values for the needed variables.
+  - Shells spawned after login should set =GUIX_PROFILE=:
+    * via =direnv=
+    * via a terminal profile configuration
+    * by the user
++ Running =guix pull= or other commands before the profiles are loaded for the user.
+
+** Updating
+
+** Managing multiple =guix= and =guix-system= binaries
++ the guix binary maybe shouldn't be available to all users all the time.
++ the =/usr/bin/guix= binary
+
+
+* Create build users
+
+See Archwiki
+
+* Install Guix from AUR
+
+** Read ArchWiki
++ Create =guixbuild= group and users
+
+** Install package from AUR
+*** Edit =PKGBUILD=
+- update the =.cache/yay/guix/PKGBUILD= if the yay build failed
+- Remove references to fish/autocompletion
+- [[https://aur.archlinux.org/packages/guix/#comment-817758][Apply these changes]] mentioned by the AUR author
+*** Get Yay to complete install
+- or manually complete with =makepkg=
+
+* Setup SystemD
+
+To see the differences between services:
+
+#+begin_src bash
+guixd_latest=/usr/lib/systemd/system/guix-daemon-latest.service
+guixd_other=/usr/lib/systemd/system/guix-daemon.service
+diff --color $guixd_latest $guixd_other
+#+end_src
+
++ Ensure that the service points to the correct binary.
+
+  - The AUR package copies the originals to =guix-*-latest.service= and uses =sed= to change the binaries to =/usr/bin/guix= in the "non-latest" ones.
+  - The original service definitions use the "root" user, but =yay= does not
+    install guix as root.
+
++ Create a totally new set of services
+  - Disable & unload all of these services.
+  - Copy the modified =guix-*-latest.service= definitions into a new service.
+  - This is necessary because in a future update =yay= might clobber the =guix= installation
+  - The =yay= managed guix installation should not be needed once installed.
+
+
+
+* Configure =/etc/profile.d/guix.sh=
+
+
+* Initialize

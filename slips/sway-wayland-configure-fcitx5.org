@@ -1,0 +1,114 @@
+:PROPERTIES:
+:ID:       f496d767-b54e-4086-bed4-e3d95fdaed4a
+:END:
+
+#+TITLE:     Sway/Wayland: Configure FCITX5 (japanese)
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
++ [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:6f038fec-2e00-4fb7-a959-c2691efd642c][i18n]]
+
+
+
+* Fcitx5
+
++ Config is now in =~/.config/fcitx5/profile=
+  - but was formerly in =~/.config/fcitx=
+  - on my new system (sway not kde), I have a =dbus= folder under =fcitx=
+
+** Install Packages
+
+```bash
+# this will give you the Kana Kanji and Hangul keyboards
+sudo pacman -Syu fcitx5-im fcitx5-kkc fcitx5-hangul
+```
+
+- fcitx5-im :: arch package group
+  - fcitx :: ding an sich
+  - fcitx5-gtk :: for running (fcitx5-configtool wont run without qt5)
+  - fcitx5-qt5 :: for configuring
+    - on my 2021/10, this forced me to pull down
+      - qt5-wayland
+      - qt5-base
+      - electron
+  - fcitx5-configtool :: kde config tool (includes kcm-fcitx5)
+- fcitx5-table-other :: LaTeX...
+  - NOPE for =fcitx5= it's simply additional CN/ZH input methods
+
+** In Sway, FCITX5 cannot detect my Digimon system keyboard
+
+It picks this up from =/usr/share/X11/xkb/rules/evdev.xml=, which is occasionally overwritten. When this happened pre-sway, it meant my keyboard broke, but Sway only needs =/usr/share/X11/symbols/io=
+
++ FCITX5 will need a restart to pick up these changes
+
+** Configure
+
+*** FCITX/5 can have some pretty bad defaults!
+
+- DISABLE _FCITX_ CLIPBOARD HISTORY!!
+  - also, its hotkey =C-;= conflicts with =comment-line= in emacs
+
+- there are other potential plugins with:
+  - keyboard conflicts
+  - potential security implications
+- also select "vertical candidate history"
+
+** XDG desktop item to troubleshoot
+
+Running script:
+
+=fcitx5 --verbose default=5 -D > $HOME/.cache/log/fcitx5.$(date +%s).log 2>&1=
+
+* Troubleshooting
+
+** Dealing with =Wayland Connection= Crashes
+
+*** Start logging
+
+Run =fcitx5 --verbose default=5 -D 2>&1= to log most all events
+
+#+begin_example
+D2021-10-16 02:50:50.538173 instance.cpp:2175] Instance::activateInputMethod
+D2021-10-16 02:50:50.538209 instance.cpp:2180] Activate: [Last]: [Activating]:keyboard-io-altgr-intl
+E2021-10-16 02:50:50.540262 waylandmodule.cpp:60] Wayland connection got error: 32
+D2021-10-16 02:50:50.540299 waylandmodule.cpp:90] Display removed
+D2021-10-16 02:50:50.540326 instance.cpp:2213] Instance::deactivateInputMethod event_type=4100
+D2021-10-16 02:50:50.540350 instance.cpp:2231] Deactivate: [Last]:keyboard-io-altgr-intl [Deactivating]:keyboard-io-altgr-intl
+D2021-10-16 02:50:50.541083 instance.cpp:1389] Running save...
+I2021-10-16 02:50:50.555296 addonmanager.cpp:295] Unloading addon kkc
+I2021-10-16 02:50:50.557651 addonmanager.cpp:295] Unloading addon notifications
+I2021-10-16 02:50:50.557696 addonmanager.cpp:295] Unloading addon notificationitem
+I2021-10-16 02:50:50.557759 addonmanager.cpp:295] Unloading addon classicui
+I2021-10-16 02:50:50.560538 addonmanager.cpp:295] Unloading addon kimpanel
+I2021-10-16 02:50:50.560576 addonmanager.cpp:295] Unloading addon fcitx4frontend
+I2021-10-16 02:50:50.560666 addonmanager.cpp:295] Unloading addon dbusfrontend
+I2021-10-16 02:50:50.560704 addonmanager.cpp:295] Unloading addon xim
+I2021-10-16 02:50:50.560816 addonmanager.cpp:295] Unloading addon ibusfrontend
+I2021-10-16 02:50:50.566399 addonmanager.cpp:295] Unloading addon dbus
+I2021-10-16 02:50:50.566459 addonmanager.cpp:295] Unloading addon waylandim
+I2021-10-16 02:50:50.566478 addonmanager.cpp:295] Unloading addon keyboard
+I2021-10-16 02:50:50.566626 addonmanager.cpp:295] Unloading addon imselector
+I2021-10-16 02:50:50.566656 addonmanager.cpp:295] Unloading addon quickphrase
+I2021-10-16 02:50:50.566883 addonmanager.cpp:295] Unloading addon xcb
+I2021-10-16 02:50:50.567081 addonmanager.cpp:295] Unloading addon unicode
+I2021-10-16 02:50:50.567101 addonmanager.cpp:295] Unloading addon wayland
+#+end_example
+
+*** Errors:
+
+All "Wayland connection got error: %d"
+
++ 32
++ 102
++ 104
+
+
+
+*** Assess environment:
+
+
+
+Run =fcitx5-diagnose= to assess the environment

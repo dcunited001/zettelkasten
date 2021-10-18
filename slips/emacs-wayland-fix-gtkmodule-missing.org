@@ -1,0 +1,36 @@
+:PROPERTIES:
+:ID:       0d596ae2-2ece-4535-bf65-827960dd20c7
+:END:
+#+TITLE:     Emacs/Wayland: Fix GTK Module Missing
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
++ [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
++ [[id:0c24939d-f5b9-4cab-96ae-cef1ea4cd4f0][GUI Toolkits]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
+
+* Problem
+
+#+begin_example journalctl
+(process:1636412): Gtk-WARNING **: 06:45:41.158: Locale not supported by C library.
+Using the fallback 'C' locale.
+Gtk-Message: 06:45:41.162: Failed to load module "canberra-gtk-module"
+
+(emacs:1636412): Gtk-CRITICAL **: 06:45:41.212: gtk_widget_destroy: assertion 'GTK_IS_WIDGET (widget)' failed
+
+(emacs:1636412): Gtk-CRITICAL **: 06:45:41.220: gtk_widget_destroy: assertion 'GTK_IS_WIDGET (widget)' failed
+
+(emacs:1636412): Gdk-CRITICAL **: 06:45:41.224: gdk_wayland_seat_get_wl_seat: assertion 'GDK_IS_WAYLAND_SEAT (seat)' failed
+Gdk-Message: 06:45:41.225: Error 22 (Invalid argument) dispatching to Wayland display.
+#+end_example
+
+* Resolution:
+
++ run =~/.config/guix/current/bin/guix install libcanberra=
++ and add the following to my guix profile where =emacs-pgtk-native-comp= emacs is installed
+
+#+begin_src shell
+export GTK_PATH="${GUIX_PROFILE:-/gnu/store/hash-profile}/lib/gtk-3.0${GTK_PATH:+:}$GTK_PATH"
+export GTK3_MODULES=canberra-gtk-module${GTK3_MODULES:+,}$GTK_MODULES
+#+end_src
