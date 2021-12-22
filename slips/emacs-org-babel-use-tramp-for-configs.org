@@ -1,0 +1,170 @@
+#+TITLE:     Org Babel: Use Tramp and SSHFS to Push Configs
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
++ Roam Links:
+  - Linux
+  - Provisioning
+  - Route Switch
+
+* DD-WRT Deploys
+
+This is an approach that I'm using until I get up to speed on Ansible playbooks.
+It's useful, but there are better options ... still, I don't think anyone else
+has tried this, so I'm writing a slip for it.
+
++ The usefulness of the babel blocks is limited: the =noweb= templates won't
+  work well when injecting graph/network-based configuration (of
+  addresses/servers/networks) into scripts.
+  - Elisp to construct a DSL would work better (and Scheme probably better than
+    that).
+  - See examples from [[dfeich/org-babel-examples][dfeich/org-babel-examples]] and others on rendering graphviz
+    code via elisp in org-babel for more clarity.
+
++ However, this approach does allow you to brainstorm with zero-configuration
+  and basically zero packages/dependencies.
+  - it works from a laptop running Guix with no internet that runs vanilla emacs
+  - no packages installed and an =init.el= which is basically 5 lines.
+
++ This should produce snippets which move towards the final format of ansible
+  playbooks ... if you don't rely on many ansible community plugins (which is
+  basically the whole point)
+
+** Configuring SSH
+
+Set up a key for your routers. Enable ssh in the GUI and add the public key.
+Ensure the IP Address is set and test ssh.
+
+*** SSH Config
+
+#+begin_src conf
+# SSH should only use the identity you configure via hostline or use via -i
+IdentitiesOnly Yes
+
+Host aserver aserver.subdomain.local
+     Hostname aserver.subdomain.local
+     IdentityFile ${HOME}/.ssh/aserver_ecdsa
+     User auser
+     Port 69
+#+end_src
+
+*** Minimal Tramp Config
+
+This is what your =tramp-connection-properties= should look like. It's basically
+a list of lists, where the first entry in each sublist is a regexp matcher for
+sshfs URI's that you connect to with tramp. So:
+
++ if you want to apply multiple rules to multiple hosts, you can do that.
++ if there are some global defaults for multiple hosts, use =.*= as the regexp
++ if there are some global defaults that you want to only match a single host or
+  single sshfs uri (with a =:sudo= declaration or that match a single set of
+  directories on the host), then use =(regexp-quote ...)= to produce regexp
+  guaranteed to match one string.
+
+#+begin_src elisp
+;; otherwise the default is SCP and SSH is faster
+(setq tramp-default-method "ssh")
+
+;; if you have no framework like doom
+;; then you will need to zero this out, so it is defined
+(setq tramp-connection-properties '())
+(add-to-list 'tramp-connection-properties
+             ;;  all hosts
+             '(".*"
+               "tmpdir" "/tmp")
+
+             ;;  some hosts on a subdomain when greybeard connects
+             '("/ssh:greybeard@.*.subdomain.local:"
+               "remote-shell" "csh")
+             
+             ;; single host
+             '(regexp-quote "/ssh:fdsa@asdf.host.local:sudo:/some/subdir"
+                            "tmpdir" "/some/custom/tmp" ;;tramp only, org-babel will specify another :(
+                            "remote-shell" "/bin/ash"))
+#+end_src
+
+** Deploying Scripts via Org-Babel, Tramp and SSHFS
+
+Assume that =sshfs-url= corresponds to the value below. This is because =tramp=
+is freaking out when eagerly connecting to the ssh server i've specifiied ........................................ by default.
+
+#+begin_src elisp
+(setq sshfs-uri "/ssh:root@router.mynet.local:/jffs/deploy")
+#+end_src
+
+Or, since all =org-babel= headers will evaluate lisp-forms (but not necessarily
+acccept lisp variables as values!), then simply use =(identity sshfs-uri)=
+
+#+begin_example org
+#+begin_src sh :tangle (concat (identity sshfs-uri) "/the/path/scripts.sh" :shebang #!/bin/bash
+nvram set enable_jffs2=1
+nvram set sys_enable_jffs2=1
+nvram set clean_jffs2=0
+#+end_src
+#+end_example
+
+#+begin_quote
+use =clean_jffs2=1= when you want to reset the jffs2 storage
+#+end_quote
+
+And some config file
+
+#+begin_example org
+#+begin_src sh :tangle (concat (identity sshfs-uri) "sudo:" "/etc/iproute2/rt_tables.append" :shebang #!/bin/bash
+subnet 240
+#+end_src
+#+end_example
+
+
+But you probably don't need sudo if you login with root. (and you always keep root open on SSH, right?)
+
+#+begin_example org
+#+begin_src sh :tangle (concat (identity sshfs-uri) "/main.sh" :shebang #!/bin/bash
+source ./the/path/scripts.sh
+
+# first reset the file, then
+cat ./etc/iproute2/rt_tables.append >> /tmp/etc/iproute/rt_tables.append
+
+# (not the best way to do policy-based routing: there are NVRAM keys for that)
+
+# a commit will seal the deal (and potentially lock you out)
+nvram commit
+#+end_src
+#+end_example
+
+** Running Scripts with Org-Babel
+
++ This approach that fails miserably because =org-babel= doesn't hook into the
+  =tramp-connection properties=.
++ Otherwise, this would be greate because it shouldn't require more than temp
+  files to the router. However, even with =jffs2= installed on the router, I
+  couldn't get around babel writing =/tmp/sh-shell-abcd0123.sh= files.
+
+This SSHFS uri represents the directory that Tramp will init in.
+
+#+begin_src elisp
+(setq sshfs-uri "/ssh:root@router.mynet.local:/jffs/deploy")
+#+end_src
+
+For the below block, you can get all DD-WRT nvram values related to vlans. If
+this worked, they would appear below in the =#+RESULTS:= block. Note: nvram in
+ddwrt contains sensitive data that should stay on the device ... e.g. plaintext
+SSH private keys.
+
+#+begin_example org
+#+begin_src sh :dir /ssh:root@myrouter.mynet.local:/jffs/deploy :shebang #!/bin/ash
+ssh aserver '
+nvram show | grep vlan'
+#+end_src
+#+end_example
+
+** Maybe we need =ob-ssh=
+
+The lack of complete functionality here implies that there's a need for a
+=ob-ssh= which works with an SSH socket
+- This could function something like the =org-babel= =:session= ... but tracking
+  the server's state gets weird like a jupyter notebook run in random order.
+- SSH tunneling may also work. Both =org-babel= and =tramp= must write temp
+  files, so they wouldn't work with Junyper/Cisco routers and/or other such
+  devices
