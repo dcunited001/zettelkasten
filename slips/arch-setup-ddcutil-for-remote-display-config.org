@@ -1,0 +1,63 @@
+#+TITLE:     Arch: Setup DDC Util for remote display config
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
+
++ Run =sudo pacman -Syu ddcutil ddcui-git= to install the necessary packages
+  - =ddcui= doesn't seem to work...
+    - it complains about SIGSEGV "Address Boundary Error"
+
+* I2C
+
+[[https://www.i2c-bus.org/addressing][I2C Bus]]
+
+** Setup
+
++ Load the I2C kernel module on boot
+  - =echo i2c-dev >/etc/modules-load.d/i2c-dev.conf=
++ Or load the module at runtime: =sudo modprobe i2c-dev=
++ Ensure that the module is loaded =lsmod | grep i2c=
+
+** Probing for Connection
+
++ Get the i2c-bus device with =ddcutil detect=
+
+* DDC
+
++ [[https://blog.tcharles.fr/ddc-ci-screen-control-on-linux][DDC CI Screen Control on Linux]]
+  - This article discusses the UDEV rules that are needed for users in the "ddc"
+    group to control DDC devices. Without this config, the =ddcui= app requires
+    sudo.
+  - These rules can be enabled and disabled
+
+**** TODO create a hardware mgmt user, which can launch apps requiring UDEV/etc permissions from modified XDG desktop files. (or something along those lines)
+
+** Using =ddcutil=
+
+*** Basic Commands
++ Write
+  - scs :: write to the monitor's NVRAM
++ Reflection
+  - detect :: detect monitors
+  - capabilities :: query capabilities
+  - chkusbmon :: check if usb device is a monitor (for UDEV)
++ VCP (color profiles)
+  - vcpinfo :: show VCP feature characteristics
+  - getvcp :: report VCP feature value(s)
+  - setvcp :: set VCP feature value(s)
+  - dumpvcp :: write color profile settings to file
+  - loadvcp :: load cp settings
++ Probe
+  - environment :: execution env
+  - usbenv :: USB connected monitors
+  - probe :: monitor abilities
+  - interrogate :: report everything possible
+
+*** DDC Util Commands
+
++ Set =$__I2CBUS= to N in =/dev/i2c-n= from the =ddcutil detect= output
++ Query features =ddcutil capabilities --bus=$__I2CBUS=
+  - these are the possible commands your monitor gives you
++ Run =ddcutil vcpinfo= to get information about standard VCP =0x00= hex codes
+  - Information about this can also be found in  =man ddcutil=

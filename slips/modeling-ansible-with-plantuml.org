@@ -1,0 +1,174 @@
+:PROPERTIES:
+:ID:       175b1e2d-76ed-488f-922e-68398fbb1ea9
+:END:
+
+#+TITLE:     Modeling Ansible With PlantUML
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
+**** TODO look into [[https://github.com/tj64/puml][tj64/puml]]: create reusable plantuml macros with declarative DSL (via elisp)
+
+**** TODO My half-configured Guix can't find binaries like =$GRAPHVIZ_DOT= or =$SQLITE...=
+
+So until then, it's necessary to set the var before running:
+
+#+begin_src elisp
+(setenv "GRAPHVIZ_DOT"
+        (expand-file-name ".guix-profile/bin/dot"
+                          (file-name-as-directory (getenv "HOME"))))
+#+end_src
+
+* Organization
+
+Unfortunately, the answers to most of these questions are specific to the
+network/context.
+
++ How should playbooks be separated?
++ How should roles be defined so that they can migrate to other hosts?
++ How does Ansible mesh with Kubernetes?
+  - Where is a clear separation of concerns?
++ How should hosts/groups be organized in inventory files?
+  - There should only be one inventory per playbook/etc
+    - There could be multiples, but that would quickly get confusing.
+
+* UML
+
++ Class Relations
+  - Extension :: <|-- or ^--
+  - Composition :: *--
+  - Aggregation :: o--
++ Misc Relations
+  - Square (?) :: \#--
+  - X :: x--
+  - Funnel (?) :: }--
+  - Direct Sum :: +--
+  - ::
++ Entity Relations
+  - Zero or One :: |o--
+  - Exactly One :: ||--
+  - Zero or Many :: }o--
+  - One or Many :: }|--
++ Visibility
+  - private :: -
+  - protected :: \#
+  - package private :: -
+  - public :: +
+
+* Ansible
+Notes mostly from ... video
+
+** Concepts
+
++ Operator
+
+** Inventory
+
+#+BEGIN_SRC plantuml :file ../img/uml/modeling-ansible_inventory.png
+@startuml
+
+class Inventory {
+        file
+        +getHosts()
+}
+
+class Host {
+        Var[] vars
+}
+
+class HostGroup {
+        Var[] vars
+        +getHosts()
+}
+
+class Var {
+
+}
+
+class Fact {
+
+}
+
+HostGroup o-- Host
+HostGroup *-- HostGroup
+Inventory *-- HostGroup
+
+class Role {
+        Var[] applyVars
+        Task[] applyTasks
+        Handler[] applyHandlers
+}
+
+Role::applyVars o-- Var
+Role::applyTasks o-- Task
+Role::applyHandlers o-- Handler
+
+class Task {
+
+}
+
+class Handler {
+
+}
+
+Handler <|-- Task
+
+@enduml
+#+END_SRC
+
+#+RESULTS:
+[[file:../img/uml/modeling-ansible_inventory.png]]
+
+** Playbooks
+
+#+BEGIN_SRC plantuml :file ../img/uml/modeling-ansible_playbooks.png
+@startuml
+
+class Playbook {
+        Play[] plays
+}
+
+class Play {
+        Task[] tasks
+}
+
+class Host {
+
+}
+
+class Task {
+        Action action
+        name
+        +getHosts()
+}
+
+class Action {
+
+
+}
+
+Action "1" *--- "1" Task
+Playbook "1" *-- "*" Play
+
+class Module {
+
+}
+
+class Library {
+        Module[] modules
+}
+
+Library *-- Module
+
+@enduml
+#+END_SRC
+
+#+RESULTS:
+[[file:../img/uml/modeling-ansible_playbooks.png]]
+
+
+#+BEGIN_SRC plantuml :file ../img/uml/sequence1.png :exports both
+
+#+END_SRC
+
+* Collections
