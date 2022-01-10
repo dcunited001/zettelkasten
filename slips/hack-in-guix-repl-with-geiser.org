@@ -1,0 +1,52 @@
+#+TITLE:     Hack In Guix REPL With Geiser
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
++ [[id:87c43128-92c2-49ed-b76c-0d3c2d6182ec][Scheme]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* Config
+** Doom/Emacs
++ ensure that =(scheme +guile)= is in =.doom.d/init.el= and =bin/doom upgrade=
+** Guix Repl
++ [[https://guix.gnu.org/manual/en/html_node/Invoking-guix-repl.html][Invoking Guix Repl (8.11)]] describes starting a scheme repl with guix loaded
++ If desired, the environment can be isolated via =guix pack=
+** Guix Codebase
++ read through [[https://guix.gnu.org/manual/en/html_node/The-Perfect-Setup.html][The Perfect Setup (16.3)]] if hacking on the guix codebase
+
+* Startup
+Simple:
+
++ Run =guix repl= to start a Scheme repl with Guix modules loaded
+  - Set =LOAD_PATH=path/to/packages/and/systems=
++ Connect to it with =C-c l "= from the scheme buffer
+  - use =guix repl= with =--listen=tcp:54321=
+  - then connect
++ Connect with =geiser-connect-local= after creating a domain socket
+  - run =__socket_dir=/tmp/$(mkdtemp -d)= to create a temp dir for the socket
+  - run =guix repl --listen=unix:$__socket_dir/guix_socket=
+  - then connect in emacs
+
+* Usage
+
+For more complete info, see [[https://www.nongnu.org/geiser/geiser_5.html][Geiser: Cheatsheet]]
+
++ Once connected, run =C-c C-l= to load a buffer into the REPL
+  - Most of the common lisp eval bindings like =C-x C-e= apply
+  - C-M-x :: geiser-eval-definition
+  - C-c C-e C-l :: geiser-add-to-load-path
+  - C-c RET C-e :: geiser-expand-last-sexp
+  - C-c C-d :: geiser-doc-*
+    - use =C-c C-d TAB= on keywords to lookup description in the Guile manual
+  - M-. :: geiser-edit-symbol-at-point (return with =M-,= to pop)
+
+*** Problems
+
+**** TODO for some reason =C-x C-e= is evaluating scheme with elisp, even though scheme-mode is showing in the modeline
+
++ manually running =scheme-mode= on the file then evals expressions in the
+  geiser repl
+**** TODO when starting repl in an external shell, company/autocomplete hangs and waits forever
+
++ the CPU time doesn't show in =doom/toggle-profiler=, so this is happening somewhere betwee comint & the external geiser process...
