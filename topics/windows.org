@@ -2,9 +2,125 @@
 :ID:       65aca91d-9285-412c-b2bd-bb81cea1a7ac
 :END:
 #+title: Windows
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
 
 * Docs
 
 * Resources
 
-* Installation
+* Issues :windows:
+** WSL :wsl:
+
+*** Installing WSL
+Installation
+
+#+begin_src cmd
+  wsl --install
+#+end_src
+
+** Emacs :emacs:
+
+Emacs can run, but maybe it's hard
+
+**** TODO test vanilla emacs
+**** TODO test generation/reading info pages
+Basically, i just wanna know ... is this hard?
++ [ ] setup path/wsl to build info from =*.tex=
++ [ ] build an info page
++ [ ] upload it into the INFO_PATH (or whatever)
+
+** Applications
+
+*** Nyxt
+
+Nyxt browser can run under WSL.
+
+**** TODO test Nyxt
+
+** Hyper V :virtualization:
+
+*** Config
+
+#+begin_src powershell
+  Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
+#+end_src
+
+* Installing
+
+This describes a self-contained installation of Windows onto an
+external drive -- connected to a 2013 Macbook Pro via a
+Thunderbolt/SATA drive.
+
+** From Linux
+
+If you don't have any windows installed, then run =yay woeusb-ng= to
+install the WOE USB tool.
+
++ For me, the pacman =woeusb-gui= packages failed to install Windows
+  10 onto an NTFS. It required installing a different package via yay.
+
+** Boot Clobbering
+
+Even when installed on an external disk, windows will affect the
+booting of an Linux install/efi. This is because the operating systems
+listed in UEFI doesn't include the older Linux.
+
+*** Copy your EFI Partition to the external disk
+
+To make this work from an external disk, you can boot to Garuda Arch
+KDE to use the KDE partition tools. From here you can literally
+copy/paste your old EFI partition from =/dev/sdaN= to a new partition
+on =/dev/sdb=, herein the "external drive".
+
+#+begin_quote
+You can literally use =C-c= and =C-v= shortcutexternal drives because
+free software somehow outdoes "trillion dollar market value" software.
+
+(even though this could be a much harder fix)
+#+end_quote
+
+Remove the USB. At this point, you should be able hold =right-option=
+to boot into windows using the Mac boot menu.
+
+*** Boot into Microsoft's UEFI management suite
+
+UEFI includes the ability for a running operating system to pass
+limited parameters to the next boot sequence (like reincarnation). MS
+uses this feature to indicate to the computer how to initiate the boot
+sequence on the next restart.
+
+Search the start menu for the UEFI boot tools. Restart with the
+"Advanced Tools". When you restart, you will have to change the NVRAM
+values in UEFI to allow booting the EFI partition (and if you cloned
+the partition, you have two).
+
+....
+
+Just kidding. Use linux to do it. If you have an Apple recovery
+partition, there are also UEFI management tools on there.
+
+Use the following commands
+
++ efibootmgr :: see the existing boot order
+  - this is for your host's main device
+  - these are all hex entries. it is customary to end with a 0001.
++ efibootmgr -o AAAA,BBBB,CCCC :: modify the boot order
+  - this will not affect the loading of the EFI partition that you
+    cloned to the external hard drive. If for some reason that's how
+    it worked, then it would be very difficult to boot from USB.
+    - when you select the boot device in the Apple boot device menu,
+      you are selecting the EFI partition.
+    - However, I believe this setting is stored in NVRAM on the disk,
+      yet there must be something configured on the EFI partition
+      too. Otherwise the
+  - ensure that Guix comes first, Microsoft after that
+    - though whether the Microsoft partition is in this list, AFAIK it
+      shouldn't really matter. Just don't delete that boot enty.
+
+For me, when using the Apple boot menu. the Microsoft Windows logo is
+still shown as the primary =/dev/sda= boot partition. If I want to
+boot Guix, I select windows image. If I want to boot Windows, I plug
+in the thunderbolt hard drive and select the non-windows image.
+
