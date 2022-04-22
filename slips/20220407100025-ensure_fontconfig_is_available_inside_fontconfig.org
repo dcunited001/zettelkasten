@@ -1,0 +1,59 @@
+:PROPERTIES:
+:ID:       dc4ca020-65c1-4999-8bfb-793741ba6a81
+:END:
+#+title: ensure fontconfig is available inside fontconfig 
+
+
+
+Reference [[https://www.reddit.com/r/flatpak/comments/spwck9/flatpak_doesnt_follow_custom_fontconfig_file/][this reddit post]] for more info. This is [[https://blogs.gnome.org/alexl/page/3/][a long-running issue]].
+
+
+* TLDR
+
+To fix:
+
++ manually add fonts into =~/.dotfiles/fonts=
++ add an override to make this path avaiable in flatpak
+  - ensure the =--filesystem= bind mounts match the =FONTCONFIG_...= var which cannot be or include links (for the bundled fontconfig inside flatpak)
+
+#+begin_src bash
+flatpak --user override \
+    --filesystem=~/.dotfiles/.config/fontconfig:ro \
+    --filesystem=~/.dotfiles/fonts:ro \
+    --filesystem=~/.guix-extra-profiles/desktop/desktop/share/fonts:ro \
+    --env=FONTCONFIG_PATH=$HOME/.dotfiles/.config/fontconfig/conf.d \
+    --env=FONTCONFIG_FILE=$HOME/.dotfiles/.config/fontconfig/fonts.conf
+#+end_src
+
+* Fontconfig Fixes
+
+You can verify the files that flatpak needs:
+
+#+begin_example bash
+flatpak --user override --reset
+strace -o flatpak.strace -e %file flatpak --user override --filesystem=some-path
+
+# or try running the app
+strace -o flatpak.run.strace -e %file flatpak --user run $APP
+#+end_example
+
+** Using Overrides
+
++ You may need =flatpak --user override= for paths in =fonts.conf=
+  - for a user install, flatpak updates the state in =$FLATPAK_USER_DIR/.local/share/overrides/global=
+
+#+begin_example
+
+#+end_example
+
+** Using Symlinks
+
+This approach didn't work for me
+
+#+begin_example sh
+for app_dir in $FLATPAK_USER_VAR/app/*; do
+    [[ -e $app_dir ! -L $app_dir/.config/fontconfig ]] && ln -s $_DF/.config/fontconfig $app_dir/config/fontconfig
+done
+#+end_example
+
+*** TODO turn this into a shepherd service that can be run on demand

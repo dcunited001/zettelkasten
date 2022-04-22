@@ -7,7 +7,13 @@
 + [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
 + [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
 
-* Examples
+* Resources
+
++ Comprehensive [[https://docs.oracle.com/cd/E37670_01/E41138/html/ch06s03.html][udev rules]] docs
+  - ... this doesn't exactly show up at the top of google
+  - ... and everything i don't understand is deep inside systemd
+
+** Examples
 
 + (gnu packages radio) ... [[file:/data/ecto/guix/guix/gnu/packages/radio.scm::(define-public hackrf][hackrf]]
 + (gnu packages android) ... [[file:/data/ecto/guix/guix/gnu/packages/android.scm::(define-public android-udev-rules][android-udev-rules]]
@@ -28,17 +34,53 @@ This allows you to distribute udev logic to systems
 + or specify more logic for the udev rules
   - for this, use =(define-* ...)= and/or lambda, not packages
 
+** Guix System Udev Config
+
+
+Guix system concatenates udev config with this code:
+
+#+begin_src scheme
+;; in (gnu services base)
+
+(define udev.conf
+  (computed-file "udev.conf"
+                 #~(call-with-output-file #$output
+                     (lambda (port)
+                       (format port "udev_rules=\"/etc/udev/rules.d\"~%")))))
+
+(define udev-etc
+  (match-lambda
+    (($ <udev-configuration> udev rules)
+     `(("udev"
+        ,(file-union
+          "udev" `(("udev.conf" ,udev.conf)
+                   ("rules.d" ,(udev-rules-union (cons* udev kvm-udev-rule
+                                                        rules))))))))))
+#+end_src
+
+To find all udev rules matching a pattern (in emacs):
+
++ locate $package_hash using emacs-guix
++ you must follow links: find -L
++ the udev package hash/link will not update between
+  system generations if the underlying package content
+  don't change -- i.e. with same  (file-union ... ) udev rules
+
+#+begin_src sh
+find -L /gnu/store/$package_hash-udev/rules.d -type f \
+    -exec grep --color=auto -nH --null -e 'usb' \{\} +
+#+end_src
+
+I'm not sure how to use =udevadm= to determine the 'database state' for =udevd=
+... so grepping through the =./rules.d= files is the best way to do that.
+
 * General Process
 
 ** Build udev rule
 
-*** TODO notes on process to add udev rule for ifuse/usbmuxd
-
-+ =udevadm= (device #)
-+ tags?
-
 *** TODO determine how to interact with =herd=
-+ instead of systemd
++ this is described in the usbmuxd autogen.sh script
+  - it just directly controls a usbmuxd process
 
 ** Update Guix System
 
