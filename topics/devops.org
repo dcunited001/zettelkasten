@@ -146,6 +146,47 @@ to.
 
 * Virtualization Platforms
 ** vSphere
+
+** Harvester
+
+*** Docs
++ [[https://docs.harvesterhci.io/v1.0/reference/api/https://docs.harvesterhci.io/v1.0/reference/api/][API Docs]]: basically an API wrapper around Kubevirt
+
+*** Resources
+
+*** Issues
+
+**** How to provision storage to Harvester Nodes/Guests?
++ usually requires Persistent Volume Claims (ala k8s)
++ see kubevirt resources
+
+**** Can harvester support GPU passthrough?
++ The models listed in the [[https://docs.harvesterhci.io/v1.0/reference/api/][Harvester API Docs]] indicate so
+  - however, these models also contain references to vGPU which is an nVidia feature.
+  - Also, nVidia publishes a [[the][GPU addon]] for "discovery" of nVidia GPU/vGPU's on the host. It's unclear whether the GPU model is synonymous with nVidia's plugin or simply confusing.
+  - Regardless, neither the API model nor the Kubevirt addon should be required for GPU passthrough.
++ This [[https://kubevirt.io/user-guide/virtual_machines/host-devices/][should be possible]], if not through the Harvester interface then by:
+  - adding device ID's to the =permittedHostDevices= in =KubeVirt CR=
+  - then adding these devices to the KubeVirt VMI's
+
+***** Possible Solution
+
+Reference ArchWiki on [[writin][OVMF passthrough]]. It may require:
+
++ a script writing to =/sys/.../driver_override=
++ bios config
++ amd_iommu=on & updated grub
++ updates to /etc/mkinitcpio.conf
++ blacklisting drivers (probably shouldn't be installed on harvester anyways) and setting device driver to =vfio_pci=
++ manually setting up OVMF within Harvester
++ For Guix:
+  - install a VM Guest without graphics and with few disks
+  - add non-guix channels & substitutes, update/reboot
+  - clone the VM to backup
+  - update the system image to include GPU drivers
+  - poweroff, change the VM config & reboot
+  - And (of course) ensure Harvester never starts with the wrong monitors plugged in, since Asus BIOS doesn't allow setting priority on GPU device with any stickiness
+
 ** Proxmox
 *** Docs
 *** Resources
@@ -161,14 +202,33 @@ to.
 :ID:       cf2bd101-8e99-4a31-bbdc-a67949389b40
 :END:
 
+** Kubevirt
+
+This is a VM provider using a k8s interface (i.e. you do VM things using the Kubernetes API)
+
+*** Docs
++ [[https://kubevirt.io/user-guide/architecture/][Main]] (architecture)
++ [[https://kubevirt.io/api-reference/master/definitions.html][API Docs]]
+
+*** Resources
++ [[https://kubevirt.io/user-guide/virtual_machines/disks_and_volumes/][Provisioning Storage]]
++ [[https://kubevirt.io/user-guide/virtual_machines/host-devices/][Host Prep for PCI Passthrough]]
+
 ** QEMU
 
 + [[https://wiki.archlinux.org/title/QEMU/Guest_graphics_acceleration][QEMU graphics accel]] (wiki)
 + [[https://alyssa.is/using-virtio-wl/][A technical overview of Virtio WL]] (qemu/libvirt)
 + [[https://developer.ibm.com/articles/l-virtio/][VirtIO an I/O virtualization framework]]
 
+*** Docs
 
+*** Resources
 
+*** Issues
+**** Getting vm's to share integrated graphics
++ see [[https://www.reddit.com/r/VFIO/comments/i9dbyp/this_is_how_i_managed_to_passthrough_my_igd/][this reddit post]]
++ details for [[https://www.reddit.com/r/VFIO/comments/s0rwxl/gpu_passthrough_on_lenovo_legion_5_amd_laptop_so/][passthrough on Legion 5 AMD laptop]]
+  - may also require copying vBios and/or flashing firmware
 
 ** Libvirt
 
