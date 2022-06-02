@@ -1,0 +1,124 @@
+:PROPERTIES:
+:ID:       605d4599-dfcf-46b5-a153-c53a56ebd429
+:END:
+
+#+TITLE:     Cracking LUKS with TPM Data
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
+
+* Resources
+
+- Redhat issue on TPM/Luks: https://access.redhat.com/solutions/6134511
+  - covers inspecting initramfs with [[https://man.archlinux.org/man/lsinitrd.1][lsinitrd (dracut)]] 
+- https://security.stackexchange.com/questions/165510/is-it-possible-to-extract-secrets-from-a-tpm-without-knowing-the-pin
+- tarnovsky (2010) https://www.blackhat.com/html/bh-dc-10/bh-dc-10-briefings.html#Tarnovsky
+  - http://www.h-online.com/security/news/item/Hacker-extracts-crypto-key-from-TPM-chip-927077.html
+- microsoft tpm info: https://docs.microsoft.com/en-us/windows/security/information-protection/tpm/tpm-fundamentals
+- extracting bitlocker keys from a TPM: https://winmagic.com/blog/extracting-bitlocker-keys-from-a-tpm/
+- brute force luks2 https://github.com/glv2/bruteforce-luks
+- (2012) [[https://resources.infosecinstitute.com/topic/linux-tpm-encryption-initializing-and-using-the-tpm/][initializing/using tpm in linux]]
+- scripts used to extract info from [[https://medium.com/p/1f8423fdeb3b/][Namco arcade machines]]
+  - [[https://github.com/ValdikSS/binary_bios_measurements_parser][binary_bios_measurements_parser]]
+  - PCR: [[https://ebrary.net/24779/computer_science/platform_configuration_registers][Platform Conf Registers]]
+
+
+* Configuring LUKS with TPM
+
+** Resources
+
++ [[https://linuxconfig.org/how-to-uncompress-and-list-an-initramfs-content-on-linux][Extracting a CPIO archive using DD]]
+  - [[https://dradisframework.com/support/guides/customization/auto-unlock-luks-encrypted-drive.html][automatically unlock LUKS-encrypted disk]]
+  - [[https://gist.github.com/da-n/4c77d09720f3e5989dd0f6de5fe3cbfb][passwordless root file system]]
+  - [[https://askubuntu.com/questions/906870/luks-keyscript-being-ignored-asks-for-password/1149273#1149273][attaching a script in /etc/crypttab to unlock LUKS (inside an LVM)]]
++ Red Hat [[https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/security_hardening/configuring-automated-unlocking-of-encrypted-volumes-using-policy-based-decryption_security-hardening][Policy Based Decryption with TPM]]
++ Gentoo: [[https://forums.gentoo.org/viewtopic-t-1062058-start-0.html][Getting dracut to read LUKS key from initramfs]]
++ [[https://github.com/tpruzina/tpm-luks-initramfs][tpruzina/tpm-luks-initramfs]]
+  - Gentoo: [[https://wiki.gentoo.org/wiki/Custom_Initramfs/Examples][Custom initramfs examples]]
+  - [[https://pagefault.blog/2016/12/23/guide-encryption-with-tpm/][How to use TPM for encryptions]]
++ [[https://paolozaino.wordpress.com/2021/06/27/linux-what-can-i-do-with-a-trusted-platform-module-tpm/][what can i do with a TPM?]]
+  -
+
+**
+
+* Solution
+
+[[https://pulsesecurity.co.nz/articles/TPM-sniffing][Asking a TPM nicely for the encryption keys]] and recording the responses on the
+bus seems to be the only way, but I'm pretty sure that any change in the PCR
+"blockchain" will render the remainder of SHA-1 hashes useless.
+
+* Data
+
+
+** Files in Linux Initramfs
+
+=sudo lsinitrd -s initramfs-0-rescue-1d580de5cec7494e871dcd75b8335daf.img | less=
+
+** PCR Registers
+
+The TPM's PCR registers are on, as evidenced by other similarly configured machines.
+
+#+begin_example
+cd /sys/kernel/security/tpm0
+less ascii
+#+end_example
+
++ These files are only available after boot (& unlock) ...
++ The PCR's are firmware and hardware-specific ... although how
+  hardware-specific, I am unsure.
+  - I'm not sure if changing RAM or SATA ports affect PCR hash values.
++ When booting a rescue initramfs, the chain of PCR hashes stops changing very
+  early on. I need to doublecheck, but I think this indicates that the PCR has stopped responding (yes, verified)
++ It's not 100% clear that the TPM has even stored the key ... it's difficult to verify and I haven't found the Centos install scripts/source yet.
++ After updating one of these systems, the system will again prompt for the password twice, then revert to prompting for the password once (verify?)
+
+** Header
+
+=cryptsetup luksDump /dev/sde3=
+
+#+begin_quote
+LUKS header information
+Version:        2
+Epoch:          3
+Metadata area:  16384 [bytes]
+Keyslots area:  16744448 [bytes]
+UUID:           513a4ea9-4a03-4204-8a1e-7e862e18efe6
+Label:          (no label)
+Subsystem:      (no subsystem)
+Flags:          (no flags)
+
+Data segments:
+0: crypt
+offset: 16777216 [bytes]
+length: (whole device)
+cipher: aes-xts-plain64
+sector: 512 [bytes]
+
+Keyslots:
+0: luks2
+Key:        512 bits
+Priority:   normal
+Cipher:     aes-xts-plain64
+Cipher key: 512 bits
+PBKDF:      argon2id
+Time cost:  8
+Memory:     1048576
+Threads:    4
+Salt:       d9 1a e6 67 3c 2f 13 53 88 a4 1a 33 fc 0a 99 8b
+1a d2 8f 4c 46 20 56 ab d6 69 6b 3c 1a 34 b2 48
+AF stripes: 4000
+AF hash:    sha256
+Area offset:32768 [bytes]
+Area length:258048 [bytes]
+Digest ID:  0
+Tokens:
+Digests:
+0: pbkdf2
+Hash:       sha256
+Iterations: 104690
+Salt:       8e c1 7c d1 b6 54 0b 45 9f ac be 72 ca c3 54 0c
+a9 19 8f f0 89 f8 68 e4 81 bc 21 b3 ef 09 b1 4c
+Digest:     d3 a7 d4 46 ad 3f 6c a8 1d 50 17 1a d1 89 08 3e
+2b 03 6c 80 9a 91 3e 4b 39 79 00 aa 5a 0a af 9c
+#+end_quote
