@@ -1,0 +1,192 @@
+:PROPERTIES:
+:ID:       e9b3d559-d886-4210-9b1b-84a638473fc6
+:END:
+#+TITLE: devops: installing harvester on a new network
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:ac2a1ae4-a695-4226-91f0-8386dc4d9b07][DevOps]]
+
+* Planning
+
+This [[and][video from technotime]] will introduce you to what harvester can do (and how
+it integrates with longhorn/ranger with prometheus/grafana)
+
+** Use Cases
+
+*** Virtualizing Gaming/Creative Systems
+
+This is not what Harvester has designed for, per se, and may require significant
+customization. To figure this out, i've referenced the [[https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf][Proxmox docs]] ... but i'm hoping that all of the requirements can be specified in the =harvester.config= or by some means that isn't blown away by an update.
+
+Requirements:
+
++ The node BIOS must have IOMMU/etc enabled
+
+Config keys for =/oem/harvester.config:
+
+#+begin_src yaml
+os:
+  modules:
+    - kvm # included by default
+    - nvme # included by default
+    - vfio
+    - vfio_iommu_type1
+    - vfio_pci
+    - vfio_virqfd
+#+end_src
+
+** Issues
+
+*** Determining plans for future expansion
+
++ will other nodes be joining this cluster?
++ how will you distribute the load/vm's
++ do you need to support cordoning & vm-migration? live vm-migration?
+  - these notes assume the nodes will probably never do that.
++ do you need longhorn to manage storage provisioning?
++ do you need TrueNAS or some network-backed storage?
+  - if so, you probably need 10gig interfaces and a switch
++ do you plan on integrating
+
+*** Determine Disk Requirements
+
+#+begin_src yaml
+install:
+  force_efi: true
+  force_gpt: true
+  force_mbr: false
+  device: /dev/sda
+  datadisk: /dev/nvme0n1
+#+end_src
+
+*** Determine Disk Image Provisioning
+
+I will be using whatever Harvester uses out of the box, but may move to using
+Longhorn in a multinode cluster ... but not anytime soon.
+
+the =install.datadisk= is the device used for image provisioning. kubernetes will set persistent volume claims on the guest disk images stored there.
+
+*** Determine Logging and SNMP
+
+I heard this system would support Prometheus/Grafana easily, but I do not see it in the config. I assume that this
+
+*** Determine where Cloud Config will be needed
+
+Guest OS's must support cloud config.
+
+Guix does not support cloud config. Instead, I'll be using =guix deploy= on these systems. Provision a generic system with a specific hostname/mac/ip and call out to the new system (or set up service registration) to finish provisioning using =guix deploy=.
+
+*** Determining the number of NIC's needed
+
+Strongly recommend at least two (on each node!) in order to fully separate the
+management plane from the VM networks/vlans.
+
++ The management plane should be in its own ip subnet (duh)
++ The other VLAN's should be trunked on NICs. The switchport they are connected
+  to needs to know how to handle this.
+  - single VLAN on a NIC: simply a =switchport access vlan 321=
+  - multiple VLANs must be trunked on connected ports otherwise
+    - this may induce a need for STP to avoid layer 2 loops.
+    - shoutout to anyone who knows that this is a matroid algorithm
+      - as are some optimization/financial-trading algorithms which do not have
+        a discrete space, but do need to segment a network with cycles into
+        "trees" ... i.e. it helps you deal with the topology of non-linear
+        spaces. and no, i barely understand co/contra-variant tensors in general
+        relativity.
+      - bonus question: what is a whitehead-tower, really? how does it relate to
+        the shape of simplicial complices describing the mechanics of
+        differentiation for nonlinear systems? ... such \infty -groupoids are
+        probably overkill, but that's the anything-to-everything-else calculus.
+
+** Config
+
++ This should contain the SSH pubkey.
+
+*** Required network configs
+
+#+begin_src yaml
+install:
+  networks:
+    harvester-mgmt:
+      interfaces:
+      - name: enp1s0
+      method: static
+      ip: 192.123.321.0 # woops
+      subnet: 255.255.255.0
+      gateway: 192.123.321.255
+      defaultroute: true
+      bondoptions:
+        miimon: "100"
+        mode: balance-tlb
+      mtu: not-10gig
+
+#+end_src
+
+*** Determining =harvester.config= values that cannot be changed
+
+Some installation keys cannot be changed after the install. You can supply or
+edit a =harvester.config= file towards the end of the install process.
+
+This is because it's intended to run in a data-center environment in a
+multi-node cluster where installation should be routine/easy and precise.
+Installations shouldn't be required all the time, but the assumed
+experience-level is higher.
+
++ The management IP/VIP cannot be changed after install (or it is not supported)
++ The DNS addresses cannot be changed after install.
+  - Assigning an IP with DNS via DHCP can circumvent this -- and would probably be the way it's configured IRL.
+  - But this is a homelab. For ipv4, I would only use DHCP in a limited
+    configuration. I don't plan on relaying DHCP at least not now. Not sure
+    about ipv6, but that does significantly change how your nodes would
+    integrate with the network. Unfortantely, Harvester is not quite ipv6-first,
+    though most of the services running on it are.
+
+It is unclear whether the following keys can change post-install:
+
++ os.ssh_authorized_keys :: i imagine this could change, but i have not done it
++ os.modules :: this is going to be important for running VM's with a GPU (or sound card, etc) where the host is passing hardware via iommu/virtio
++ os.ntp_servers :: if you're going to have DNS issues, you're going to want to figure
+  this out.
+
+This means that installing a single-node cluster can result in a large number of
+reinstalls -- a shit-ton of work if you start provisioning VM's and need to
+migrate them without having a second node! ... luckily, I didn't.
+
+* Install
+
+Find the [[https://docs.harvesterhci.io/v1.0/install/harvester-configuration/][example config]] from the Harvister docs, then make changes to it on another machine to push it over via USB or scp.
+
++ As you walk through the install, the required keys will become apparent.
++ Plan on installing multiple times anyways.
+
+** GPU Passthrough
+
+*** Find the GPU's PCI Coordinates
+
+#+begin_src shell
+# search through the output to find things like "Kernel Modules"
+lspci -v | less
+#+end_src
+
+*** Determine what PCI devices are enabled
+
+#+begin_src shell
+cd /root
+
+# check for available devices
+lspci -nn | cut -c-5 > available-devices.txt
+
+# check for iommu-enabled devices
+find /sys/kernel/iommu_groups/ -type l | rev | cut -c3-7 | rev > enabled-devices/txt
+
+# it's a bit hard to read
+diff --color available-devices.txt enabled-devices.txt
+#+end_src
+
+
+
+
+Change
+
+Ensure

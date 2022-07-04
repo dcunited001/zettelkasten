@@ -1,0 +1,117 @@
+:PROPERTIES:
+:ID:       01e48c46-9dfe-4be3-85fc-24b4827ae02c
+:END:
+#+title: Guix create a system image for pgp keys
+
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:29d8222b-618f-454e-8a76-6fa38f8ff1f6][Blue Team]]
+
+* Requirements
+** PCSCD
+** SSHD
+This should be disabled
+** Networking
+This should be disabled
+
+* Tools
+** Dev Tips
+
+*** From Guile Manual
+
+**** 6.18.2 [[https://www.gnu.org/software/guile/manual/guile.html#Using-Guile-Modules][Using Guile Modules]]
+
+The =(@ ...)= and =(@@ ...)= readers are shorthand for running code inside a
+module. The former will only allow access to exported symbols and =@@= allows
+access to a modules' internel symbols.
+
+*** Guix REPL (from emacs)
+
+*** Use =guix environment -e=
+
+In guile scheme =(@ (namespace package foomodule) ... )= runs code ina n
+arbitrary module
+
+**** Make assertions about the system scheme object
+
+#+begin_src sh
+guix environment -e '(@ (myguix system base) my-base-system)'
+#+end_src
+
+**** Quick testing for the system shell/packages
+
++ [ ] the =--ad-hoc= command flag may be necessary
+
+#+begin_src sh
+guix environment -e '(@ (myguix system base) %my-base-system-packages)'
+#+end_src
+
+*** Use =guix graph=
+
+=(@@)
+
+**** View a modules derivation graph
+
+#+begin_src sh
+guix graph -t derivation \
+  -e '(@@ (gnu packages bootstrap) %bootstrap-gcc)' \
+  | dot -Tps > gcc.ps
+#+end_src
+
+*** From Guix Manual
+
+**** 10.16: [[https://guix.gnu.org/manual/en/guix.html#Running-Guix-in-a-VM][Runnig Guix in a VM]]
+
+**** 10.17: [[https://guix.gnu.org/manual/en/guix.html#Defining-Services][Defining Services]]
+
+**** 13: [[https://guix.gnu.org/manual/en/guix.html#Security-Updates][Security Updates]]
+
+Find out about vulnerable packages: =guix lint -c cve=
+
+**** 14: [[https://guix.gnu.org/manual/en/guix.html#Bootstrapping][Bootstrapping]]
+
+This builds guix from the repo.
+
+**** 15: Porting To A New Platform
+
+Cross-Compilation with =guix build --target=abi99=
+
+
+* Packages
+
+** pcsc-lite
+
++ [[file:/gnu/store/axqk5nfdhrrdk04n8nfarbhw2y2x8vn0-guix-26c74ed80-modules/share/guile/site/3.0/gnu/packages/security-token.scm::(define-public pcsc-lite][./gnu/packages/security-token.scm]]
+
+This package depends on the following packages:
+
+#+begin_quote
+  ausweisapp2                    1.22.2          out         —            Authentication program for German ID cards and residence permits
+  ccid                    1.4.36          out         —            PC/SC driver for USB smart card devices
+  eid-mw                    5.0.28          out         —            Belgian electronic identity card (eID) middleware
+  libfido2                    1.9.0          out         —            Library functionality and command-line tools for FIDO devices
+  libu2f-host                    1.1.10          out         —            U2F host-side C library and tool
+  libu2f-server                    1.1.0          out         —            U2F server-side C library
+  libyubikey                    1.13          out         —            Development kit for the YubiKey authentication device
+  nitrocli                    0.4.1          out         —            Command line tool for Nitrokey devices
+  opensc                    0.22.0          out         —            Tools and libraries related to smart cards
+  pam-u2f                    1.0.8          out         —            PAM module for U2F authentication
+  pcsc-lite                    1.9.3          out         —            Middleware to access a smart card using PC/SC
+  python-fido2                    0.9.3          out         —            Python library for communicating with FIDO devices over USB
+  python-pyscard                    1.9.9          out         —            Smart card library for Python
+  python-yubikey-manager                    4.0.7          out         —            Command line tool and library for configuring a YubiKey
+  python2-pyscard                    1.9.9          out         —            Smart card library for Python
+  softhsm                    2.6.1          out         —            Software implementation of a generic cryptographic device
+  ykclient                    2.15          out         —            C library to validate one-time-password YubiKeys
+  yubico-piv-tool                    1.6.1          out         —            Interact with the PIV application on a YubiKey
+  yubikey-oath-dmenu                    0.13.0          out         —            Interface for getting OATH codes from a YubiKey using dmenu
+  yubikey-personalization                    1.20.0          out         —            Library and tools to personalize YubiKeys
+#+end_quote
+
+* Services
+
+** pscsd-service-type
+
+(under miscellaneous services)
+
++ this accepts a =pcscd-configuration= record, which requires a =pcsc-lite= package and =usb-drivers=
