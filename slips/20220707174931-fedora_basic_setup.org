@@ -1,0 +1,150 @@
+:PROPERTIES:
+:ID:       8b93d9a6-746f-4480-8ef5-45310e03b783
+:END:
+#+TITLE: Fedora: setup AMD gpu for blender/tensorflow
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+
+
+* Getting i3 up
+
+** Install i3gaps
+
+* RPM
+
++ RPM [[https://src.fedoraproject.org/rpms/*][git repo]]
++ Extract an RPM: [[https://ftp.rpm.org/max-rpm/s1-rpm-miscellania-rpm2cpio.html][using rpm2cpio]]
+  - =rpm2cpio $someRPM | cpio -idmv -D $extractDir=
+  - mkdir first or cpio will complain
+
+** EPEL
+
+** COPR
+
+Fedora doesn't have AUR. But they do have proprietary software support.
+
+Instead use RPMFusion and select =dnf copr= repositories fouind on [[https://copr.fedorainfracloud.org][Fedora COPR]]
+
+#+begin_src sh :eval no
+dnf copr enable bhavin192/emacs-pretest
+dnf install emacs # use upgrade if already installed
+
+dnf copr enable tofik/i3-gaps
+dnf upgrade i3gaps
+#+end_src
+
+** RPM Fusion
+
+** File-Based RPMs
+
+SystemD Genie
+
+#+begin_src sh :eval no
+mkdir -p ~/rpm/packages
+cd ~/rpm/packages
+wget -O genie-2.4-1.fc36.x86_64.rpm https://github.com/arkane-systems/genie/releases/download/v2.4/genie-2.4-1.fc36.x86_64.rpm
+dnf install genie-2.4-1.fc36.x86_64.rpm
+#+end_src
+
+But that runs under WSL ... woops!
+
++ [[https://github.com/pwsafe/pwsafe/releases/download/1.15.0/passwordsafe-fedora36-1.15.rpm][pwsafe/pwsafe]]
+
+** Creating an RPM
+
+Use [[rpmdevtools and rpmlint][rpmdevtools and rpmlint]]
+
+To setup the build directory
+
+#+begin_src sh :eval no
+rpmdev-setuptree
+mkdir -p $_DATA/dev && mv ~/rpmbuild $_DATA/dev/
+#+end_src
+
+To setup a new RPM spec:
+
+#+begin_src sh :eval no
+cd $_RPMROOT # contains a ./spec folder
+git clone https://gitlab.com/bhavin192/emacs-pretest-rpm ./spec/emacs-pretest-rpm
+#+end_src
+
+To automatically fetch sources:
+
+#+begin_src sh :eval no
+cd $_RPMROOT ./spec/emacs-pretest-rpm
+# use --define to set the RPM macro _topdir.
+# use -g to fetch from net
+spectool --define "_topdir `pwd`" -g -R emacs.spec
+# use -a to pull the patches into ./SOURCES
+spectool --define "_topdir `pwd`" -a -R emacs.spec
+#+end_src
+
+To build in an alternate directory, use =--define "_topdir `pwd`"= again
+
+#+begin_src sh :eval no
+# after copying the necessary files/folders as specs/tar.gz
+rpm build --define "_topdir `pwd`" -v -ba SPECS/{*spec_file.specs*}
+#+end_src
+
+To limit the build stages, use the =--short-circuit= command
+
+**** TODO with =rpmbuild --define "_specdir $(pwd)" --define "_sourcedir $(pwd)"=
+
+*** Building with Mock
+
++ [[Building RPM packages with mock][Building RPM packages with mock]]
+
+** rpm-ostree
+
+[[https://coreos.github.io/rpm-ostree/][RPM OSTree]]: a distribution agnostic gizmo-delivery system using ostree for overlays and ... stuff
+
+I'm not 100% what it does, but maybe it solves some of my problems here.
+
+* Install Packages
+
+#+begin_src sh :eval no
+# commandline tools
+dnf install stow direnv git screen
+
+# selinux tools
+dnf install setools setools-gui
+
+# desktop tools & i3 deps
+dnf install rofi papirus-icon-theme quassel-client arandr qpwgraph flatpak xautolock
+
+# services
+dnf install syncthing
+
+# python
+dnf install pipenv
+
+# julia
+dnf install julia
+
+# rpm's
+dnf install rpmdevtools mock
+#+end_src
+
+*** TODO install fedora packages for
++ nyxt
++
+
+
+#+begin_quote
+<pj> dcunit3d: What I do is I have a ~/rpmbuild directory and each (source) package is a subdirectory of that, and then there is a SOURCES and SPECS directories underneath that, so eg: ~/rpmbuild/postfix/SOURCES and ~/rpmbuild/postfix/SPECS.  I have scripts that I use to install to those source trees from various different types of source packages (eg: from a .src.rpm file, or from a git repo, or perhaps setting one up using cpanspec for a perl module, etc).
+#+end_quote
+
+
+
+** Flatpak
+
+* Setup
+
+** Configure DNF
+
+** Install packages
+
+*

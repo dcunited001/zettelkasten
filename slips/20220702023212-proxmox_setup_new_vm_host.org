@@ -1,0 +1,65 @@
+:PROPERTIES:
+:ID:       54cc71a0-570a-451d-8b84-df502c42b36b
+:END:
+#+TITLE: Proxmox: Setup New VM Host
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:cf2bd101-8e99-4a31-bbdc-a67949389b40][Virtualization]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+* Basics
+
+Most of this info is in Proxmox Docs =10.9=
+
+** Setup Network
+
+**** TODO update the following
++ configure =vmbrX= virtual bridges
+  - configure trunking where necessary
+
+** Setup Apt
+
++ Add downloads.proxmox.com to apt sources
++ Update firewall to allow fetching from apt sources
++ Run =netselect-apt= to select a set of mirrors
+  - Check the mirror selection in =/etc/apt/sources.list=
++ Run =apt-get update=
+
+** Setup Passthrough
+*** Blacklist modules
+=echo blacklist amdgpu >> /etc/
+
+
+*** Ensure BIOS Configured
++ IOMMU, SRV-IO (?) and other options need to be turned on. Don't boot with the AMD GPU.
++ For some games, AMD GPU resize bar and other options are needed
+
+
+*** Ensure modules are loaded
+
+=lsmod | grep vfio= should indicate:
+
+#+begin_quote
+vfio
+vfio_iommu_type1
+vfio_pci
+vfio_virqfd
+#+end_quote
+
+If they're lacking, add them to =/etc/modules=
+
+Run =update-initramfs -u -k all= to update modules/grub config
+
+*** Update Linux params in Grub
+
+Open =/etc/default/grub= and set =GRUB_CMDLINE_LINUX_DEFAULT=
+
++ For AMD CPU's, the =amd_iommu= feature will automatically be turned on if AMD-Vi
+  is detected.
++ Setting full device passthrough with =iommu=pt= will help address
+  performance issues and may be needed for gaming.
+  - Full passthrough allows DMA
+    which apps may need for consistency -- otherwise memory race-conditions or wierd
+    things will happen.
+  - Resize BAR (enabling GPU to access more than 4G of CPU RAM) may require
