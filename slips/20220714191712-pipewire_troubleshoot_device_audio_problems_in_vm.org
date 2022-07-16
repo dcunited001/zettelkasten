@@ -1,0 +1,68 @@
+:PROPERTIES:
+:ID:       b8d8e03b-cf72-4aaa-9276-52bf7826e642
+:END:
+#+TITLE: pipewire: troubleshoot device/audio problems in vm
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:b4aec5d0-2ee8-40c3-b1cf-937737d465e6][pipewire]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][linux]]
+
+* Fix alsa.conf
+
+When loading in a VM, lua interprets =type= as a string instead of a function.
+this has been fixed in more recent commits, but these break in my system.
+
+Comment the following lines in =/usr/share/wireplumber/main.lua.d/30-alsa-monitor.lua=
+
+#+begin_src lua
+-- apply VM overrides
+  --local vm_overrides = config.properties["vm.node.defaults"]
+  --if nonempty(Core.get_vm_type()) and type(vm_overrides) == "table" then
+  --  for k, v in pairs(vm_overrides) do
+  --    properties[k] = v
+  --  end
+  --end
+#+end_src
+
+* General troubleshooting
+
+Get config for nodes: =pw-cli dump Node=
+
+* Sound garbling issues
+
+If these issues occur after standby/suspend, try =alsactl init=
+
+According to [[https://forum.manjaro.org/t/howto-troubleshoot-crackling-in-pipewire/82442][this post]]:
+
+** Disable Suspend
+
+Suspend behavior is set up in =/usr/share/wireplumber/scripts/suspend-node.lua=
+
+But it should be overridden in the main config
+
+#+begin_src lua :tangle ~/.config/wireplumber/main.lua.d/51-inhibit-suspend-kratos.lua :mkdirp yes :file-mode #o644
+-- alsa_output.pci-0000_06_1b.0.pro-output-0
+inhibit_suspend = { ["session.suspend-timeout-seconds"] = 0 }
+
+sc_starship_out = {
+  matches = {
+    {
+      {"node.name", "matches", "alsa_output.pci-0000_06_1b*"}
+    },
+  },
+  apply_properties = inhibit_suspend
+}
+
+sc_navi_out = {
+  matches = {
+    {
+      {"node.name", "matches", "alsa_output.pci-0000_06_11*"}
+    },
+  },
+  apply_properties = inhibit_suspend
+}
+
+table.insert(alsa_monitor.rules, sc_starship_out)
+table.insert(alsa_monitor.rules, sc_navi_out)
+#+end_src
