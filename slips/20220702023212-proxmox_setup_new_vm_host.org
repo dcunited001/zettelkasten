@@ -26,17 +26,27 @@ Most of this info is in Proxmox Docs =10.9=
   - Check the mirror selection in =/etc/apt/sources.list=
 + Run =apt-get update=
 
-** Setup Passthrough
-*** Blacklist modules
+** Setup GPU
+*** Setup Passthrough
+**** Blacklist modules
 =echo blacklist amdgpu >> /etc/
 
+**** Setup VFIO blacklist
 
-*** Ensure BIOS Configured
+Append to ids list if necessary
+
+#+begin_src shell
+# for GPU
+# emit to /etc/modprobe.d/vfio.conf
+options vfio-pci ids=1002:73df,1002:ab28
+#+end_src
+
+**** Ensure BIOS Configured
 + IOMMU, SRV-IO (?) and other options need to be turned on. Don't boot with the AMD GPU.
 + For some games, AMD GPU resize bar and other options are needed
 
 
-*** Ensure modules are loaded
+**** Ensure modules are loaded
 
 =lsmod | grep vfio= should indicate:
 
@@ -51,7 +61,7 @@ If they're lacking, add them to =/etc/modules=
 
 Run =update-initramfs -u -k all= to update modules/grub config
 
-*** Update Linux params in Grub
+**** Update Linux params in Grub
 
 Open =/etc/default/grub= and set =GRUB_CMDLINE_LINUX_DEFAULT=
 
@@ -64,7 +74,35 @@ Open =/etc/default/grub= and set =GRUB_CMDLINE_LINUX_DEFAULT=
     things will happen.
   - Resize BAR (enabling GPU to access more than 4G of CPU RAM) may require
 
-** Create passthrough VM
+*** Create passthrough VM
 
 Machine type should be =q35=, which was formerly discouraged for GPU
 passthrough. However, =i440fx= only supports PCI.
+
+** Setup Soundcard
+
+*** Pipewire/Wireplumber problems
+
+Even though I have used this device on the VM before, it is causing problems with wireplumber now.
+
+*** Ensure VFIO device owned by guest
+
+When the VM starts, it displays the message below.
+
+#+begin_quote
+kmv: vfio: Cannot reset device 0000:10:00.4, depends on group 33 which is not allowed.
+#+end_quote
+
+The motherboard's soundcard is attached to other devices, so a modprobe.d rule
+needs to be created to handle this:
+
+#+begin_src shell
+# emit to /etc/modprobe.d/vfio.conf
+options vfio-pci ids=1022:1487
+#+end_src
+
+Append to list if necessary
+
+*** Setup Passthrough
+
+This can be passed through as the subdevice on the VM
