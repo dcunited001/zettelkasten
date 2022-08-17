@@ -19,7 +19,6 @@ Most of this info is in Proxmox Docs =10.9=
   - configure trunking where necessary
 
 ** Setup Apt
-
 + Add downloads.proxmox.com to apt sources
 + Update firewall to allow fetching from apt sources
 + Run =netselect-apt= to select a set of mirrors
@@ -106,3 +105,55 @@ Append to list if necessary
 *** Setup Passthrough
 
 This can be passed through as the subdevice on the VM
+
+** Setup SR-IOV for networking
+
++ igb :: intel driver
+  - Intel I350 has two subdevices (one for each port)
+  - Intel I211 has one device ([[https://www.intel.com/content/www/us/en/products/details/ethernet/gigabit-controllers/i211-controllers/docs.html?grouping=rdc%20Content%20Types&sort=title%3Aasc&s=Newest][docs]], [[https://d2pgu9s4sfmw1s.cloudfront.net/UAM/Prod/Done/a062E00001ZcBZVQA3/062cbab4-15b4-4082-8c8a-eef76cd2e5ce?Expires=1660705367&Key-Pair-Id=APKAJKRNIMMSNYXST6UA&Signature=KlL0Rt~JbJQBX1bTarfGEsZCKWIGnoWkEtDxXwXCoMvq88pNiQWjOXG4xP~0rersrgbCRZMDhQX7-UebiSQJAR0ZBit6PhrObKdXAewWa0Bz-OasL3gYRxeHR~TyX2XslPlJDtb--UzFSSpetl69OcugQ40Vof0REuHHU-Bf039DncbFzUc96uh-RsqJz-6LXknUWL~JiHvL7hy7AYYECOWWiSAhb9b9SBGP958aru035C1~wyCpyHubX-G8KSxXPNyIqjkmuCCSIL3sX1Qh9PQ1yt3bS5wKvXp1eqPzkufq9IKN70KWS8pHLa67U8P2AuEonzjFxqieJN6RhUwKBw__][datasheet]])
+
+
++ r8169 :: Realtek driver
+  - RTL8125 has one device
+  - installing the latest proprietary drivers may increase performance ... but
+    probably not on an old cisco switch
+  - this thread indicates that [[https://archived.forum.manjaro.org/t/i-learned-from-a-document-that-rtl8125-supports-sr-iov-but-in-fact-sr-iov-does-not-seem-to-work/154451/5][Realtek disabled SR-IOV]] ... and doesn't provide
+    datasheets :(
+    - here, take my money. what is it $300 for a 4-port device? one sec. let me
+      upgrade my switch (and et cetera). sweet 1.3 Gb/s
+    - it might be enough for TrueNAS
+
+*** Basics
+
+Ensure SR-IOV is enabled in BIOS, that iommu is enabled in =/etc/default/grub= and update initramfs
+
+PCIe address structure ... =[domain:]bus:device.function=
+
+*** Files
+
++ /sys/class/net/$ifname/device/sriov_numvfs :: update max number of VF's
+  - echo will update this value, but device must be off
++ =/etc/modprobe.d/$driver.conf=
+  - may require setting an option like =options $driver max_vfs=4=
+
+*** Links
++ On Intel Data-Plane Dev Kit
+  - [[https://www.intel.com/content/www/us/en/developer/articles/technical/using-sr-iov-to-share-an-ethernet-port-among-multiple-vms.html][Configure SR-IOV for networking]]
+  - Intel [[https://doc.dpdk.org/guides/nics/intel_vf.html][Virtual Function (VF) Driver]]
++ [[https://groups.google.com/g/cloudlab-users/c/-89DREDEsC0?pli=1][Enabling SR-IOV on bare-metal]]
+  - describes probing systems and extending the number of VF's in a live system
+    (without reboot)
++ [[https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/virtualization_deployment_and_administration_guide/sect-pci_devices-pci_passthrough][Redhat PCI Device Assignment with SR-IOV]]
+
+*** Getting System Info
+
+
+
+#+begin_example shell
+# -s [[[[domain]]]:bus]:[device].[function]
+# colons optional
+lspci -vvs 04:00 | grep SR-IOV
+#+end_example
+
+
+*** Create subdevices
