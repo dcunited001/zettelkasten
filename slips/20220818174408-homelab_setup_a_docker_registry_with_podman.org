@@ -1,0 +1,126 @@
+:PROPERTIES:
+:ID:       ecd1ca1b-7812-418a-b709-6fdb4e680b1a
+:END:
+#+TITLE: Homelab: setup a docker registry with podman
+#+CATEGORY: slips
+#+TAGS:
+
++ project: [[id:48d763a8-5579-4585-a9a2-e7cbb11701fe][homelab]]
+
+* Docs
++ [[https://docs.docker.com/registry/configuration/][Configure a registry]]
+
+* Resources
++ [[https://www.redhat.com/sysadmin/simple-container-registry][Create registry with podman]]
+
+* Process
+
++ Setup a new user
++ Create folders for regisry
+  - =mkdir -p /opt/registry/{auth,certs,data}=
+
+** TLS Config
+
+Create new TLS Keypair
+
+#+begin_src shell
+openssl req -newkey rsa:4096 -nodes -sha256 \
+    -keyout /opt/registry/certs/domain.key \
+    -out /opt/registry/certs/domain.crt \
+    -x509 -days 365
+#+end_src
+
+Self-sign the cert?
+
+Distribute the cert
+
+#+begin_src shell
+cp /opt/registry/certs/domain.crt /etc/pki/ca-trust/source/anchors/
+update-ca-trust
+trust list | grep -i "<hostname>"
+#+end_src
+
+** Config endpoints
+
++ REGISTRY_AUTH
++ HT Passwd :: this may go away
+  + REGISTRY_AUTH_HTPASSWD_PATH
+  + REGISTRY_AUTH_HTPASSWD_REALM
++ REGISTRY_HTTP_TLS_CERTIFICATE
++ REGISTRY_HTTP_TLS_KEY
++ REGISTRY_COMPATIBILITY_SCHEMA1_ENABLED
+
+** Volumes
+
++ =/opt/registry/data:/var/lib/registry:z=
++ =/opt/registry/auth:/auth:z=
++ =/opt/registry/certs:/certs:z=
+
+** Configure the firewall
+
+#+begin_src shell
+firewall-cmd --add-port=5000/tcp --zone=internal --permanent
+firewall-cmd --add-port=5000/tcp --zone=public --permanent
+firewall-cmd --reload
+#+end_src
+
+*** TODO add a new group/zone?
+
+** Start the registry
+
+#+begin_src shell
+podman run --name myregistry \
+-p 5000:5000 \
+-v /opt/registry/data:/var/lib/registry:z \
+-v /opt/registry/auth:/auth:z \
+-e "REGISTRY_AUTH=htpasswd" \
+-e "REGISTRY_AUTH_HTPASSWD_REALM=Registry Realm" \
+-e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd \
+-v /opt/registry/certs:/certs:z \
+-e "REGISTRY_HTTP_TLS_CERTIFICATE=/certs/domain.crt" \
+-e "REGISTRY_HTTP_TLS_KEY=/certs/domain.key" \
+-e REGISTRY_COMPATIBILITY_SCHEMA1_ENABLED=true \
+-d \
+docker.io/library/registry:latest
+#+end_src
+
+** Verify registry
+
+Verify access
+
+#+begin_src shell
+curl https://hostname:5000/v2/_catalog
+# {"repositories":[]}
+#+end_src
+
+Verify TLS
+
+#+begin_src shell
+openssl s_client -connect <servername>:5000 -servername <servername>
+#+end_src
+
+** Login from client
+
+Test Login
+
+#+begin_src shell
+podman login <hostname>:5000
+# Base64 encoded into /run/user/0/containers/auth.json
+# Enter user/pass
+#+end_src
+
+Tes Logout
+
+#+begin_src shell
+podman logout <hostname>:5000
+#+end_src
+
+** Configure external registries (in local registry)
+
+** Build images into regsitry
+
+** Download Images
+
+*** TODO download ansible operator images
+
+**
