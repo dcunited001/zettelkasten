@@ -25,6 +25,106 @@ Most of this info is in Proxmox Docs =10.9=
   - Check the mirror selection in =/etc/apt/sources.list=
 + Run =apt-get update=
 
+** Setup BIOS
+
+*** TODO test enabling TSME
+This caused problems with boots before.
+
+*** TODO test Data Link Feature Exchange
+May cause boot problems
+
+*** Bios Profiles
+
+These are hidden under the "User Profiles", but don't help persist changes
+across BIOS versions.
+
++ They emit "CRLF" formatted text into a hashed encoding of some kind. You can't
+  immediately diff them with emacs.
++ The =txt= format can't serve as a backup. only the =CMO= binary format cat.
+
+To write to a disk, you must use =mkfs.fat= and not =exfat=. This is available
+in the Guix =dosfstools= packages.
+
+**** Back up BIOS settings (and diff them)
+
+I had done this, but it's no longer relevant. i always do, I just wasn't
+expecting this here, now. but i don't have enough of a network yet to
+systematically catalog this stuff...
+
+When you update BIOS, ASUS will delete your BIOS settings, but won't mention
+that specifically in the manual, other than perhaps the cursory warnings. You can
+backup your settings, but it's not all that reliable, reportedly? So back it up
+first, read it in a text file. Dammit. Why was this not obvious? ...
+
+Other than a few things, this motherboard has been pretty great. I guess? If I
+look past not being able to use Zoom or any other app with audio (in a VM) ...
+which was working previously. Time is money, i have no money. Please, take all
+of my time. Not sure if it's pipewire, proxmox, qemu config, bios or ... who
+knows?
+
+I really hope this doesn't take much longer than watching a 30 minute video,
+but it doesn't cover disabling the garbage BIOS settings that honestly /most
+hardware hardware manufacturers include/. The HP laptop is alright with this,
+but compensates with features ... like devious features that should outwit
+anyone who wants access to your laptop and other features like custom BIOS
+update URL.
+
+*** Instrumentation
+
+Install these packages: =htop stress linux-cpupower s-tui lm-sensors=. They provide:
+
++ turbostat :: frequency power consumption (watts) and temperatures (somehow)
++ lm-sensors :: more detailed stats from i2c probes & etc.
++ s-tui :: stress testing from the TUI with D3.js ::
+
+
+LM Sensors is necessary to read voltages/amperages in Linux, the idea being that
+amperages should be low and voltage/power correlate to heat. If any of these go
+high, you want to know.
+
+#+begin_quote
+I'm not sure I trust AMD's PDO optimization since it's dynamic ... or I guess I
+trust it, but I don't want to find out what happens if I'm wrong. Too much
+current in particular causes "electromigration."
+#+end_quote
+
+I'm running a pretty tame OC profile, but:
+
++ it will be assymetric with two Numa nodes
++ a heavy desktop VM (gaming/blender/ai/etc) being pinned to half the cores
+  - =s-tui= and =turbostat= with no other load show wattage is assymetric with
+    ~10.3 W on cores 0-7 and ~9.5 W on cores 8-15
+  - desktop loads are intermittent, so it should be okay. but at high load, if
+    any amperage values are consistently high (whatever that means, according to
+    this guy), then I'll want to back off.
+
+**** LM Sensors
+
+After installing, enable/start =lm-sensors= service. Then run =sensors-detect=
+and accept defaults.
+
++ [[https://www.xmodulo.com/find-information-builtin-kernel-modules-linux.html][Check for builtin modules]] with =grep -e $amodule /lib/modules/$(uname
+-r)/modules.builtin=
++ add modules if necessary (sensors-detect will do this)
+  - requires =nct6775= for me.
++ script indicates to run =/etc/init.d/kmod start= to load modules or restart
+  with systemctl
++ backup =/etc/sensors3.conf= and find info on configuring with =man sensors.conf=
+
+**** Screen
+
+Use =screen= to run htop/turbostat and =stress --cpu 24=. The basics:
+
++ C-a <tab> :: switch window
++ C-a S :: split into top/bottom
++ C-a | :: split into left/right
++ C-a c :: create a new window
++ C-a ? :: help
+
+**** Stress Testing
+
+Run a screen with turbostat/lm-sensors and s-tui
+
 ** Setup GPU
 *** Setup Passthrough
 **** Blacklist modules
@@ -43,7 +143,6 @@ options vfio-pci ids=1002:73df,1002:ab28
 **** Ensure BIOS Configured
 + IOMMU, SRV-IO (?) and other options need to be turned on. Don't boot with the AMD GPU.
 + For some games, AMD GPU resize bar and other options are needed
-
 
 **** Ensure modules are loaded
 
@@ -84,6 +183,12 @@ passthrough. However, =i440fx= only supports PCI.
 
 Even though I have used this device on the VM before, it is causing problems with wireplumber now.
 
+**** These problems may be related to the [[https://www.tomshardware.com/news/amd-issues-fix-and-workaround-for-ftpm-stuttering-issues][AMD fTPM problems]]
+
+My audio issues are [[https://www.youtube.com/watch?v=TYnRL-x6DVI&feature=emb_title][exactly like these]], though it's in a VM, though better or
+worse depending on which soundcard I'm using. [[https://rog.asus.com/forum/showthread.php?129556-(Laptops)-BIOS-update-to-fix-ftpm-stutter-add-ability-to-disable-ftpm][This guy]] has a $2,100 laptop
+(price one year after release) and seems a little pissed.
+
 *** Ensure VFIO device owned by guest
 
 When the VM starts, it displays the message below.
@@ -106,12 +211,35 @@ Append to list if necessary
 
 This can be passed through as the subdevice on the VM
 
+** Setup CPU Pinning
+
+[[https://www.youtube.com/watch?v=msQWa6Squd4][This video]] describes the overall process.
+
+
+*** TODO test Numa NPS2
++ NPS2 :: 2 NUMA Nodes Per Socket
+  - this doesn't seem to result in multiple NUMA nodes (<2022-08-17 Wed>)
+
+*** Get CPU info
+
++ lscpu :: 2 threads * 16 cores = 32 cpu's)
+  - cpu id's for each core have stride of 16 (0 and 16 on core 0, etc)
++ numactl -s :: numa won't help much until RAM upgrade
+
+*** Using taskset a startup hookscript
+
+This method will restrict a process & its subprocesses to a set of cores. It can
+be used for a running VM, but can't prevent other unconstrained VM's from
+spilling over into its cores. Other VM's need hookscripts configured to restrict
+their CPU activity.
+
+
 ** Setup SR-IOV for networking
 
 + igb :: intel driver
   - Intel I350 has two subdevices (one for each port)
   - Intel I211 has one device ([[https://www.intel.com/content/www/us/en/products/details/ethernet/gigabit-controllers/i211-controllers/docs.html?grouping=rdc%20Content%20Types&sort=title%3Aasc&s=Newest][docs]], [[https://d2pgu9s4sfmw1s.cloudfront.net/UAM/Prod/Done/a062E00001ZcBZVQA3/062cbab4-15b4-4082-8c8a-eef76cd2e5ce?Expires=1660705367&Key-Pair-Id=APKAJKRNIMMSNYXST6UA&Signature=KlL0Rt~JbJQBX1bTarfGEsZCKWIGnoWkEtDxXwXCoMvq88pNiQWjOXG4xP~0rersrgbCRZMDhQX7-UebiSQJAR0ZBit6PhrObKdXAewWa0Bz-OasL3gYRxeHR~TyX2XslPlJDtb--UzFSSpetl69OcugQ40Vof0REuHHU-Bf039DncbFzUc96uh-RsqJz-6LXknUWL~JiHvL7hy7AYYECOWWiSAhb9b9SBGP958aru035C1~wyCpyHubX-G8KSxXPNyIqjkmuCCSIL3sX1Qh9PQ1yt3bS5wKvXp1eqPzkufq9IKN70KWS8pHLa67U8P2AuEonzjFxqieJN6RhUwKBw__][datasheet]])
-
+    - supports up to 8 VF's per port?
 
 + r8169 :: Realtek driver
   - RTL8125 has one device
@@ -154,6 +282,7 @@ PCIe address structure ... =[domain:]bus:device.function=
 # colons optional
 lspci -vvs 04:00 | grep SR-IOV
 #+end_example
+
 
 
 *** Create subdevices
