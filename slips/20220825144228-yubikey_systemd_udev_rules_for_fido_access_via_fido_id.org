@@ -1,0 +1,37 @@
+:PROPERTIES:
+:ID:       346a2b90-6000-4b27-a4a2-f08ae5677efc
+:END:
+#+TITLE: Yubikey: systemd udev rules for FIDO access via fido_id 
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:013f2a46-ac4a-4881-a25a-ef0beb9d8290][Yubikey]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:b1d10017-d1ac-4d93-86f8-04c61f9fc604][Linux Devices]]
+
+These rules provide access to FIDO devices on SystemD
+
+* Handing low-level FIDO transations:
+
+** [[https://github.com/amluto/u2f-hidraw-policy/blob/18fa0ce176540dfdef2b90a1a2f99f3ad95678b3/u2f_hidraw_id.c][u2f_hidraw_id.c]]
+
+Not sure if it's U2F specific
+
+** [[https://github.com/systemd/systemd/blob/main/src/udev/fido_id/fido_id.c][fido_id]]
+
+This is systemd-specific, but it looks well-tested (it has a fuzzer)
+
+#+begin_example udev
+ACTION=="remove", GOTO="fido_id_end"
+
+SUBSYSTEM=="hidraw", IMPORT{program}="fido_id"
+
+ENV{ID_SECURITY_TOKEN}=="1 "TAG+="security-device"
+
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ENV{ID_USB_INTERFACES}==":0b????:*", ENV{ID_SMARTCARD_READER}="1"
+
+ENV{ID_SMARTCARD_READER}=="1", TAG+="security-device""
+
+LABEL="fido_id_end"
+
+#+end_example
