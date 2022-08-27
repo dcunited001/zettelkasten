@@ -1,0 +1,53 @@
+:PROPERTIES:
+:ID:       e9350058-f8f4-4de4-a662-18278cd74a26
+:END:
+#+TITLE: Guix Deploy is way better than Ansible or CloudConfig
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
++ [[id:8a6898ca-2c09-47aa-9a34-a74a78f6f823][Cloud]]
+
+It will reconfigure any Guix machine it can ssh that will authorize it. Doing so
+may require a reboot or compatible file systems, but you can turn any system
+into any other system. This is great with:
+
++ a data center where new bare-metal nodes securely use PXE/TFTP/DHCPv6 to
+  receive an ip6 address
+  - this ip6 address can be part of an overlay network or it could belong to a
+    management/initialization plane on the switch
+  - ip6 ethernet interfaces can receive multiple addresses and subnets can have
+    complicated relationships.
++ once the standard image is booted, the server starts sshd and then calls out
+  to a service-discovery node on the subnet
+  - this contains enough info via the DHCPv6 assigned address or mac address for
+    the service discovery nodes to understand how the new bare-metal needs to be
+    provisionsed
++ guix deploy connects to the new machine
+  - after generating a Guix system definition compatible with the
+    disks/hardware/roles of the machine requesting provisioning.
+  - the system is updated, then migrated from the initialization overlay network
+    to its final ip6 subnet(s). it is then rebooted
+    - (hmmm somehow avoiding PXE again?)
+
+This would allow you to manage thousands of bare metal servers. Whether doing so
+is sufficiently beneficial to avoid the use of VM's or Kubernetes depends on
+whether your workload:
+
++ benefits from specific NUMA configurations
+  - i.e. it can have its data-access scheduled/chunked to minimize network or
+    RAM reads?
+  - extra credit if you can connect this scheduling to lattices/tiling/polytopes
+    and tensors ... please explain because i don't know the magic words to
+    google
++ benefits from horizontal scaling of processes across many-core CPU's (thus the
+  caching/numa benefits)
++ requires massive parallelization with dynamic reconfiguration of some systems
++ can be scheduled along a time dimension (i.e. like TDMA breaks bandwidth into
+  time segments) and doesn't process interactive input
++ implements stream-processing of data for systems like [[https://www.commonwl.org/][Common Workflow Language]]
++ benefits from removing as many unnecessary software/vm/container abstractions
+  as possible
++ results in a guix system image that is deterministic (in which case it can
+  mostly be downloaded from a network-local guix channel)
