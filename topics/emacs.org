@@ -54,6 +54,48 @@
 
 * Issues
 
+** Performance
+
+*** Implications of Emacs' Single-Threaded Nature
+
+The CPU affinity/scheduling of emacs should ALWAYS be managed
+
+- the CPU of emacs should ALWAYS be set
+- performance will greatly benefit if there are always cache hits for
+  emacs-related CPU instruction execution
+  - garbage collection is an emacs bottleneck
+  - similarly, if a CPU's L1/L2 caches remain emacs process-specific for longer,
+    then the performance benefits are extended
+  - therefore, one core should (?) be like 97% dedicated to emacs
+    - this will never lock the system
+    - the assigned CPU core's for =emacsclient= processes may be irrelevant
+    - if a policy can be implemented to avoid executing any process except emacs
+      code on the emacs CPU (or numa node), then this will help accelerate emacs
+      quite a bit.
+    - however, since emacs-lisp is an interpreted language, it's unclear how the
+      a language's VM tracks values/references/variables and how this maps to
+      how the CPU ultimately tracks L2/L3 cache references
+    - if it is clear to the kernel/scheduler & cpu cache metrics how valuable
+      emacs data is for that process, then it's more likely to be persisted.
+
+In other words, this tells us what [some of us understand] which is that:
+
+#+begin_quote
+HAVING ACCESS TO GRANULAR CONFIGURATION/CUSTOMIZATION IS EXTREMELY VALUBALE IN
+SOME SITUATIONS
+#+end_quote
+
+Such, when combined with something else that most of us understand:
+
+#+begin_quote
+Emacs is incredibly unlikely to ever be multi-threaded ... without breaking most
+packages, yielding an abyssal number of bugs and resulting in somehow making
+emacs 10x more complicated than it already is.
+#+end_quote
+
+
+**** TODO perf implications of mgmt/scheduling of emacs client/server processes?
+
 ** System Programming
 
 *** Detecting [[https://emacs.stackexchange.com/questions/31224/how-to-test-programmatically-whether-the-current-emacs-session-among-several][Whether Emacs Is Running As Daemon]]
