@@ -1,0 +1,228 @@
+:PROPERTIES:
+:ID:       8d463eb3-9d5a-4106-92bf-3d4e7d70fa1e
+:END:
+#+TITLE: Fusion 360: CAM strategies in 3D
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:c9e5c336-2c1a-4f3d-a88d-977889de182c][Autodesk]]
++ [[id:6a7b6508-e7cf-4f55-a589-d354cee1766d][CAD]]
+
+From [[https://www.youtube.com/watch?v=bwbrPiUpolo][360 LIVE CAM Basics - 3D Toolpaths]] (via autodesk)
+
++ [[https://materialsproject.org/][Materials Project]]: _EVERYTHING IS A FUCKING CRYSTAL_
+  - spending a ton of time thinking about everything math/calculus helps alot
+
+* General Tips
+
++ Inputs can be expressions ... !
++ Your autodesk account can be organized into projects
+
+** Examples included in Fusion 360
+
+Strategies can be copied/pasted from examples, which are access via the Data
+Panel (under examples).
+
++ Basic Examples:
+  - Basic Training
+  - CAM
+  - Design
+  - Electronics
+  - Generative Design
+  - Simulations
++ CAM Samples:
+  - General Process
+    - Workholding ... !
+    - Contact Boundary Points
+    - How it's made
+  - Printed Circuit Boards
+    - Bantam (PCB)
+    - PCB strategies
+  - Misc
+    - 2D strategies
+    - Post Proc
+  - Haas Demos
+  - Machine Tables
+  - Additive manufacturing
+
+* Setup Tips
+
++ Max stay down
++ simple smoothing
++ set =MinRampDiameter= to =HelicalEntry / 4= to prevent CAM stratagies from
+  eliminating tool paths in smaller boundaries/pockets
++ Kinematics, coolant & tool config can be configured
+  - ... but probably should just be referenced from tool/machine params
++ Fixture/setup can be configured/imported as a model
+  - it should be possible to find standard fixture models, but if not, these
+    should be modeled and saved to a project that is easy to access (from the
+    relevant contexts)
+
+** Setup Params
+
++ "Faceoff" with stock offsets
+  - requires face op (2D-only), faces off the entire stock surface
+
+* Strategy Params
+
++ Boundaries :: points/contours/surfaces
+  - constraints/optimization
+  - these are essential to plan out when relevant.
+  - running the machines when these are not configured properly can be costly if
+    not extremely dangerous.
++ 2D Tool Boundaries ::  based on the selected wireframe surface
+  - The normals for the model are relevant and impact the generated toolpath
++ Shaft/Holder :: collision avoidance
+  - Pull away
+  - Trimmed
+  - Detect Tool Length
+  - Fail on Collision (!!)
++ Smoothing :: this can result in smaller gcode program sizes
+  - this limits the number of commands required to produce shapes that vary from
+    the desired curve within a specified tolerance.
++ Lead-In (entry) :: specifies how the tool enters the cutting path
+  - on engraving operations or finising passes, this may need to be adjusted
+    - otherwise, the machine will leave "U" shapes across the piece.
+    - removing these marks is not always possible, depending on the context.
++ Ramp Type :: for balanced entry into a material
+  - the deformations of most materials will not be uniform if too much material
+    is cut at once. =ramping in (like with a helical pass) balances & optimizes
+    the radial/axial loads at the initial point of contact.=
+
+* 3D Strategies
+
+** Clearing
+
+*** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID09E44604-DAD8-47D6-ADC6-C100869DE724][Adaptive]]
+
+**** Important Params
+
+**** Purpose
++ Clear as much volume with optimized speed (for machine/tool kinematics & params)
+  - utilize entire flute
+  - constant tool engagement
++ Less overloading
++ Improved Tool Life
++ Variable Engagement
+**** Notes
++ Heavy Radial Load
++ Light sideload
++ Adaptive can be incompatible
+
+*** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID63F97CC8-99FE-40B7-AFF1-061E826955B3][Pocket]]
+
+**** Params
++ Stepover
++ Pass Direction
++ Morphed Spiral Machining
+  - adjust the spiral curve for the toolpath
+  - provides a smoother run on the machine (but distorts the texture w/o a
+    finishing pass)
++ Extension method :: what to do on a pocket that cuts through the boundary of
+  the stock
+  - values: tangent/closest/parallel
+
+**** Purpose
+
+**** Notes
+
+
+** Finishing
+
+*** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID-A6933B73-D98F-43AD-BCFD-A450D91C4E61][Steep and Shallow]]
+
++ important params :: threshold angle for toggling between parallel & scallow
++ purpose :: combine parallel & scallop operations where needed to simplify
+  configuration within Fusion 360
+
+**** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID17CC1F90-A2A5-4CC3-80EB-B7972E327E0F][Parallel]] (side by side)
+
+***** Params
+
+***** Purpose
++ finishing passes
+
+***** Notes
++ check top view for bad curves
+  - this occurs when parallel passes cut over a fillet or some other curve that
+    is not parallel to the configured orientation
+  - if used as a finishing pass, this texture may be noticeable
+    - ... but it's probably not worth a tool change (unless perhaps for a
+      customer)
+
++ Can be used for texture/logos and engraving
+  - slower to configure than within bantam, but when used as a texture for
+    engraving the interiors, this results in faster passes
+  - using parallel for engraving requires testing the tool & understanding how
+    to manipulate the stepover to get a good effect on that material.
+
+**** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID77067110-3D88-4DA7-B171-6B27F04CF8B3][Scallop]] (offset inwards)
+***** Params
++ Direction (both/other) :: specify/balance the material-removal direction used
+  adjacent regions of the same toolpath.
++ Slope :: limit range of angles that a toolpath will cut
+
+***** Purpose
+
+***** Notes
+
+**** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUIDEA850013-D826-408E-B076-C613834A77F3][Contour]]
+
+***** Params
++ Slow
++ Avoid/Touch :: specify surfaces to always avoid or to always remain touching
++ Rest Machining :: optimize runtime (on a finishing pass) to only "remove
+  material that a previous tool could not remove"
+
+
+***** Purpose
++ steep walls (it's for deep stuff)
++ Not so great on shallow work
+***** Notes
++ probably needs a finishing pass
+
+**** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID429D116E-73E2-4046-A8FD-B7A2281B5DA9][Spiral]]
+
+***** Params
++ Stepover
++ Center point
++ Passes
++ Inner/outer limit
++ Boundary
+
+***** Purpose
+
+***** Notes
+
+
+** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUIDD7ECF22F-BEAA-4B6A-A2CE-DA6F2C08D787][Pencil]]
+
+*** Params
+
+*** Purpose
++ Detailing
+*** Notes
+
+** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID-B7EDA6D6-B7A2-4307-83A5-DA79C4DDA11A][Morph]]
+
+** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID37A40E2E-270D-4BE7-9C72-AA996F9A4B5C][Morphed Spiral]]
+
+** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUIDF6889A73-5F67-486B-9E73-9662152D1DAD][Horizontal]]
+
+*** Params
+
+*** Purpose
++ clearing/finishing
++ this is for "flat stuff"
+
+*** Notes
+** [[https://help.autodesk.com/view/fusion360/ENU/?guid=GUID6D249502-C436-4060-AC60-910F442AFEEA][Radial]] (detailing)
+
+*** Params
++ parametric
++ Center point
+
+*** Purpose
++ detailing
+
+*** Notes
