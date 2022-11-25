@@ -18,7 +18,7 @@ is closed, i.e. making it simple for distributions other than the jurassics.
   processing, etc.
   #+end_quote
 
-* On Guix...
+* On Guix
 
 This requires patching some of the bundled' contents with =patchelf=. See
 [[https://ryantm.github.io/nixpkgs/builders/images/appimagetools/][pkgs.appimagetools from Nixos]] for more info
@@ -93,9 +93,11 @@ I'm not sure how to configure emacs to load this mode by default on large binary
 files. In this case, =elf-mode= is not super-useful as it only lists the
 =dynsym= table ([[https://www.oreilly.com/library/view/learning-linux-binary/9781782167105/ch02s04.html][link]], [[https://blog.k3170makan.com/2018/10/introduction-to-elf-format-part-vi.html][link]] and [[https://refspecs.linuxbase.org/elf/gabi4+/ch5.dynamic.html][linuxbase.org]])
 
-** Patch the Binary
+** Extract the contents
 
-*** Patch the interpreter
+Run the appimage with =--extract-contents
+
+** Patch the Binary
 
 #+begin_src bash
 # define ideamaker
@@ -103,8 +105,61 @@ interpreter=$GUIX_DEVTOOLS/lib/ld-linux-x86-64.so.2
 patchelf --set-interpreter $IDEAMAKER
 #+end_src
 
-*** Patch needed dynamic libs
+*** Use Guix-Shell Instead
+
+Alternately, one can construct a purpose-built =guix shell= with what's below.
+
++ The =-F= option makes the derivation's singleton profile function as though
+  the standard POSIX filesystem is entirely in tact.
++ The =-C= option makes it operate like a container, isolating the process.
+  Speficially, I'm not sure how.
+
+#+begin_src bash
+__deps="guix shell -FC coreutils findutils grep sed diffutils patch gawk tar gzip bzip2 xz lzip fuse fuse-exfat glibc zlib patchelf"
+guix shell
+#+end_src
+
+I always forget about this method. It's seriously handy.
+
+**** Quick Rant
+
++ to find this list of packages, look at =./gnu/system.scm= in the guix project
+  - find the definitions for =%base-packages= and infer
+  - if you're confused about what to include, think of a programming
+    project/language that definitely "has it", whatever it is you need
+  - run =guix graph python | dot -Tpng -opython3.png= and rifle through the
+    pages of a greybeard's stolen tome.
+  - other packages whose dependency graphs you should check: coreutils, bash
+    (vs. zsh vs. fish), glibc, blender, etc.
+  - literally all the answers are here. the =guix graph= functionality
+    single-handedly justifies having guix installed on your system. I'm sure
+    other package managers make this possible -- it's just much harder.
+    _Because_ /LISP IS HOMOICONIC/, guix can do this easily.
+    - Did you know: [[https://thenewstack.io/brendan-eich-on-creating-javascript-in-10-days-and-what-hed-do-differently-today/][javascript was almost a lisp (scheme)]], but it's not, so no
+      paredit for you. and that's why we can't have nice things. now you have to
+      get clojurescript to do backflips over gulp/webpack/es6/babel, a hundred
+      oneliners from npm and some other trio of faceless neologisms ... if you
+      want to use lisp in frontend. the boilerplate is an intense, ever-shifting
+      sea of dread and broken projects.
+    - while freecad/blender have scripting repls that permit recording UI
+      macros, you can't parameterize those recorded macros with lambdas (for
+      better or worse) because it's python. but python is what the people
+      demand.
+  - this, and other tools like it, help you learn FAST.
+    - emacs =M-x find-grep= is a godsend, when you have the source on your
+      machine. it's a shame that sourcegraph has so many service dependencies
+      (why you need k3s on your machine and why you need to turn if on/off)
+    - as long as your search is not bounded to the entire internet (looking at
+      you google), then you can easily find the answers you need. the source
+      code /is/ documentation ... especially the tests.
+
+... okay, rant over.
+
+** Provide needed dynamic libs
 
 GNU C removed libpthreads recently, so i may need a specific Guix profile.
 
-***** TODO assemble guix profile
++ Stated more precisely,
+  [[https://sourceware.org/pipermail/libc-alpha/2021-August/129718.html][libpthreads
+  and libdl were integrated into the glibc project]], which is why it's tough
+  to find definite references to these symbols in the Guix project.
