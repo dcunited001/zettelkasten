@@ -1,0 +1,79 @@
+:PROPERTIES:
+:ID:       d763b83c-e834-4d41-8478-4aab817422ec
+:END:
+#+TITLE: Repo: some notes on usage and design
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:53fc747a-3f12-411a-976a-345bb1924e2d][VCS Version Control]]
++ [[id:8d789c98-5e74-4bf8-9226-52fb43c5ca51][Gitforge]]
+
+Repo is supposed to be for social coding on large projects. Google integrates it
+into Gerrit, which is a cross between a git forge and a code review system (and
+probably project management as well). It can track profiles (repo branches) of
+checkouts (of git repositories), so that you can check out branchsets for large
+projects that have moved beyond their monorepo phase. I don't use it for that,
+but if you can't afford the kubernetes for sourcegraph, it is a poor-man's
+equivalent.
+
+** On Naming The Abstractions
+
+The terminology for repo is a bit more opaque than it should be, but from the
+DI/DX (dev interaction, dev exp.) perspective, it's basically an abstraction set
+that mirrors most of the abstractions git already provides: branches, projects,
+commit-like objects, superprojects and worktrees are all confusingly mirrored
+abstractions.
+
+#+begin_quote
+ancient law of the universe: every abstraction is reflected into the systems
+which are affected by it. When fully socialized throughout people, an idea
+resembles Indra's Net. further, it has no definite center (no authoritative
+thinker) and no definite form.
+
+so for every book, there are the reflections of that book in the
+minds of people who have and have not read of it. for every philosophical idea,
+there are the myriad interpretations of that idea which are reflected through
+people who consider it. for every dotfiles project, there is configuration which
+must exist in the mind of the user who might benefit from it. therefore, for
+every piece of information considered by your mind, there is at least the
+reflection of that information in your mind, which is itself separate from the
+object you perceive (the information).
+
+so for software integrations and architecture, components of systems which must
+integrate with other components will reflect their abstractions through each
+other. for the programmer, hopefully these abstractions take their shoes off at
+the door, so to speak, and don't bring their internals into your code. in the
+case of C++ namespaces/modules, these features can't really be used until
+representations of abstractions are thoroughly disentangled. these features
+force passing data relating to separate namespaces between specific points in
+compiled code. it seems that C++ has too much accumulated baggage to reinvent
+itself unfortunately. it's likely that these features will never be used.
+
+for google repo, it is mirring a set of abstractions at a somewhat higher level
+... so the names of things are confusing, more or less. it's not clear that
+there would be a good alternative.
+#+end_quote
+
+** Repo Handles Repo's Differently
+
+Because of this, repo handles git repositories differently. It pulls down bare
+clones it manages with symlinks and supersedes/integrates many of git's
+processes with its own processes.
+
+The point is that you can't know that all git operations will produce the
+effects described by git's docs, per se. They probably will, but may induce side
+effects when projects aren't found the way repo expects them to be or when repo
+doesn't make accurate assessment of the current state.
+
++ generally, you should use a repo feature when there is one.
++ local branches should be created by repo, but can be managed by git.
++ fetches can occur locally through git.
++ repo manages branches by tracking commits in each of its managed projects
+
+As long as you manage your branches through repo (and use consistent branch
+names among local/remote branches) -- and you wouldn't /not/ do that, would
+you?! ... which is /exactly why/ its nice to have a default branch name we don't
+argue over -- then you can =repo forall= and that's all that matters.
+
+It doesn't handle managing local branches though. That's easy enough for a local
+script, but there's always the alibaba fork of repo if you trust it.
