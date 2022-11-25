@@ -1,0 +1,110 @@
+:PROPERTIES:
+:ID:       700ba45a-a93b-4f66-be59-bab97b15a6ad
+:END:
+#+TITLE: Appimage: update contents with patchelf
+#+CATEGORY: slips
+#+TAGS:
+
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:7edab00d-1a52-4a27-b83a-f64639e84a77][Guix: installing matlab]]
+
+Raise3D's ideamaker is available as an appimage -- kudos for "doing it right" when the source
+is closed, i.e. making it simple for distributions other than the jurassics.
+
+  #+begin_quote
+  Matlab could learn quite a bit from these guys, although managing
+  an appimage's dependencies is not so easy when it involves acceleration
+  (GPU/CUDA/CV and managing AMD compatibility) or hardware for signals
+  processing, etc.
+  #+end_quote
+
+* On Guix...
+
+This requires patching some of the bundled' contents with =patchelf=. See
+[[https://ryantm.github.io/nixpkgs/builders/images/appimagetools/][pkgs.appimagetools from Nixos]] for more info
+
+** Determine the appimage type
+
+This is a type2 non-ISO9660 appimage.
+
++ It's files are in an embedded filesystem at the end of the executable.
++ Blender does the same thing (AFAIK) to package it's bundled =python310.zip=,
+  which is why the [[https://github.com/mamut-m/blender_notebook][mamut-m/blender_notebook]] jupyter kernel blows up (AFAIK).
+
+#+begin_src bash
+# define $IDEAMAKER
+# load guix devdebug profile
+file -k $IDEAMAKER
+#+end_src
+
+#+RESULTS:
+#+begin_src bash
+$IDEAMAKER: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.32, BuildID[sha1]=41b865b367a5540cb273cc842bbeaf6a707810d9, stripped\012- data
+#+end_src
+
+This step is only required when using the Nixos =appimageTools.wrapType2= tools.
+
+** Probe the binary
+
+#+begin_src bash
+# define $IDEAMAKER
+# load guix devdebug profile
+patchelf --print-interpreter $IDEAMAKER
+patchelf --print-rpath $IDEAMAKER
+patchelf --print-soname $IDEAMAKER
+patchelf --print-needed $IDEAMAKER
+#+end_src
+
++ interpreter :: /lib64/ld-linux-x86-64.so.2
++ rpath :: n/a
++ soname :: n/a
++ needed :: 4 libs
+  - libdl.so.2 :: dynamic loader
+  - libpthread.so.0 :: posix thread managment
+  - libz.so.1 :: compression
+  - libc.so.6 :: system call interfaces for linux
+
+#+begin_quote
+no, i didn't actually know what the above do. i would probably never otherwise
+be exposed to this. it's all fairly basic stuff i guess.
+
+sadly, i've never done systems programming, i'm fairly isolated and knowledgable
+people i encounter in my thus far hermetically sealed life quite frequently mask
+their experience or level of knowledge (for some reason or another, usually to
+retain flexibility) ... so low-level implementation details and acronyms are
+lost on me.
+
+i don't fit into anyone's pecking order. the system did not produce me, the
+system cannot measure me. the system thinks it understands its measure, but it
+doesn't understand its ruler: too much is based on judging by distance to
+performance of peers in recent cohorts who have mostly indistinguishable
+experiences. i just really don't fit into much of anything. i'm not great at
+explaining things, but when you are an anomaly and combine various fields, you
+have to explain everything you do. people just don't understand, but i stay poor
+anyways, making me dependent and thus placing me below everyone else in the
+pecking order.
+
+it is what it is. at least everything is getting better.
+#+end_quote
+
+*** The file can be opened in emacs =elf-mode=
+
+I'm not sure how to configure emacs to load this mode by default on large binary
+files. In this case, =elf-mode= is not super-useful as it only lists the
+=dynsym= table ([[https://www.oreilly.com/library/view/learning-linux-binary/9781782167105/ch02s04.html][link]], [[https://blog.k3170makan.com/2018/10/introduction-to-elf-format-part-vi.html][link]] and [[https://refspecs.linuxbase.org/elf/gabi4+/ch5.dynamic.html][linuxbase.org]])
+
+** Patch the Binary
+
+*** Patch the interpreter
+
+#+begin_src bash
+# define ideamaker
+interpreter=$GUIX_DEVTOOLS/lib/ld-linux-x86-64.so.2
+patchelf --set-interpreter $IDEAMAKER
+#+end_src
+
+*** Patch needed dynamic libs
+
+GNU C removed libpthreads recently, so i may need a specific Guix profile.
+
+***** TODO assemble guix profile
