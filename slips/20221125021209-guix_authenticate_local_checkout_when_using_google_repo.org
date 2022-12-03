@@ -1,0 +1,384 @@
+:PROPERTIES:
+:ID:       c610536e-71d8-45ad-b320-91696ee56d49
+:END:
+#+TITLE: Guix: authenticate local checkout when using google repo
+#+CATEGORY: slips
+#+TAGS:
+
+Notes while following the guides [[https://guix.gnu.org/manual/en/html_node/Building-from-Git.html][Building from Git]] and [[https://guix.gnu.org/cookbook/en/html_node/Direct-checkout-hacking.html][Direct Checkout Hacking]].
+
+* Download the source
+
+Fetch [[github:ectorepo/guix]] and sync, then navigate to the =./guix= project.
+
+You're really going to want =ssh-agent= anyways. start your service or whatever,
+but if you're paranoid, start it in a shell.
+
+#+begin_src bash
+export ECTO=/data/ecto
+cd $ECTO
+eval "$(ssh-agent)" # or however you do
+ssh-add
+screen # or however you do
+#+end_src
+
+init the repo & sync
+
+#+begin_src bash
+
+repo init -u https://github.com/ectorepo/guix $ECTO/guix
+cd ./guix
+repo sync
+#+end_src
+
+Look around, start a repo branch, but start the master branch first
+
+#+begin_src bash
+repo start master --all
+#+end_src
+
+Oh, nevermind, you can't do that because we can't have nice things and some
+people don't use the branch name "master." There it is again.
+
+#+begin_quote
+if there's a simple solution to this, like a system-wide alias in some =~/.gitconfig=, I'd love to
+know. I don't actually like bitching about this all the time.
+#+end_quote
+
+Thank god for =C-c C-v C-d= to split a block or I wouldn't do this.
+
+** Start a new repo branch
+
+Okay, now check out that branch.
+
+#+begin_src bash
+br=pkgcura
+repo start $br guix emacs-guix
+#+end_src
+
+You need the keyring branch. It tracks the keys.
+
+* Validate the Guix checkout
+
+In case it's not local, fetch it from =savannah=, configured in =_remotes.xml=,
+which is linked in some of these ectorepo manifest projects.
+
+#+begin_src bash
+cd guix
+git fetch savannah keyring:keyring
+#+end_src
+
+See the keys. Magit does it better, but those aren't real switches. It's been
+awhile...
+
+#+begin_src bash
+git log --graph
+git log -p # for patches o'hoolihan
+#+end_src
+
+Checkout your topic branch again
+
+#+begin_src bash
+cd ..
+# repo's toplevel .repo search isn't working or i'm forgetting something
+repo checkout $br
+cd guix
+#+end_src
+
+Not sure why i'm typing all this up -- other than using google repo -- since the
+guix manual summarizes this far better than I can.
+
+#+begin_src bash
+commit=$(git log -n1 --pretty=%H) # just the HEAD commit
+query_signer='.[] | select(.name=="guix") |.introduction |.signer'
+signer=$(guix describe --format=json | jq "$query_signer")
+
+guix git authenticate "$commit" "$signer"
+#+end_src
+
+* Build Guix
+
+Since I'm already on Guix system, i'll defer to setting up the Guix environment
+until I'm ready to run the final checks.
+
+Before walking through this, it's a bit much to figure out how to set up an
+isolated emacs environment for this. A manifest may work, which helps more
+clearly define the dependencies.
+
+** Instantiating Guix Environment
+
+... On second thought, running configure probably does benegit from a clean
+environment. So, from the checkout directory:
+
+#+begin_src shell
+guix environment guix --pure ad-hoc help2man git strace pkg-config
+./bootstrap
+./configure --localstatedir=/var
+make
+make check
+#+end_src
+
+At this point, build artifacts should be available. The scripts =test-env= and
+=pre-inst-env= mentioned in [[https://guix.gnu.org/cookbook/en/html_node/Direct-checkout-hacking.html][Direct Checkout Hacking]] should be created by
+./bootstrap or ./configure.
+
+And run the tests.
+
+#+begin_src shell
+make check
+#+end_src
+
+* Bump the Package
+
+Update the Cura package version from =4.13.1= to =5.2.1=. However, this package
+has quite a few dependencies maintained by Ultimaker. To find them, run:
+
+#+begin_src bash :results file :file img/dot/cura-bump.png
+# guix graph cura | dot -Tpng
+guix graph guile | dot -Tpng
+#+end_src
+
+#+RESULTS:
+[[file:img/dot/cura-bump.png]]
+
+Nevermind ... cura has too many dependencies to fit.
+
+** Find the dependencies
+
+Cura's related packages can be found in =./gnu/packages/engineering.scm=:
+
++ cura (5.2.1)
+  - cura-engine (5.2.1)
++ uranium (5.2.0)
+  - cura-binary-data (5.2.1)
++ misc leaf dependencies (imported multiple times)
+  - libarcus (5.2.0)
+  - libsavitar (5.2.0)
+  - libcharon (5.2.0)
+
+*** Alternatively, use =guix refresh=
+
+[[https://guix.gnu.org/manual/en/html_node/Invoking-guix-import.html#Invoking-guix-import][guix import (9.5)]] is a pretty magical command, especially for go developers. So
+is [[https://guix.gnu.org/manual/en/html_node/Invoking-guix-refresh.html#Invoking-guix-refresh][guix reresh (9.6)]], which will attempt to identify the latest upstream
+versions of packages.
+
+#+begin_src bash
+# just one
+./pre-inst-env guix refresh cura
+
+# or many
+./pre-inst-env guix refresh uranium --recursive
+#+end_src
+
+Using the =-u= option means the command would even /update the package
+definitions in place for you/: =./pre-inst-env guix refresh -s non-core -u=
+
+#+begin_quote
+Say "*Thank you* /homoiconicity!/"
+#+end_quote
+
+There are plenty of options, but usually the full dependency chain is a bit too
+much. You can always run the single update, then =magit-status= in emacs to
+check the diff. A single package will update the version and hash after
+downloading the new source artifacts to the Guix store.
+
+*** Get The New Hash For Other Dependencies
+
+If you know the download url, then =guix download= will fetch it and return the
+hash. If you don't, as a hack, you can run =guix build= on the new package. It
+will fetch and fail, giving you the actual hash.
+
+#+begin_quote
+I traced through Guix source for git downloads, but I couldn't tell how it was
+specifying the retrieval of a repository's contents. It's now clear that it's a
+bare checkout, but ... one needs to specify the correct process exactly if I
+they are to generate the exact hash.
+#+end_quote
+
+** Build the new packages
+
+... I figured this may happen. Cura is migrating from cmake to =conan=, a C++
+"package manager" which involves something called "python". Up til now, I've
+been learning things I'd like to know in the future -- no offense, new build
+toolchain.
+
+=guix shell -FC coreutils findutils grep sed diffutils patch gawk tar gzip bzip2 xz lzip fuse-exfat glibc zlib=
+
+** Create a patch
+
+As long as your patch should comprise your entire working changes, then from
+within =magit-status=, hit =d d= to get a diff buffer. From here, hit =W s= to
+generate the patch. Its contents can be limited to specific files with =--= on
+the transient buffer for magit-diff options.
+
+#+begin_example diff
+diff --git a/gnu/packages/engineering.scm b/gnu/packages/engineering.scm
+index 1f3958f55c..7e6b513bc0 100644
+--- a/gnu/packages/engineering.scm
++++ b/gnu/packages/engineering.scm
+@@ -3398,7 +3398,7 @@ (define-public wireviz
+ (define-public libarcus
+   (package
+     (name "libarcus")
+-    (version "4.13.0") ; Should same version as Cura package.
++    (version "5.2.0") ; Should same version as Cura package.
+     (source
+      (origin
+        (method git-fetch)
+@@ -3407,7 +3407,7 @@ (define-public libarcus
+              (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+-        (base32 "19fi0y0lk45cyampczgh3kz2swai4zcgzkffp0xf5h55rxxrdpvk"))))
++        (base32 "1rcymbgk3fijmsa1vdicgrcp45igvrsh30rld989mmqd04chmr4x"))))
+     (build-system cmake-build-system)
+     (inputs
+      (list protobuf
+@@ -3422,17 +3422,7 @@ (define-public libarcus
+            (lambda _
+              (substitute* "src/Socket_p.h"
+                (("stream\\.SetTotalBytesLimit\\(message_size_maximum,.*\\);")
+-                "stream.SetTotalBytesLimit(message_size_maximum);"))))
+-         (add-before 'configure 'fix-python-sitearch
+-           (lambda* (#:key outputs #:allow-other-keys)
+-             (substitute* "cmake/FindSIP.cmake"
+-               (("\\$\\{_process_output\\} Python3_SITEARCH")
+-                (string-append (assoc-ref outputs "out")
+-                               "/lib/python"
+-                               ,(version-major+minor
+-                                 (package-version python))
+-                               "/site-packages"
+-                               " Python3_SITEARCH"))))))))
++                "stream.SetTotalBytesLimit(message_size_maximum);")))))))
+     (home-page "https://github.com/Ultimaker/libArcus")
+     (synopsis "Communication library for Ultimaker software components")
+     (description "This library contains C++ code and Python3 bindings for
+@@ -3444,7 +3434,7 @@ (define-public libarcus
+ (define-public cura-engine
+   (package
+     (name "cura-engine")
+-    (version "4.13.1")
++    (version "5.2.1")
+     (source
+      (origin
+        (method git-fetch)
+@@ -3453,7 +3443,7 @@ (define-public cura-engine
+                (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+-        (base32 "0xp2r0m5wwfsh9wdb3biqzvfqfz5jsmyw4bww93aksw0rgli07bp"))))
++        (base32 "03267hm5vjd6fs2ggdn8rc92xrx0ilfkpvmdf2lf0f0w6p3s534w"))))
+     (build-system cmake-build-system)
+     (native-inputs
+      (list googletest pkg-config))
+@@ -3486,7 +3476,7 @@ (define-public cura-engine
+ (define-public cura-binary-data
+   (package
+     (name "cura-binary-data")
+-    (version "4.13.1")
++    (version "5.2.1")
+     (source
+      (origin
+        (method git-fetch)
+@@ -3495,7 +3485,7 @@ (define-public cura-binary-data
+                (commit version)))
+          (file-name (git-file-name name version))
+          (sha256
+-          (base32 "11dra399adky7jxpaqqk1swrg5y3cc1086l54c3injg3ccgrvwik"))
++          (base32 "1iphcxzh45i71wvvy61k9v7690q9ayxl8l718vmqq77cyzslaqmb"))
+          (modules '((guix build utils)))
+          (snippet
+           '(begin
+@@ -3515,7 +3505,7 @@ (define-public cura-binary-data
+ (define-public uranium
+   (package
+     (name "uranium")
+-    (version "4.13.1")
++    (version "5.2.0")
+     (source
+      (origin
+        (method git-fetch)
+@@ -3524,7 +3514,7 @@ (define-public uranium
+                (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+-        (base32 "1nyxm3fdyrsisqkxbqld66bljd852wnc1yc6i1lyvncwvzn8ai32"))))
++        (base32 "07npd2067zz968snw8gjazaibmqp5vjspd6k4nysglpsnfd9bfsj"))))
+     (build-system cmake-build-system)
+     (native-inputs
+      (list doxygen
+@@ -3660,7 +3650,7 @@ (define-public python-pynest2d
+ (define-public libcharon
+   (package
+     (name "libcharon")
+-    (version "4.13.0")
++    (version "5.0.0")
+     (source
+      (origin
+        (method git-fetch)
+@@ -3669,7 +3659,7 @@ (define-public libcharon
+                (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+-        (base32 "0ibv15y7lfxs09k6rbc3kiaz13gq3v9vqxrk20rqp6bdclk3izff"))))
++        (base32 "1mbcfrm1s9q8f0gia6m2ys9hlvwi28nv2p96ff2avrx4hmciilpy"))))
+     (build-system cmake-build-system)
+     (native-inputs
+      (list python-pytest))
+@@ -3684,7 +3674,7 @@ (define-public libcharon
+ (define-public libsavitar
+   (package
+     (name "libsavitar")
+-    (version "4.13.0")
++    (version "5.2.0")
+     (source
+      (origin
+        (method git-fetch)
+@@ -3693,26 +3683,13 @@ (define-public libsavitar
+              (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+-        (base32 "1cq85x0xizsjwf9nl7v7x4i9vl335mgv2lda3q2c9fcwrndsc3wk"))))
++        (base32 "0d529pj77l8v0250va30pz8q3vpmx9lcwrbqqfkq7dnwbvjrbhrs"))))
+     (build-system cmake-build-system)
+     (inputs
+      (list python python-sip-4))
+     (arguments
+      `(#:tests? #f ; No test suite.
+-       #:phases
+-       (modify-phases %standard-phases
+-         (add-before 'configure 'fix-python-sitearch
+-           (lambda* (#:key outputs #:allow-other-keys)
+-             (let ((path (string-append (assoc-ref outputs "out")
+-                                        "/lib/python"
+-                                        ,(version-major+minor
+-                                          (package-version python))
+-                                        "/site-packages")))
+-               (substitute* "cmake/FindSIP.cmake"
+-                 (("\\$\\{_process_output\\} Python3_SITEARCH")
+-                  (string-append path " Python3_SITEARCH"))
+-                 (("\\$\\{_process_output\\} Python3_SITELIB")
+-                  (string-append path " Python3_SITELIB")))))))))
++       #:phases %standard-phases))
+     (home-page "https://github.com/Ultimaker/libSavitar")
+     (synopsis "C++ implementation of 3mf loading with SIP python bindings")
+     (description "LibSavitar is a C++ implementation of 3mf loading with SIP
+@@ -3722,7 +3699,7 @@ (define-public libsavitar
+ (define-public cura
+   (package
+     (name "cura")
+-    (version "4.13.1")
++    (version "5.2.1")
+     (source
+      (origin
+        (method git-fetch)
+@@ -3731,7 +3708,7 @@ (define-public cura
+              (commit version)))
+        (file-name (git-file-name name version))
+        (sha256
+-        (base32 "0yg17pcrj5gm02aqcjfk40ynvpb9r9aaq9rj108dkpki1is15ks7"))))
++        (base32 "01qjxjdzp4n8rs5phwi3kdkf222w4qwcfnb7mvfawyd2yakqim6h"))))
+     (build-system qt-build-system)
+     (native-inputs
+      (list python-certifi
+#+end_example
