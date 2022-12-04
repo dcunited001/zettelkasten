@@ -7,16 +7,11 @@
 
 + [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
 + [[id:7edab00d-1a52-4a27-b83a-f64639e84a77][Guix: installing matlab]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:cbfc2dba-7692-46a3-9c69-9edda1f91126][3D Printing]]
 
 Raise3D's ideamaker is available as an appimage -- kudos for "doing it right" when the source
 is closed, i.e. making it simple for distributions other than the jurassics.
-
-  #+begin_quote
-  Matlab could learn quite a bit from these guys, although managing
-  an appimage's dependencies is not so easy when it involves acceleration
-  (GPU/CUDA/CV and managing AMD compatibility) or hardware for signals
-  processing, etc.
-  #+end_quote
 
 This reddit post [[https://www.reddit.com/r/GUIX/comments/y4a7o2/fhs_container_support_merged/][FHS container support merged!]] contains more info on how to get
 appimages to run.
@@ -96,28 +91,6 @@ I'm not sure how to configure emacs to load this mode by default on large binary
 files. In this case, =elf-mode= is not super-useful as it only lists the
 =dynsym= table ([[https://www.oreilly.com/library/view/learning-linux-binary/9781782167105/ch02s04.html][link]], [[https://blog.k3170makan.com/2018/10/introduction-to-elf-format-part-vi.html][link]] and [[https://refspecs.linuxbase.org/elf/gabi4+/ch5.dynamic.html][linuxbase.org]])
 
-** Extract the contents
-
-Run the appimage with =--extract-contents= or see the above reddit post for
-instructions. The appimage offset is needed:
-
-#+begin_src bash
-# from the appimage directory
-manifest=~/.config/guix/manifests/raise3d.scm
-appimageoffset=$(guix shell --container --emulate-fhs --network --preserve="^DISPLAY$" -m $manifest -- ./$ideamaker --appimage-offset)
-#+end_src
-
-+ The binaries in the app will need to be patched with =patchelf=.
-+ =LD_LIBRARY_PATH= and =LIBRARY_PATH= will need to be set appropriately
-+ You may need development inputs for some packages. If so, use =guix shell -D=
-
-#+begin_src bash
-# thanks to #nonguix irc channel for the help
-guix shell -CNF --preserve='^QT_DEBUG_' libsm sqlite libgpg-error p11-kit -D ungoogled-chromium libtasn1 gmp e2fsprogs glu glib:bin gcc:lib --preserve='^DISPLAY$' --preserve='^XAUTHORITY$' --preserve='^DBUS_' --share=$XAUTHORITY --share=/sys/dev --share=/sys/devices --share=/tmp --expose=/dev/dri --expose=/var/run/dbus -- ./$ideamaker --appimage-extract-and-run
-#+end_src
-
-***** TODO configure LD_LIBRARY_PATH to allow the app to run using its own binaries
-
 ** Patch the Binary
 
 #+begin_src bash
@@ -130,21 +103,135 @@ patchelf --set-interpreter $ideamaker
 
 Alternately, one can construct a purpose-built =guix shell= with what's below.
 
-+ The =-F= option makes the derivation's singleton profile function as though
++ -F :: makes the derivation's singleton profile function as though
   the standard POSIX filesystem is entirely in tact.
-+ The =-C= option makes it operate like a container, isolating the process.
++ -C :: makes it operate like a container, isolating the process.
   Speficially, I'm not sure how.
++ -N :: allow network access to containers
 
 #+begin_src bash
-__deps="guix shell -FC coreutils findutils grep sed diffutils patch gawk tar gzip bzip2 xz lzip fuse fuse-exfat glibc zlib patchelf"
-guix shell
+deps="guix shell -FC coreutils findutils grep sed diffutils patch gawk tar gzip bzip2 xz lzip glibc zlib patchelf"
+guix shell -CNF $deps
 #+end_src
 
-I always forget about this method. It's seriously handy.
+I always forget about this method. It's seriously handy. See the rant below.
 
-**** Quick Rant
+*** Provide needed dynamic libs
 
-+ to find this list of packages, look at =./gnu/system.scm= in the guix project
+GNU C removed libpthreads recently, so i may need a specific Guix profile.
+
++ Stated more precisely,
+  [[https://sourceware.org/pipermail/libc-alpha/2021-August/129718.html][libpthreads
+  and libdl were integrated into the glibc project]], which is why it's tough
+  to find definite references to these symbols in the Guix project.
+
+** Run the appimage
+
+The app needs to be extracted to be run. This is because the app needs fuse in
+order to mount and because fuse requires =setuid= permission for users to mount
+filesystems [[https://www.toptal.com/linux/separation-anxiety-isolating-your-system-with-linux-namespaces][without access to the global mount namespace]].
+
++ The binaries in the app will need to be patched with =patchelf=.
++ =LD_LIBRARY_PATH= and =LIBRARY_PATH= will need to be set appropriately
++ You may need development inputs for some packages. If so, use =guix shell -D=
++ When you mount the contents from the appimage offset, you can use other tools
+  outside the guix container to view the filetree.
+  - if extracting and running in place, it's not clear to me where the mount
+    ends up.
++ If QT plugin issues arise, =export QT_DEBUG_PLUGINS=1= and pass
+  =--preserve='^QT_DEBUG_'= to guix shell.
+
+The guix manifest is in [[https://github.com/dcunited001/ellipsis/blob/master/CAD.org][CAD.org]] in my dotfiles. Since it requires development
+dependencies, it can't simply use =(specifications->manifest '(...))=. This
+manifest has better notes on the dependencies (see the =(gnu package ...)=
+module includes for more info)
+
+*** Set up Environment
+
+#+begin_src bash
+# TODO update library path with my other desktop search paths
+# - e.g. so a consistent experience is attained (some windows/menu's are blacked out)
+export LD_LIBRARY_PATH # ...
+export LIBRARY_PATH
+
+
+# pick a framebuffer
+# QT_QPA_PLATFORM=linuxfb- # requires other dependencies
+QT_QPA_PLATFORM=xcb # will default to this
+#+end_src
+
+*** Mount the contents
+
+Get the appimage offset. Note that you are actually executing the appimage (to
+pass it the =--appimage-offset= which will cause it to terminate before reaching
+its content, unless it's evil)
+
+#+begin_src bash
+# from the appimage directory
+manifest=~/.config/guix/manifests/raise3d.scm
+appimageoffset=$(guix shell --container --emulate-fhs --network -m $manifest -- ./$ideamaker --appimage-offset)
+
+appmount=raise3d
+mkdir $appmount
+sudo mount $appmount -o offset=$appimageoffset
+#+end_src
+
+**** Launch the binary using =ungoogled-chromium= as a base
+
+#+begin_src bash
+deps=libsm sqlite libgpg-error p11-kit
+otherdeps=
+devbase=ungoogled-chromium
+devdeps=libtasn1 gmp e2fsprogs glu glib:bin gobject-introspection gcc:lib
+
+# thanks to #nonguix irc channel for the help
+guix shell -CNF $deps $otherdeps -D $devbase $devdeps --preserve='^QT_DEBUG_' --preserve="^QT_QPA_PLATFORM" \
+    --preserve='^DISPLAY$' --preserve='^XAUTHORITY$' --preserve='^DBUS_' \
+    --share=$XAUTHORITY --share=/sys/dev --share=/sys/devices --share=/tmp \
+    --expose=/dev/dri --expose=/var/run/dbus \
+    -- ./raise3d/AppRun
+#+end_src
+
+**** Launch the binary using =qutebrowser= as a base
+
+#+begin_src bash
+deps=libsm sqlite libgpg-error p11-kit
+otherdeps=libxi fontconfig libxrender dbus
+devbase=qutebrowser
+devdeps=libtasn1 gmp e2fsprogs glu glib:bin gobject-introspection gcc:lib
+guix shell -CNF $deps $otherdeps -D $devbase $devdeps --preserve='^QT_DEBUG_' --preserve="^QT_QPA_PLATFORM" \
+    --preserve='^DISPLAY$' --preserve='^XAUTHORITY$' --preserve='^DBUS_' \
+    --share=$XAUTHORITY --share=/sys/dev --share=/sys/devices --share=/tmp \
+    --expose=/dev/dri --expose=/var/run/dbus \
+    -- ./raise3d/AppRun
+#+end_src
+
+****** TODO configure LD_LIBRARY_PATH to allow the app to run using its own binaries
+
+*** Extract the contents
+
+Run the appimage with =--extract-contents=.
+
+*** Extract and run in place
+
+#+begin_src bash
+# thanks to #nonguix irc channel for the help
+deps=libsm sqlite libgpg-error p11-kit
+otherdeps=
+devbase=ungoogled-chromium
+devdeps=libtasn1 gmp e2fsprogs glu glib:bin gobject-introspection gcc:lib
+
+# thanks to #nonguix irc channel for the help
+guix shell -CNF $deps $otherdeps -D $devbase $devdeps --preserve='^QT_DEBUG_' --preserve="^QT_QPA_PLATFORM" \
+    --preserve='^DISPLAY$' --preserve='^XAUTHORITY$' --preserve='^DBUS_' \
+    --share=$XAUTHORITY --share=/sys/dev --share=/sys/devices --share=/tmp \
+    --expose=/dev/dri --expose=/var/run/dbus \
+#+end_src
+
+* Quick Rant
+
++ to find this list of packages used for guix shell above, look at
+  =./gnu/system.scm= in the guix project
   - find the definitions for =%base-packages= and infer
   - if you're confused about what to include, think of a programming
     project/language that definitely "has it", whatever it is you need
@@ -175,12 +262,3 @@ I always forget about this method. It's seriously handy.
       code /is/ documentation ... especially the tests.
 
 ... okay, rant over.
-
-** Provide needed dynamic libs
-
-GNU C removed libpthreads recently, so i may need a specific Guix profile.
-
-+ Stated more precisely,
-  [[https://sourceware.org/pipermail/libc-alpha/2021-August/129718.html][libpthreads
-  and libdl were integrated into the glibc project]], which is why it's tough
-  to find definite references to these symbols in the Guix project.
