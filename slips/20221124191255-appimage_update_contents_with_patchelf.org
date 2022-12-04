@@ -18,6 +18,9 @@ is closed, i.e. making it simple for distributions other than the jurassics.
   processing, etc.
   #+end_quote
 
+This reddit post [[https://www.reddit.com/r/GUIX/comments/y4a7o2/fhs_container_support_merged/][FHS container support merged!]] contains more info on how to get
+appimages to run.
+  
 * On Guix
 
 This requires patching some of the bundled' contents with =patchelf=. See
@@ -32,14 +35,14 @@ This is a type2 non-ISO9660 appimage.
   which is why the [[https://github.com/mamut-m/blender_notebook][mamut-m/blender_notebook]] jupyter kernel blows up (AFAIK).
 
 #+begin_src bash
-# define $IDEAMAKER
+# define $ideamaker
 # load guix devdebug profile
-file -k $IDEAMAKER
+file -k $ideamaker
 #+end_src
 
 #+RESULTS:
 #+begin_src bash
-$IDEAMAKER: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.32, BuildID[sha1]=41b865b367a5540cb273cc842bbeaf6a707810d9, stripped\012- data
+$ideamaker: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, for GNU/Linux 2.6.32, BuildID[sha1]=41b865b367a5540cb273cc842bbeaf6a707810d9, stripped\012- data
 #+end_src
 
 This step is only required when using the Nixos =appimageTools.wrapType2= tools.
@@ -47,12 +50,12 @@ This step is only required when using the Nixos =appimageTools.wrapType2= tools.
 ** Probe the binary
 
 #+begin_src bash
-# define $IDEAMAKER
+# define $ideamaker
 # load guix devdebug profile
-patchelf --print-interpreter $IDEAMAKER
-patchelf --print-rpath $IDEAMAKER
-patchelf --print-soname $IDEAMAKER
-patchelf --print-needed $IDEAMAKER
+patchelf --print-interpreter $ideamaker
+patchelf --print-rpath $ideamaker
+patchelf --print-soname $ideamaker
+patchelf --print-needed $ideamaker
 #+end_src
 
 + interpreter :: /lib64/ld-linux-x86-64.so.2
@@ -95,14 +98,32 @@ files. In this case, =elf-mode= is not super-useful as it only lists the
 
 ** Extract the contents
 
-Run the appimage with =--extract-contents
+Run the appimage with =--extract-contents= or see the above reddit post for
+instructions. The appimage offset is needed:
+
+#+begin_src bash
+# from the appimage directory
+manifest=~/.config/guix/manifests/raise3d.scm
+appimageoffset=$(guix shell --container --emulate-fhs --network --preserve="^DISPLAY$" -m $manifest -- ./$ideamaker --appimage-offset)
+#+end_src
+
++ The binaries in the app will need to be patched with =patchelf=.
++ =LD_LIBRARY_PATH= and =LIBRARY_PATH= will need to be set appropriately
++ You may need development inputs for some packages. If so, use =guix shell -D=
+
+#+begin_src bash
+# thanks to #nonguix irc channel for the help
+guix shell -CNF --preserve='^QT_DEBUG_' libsm sqlite libgpg-error p11-kit -D ungoogled-chromium libtasn1 gmp e2fsprogs glu glib:bin gcc:lib --preserve='^DISPLAY$' --preserve='^XAUTHORITY$' --preserve='^DBUS_' --share=$XAUTHORITY --share=/sys/dev --share=/sys/devices --share=/tmp --expose=/dev/dri --expose=/var/run/dbus -- ./$ideamaker --appimage-extract-and-run
+#+end_src
+
+***** TODO configure LD_LIBRARY_PATH to allow the app to run using its own binaries
 
 ** Patch the Binary
 
 #+begin_src bash
 # define ideamaker
 interpreter=$GUIX_DEVTOOLS/lib/ld-linux-x86-64.so.2
-patchelf --set-interpreter $IDEAMAKER
+patchelf --set-interpreter $ideamaker
 #+end_src
 
 *** Use Guix-Shell Instead
