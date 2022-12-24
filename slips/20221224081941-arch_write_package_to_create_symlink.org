@@ -1,0 +1,122 @@
+:PROPERTIES:
+:ID:       1c58feee-cb85-4628-890b-8cd86d0ce338
+:END:
+#+TITLE: Arch: write package to create symlink via systemd service
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
+* Docs
++ [[https://wiki.archlinux.org/title/PKGBUILD][PKGBUILD]]
++ [[https://wiki.archlinux.org/title/makepkg][makepkg]]
+
+This is based on a [[https://serverfault.com/questions/779634/create-a-directory-under-var-run-at-boot][s/o answer]] ... but it isn't really the proper way to handle
+the problem I'm having, but it'd be nice to have a complete start-to-finish
+description for packaging a helloworld service on some arbitrary systemd-linux.
+
+* Resources
+
+** Packaging
++ pkgtools :: run [[https://github.com/Daenyth/pkgtools/blob/master/scripts/newpkg][newpkg]] with options to create the PKGBUILD
+  - place config in =~/.pkgtools=
+  - see [[https://github.com/Daenyth/pkgtools/blob/master/other][other]] for info on extending behavior
+  - newpkg sets =COPIES= to specify files to copy into the package
+  - newpkg sets =MODIFICATIONS= to specify modifications to make
+  - newpkg sets =ACTIONS= and specify modular actions with =-a --action=
+  - newpkg uses =-P --preset= to use a configured package preset
+  - use =-ve= for verbose messages and to invoke =$EDITOR= after code generation
+
++ fakepkg :: customize an existing package by reassembling it from the
+  filesystem. this requires an existing pacman package to cross-reference.
++ [[https://gist.github.com/Earnestly/bebad057f40a662b5cc3][A brief tour of the makepkg process]]
+
+** SystemD
+*** [[https://www.freedesktop.org/software/systemd/man/tmpfiles.d.html][tmpfiles.d]]
++ Run =systemd-analyze cat-config tmpfiles.d= to see the total current config for
+  systemd services ... very useful, this is...
+*** Instancing
++ Running =find /usr/lib/systemd -name "*@*" will list all the systemd template files
++ These are definitions of services that can be instanced (via the =%i= parameter)
+
+* Notes
+
+Run =pacman -Syu yay base-devel= and =yay -Syu pkgtools=
+
+** Use tmpfiles.d to create files
+
+Running =systemd-analyze cat-config= indicates:
+
++ subdirectories need to be specified
++ files are created in tandem with service management (e.g. services not running
+  on my system have files in a state of non-existence)
+  - i could be wrong. the temporary files are managed by
+    =systemd-tmpfiles-setup.service=
+
+#+begin_src text :tangle (concat (getenv "HOME") "/build/mytmplinks/mytmplinks.conf") :mkdirp t
+#Type Path        Mode User Group Age Argument
+d     /run/current-system/ 0755 root wheel 10d -
+d     /run/current-system/profile 0755 root wheel 10d -
+d     /run/current-system/profile/lib 0755 root wheel 10d -
+L     /run/current-system/profile/lib/somelib.so - - - - /usr/lib/somelib.so
+#+end_src
+
+** Create a systemd config
+
+Run =sudo systemctl edit --force --full mytmplinks= to create/edit a new systemd
+config
+
+#+begin_src conf :tangle (concat (getenv "HOME") "/build/mytmplinks/mytmplinks.service") :mkdirp t
+[Unit]
+Description=Mytmplinks Service
+After=network.target
+
+[Service]
+Type=simple
+#ExecStartPre=-/usr/bin/mkdir /home/dc/builds
+#ExecStart=/usr/bin/chown myuser:myuser /home/dc/builds
+Restart=on-abort
+
+[Install]
+WantedBy=multi-user.target
+#+end_src
+
+** Write the package
+
+Run newpkg
+
+#+begin_src sh
+# add_copy $from $to
+mypkgname=mytmplinks
+newpkg -a "add_copy $mypkgname.service /etc/systemd/system/$mypkgname.service" \
+    -a "add_copy $mypkgname.conf /etc/tmpfiles.d/$mypkgname.conf" \
+    $mypkgname
+#+end_src
+
+#+RESULTS:
+
+*** TODO read the pkgtools docs
+
+* Ranty Notes
+
+I guess =pkgtools= is a punny spin on SlackWare's =pkgtool=. Slackware also has
+a =makepkg= command, but i guess the irony here is that while arch has
+=pkgtool(s), plural= absolutely no one has used a package templating system or
+cares to elaborate on whatever secret greybeard black magic is used to make
+things like this more sufferable.
+
+Ruby had =hoe= and every language or packaging system should have something that
+makes the boilerplate a little less "OWW HOT STOVE. I'LL NEVER DO THAT AGAIN."
+
+It really seems like keeping the old magick from us plebs is like the open
+source "street-cred" equivalent to job-security. Why is it that there is so much
+generic information about linux, but when you start figuring out how to use it,
+you realize that no one really talks about /specific applications/ of unix
+philosophy? Like the obvious things you'd do if you could get things done?
+
+OK, I'm /trying/ to be funny /and/ critical ... but YAY is not even on the
+pacman archwiki pages. And what is someone who is socially isolated who doesn't
+live in an urban area supposed to fucking do to learn the magic =archlinux
+package metaprogramming incantations=? There are plenty of package management
+tools ... but:
+
+When =1+1 <> 2=, something ain't right. It is a dead giveaway when the obvious
+solutions to obvious problems are not made plain.
