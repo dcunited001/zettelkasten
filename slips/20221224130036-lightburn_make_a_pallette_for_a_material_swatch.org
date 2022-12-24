@@ -1,0 +1,203 @@
+:PROPERTIES:
+:ID:       23af119f-0f67-4032-88a4-8d080698e5a5
+:END:
+#+TITLE: Lightburn: make a pallette for a material swatch
+#+CATEGORY: slips
+#+TAGS:
+
+** USB-570
+
+*** Tasks
+
+**** TODO Laser Axis Origin is back-right
+
++ [ ] either adjust lightburn machine defaults or configure the laser
+
+** Materials
+
+*** Birch Plywood
+
+**** Home Depot 1/4"
+
+Engraving
+
+|-------+-------+--------------------|
+| speed | power | effects            |
+|-------+-------+--------------------|
+|   500 |    10 | nothing            |
+|       |    20 | basically nothing  |
+|       |    30 | starts to show     |
+|       |    40 | starts to burn     |
+|       |    50 | burning noticeable |
+|   400 |    10 |                    |
+|       |    20 |                    |
+|       |    30 |                    |
+|       |    40 | probably too much  |
+|       |    50 |                    |
+|   300 |    10 |                    |
+|       |    20 | barely showing     |
+|       |    30 |                    |
+|       |    40 |                    |
+|       |    50 |                    |
+|   200 |    10 |                    |
+|       |    20 | finally noticeable |
+|       |    30 |                    |
+|       |    40 | too hot      |
+|       |    50 |                    |
+|   100 |    10 |                    |
+|       |    20 |                    |
+|       |    30 |                    |
+|       |    40 |                    |
+|       |    50 |                    |
+|-------+-------+--------------------|
+
+Cutting
+
+
+|-------+-------+---------|
+| speed | power | effects |
+|-------+-------+---------|
+|     4 |    20 |         |
+|     6 |    30 |         |
+|     8 |    40 |         |
+|    15 |    40 |         |
+|     2 |    10 |         |
+|-------+-------+---------|
+
+
+** Laser Cutting
+
+
+** Lightburn
+
+
+
+
+*** Easel
+
++ size: 600x460
+
+*** Colors
+
+From [[https://forum.lightburnsoftware.com/t/how-to-export-the-color-palette-from-lightburn-into-my-drawing-program/1828][this post]]
+
+#+BEGIN_QUOTE
+1: 000000
+2: 0000FF
+3: FF0000
+4: 00E000
+5: D0D000
+6: FF8000
+7: 00E0E0
+8: FF00FF
+9: B4B4B4
+10: 0000A0
+11: A00000
+12: 00A000
+13: A0A000
+14: C08000
+15: 00A0FF
+16: A000A0
+17: 808080
+18: 7d87b9
+19: BB7784
+20: 4A6FE3
+21: D33F6A
+22: 8CD78C
+23: F0B98D
+24: F6C4E1
+25: FA9ED4
+26: 500A78
+27: B45A00
+28: 004754
+29: 86FA88
+30: FFDB66
+
+T1: ??
+T2: ??
+#+END_QUOTE
+
+#+BEGIN_SRC emacs-lisp :results file :file ./img/svg/palette.svg
+
+    (setq lightburn-palette
+	  '(
+	    "#000000"
+	    "#0000FF"
+	    "#FF0000"
+	    "#00E000"
+	    "#D0D000"
+	    "#FF8000"
+	    "#00E0E0"
+	    "#FF00FF"
+	    "#B4B4B4"
+	    "#0000A0"
+	    "#A00000"
+	    "#00A000"
+	    "#A0A000"
+	    "#C08000"
+	    "#00A0FF"
+	    "#A000A0"
+	    "#808080"
+	    "#7d87b9"
+	    "#BB7784"
+	    "#4A6FE3"
+	    "#D33F6A"
+	    "#8CD78C"
+	    "#F0B98D"
+	    "#F6C4E1"
+	    "#FA9ED4"
+	    "#500A78"
+	    "#B45A00"
+	    "#004754"
+	    "#86FA88"
+	    "#FFDB66"))
+
+      (let* ((img-file "./inkscape-swatch")
+	     (padding 3)
+	     (margin 10)
+	     (sample-width 10)
+	     (sample-height 10)
+	     (sample-rows 6)
+	     (sample-columns 5)
+	     (img-width
+	      (+ (* sample-columns
+		    (+ sample-width (* 2 padding)))
+		 (* 2 margin)))
+	     (img-height
+	      (+ (* sample-rows
+		    (+ sample-height (* 2 padding)))
+		 (* 2 margin)))
+	     (svg-swatch (svg-create img-width img-height
+				     :background "#FFFFFF"
+				     :foreground "#000000")))
+    ;; for the first 5 rows & 5 columns, output colors 2-26
+
+    (let ((row 0))
+    (cl-loop for col from 0 to 4
+    do (svg-rectangle
+				 svg-swatch
+				 (+ margin padding (* col (+ sample-width (* 2 padding))))
+				 (+ margin padding (* row (+ sample-height (* 2 padding))))
+				 sample-width
+				 sample-height
+				 :fill-color "#FFFFFF"
+				 :stroke-width 1
+				 :stroke-color (nth col lightburn-palette))))
+	(cl-loop for row from 1 to 5
+		 do (cl-loop for col from 0 to 4
+			     do (svg-rectangle
+				 svg-swatch
+				 (+ margin padding (* col (+ sample-width (* 2 padding))))
+				 (+ margin padding (* row (+ sample-height (* 2 padding))))
+				 sample-width
+				 sample-height
+				 :fill-color (nth (+ (* row sample-columns) col) lightburn-palette))))
+
+    ;; for the last row, output 5 unfilled rectangles
+
+	(image-property (svg-image svg-swatch) :data))
+
+#+END_SRC
+
+#+RESULTS:
+[[file:./img/svg/palette.svg]]
