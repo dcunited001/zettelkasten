@@ -6,10 +6,18 @@
 #+TAGS:
 
 * Roam
++ [[id:ca4b43cc-90fb-4434-9bca-5d43e28b00ae][blender: build on garuda archlinux]]
++ [[id:8b93d9a6-746f-4480-8ef5-45310e03b783][Fedora: setup AMD gpu for blender/tensorflow]]
 
 * Docs
 
 * Resources
+
+* Topics
+
+** Data Science
+
++ [[https://github.com/cupy/cupy/wiki/Projects-using-CuPy][Projects Using CuPy]]
 
 * Issues
 
@@ -26,8 +34,61 @@ see [[https://github.com/pjotrp/guix-notes/blob/master/PYTHON.org#isolated-modul
 ** Packages
 
 *** Builds
-**** SciPy/[[https://cupy.dev/][CuPy]] with AMD Rocm
 
-install =cupy-rocm-5.0= after setting up drivers in arch
++ [[https://pip.pypa.io/en/stable/reference/build-system/pyproject-toml/][pyproject.toml]]
 
-***** TODO rebuild cupy passing =CUDA_HOME= to pip ([[https://docs.cupy.dev/en/stable/install.html#environment-variables][cupy docs]])
+*** Pip Commands
+**** TODO determine how to check whether wheel/sdist would be installed
+
+... probably almost always, if it's a popular package. The commands =pip index=
+and =pip cache= may help.
+
++ [[https://realpython.com/python-wheels/][What are python wheels and why should you care?]]
+  - you should probably care if you have a decent machine
+
+#+begin_example shell
+$ time python -m pip install \
+      --no-cache-dir \
+      --force-reinstall \
+      --no-binary=:all: \
+      cryptography
+#+end_example
+
+***** Ensure python's pip is running with =python -m pip=
+
+yeh, noob here
+
+**** Parallel Builds
+
+pip does some parallelism by default, but i'm not sure what
+
++ [[https://pythonspeed.com/articles/faster-pip-installs/][Making pip installs a little less slow]]
+
+*** Data Science
+**** SciPy/[[https://cupy.dev/][CuPy]] with AMD [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Rocm]]
+
++ setup drivers in arch
+  - =yay -Syu openblas-lapacksudo  opencl-amd-dev=
+  - this installs all the ROCm, HIP and miopen packages
++ install scipy and numpy
++ install =cupy-rocm-5.0= by [[https://docs.cupy.dev/en/stable/install.html#building-cupy-for-rocm-from-source][building from source]]
+  - ensure environment is set ([[rocm-opencl-runtime][install instructions]])
+
+#+begin_example shell
+export CUPY_INSTALL_USE_HIP=1
+export ROCM_HOME=/opt/rocm
+export HCC_AMDGPU_TARGET=gfx906
+
+# pip install cupy-rocm-5. # specify ???
+
+# instead run
+pip install --no-cache-dir --force-reinstall --no-binary=:all: scipy numpy
+pip install --no-cache-dir --no-binary=cupy cupy
+#+end_example
+
+The last option =--no-binary=:all:= is probably overkill
+
+***** DONE rebuild cupy passing env vars to pip ([[https://docs.cupy.dev/en/stable/install.html#environment-variables][cupy docs]])
+CLOSED: [2022-12-15 Thu 00:56]
+
+**** Numba (LLVM JIT compiler, eats python & returns CUDA)
