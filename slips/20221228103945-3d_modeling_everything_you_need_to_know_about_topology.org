@@ -1,0 +1,195 @@
+:PROPERTIES:
+:ID:       35da03b5-7810-40fc-ac9a-f7ae2ef06190
+:END:
+#+TITLE: 3D Modeling: Everything you need to know about topology
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
+
+
+* Resources
+Main source [[https://www.youtube.com/watch?v=6Kt0gW3_kio][Everything you need to know about topology]].
+
+* Notes
+
+** Production
+*** High poly models
++ where polycount doesn't matter
++ used when shaping/sculpting
++ the CPU is your limit (and sometimes GPU)
++ tools like ZRemesher help (but also others)
+  + bonus points for CGAL routines
+
+
+
+** Modeling
+*** Polycount
+Balance the optimization of these categories (at the expense of the others):
+
++ deformations
++ consistent silhouettes
+  - hmmm ... how to state as a literal optimazation problem?
++ detail (usually gets axed first)
+
+*** Primatives
+
+Technically, the vertex ids, their edges and faces are just a subset of the
+powerset of vertices.... which blew my mind earlier: [[https://github.com/otherlab/perturb][A deterministic
+pseudorandom symbolic perturbation scheme for arbitrary polynomial predicates]]
+... still not sure how to connect all the pieces there.
+
+**** Just use quads
+
++ if the mesh is going to be re-edited, the model should be quads (mostly), so
+  it should be quads anyways.
+  - your modelers/sculpters and also animators will ... umm be happy? they
+    should be creating these anyways.
+  - At the output of the asset pipeline, the meshes/textures/assets will be
+    built to many others so game can adapt asset-loading to CPU/GPU resources
+    limitations. at this point, it may convert to triangles
++ quads deform more predictably
+  - they also subdivide more predictably. as the mesh gets reworked, it will
+    continue to function as expected: editing, animating, rendering, etc
+  - some mesh boundaries make triangles necessary.
+    - these can be hidden, which influences mesh subdivision a bit like compiler
+      hinting, if you can manage to persist the location of the trianguled
+      regions
+
+**** Is there such a thing as...
+
+interlaced hexagons? or interlaced polygons. this would be nightmare
+
+*** Base Meshes
+This is your level one mesh. subdivide to get to further levels of detail.
+
++ multires helps manage this and the more scultpable meshes
+  - but these need to be set up and thought out.
++ bash meshes can/should be modular where possible
+  - addons/assets probably help
+
+*** Joints
+
+Moving in one DoF should have a grid that moves like a "bendy straw".
+
++ The laplacian of expected potential movement should convey the density of
+  quads necessary. this is fairly simple with the elbow, not so much with the
+  shoulder.
+  - the shoulder is a large/complicated deformation zone (also complicated
+    anatomically)
+
+*** Poles
+
+The pole positions need to be strategically placed.
+
++ poles can be collapsed or split.
+  - splitting poles help manage mesh deformations, but may make textures slip.
+  - poles can also be anchored or held in place (not sure of feature names)
+  - tension can be relieved in the mesh by adding poles
++ Typically, try to minimize poles and move them to fix positions
+  - near nexus of tendons or a place where textures shouldn't move much during
+    animations.
+
+**** Number of poles
++ the number of poles is correlated to the number of holes
+  - but they can also become necessary with greater $\Delta K$ (w.r.t. space;
+    summing curvature across local vertices and renormalizing for vertex
+    curvature contributions)
+  - that is, where there is more change in convexity/concavity or where there
+    are a lot of saddle points, the area needs a high number of quads or poles
+    (really it will need both)
++ The number of poles /should/ arise from the number of zeros in $\nabla K$
+  where K is the curvature.
+  - i'm not 100% sure that this is a great definition
+  - however, there is a ton of flexibility here. there should be some "euler's
+    formula magic" ....
++ a good way to figure out where the poles will be be is to look for holes
+  (eyes, nose, ears mouth, etc).
+  - find holes that correspond to these (they could be missing/moved)
+  - then connect the dots, imagine a mesh and subdivide it. there should be
+    holes near the midpoints.
+  - You may continue for another iteration, but it is better to move the poles
+    to specific places.
+
+***** Assymetry/Symmetry
+
+Meshes will deform better when they're quads. there should be 4 edges centered
+on the vertex (for a grid stretching across a serface)
++ the intersections running through each vertex will cause the vertex to
+  typically deform orthogonally to these lines (if the mesh is well designed)
++ for a pole with an odd number of edges :: there can be no symmetry in its
+  movement and its "tension" isn't well dispersed through to the adjacent
+  vertices
++ with four edges :: it is possible for all of the deformation to be
+  entirely along its edges (for a single vertex in a quad lattice)
+  - obviously that's not what happens in practice.
+  - also, the curvature determines the sum of angles connecting to a vertex
++ with more than four edges :: it's
+
+**** The n-star brow
+
+In the base mesh demonstrated, there were 6 poles around the brow. this is an
+exception of sorts, where we need to consider the $\Delta K$ or the laplacian of
+curvature (w.r.t. time, as the mesh moves).
+
+There could be just three poles with one at the third eye. however, this will
+anchor the mesh's texture here when it moves.
+
+**** Deformation zones
+
+Each deformation zone should be filled by a grid. This helps maintain the
+apparent curvature through deformations in animations.
+
+**** Curvature
+
+Without intervention from software/designer, the poles arising from changes in
+curvature should naturally be placed at a point where the change in curvature
+itself changes sign.
+
+#+begin_quote
+This requires variation calculus. Gauss's theorema egregia may be helpful, but
+probably not since most people would say "you can't do calculus on that" ...
+okay, maybe most people would not say that
+#+end_quote
+
++ poles arising form topological features (holes) should also find themselves in
+  the areas where $\nabla K$ changes sign.
+
+** Anatomy
+
+When balancing polycount and poles for a mesh, it's very helpful to consider
+where attention will be focused.
+
++ For attention/focus to follow animations, deformed textures need to be rooted
+  in something fixed
+  - textures that slip in the wrong places will be distracting
+  - human visual attention focused on /perceiving movement/ also needs to be
+    grounded in what is /not moving/ to parse efficiently.
+    - here, i mean movement on the surface.
+
++ muscles :: mesh will move outwards/inwards, orthogonal to the muscle, if it's
+  really visible through the skin
+  - volume will somewhat be preserved
+    - i think the current approach to 3D modeling will not last forver: there's
+      no concept of mass/volume/energy/macrostructure inherent in a mesh.
++ tendons/ligaments :: the closer to the bone you are (as long as you're not
+  close to other muscles), then there should be less movement in the
+  mesh/texture
+  - some exceptions: fingers/hands
++ wrinkles :: these are visual cues to habits of motion/strain
+  - meshes/textures spread out orthogonally to wrinkles which should accomodate
+    the motion (to a point)
+  - crow's feed occur in the high-deformation zones. poles should be avoided here.
+
+* Other Ideas
+
+** Socializing the process
+
+Your workflow needs to eventually fit into a team. If various roles on the team
+can't understand what you're doing with models or pick up your work with minimal
+friction, it makes things tough.
+
++ Sculpting seems fairly easy (at least at first) ... however, it's got to be
+  tough maintaining consistency with virtual clay. There are a lot of potential
+  traps, especially when someone else picks up your work.
+  - it would seem that using clay too early (if you're naive) is a trap
+  - then again, i haven't used multires
