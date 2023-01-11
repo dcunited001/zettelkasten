@@ -1,0 +1,181 @@
+:PROPERTIES:
+:ID:       be2b1f87-1128-4c75-9f8c-a6aa561a180b
+:END:
+#+TITLE: Arch: transition from VM to LUKS-encrypted bare metal
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:80ccbcbb-a244-418f-be86-47e8969928a5][LUKS]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
+
+See bootloader/luks for resources on grub.
+
+
+This is definitely not the /proper/ way to do backups, get disk images or
+migrate to bare-metal or foreign VM, but with a limited set of VM's on a single
+Proxmox node, it should be fine.
+
+* Backup Data
+
+An alternative: do a full backup in proxmox and then sort out the the disk
+iamges later. This is more direct, but depending on your hardware/schedule, can
+be a bit of a PITA.
+
+** Get a backup of the VM configurations
+
+This isn't a full backup of the Proxmox config, but it should work as
+documentation.
+
+Copy =/etc/pve/qemu-server/123.conf= for each VM. These should be fairly
+standard Qemu definitions, but will likely take some tweaking to get functional
+on the next host.
+
+Refer to [[https://pve.proxmox.com/pve-docs/pve-admin-guide.pdf#subsection.6.4.1][Proxmox Docs 6.4.1]] for a full list of config files of interest.
+
+** Get the backup disk online
+
+To make a disk available to the VM -- without changing the VM definition and
+with minimal VM host restarts -- it's easiest to use a SATA-to-USB adapter.
+
+Connect the adapter with disk to the system
+
+#+begin_example shell
+lsusb # to get the USB ID
+qm set 123 -usb3 host=AUSB:ID12
+#+end_example
+
+Then make sure the USB disk is available.
+
+** Create partitions on the backup disk
+
++ Use =cfdisk -z /dev/sdX= to create a new partition table.
++ create new partitions for each partition you are backing up.
+  - you'll want to match the byte size exactly
+  - or include more disk than necessary and plan to resize each filesystem later.
+
+** Get disk images
+
++ Boot the proxmox vm, but setup a linux ISO to be loaded instead
++ identify the partitions/volumes you want to save
++ Use =dd= to pull data off the guest VM.
+
+* Migrate to Bare Metal
+
+Run an ISO of the linux distribution you're migrating to.
+
+** Create a new Partition Table
+
+Use =cfdisk -z /dev/sdX= again to create a new partition table.
+
+If all the volumes are going inside the new installation
+
+** Create a LUKS container with an LVM inside
+
++ If you use the cryptsetup defaults, it will create a =LUKS2= partition
+  - and this may complicate things
++ if less options at boot make sense, then systemd-boot may work out and this
+  handles LUKS2 fine.
+
+** Chroot to update the installation with the new disk layout
+
+Here, you'll have special concerns if you have things like btrfs/snapshots
+running or int. Use =garuda-chroot= if on garuda.
+
++ =emacs -nw= with =C-z= and =fg= helps to work multiple tasks/files at once.
+
+*** Update Grub
+
+**** Update =/etc/defaults/grub=
+
+Ensure =/etc/defaults/grub= contains the =cryptdevice= and =root= kernel parameters:
+
+#+begin_example shell
+GRUB_CMDLINE_LINUX="cryptdevice=UUID=$uuid:cryptlvm" root=/dev/volgroup/root"
+#+end_example
+
++ The format of the cryptdevice parameter =cryptdevice=device:dmname:options= can
+  be found in this [[https://wiki.archlinux.org/title/Dm-crypt/System_configuration#cryptdevice][Archwiki]].
+  - The =$uuid= should reference the UUID returned by =blkid -s UUID -o value $disk=. This
+    should be for the encrypted disk that contains the root volume.
++ The format of =root=/dev/volgroup/root= specifies =/dev/$lvmid/$lvmroot=
+
+**** Check =/etc/mkinitcpio.conf=
+
+Ensure =encrypt= module is loaded before =filesystems= module.
+
+#+begin_example shell
+HOOKS="... encrypt lvm2 filesystems ..."
+#+end_example
+
+
+**** Run =grub-install= and =update-grub=
+
+**** Check grub's generated configs in =/boot/grub=
+
+*** Change to Systemd Boot
+
+Running into LVM2/LUKS2 issues with Grub.
+
+**** Setup Mkinitcpio
+
++ plymouth => sd-plymouth
++ keymap => sd-vconsole
++ encrypt => sd-encrypt
++ udev => systemd
+
+#+begin_example shell
+HOOKS=(base systemd ... sd-vconsole ... sd-plymouth sd-encrypt lvm2 filesystems...)
+#+end_example
+
+**** Update grub-specific hooks
+
+If these are overwritten or if the hooks run, then boot will eventually fail
+
+#+begin_example shell
+ln -s /dev/null /etc/pacman.d/hooks/20-os-prober.hook
+ln -s /dev/null /etc/pacman.d/hooks/98-update-grub.hook
+ln -s /dev/null /etc/pacman.d/hooks/grub-initrd-generation-fix.hook
+#+end_example
+
+**** Install bootctl
+
++ Run =bootctl install=
+
+**** Customize Loader conf
+
++ copy =/usr/share/systemd/bootctl/arch.conf= to =/boot/efi/loader/entries=
+
+Edit =arch.conf=
+
+#+begin_src conf
+title Arch Linux
+linux /vmlinuz-linux-zen
+initrd /amd-ucode.img
+initrd /initramfs-linux.img
+options cryptdevice="UUID=$uuid:cryptlvm" root="/dev/$volgroup/root" rootflags="subvol=@" rw loglevel=3
+#+end_src
+
+**** Move =/boot/efi= to =/boot=
+
+The EFI partition needs to contain the =vmlinux-*= and =*.img= files, according
+to [[https://bbs.archlinux.org/viewtopic.php?id=257826][this post]]:
+
+#+begin_example org
++ Unmount EFI from /boot/efi
++ Mount EFI to /boot
++ Change entry in /etc/fstab
++ bootctl install
++ Verify contents of /boot folder
+#+end_example
+
+Check the =systemd-boot= installation with =bootctl status=
+
+**** After successful boot, setup hooks
+
+install =systemd-boot-pacman-hook=
+
+****
