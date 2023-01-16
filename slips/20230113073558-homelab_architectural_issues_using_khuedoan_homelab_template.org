@@ -1,0 +1,115 @@
+:PROPERTIES:
+:ID:       dbf4ceec-4f7e-4f4c-a656-565745793f9e
+:END:
+#+TITLE: Homelab: architectural issues using khuedoan/homelab template
+#+CATEGORY: slips
+#+TAGS:  
+
+
+
+* Roam
+* Docs
+* Resources
+* Issues
+
+
+I'm glad I that I stumbled on your project. I searched for 'git homelab' looking
+for something smaller than Gitlab that doesn't practically require k3s. I am
+writing these questions as I'm looking through the code. If you can answer
+anything at all, that would be very helpful. I don't have very much access
+except Youtube/IRC for help.
+
+There are a few essential services that I would like to separate out from
+k3s/container hosting or at least have them on a separate cluster: e.g. git,
+logging, networking, DNS, vault, etc. Some of these can survive by assuming that
+volumes/partitions will survive a reinstall, but this requires a system ISO to
+be
+
+I keep running into chicken and egg problems involving containers, networking
+and automation.
+
+
+## Questions
+
+### CoreOS
+
+I'm reading through the commits where CoreOS was removed. Do you know offhand
+what may be needed to build CoreOS images with ignition to be served via PXE?
+
+### Data/Volumes
+
+Like I said, I don't have too much experience with devops. My network topology
+doesn't support TrueNAS or things like CephFS and I want the PXE to be on a
+specific subnet.
+
+I know I can create ISO's to be served with PXE that can mount volumes with
+data.
+
+#### Mirrors/Repositories
+
+I'm already hosting a Docker repository, so I can update from behind a firewall
+without a proxy. While it is premature optimization, I don't see any simple way
+of making use of a firewall and automated updates. I'm planning on hosting an
+RPM mirror anyways.
+
+Would I have to update the Fedora Images to point to a mirror?
+
+### IPv6
+
+
+### Certificates
+
+
+## My Setup
+
+For my desktops/laptops, I use Guix built with a fork of
+[daviwil/dotfiles](https://github.com/daviwil/dotfiles) for configuration. I'm
+planning on moving to Guix home for user services.
+
+### Use Case
+
+- git hosting
+- VPN
+- 2FA/SSO
+- network automation
+- Guix channel (packages, services and guix home)
+- build automation (Blender/FreeCAD)
+- compute nodes for ML & jupyter
+- Secrets and Certificate Management
+
+### Hardware/Storage
+
+I have about 7 small x64 computers with 4 cores each, a cisco switch and a
+20-core dell poweredge with a +2TB of SSD's and HDD's that I plan on using for
+proxmox. One of the x64's is used for
+
+- The dell is the only device with 10 Gb/s networking (+ 4x 1000Mb/s ethernet),
+  but if one cluster's control plane's nodes are hosted there, I'm interested in
+  using eBPF if possible on Proxmox. I don't care about HA for now. That should
+  improve I/O, network and perhaps storage issues.
+- There are three small x64's that can be used as: worker nodes for the first
+  cluster, a secondary bare-metal cluster or they can be split off into a misc
+  linux nodes elsewhere.
+
+### Guix on the Network
+
+There are a few things that are tough with Guix, though if I could get around
+them, then I would much rather have the declarative config with emacs/paredit.
+
+- any hosts that require microcode will require a few cycles of updating system
+  configuration and reserving images through PXE. Guix can produce netboot ISO's
+  but i haven't tried it ........ depends on NFS?
+- i would need to convert Nix's k3s packages to Guix or distribute the binary on
+  my home network somehow, which inhibits updates.
+- I can't easily anticipate where I'll encounter problems that require
+  `patchelf` (so far only for proprietary software: matlab, 3D printing
+  appimages and julia with 64-bit blas & minishift)
+- As long as I get things running in containers on Guix, it should be fine, but
+  if I run into weird kernel incompatibility issues (between `containerd` on
+  Guix and guest containers) ... that's not a rabbit hole I'd like to go down
+  alone.
+
+Even with all the potential issues, I would much rather build on Guix. I already
+use emacs/org and consolidating on the host tools I need to support would help
+considerably, though I'll still need to use standard tools inside
+containers/VM's

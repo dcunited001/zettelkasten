@@ -69,6 +69,77 @@
 + [[https://mfelsoci.gitlabpages.inria.fr/thesis/environment.html][Reproducible Thesis using GNU Guix & Org Mode]]
 + Guix HPC [[https://gitlab.inria.fr/guix-hpc/website/-/blob/master/drafts/activity-report-2021.md][Activity Report 2021]]
 
+* Code
+
+Apparently you can create a uboot image that runs on NES.
+
+** Bootloader
+
+*** ./gnu/bootloader.scm
++ all-modules
++ bootloader-modules
++ efi-bootloader-chain
+  - assembles the final-bootloader
+  - can include files
+  -
++ efi-bootloader-profile
+  - derivations built into a profile
+
++ records:
+  - bootloader
+  - bootloader-configuration
+
+*** ./gnu/bootloader/*.scm
+Contains code that processes bootloader packages to prepare for installation
+after derivation.
+
+*** Bootloader Packages
+**** ./gun/packages/bootloaders.scm
+Packages that build bins for bootloaders to install
+
++ make-grub-efi-netboot
+  - this demonstrates a gexp derivation that operates on a =grub-efi= package to
+    produce netboot *.efi artifacts.
+
+*** Making a diskless netboot image
+
+There are several points where boot/network could fail:
+
++ inconsistencies in the handoff between boot stages
++ [[https://wiki.gentoo.org/wiki/Diskless_nodes#Configure_diskless_networking][reconfiguration of network]] (without killing NFS connection)
++ inconsistent fstab or disk state
+
+Several artifacts would be produced:
+
++ potentially a iPXE/gPXE like config to instruct the client to run a binary
+  (and/or to provide m)
++ an image to serve via TFTP
++ a squashfs filesystem to serve via NFS
+
+This would require:
+
++ requires tweaking make-grub-efi-netboot or reimplementing a similar process to
+  produce the net variant of a bootloader.
++ if possible use squashfs instead of initramfs?
+  - this requires kernel modules & args
+  - this compresses as content is needed
+    - problems with hardlinked files?
++ at this point, device state needs to be persisted
++ a separate squashfs will need to be pulled from a server
+  - something besides NFS... though TFTP has size limitations
+  - The new RFC bumps the block size to 65464 from 512-8192, but getting these
+    sizes [[https://www.compuphase.com/tftp.htm][requires adjusting MTU]]. In theory, this would extend up to 4GB, but in
+    practice ~100MB is practical (from MTU-overhead=1468).
+  - gPXE supports HTTPS, but there's no Guix package for it
+  - a syslinux package exists, but there are similar problems. NFS may be necessary.
++ to assemble the filesystem image served from NFS(? i don't like NFS)
++ something like busybox =switch_root= is needed to create a new fileroot
+  - this will happen twice during boot, but the configuration to do so is split
+    into pieces.
++ device state needs to be checked/persisted
+
+  The [[https://forums.gentoo.org/viewtopic-p-8740753.html?sid=027c05e0bb657a0e26c7c0d2f74586e0][gentoo thread]] has many answers
+
 * Issues
 ** OS with custom locale and XKB keyboard
 ** .guix-profile vs .config/guix/current (s/o link)
