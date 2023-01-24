@@ -56,9 +56,13 @@ Download a similar ISO (Fedora 37 in this case). Once booted:
 + sfdisk
 + cfdisk
 + lsblk
++ cryptsetup (resize)
 + pvdisplay
 + pvresize
-+ cryptsetup (resize)
++ pvs/vgs/lvs
++
+
+
 
 
 ** Disk Layout
@@ -66,6 +70,10 @@ Download a similar ISO (Fedora 37 in this case). Once booted:
 *** Original
 
 Now I'm guessing that swap needs to be resized too ... hmmmm.
+
++ /dev/sda3 :: mapped as =cryptroot=
++ /dev/sdb1 :: mapped as =cryptdata=
++ /dev/sdd3 :: ampped as =newroot=
 
 #+begin_example
 sda              259:0    0  114.4G   0 disk
@@ -87,43 +95,100 @@ sdb              259:0    0   931.5G  0 disk
 Moving everything to a "500 GB" SSD under a single LUKS volume
 
 #+begin_example
-sdd              259:0    0  114.4G   0 disk
-├─sdd1           259:1    0   600M    0 part  /boot/efi
-├─sdd2           259:1    0   1G      0 part  /boot
-└─sdd3           259:2    0   116.8G  0 part
-  └─cryptlvm     254:0    0   116.8G  0 crypt
-    ├─cs-swap    254:1    0   7.8G    0 lvm   [SWAP]
-    ├─cs-home    254:1    0   39G     0 lvm   /home
-    ├─cs-root    254:2    0   70G     0 lvm   /
-    ├─cs-data    254:2    0   70G     0 lvm   /
+sdd              259:0    0  465.8G    0 disk
+├─sdd1           259:1    0   600M     0 part  /boot/efi
+├─sdd2           259:1    0   1G       0 part  /boot
+└─sdd3           259:2    0   464.2G   0 part
+  └─cryptlvm     254:0    0   464.2G   0 crypt
+    ├─cs-swap    254:1    0   7.8G     0 lvm   [SWAP]
+    ├─cs-home    254:1    0   39G      0 lvm   /home
+    ├─cs-root    254:2    0   70G      0 lvm   /
+    ├─cs-data    254:2    0   100%FREE 0 lvm   /data
 #+end_example
 
+
 ** Resize old LUKS
+
+*** Resize Ext4
 
 Easy enough. Check partition layout with =cfdisk=
 
 ExtFS needs to be checked first ... just in case?
 
 #+begin_src bash
-e2fsck -f /dev/mapper/cryptdata
+e2fsck -f /dev/mapper/cryptroot
 #+end_src
 
 Resize to the new extents. =cfdisk= can also do a pretty good job of taking care
 of the partitions
 
 #+begin_src bash
-resize2fs -p /dev/mapper/cryptdata $NEWSIZE
+resize2fs -p /dev/mapper/cryptroot $NEWSIZE
+#+end_src
+
+Smaller disk sizes will make the transfer quicker. It can be reinflated later.
+
+#+begin_quote
+Bonus points: It gets you a defragged filesystem for free ... but you don't care
+about cylinder math do you?
+#+end_quote
+
+*** Resize LV
+
+Since this saves on transfer time:
+
+#+begin_src shell
+lvresize /dev/ds/data -r -L $NEWSIZE
+#+end_src
+
+=lvs=, =vgs=, =pvdisplay -m $LUKS= and =pvresize $LUKS= will help here.
+
+*** Resize PV/VG
+
+Resize the physical volume
+
+#+begin_src shell
+pvresize -v /dev/mapper/
 #+end_src
 
 ** Copy partition table
 
-
+Backup old partition table from =/dev/sda=.
 
 #+begin_src shell
 sfdisk -d /dev/sda > part_table
 #+end_src
 
+Restore it to the new disk =/dev/sdd=
+
+#+begin_src shell
+sfdisk /dev/sdd < part_table
+#+end_src
+
+It updates the new disk with the old size. Dump disk size from new disk
+
+#+begin_src shell
+sfdisk -d /dev/sdd | grep -i last-lba | cut -f2 -d' ' >> part_table
+#+end_src
+
+Manually edit and replace the value for =lba-last=, the rewrite the partition
+table. As long as the existing partitions begin/end on the same sectors, then
+this won't erase any data.
+
+I also needed to change the lba-first from =37= to =2048=.
+
+Now run =sfdisk /dev/sdd < part_table=
+
 ** Resize partition table
+
+The new disk will now have lots of free space. You could fix this using =sfdisk=
+but it's easier to just use =cfdisk=. Resize the partition and accept the
+default value or do some sector math and calculate it exactly.
+
+Before doing this, if hibernate or bad blocks from swap are important, then
+you'll want to move the swap to a new location. I'm not aware of how blocks are
+allocated in LVM, so bad blocks may not be as much of a problem so long the
+logical volume is created/moved occasionally.
 
 ** Move Disks
 
