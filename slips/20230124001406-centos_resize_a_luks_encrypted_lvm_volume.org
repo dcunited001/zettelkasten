@@ -1,0 +1,137 @@
+:PROPERTIES:
+:ID:       258fd4df-5aa1-4747-a470-5feb2f977c92
+:END:
+#+TITLE: Centos: resize a Luks-encrypted LVM volume
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:ca4acf9b-775b-4957-b19a-0988b7f429c5][rpm]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:24c5cf12-0f0e-412b-9574-6190769b3223][LUKS]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
+
+
+* Problem
+
+Need an extra 1TB SSD disk for the Dell Poweredge, but too many are allocated
+to bare metal Centos. I no longer need to use the baremetal server to host a
+Docker and RPM repositories... so I can downgrade this from a 1TB to a 500GB.
+
+#+begin_quote
+I'm not really sure why literally no one includes instructions for on-premises
+installs behind firewalls. Kubernetes, K3S, Rancher, Longhorn, Vault, Saltstack,
+etc are exceptions to that, but almost zero linux guides even come close to
+describing how to split out image/package management onto local repositories,
+which is kinda sad -- if you simply pass all your port 80:443 traffic to
+indeterminate "metalinks", then i'm sorry, that's terrible.
+
+Of course, you can always let the "cloud" manage the complexity for you.
+#+end_quote
+
+Even though i shouldn't be poor, I am. So I run regularly run through shit like
+this. While I wish I could say that the experience is worth it ... it's not.
+Apparently, experience doesn't pay anything and farming in Diablo 2, Act 1 gets
+you nothing -- except maybe Secret CoW level, which I'm pretty sure is a
+Copy-On-Write joke.
+
+It's crazy what the "Digital Age" has brought us -- such marvels as TikTok and
+Vine ... but apparently the nerds are too busy "engineering" and wearing capes
+to notice the plebs burning everything down.
+
+* Solution
+
+Download a similar ISO (Fedora 37 in this case). Once booted:
+
++ copy public keys to =~/.ssh/authorized_keys=
++ cut off public internet
++ configure ssh-agent/yubikey/pkcs-11 on another machine
++ ssh
+
+** Useful commands
+
++ e2fsck
++ resize2fs
++ sfdisk
++ cfdisk
++ lsblk
++ pvdisplay
++ pvresize
++ cryptsetup (resize)
+
+
+** Disk Layout
+
+*** Original
+
+Now I'm guessing that swap needs to be resized too ... hmmmm.
+
+#+begin_example
+sda              259:0    0  114.4G   0 disk
+├─sda1           259:1    0   600M    0 part  /boot/efi
+├─sda2           259:1    0   1G      0 part  /boot
+└─sda3           259:2    0   116.8G  0 part
+  └─cryptlvm     254:0    0   116.8G  0 crypt
+    ├─cs-swap    254:1    0   7.8G    0 lvm   [SWAP]
+    ├─cs-home    254:1    0   39G     0 lvm   /home
+    ├─cs-root    254:2    0   70G     0 lvm   /
+sdb              259:0    0   931.5G  0 disk
+└─sdb1           259:2    0   700G    0 part
+  └─cryptlvm     254:0    0   700G    0 crypt
+    ├─ds-data    254:1    0   700G     0 lvm   /data
+#+end_example
+
+*** Final
+
+Moving everything to a "500 GB" SSD under a single LUKS volume
+
+#+begin_example
+sdd              259:0    0  114.4G   0 disk
+├─sdd1           259:1    0   600M    0 part  /boot/efi
+├─sdd2           259:1    0   1G      0 part  /boot
+└─sdd3           259:2    0   116.8G  0 part
+  └─cryptlvm     254:0    0   116.8G  0 crypt
+    ├─cs-swap    254:1    0   7.8G    0 lvm   [SWAP]
+    ├─cs-home    254:1    0   39G     0 lvm   /home
+    ├─cs-root    254:2    0   70G     0 lvm   /
+    ├─cs-data    254:2    0   70G     0 lvm   /
+#+end_example
+
+** Resize old LUKS
+
+Easy enough. Check partition layout with =cfdisk=
+
+ExtFS needs to be checked first ... just in case?
+
+#+begin_src bash
+e2fsck -f /dev/mapper/cryptdata
+#+end_src
+
+Resize to the new extents. =cfdisk= can also do a pretty good job of taking care
+of the partitions
+
+#+begin_src bash
+resize2fs -p /dev/mapper/cryptdata $NEWSIZE
+#+end_src
+
+** Copy partition table
+
+
+
+#+begin_src shell
+sfdisk -d /dev/sda > part_table
+#+end_src
+
+** Resize partition table
+
+** Move Disks
+
+** Setup a chroot to the new volume
+
+After finishing partitions/disks, then setup chroot to the new root volume on
+=/dev/sdd3= and mount them.
+
+** Update Bootloader & init
+
+Centos boots with systemd and requires running dracut to rebuilt initramfs
