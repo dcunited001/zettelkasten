@@ -42,6 +42,8 @@ to notice the plebs burning everything down.
 
 * Solution
 
+Using this [[https://www.golinuxcloud.com/linux-move-directory-to-another-partition/#Step_7_Manage_SELinux_Optional][article as a guide]].
+
 Download a similar ISO (Fedora 37 in this case). Once booted:
 
 + copy public keys to =~/.ssh/authorized_keys=
@@ -60,10 +62,8 @@ Download a similar ISO (Fedora 37 in this case). Once booted:
 + pvdisplay
 + pvresize
 + pvs/vgs/lvs
-+
-
-
-
++ dmsetup [status|info]
++ dmsetup remove [lv/vg] # then cryptsetup close
 
 ** Disk Layout
 
@@ -143,6 +143,8 @@ lvresize /dev/ds/data -r -L $NEWSIZE
 
 =lvs=, =vgs=, =pvdisplay -m $LUKS= and =pvresize $LUKS= will help here.
 
+**** TODO update after figuring out how to move LV to new VG (i just used dd)
+
 *** Resize PV/VG
 
 Resize the physical volume
@@ -190,13 +192,165 @@ you'll want to move the swap to a new location. I'm not aware of how blocks are
 allocated in LVM, so bad blocks may not be as much of a problem so long the
 logical volume is created/moved occasionally.
 
-** Move Disks
+** Move Disks from old =cs= volume group
+
+If the old LUKS container and it's LVM is mounted at the same time, its names
+conflict with the new group. Ensure that =dmsetup= reports these devices are
+completely removed before running =cryptsetup= to map =newroot=
+
+#+begin_src shell
+dd of=/dev/sda1 if=/dev/sdd1 bs=1M status=progress
+#+end_src
+
+**** TODO dd commands used to move non-LUKS partitions
+
+**** TODO dd commands to move LUKS partition
+
+**** TODO test LUKS partition, =cryptsetup=
+
+** Create new LV for =ds-data=
+
+Resize PV to LUKS-crypted partition extents
+
+#+begin_src shell
+pvresize /dev/mapper/newroot
+#+end_src
+
+Create new LV
+
+#+begin_src shell
+lvcreate -n data -l 50%VG cs
+#+end_src
+
+** Move Disks from old =ds= volume group
+
+Ensure both the =cryptdata= LUKS container is setup Just use =dd= then reinflate the ext4 filesystem
+
+**** TODO dd command
+
+**** TODO resize2fs command
+
+* Manage Disk UUID's
+
+This was noted after completing the initial test chroot. I anticipated UUID
+issues, which is why i was going to reboot and rechroot without the former disk,
+but I didn't expect it immediately.
+
+#+begin_quote
+There's a lot of good interview question material here.
+#+end_quote
+
+Changing the UUID's is necessary as soon as possible. The metadata for changes
+to VG/PV/LV keys on UUID's, so if there are duplicate UUID's that map PV's to
+VG's, then the LV's associated to this will disappear without the original
+disk...
+
+... even though it managed to move the partition correctly? The new LV should have
+a separate UUID though.
+
+** Three ways to move forward
+
+You'll have to decide on how to manage the UUID's. Since the =/dev/sdd*= table,
+partitions and LUKS container images were copied over, you can only safely
+change the boot/efi/luks container (which will require updating =/etc/fstab= in
+chroot). However, after opening the luks container, it will be necessary to
+identify the metadata mappings and manually change them. I don't think that LVM
+VG/LV's link to the LUKS UUID, but the PV probably does.
+
+1. You can take a backup of the LVM metadata created by the changes for both
+   LUKS containers (old & new: =/dev/sda3= and =/dev/sdd3=)
+   - from here, you can diff the two files, expect to edit the metadata backup
+     to restore it later
+   - did you know: windows can't diff files /or file trees/ without WSL; you
+     need an app for that
+   - perhaps no need for tune2fs
+2. You can use tune2fs to change UUID's now, but you have to manage metadata now
+   - both of the first two will involve two copies of the metadata, manually
+     editing UUID's using commandline tools (or by editing the metadata backup
+     file)
+3. it may be possible to use =dd= over SSH & network socket, in which case, there
+   is no real UUID problem, since the metadata is on two systems.
+   - it may also be possible to deal with this using iSCSI, but it's likely
+     you'll still encounter UUID issues there.
+
+* Rebuild the system to launch on the new disks
+
+For chroot, i'm referencing [[https://wiki.archlinux.org/title/chroot][archwiki]] though Centos/RHEL likely have their own
+tools ... but the way these tools mask implementation details is why i'm
+referencing the archwiki. So...
 
 ** Setup a chroot to the new volume
+
+Since the partition disk was copied, these UUID's should be the same ... not
+sure where the problems end there but it certainly includes booting!
+
+#+begin_src shell
+newbootUUID=$(blkid -o value -s UUID /dev/sdd2)
+newefiUUID=$(blkid -o value -s UUID /dev/sdd1)
+#+end_src
+
+Since the =/etc/fstab= declares root disks with UUID, it may be smart to remove
+this (or [[https://linuxconfig.org/how-to-retrieve-and-change-partitions-universally-unique-identifier-uuid-on-linux][use tune2fs to change partition UUID]]) before anything gets mounted
+automagically. At this point, the original disks are no longer needed, but
+should be retained.
+
+Mount root disk.
+
+#+begin_src shell
+newroot=/mnt/centosroot
+mkdir $newroot
+cryptsetup open /dev/sdd3 newroot
+mount /dev/mapper/cs-root $newroot
+#+end_src
+
+Make a copy of =/etc/fstab=. Note any special options or BTRFS subvolumes there.
+
+#+begin_src shell
+cp $newroot/etc/fstab $newroot/etc/fstab.bak
+#+end_src
+
+Mount pseudo file systems and devices
+
+#+begin_src shell
+mount -t proc /proc $newroot/proc
+mount -t sysfs /sys $newroot/sys
+mount -o bind /dev $newroot/dev
+mount --rbind /sys/firmware/efi/efivars $newroot/sys/firmware/efi/efivars
+# cp /etc/resolve.conf $newroot/etc/resolve.conf
+#+end_src
+
+Mount other disks
+
+#+begin_src shell
+mount /dev/sdd2 $newroot/boot
+mount /dev/sdd1 $newroot/boot/efi
+mount /dev/mapper/cs-home /home
+mount /dev/mapper/cs-data /data
+#+end_src
 
 After finishing partitions/disks, then setup chroot to the new root volume on
 =/dev/sdd3= and mount them.
 
+#+begin_src shell
+chroot $newroot /bin/bash
+#+end_src
+
+** Reboot to clear out the system
+
+That tested that chrooting was possible. Reload the system and insert the disks
+to avoid UUID issues ...
+
+... but it's too late, the VG/LV mappings were written to the wrong disks/volumes.
+
+*** Fetch LV metadata from other disk
+
+Since this is a live ISO, the LVM backup/metadata is no longer accessible.
+Without the metadata on the disk (there is apparently none of it at the metadata
+layer) it doesn't matter much that the PE blocks for the PV contain the LV
+images.
+
 ** Update Bootloader & init
 
 Centos boots with systemd and requires running dracut to rebuilt initramfs
+
+** Update SELinux metadata
