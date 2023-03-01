@@ -1,0 +1,873 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<!-- 2023-02-26 Sun 18:29 -->
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Emacs: Global Edebug</title>
+<meta name="author" content="David Conner" />
+<meta name="description" content="Emacs Cheatsheet" />
+<meta name="generator" content="Org Mode" />
+<style>
+  #content { max-width: 60em; margin: auto; }
+  .title  { text-align: center;
+             margin-bottom: .2em; }
+  .subtitle { text-align: center;
+              font-size: medium;
+              font-weight: bold;
+              margin-top:0; }
+  .todo   { font-family: monospace; color: red; }
+  .done   { font-family: monospace; color: green; }
+  .priority { font-family: monospace; color: orange; }
+  .tag    { background-color: #eee; font-family: monospace;
+            padding: 2px; font-size: 80%; font-weight: normal; }
+  .timestamp { color: #bebebe; }
+  .timestamp-kwd { color: #5f9ea0; }
+  .org-right  { margin-left: auto; margin-right: 0px;  text-align: right; }
+  .org-left   { margin-left: 0px;  margin-right: auto; text-align: left; }
+  .org-center { margin-left: auto; margin-right: auto; text-align: center; }
+  .underline { text-decoration: underline; }
+  #postamble p, #preamble p { font-size: 90%; margin: .2em; }
+  p.verse { margin-left: 3%; }
+  pre {
+    border: 1px solid #e6e6e6;
+    border-radius: 3px;
+    background-color: #f2f2f2;
+    padding: 8pt;
+    font-family: monospace;
+    overflow: auto;
+    margin: 1.2em;
+  }
+  pre.src {
+    position: relative;
+    overflow: auto;
+  }
+  pre.src:before {
+    display: none;
+    position: absolute;
+    top: -8px;
+    right: 12px;
+    padding: 3px;
+    color: #555;
+    background-color: #f2f2f299;
+  }
+  pre.src:hover:before { display: inline; margin-top: 14px;}
+  /* Languages per Org manual */
+  pre.src-asymptote:before { content: 'Asymptote'; }
+  pre.src-awk:before { content: 'Awk'; }
+  pre.src-authinfo::before { content: 'Authinfo'; }
+  pre.src-C:before { content: 'C'; }
+  /* pre.src-C++ doesn't work in CSS */
+  pre.src-clojure:before { content: 'Clojure'; }
+  pre.src-css:before { content: 'CSS'; }
+  pre.src-D:before { content: 'D'; }
+  pre.src-ditaa:before { content: 'ditaa'; }
+  pre.src-dot:before { content: 'Graphviz'; }
+  pre.src-calc:before { content: 'Emacs Calc'; }
+  pre.src-emacs-lisp:before { content: 'Emacs Lisp'; }
+  pre.src-fortran:before { content: 'Fortran'; }
+  pre.src-gnuplot:before { content: 'gnuplot'; }
+  pre.src-haskell:before { content: 'Haskell'; }
+  pre.src-hledger:before { content: 'hledger'; }
+  pre.src-java:before { content: 'Java'; }
+  pre.src-js:before { content: 'Javascript'; }
+  pre.src-latex:before { content: 'LaTeX'; }
+  pre.src-ledger:before { content: 'Ledger'; }
+  pre.src-lisp:before { content: 'Lisp'; }
+  pre.src-lilypond:before { content: 'Lilypond'; }
+  pre.src-lua:before { content: 'Lua'; }
+  pre.src-matlab:before { content: 'MATLAB'; }
+  pre.src-mscgen:before { content: 'Mscgen'; }
+  pre.src-ocaml:before { content: 'Objective Caml'; }
+  pre.src-octave:before { content: 'Octave'; }
+  pre.src-org:before { content: 'Org mode'; }
+  pre.src-oz:before { content: 'OZ'; }
+  pre.src-plantuml:before { content: 'Plantuml'; }
+  pre.src-processing:before { content: 'Processing.js'; }
+  pre.src-python:before { content: 'Python'; }
+  pre.src-R:before { content: 'R'; }
+  pre.src-ruby:before { content: 'Ruby'; }
+  pre.src-sass:before { content: 'Sass'; }
+  pre.src-scheme:before { content: 'Scheme'; }
+  pre.src-screen:before { content: 'Gnu Screen'; }
+  pre.src-sed:before { content: 'Sed'; }
+  pre.src-sh:before { content: 'shell'; }
+  pre.src-sql:before { content: 'SQL'; }
+  pre.src-sqlite:before { content: 'SQLite'; }
+  /* additional languages in org.el's org-babel-load-languages alist */
+  pre.src-forth:before { content: 'Forth'; }
+  pre.src-io:before { content: 'IO'; }
+  pre.src-J:before { content: 'J'; }
+  pre.src-makefile:before { content: 'Makefile'; }
+  pre.src-maxima:before { content: 'Maxima'; }
+  pre.src-perl:before { content: 'Perl'; }
+  pre.src-picolisp:before { content: 'Pico Lisp'; }
+  pre.src-scala:before { content: 'Scala'; }
+  pre.src-shell:before { content: 'Shell Script'; }
+  pre.src-ebnf2ps:before { content: 'ebfn2ps'; }
+  /* additional language identifiers per "defun org-babel-execute"
+       in ob-*.el */
+  pre.src-cpp:before  { content: 'C++'; }
+  pre.src-abc:before  { content: 'ABC'; }
+  pre.src-coq:before  { content: 'Coq'; }
+  pre.src-groovy:before  { content: 'Groovy'; }
+  /* additional language identifiers from org-babel-shell-names in
+     ob-shell.el: ob-shell is the only babel language using a lambda to put
+     the execution function name together. */
+  pre.src-bash:before  { content: 'bash'; }
+  pre.src-csh:before  { content: 'csh'; }
+  pre.src-ash:before  { content: 'ash'; }
+  pre.src-dash:before  { content: 'dash'; }
+  pre.src-ksh:before  { content: 'ksh'; }
+  pre.src-mksh:before  { content: 'mksh'; }
+  pre.src-posh:before  { content: 'posh'; }
+  /* Additional Emacs modes also supported by the LaTeX listings package */
+  pre.src-ada:before { content: 'Ada'; }
+  pre.src-asm:before { content: 'Assembler'; }
+  pre.src-caml:before { content: 'Caml'; }
+  pre.src-delphi:before { content: 'Delphi'; }
+  pre.src-html:before { content: 'HTML'; }
+  pre.src-idl:before { content: 'IDL'; }
+  pre.src-mercury:before { content: 'Mercury'; }
+  pre.src-metapost:before { content: 'MetaPost'; }
+  pre.src-modula-2:before { content: 'Modula-2'; }
+  pre.src-pascal:before { content: 'Pascal'; }
+  pre.src-ps:before { content: 'PostScript'; }
+  pre.src-prolog:before { content: 'Prolog'; }
+  pre.src-simula:before { content: 'Simula'; }
+  pre.src-tcl:before { content: 'tcl'; }
+  pre.src-tex:before { content: 'TeX'; }
+  pre.src-plain-tex:before { content: 'Plain TeX'; }
+  pre.src-verilog:before { content: 'Verilog'; }
+  pre.src-vhdl:before { content: 'VHDL'; }
+  pre.src-xml:before { content: 'XML'; }
+  pre.src-nxml:before { content: 'XML'; }
+  /* add a generic configuration mode; LaTeX export needs an additional
+     (add-to-list 'org-latex-listings-langs '(conf " ")) in .emacs */
+  pre.src-conf:before { content: 'Configuration File'; }
+
+  table { border-collapse:collapse; }
+  caption.t-above { caption-side: top; }
+  caption.t-bottom { caption-side: bottom; }
+  td, th { vertical-align:top;  }
+  th.org-right  { text-align: center;  }
+  th.org-left   { text-align: center;   }
+  th.org-center { text-align: center; }
+  td.org-right  { text-align: right;  }
+  td.org-left   { text-align: left;   }
+  td.org-center { text-align: center; }
+  dt { font-weight: bold; }
+  .footpara { display: inline; }
+  .footdef  { margin-bottom: 1em; }
+  .figure { padding: 1em; }
+  .figure p { text-align: center; }
+  .equation-container {
+    display: table;
+    text-align: center;
+    width: 100%;
+  }
+  .equation {
+    vertical-align: middle;
+  }
+  .equation-label {
+    display: table-cell;
+    text-align: right;
+    vertical-align: middle;
+  }
+  .inlinetask {
+    padding: 10px;
+    border: 2px solid gray;
+    margin: 10px;
+    background: #ffffcc;
+  }
+  #org-div-home-and-up
+   { text-align: right; font-size: 70%; white-space: nowrap; }
+  textarea { overflow-x: auto; }
+  .linenr { font-size: smaller }
+  .code-highlighted { background-color: #ffff00; }
+  .org-info-js_info-navigation { border-style: none; }
+  #org-info-js_console-label
+    { font-size: 10px; font-weight: bold; white-space: nowrap; }
+  .org-info-js_search-highlight
+    { background-color: #ffff00; color: #000000; font-weight: bold; }
+  .org-svg { }
+</style>
+</head>
+<body>
+<div id="content" class="content">
+<h1 class="title">Emacs: Global Edebug</h1>
+<div id="table-of-contents" role="doc-toc">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents" role="doc-toc">
+<ul>
+<li><a href="#org49edad3">1. Global</a></li>
+<li><a href="#org77a5b69">2. Eval</a></li>
+<li><a href="#orgedaf191">3. Backtrace</a></li>
+<li><a href="#org47e5feb">4. Edebug Mode Map</a></li>
+<li><a href="#org21e1e74">5. Only in menus</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-org49edad3" class="outline-2">
+<h2 id="org49edad3"><span class="section-number-2">1.</span> Global</h2>
+<div class="outline-text-2" id="text-1">
+<dl class="org-dl">
+<dt>C-x X</dt><dd>prefix</dd>
+</dl>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">a</th>
+<th scope="col" class="org-left">abort-recursive-edit</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">Q</th>
+<th scope="col" class="org-left">edebug-top-level-nonstop</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">q</th>
+<th scope="col" class="org-left">top-level</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">W</th>
+<th scope="col" class="org-left">edebug-toggle-save-windows</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">w</th>
+<th scope="col" class="org-left">edebug-where</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">D</th>
+<th scope="col" class="org-left">edebug-toggle-disable-breakpoint</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">X</th>
+<th scope="col" class="org-left">edebug-set-global-break-condition</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">x</th>
+<th scope="col" class="org-left">edebug-set-conditional-breakpoint</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">U</th>
+<th scope="col" class="org-left">edebug-unset-breakpoints</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">u</th>
+<th scope="col" class="org-left">edebug-unset-breakpoint</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">b</th>
+<th scope="col" class="org-left">edebug-set-breakpoint</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">C</th>
+<th scope="col" class="org-left">edebug-Continue-fast-mode</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">c</th>
+<th scope="col" class="org-left">edebug-continue-mode</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">T</th>
+<th scope="col" class="org-left">edebug-Trace-fast-mode</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">t</th>
+<th scope="col" class="org-left">edebug-trace-mode</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">G</th>
+<th scope="col" class="org-left">edebug-Go-nonstop-mode</th>
+</tr>
+
+<tr>
+<th scope="col" class="org-left">g</th>
+<th scope="col" class="org-left">edebug-go-mode</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">SPC</td>
+<td class="org-left">edebug-step-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">=</td>
+<td class="org-left">edebug-display-freq-count</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div id="outline-container-org77a5b69" class="outline-2">
+<h2 id="org77a5b69"><span class="section-number-2">2.</span> Eval</h2>
+<div class="outline-text-2" id="text-2">
+<p>
+Uniq to <code>edebug-eval-mode</code>
+</p>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left">&lt;f12&gt; C-b</td>
+<td class="org-left">elisp-byte-compile-buffer</td>
+</tr>
+
+<tr>
+<td class="org-left">&lt;f12&gt; C-e</td>
+<td class="org-left">elisp-eval-region-or-buffer</td>
+</tr>
+
+<tr>
+<td class="org-left">C-c C-d</td>
+<td class="org-left">edebug-delete-eval-item</td>
+</tr>
+
+<tr>
+<td class="org-left">C-c C-u</td>
+<td class="org-left">edebug-update-eval-lits</td>
+</tr>
+
+<tr>
+<td class="org-left">C-j</td>
+<td class="org-left">edebug-eval-print-last-sexp</td>
+</tr>
+
+<tr>
+<td class="org-left">DEL</td>
+<td class="org-left">backward-delete-char-untabify</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div id="outline-container-orgedaf191" class="outline-2">
+<h2 id="orgedaf191"><span class="section-number-2">3.</span> Backtrace</h2>
+<div class="outline-text-2" id="text-3">
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left">backtrace-goto-source</td>
+<td class="org-left">s</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div id="outline-container-org47e5feb" class="outline-2">
+<h2 id="org47e5feb"><span class="section-number-2">4.</span> Edebug Mode Map</h2>
+<div class="outline-text-2" id="text-4">
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">local</th>
+<th scope="col" class="org-left">key</th>
+<th scope="col" class="org-left">function</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">DEL</td>
+<td class="org-left">backward-delete-char-untabify</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">SPC</td>
+<td class="org-left">edebug-step-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">**</td>
+<td class="org-left">=</td>
+<td class="org-left">edebug-temp-display-freq-count</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">?</td>
+<td class="org-left">edebug-help</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">C</td>
+<td class="org-left">edebug-Continue-fast-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">G</td>
+<td class="org-left">edebug-Go-nonstop-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">I</td>
+<td class="org-left">edebug-instrument-callee</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">B</td>
+<td class="org-left">edebug-next-breakpoint</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">X</td>
+<td class="org-left">edebug-set-global-break-condition</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">S</td>
+<td class="org-left">edebug-stop</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">D</td>
+<td class="org-left">edebug-toggle-disable-breakpoint</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">W</td>
+<td class="org-left">edebug-toggle-save-windows</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">Q</td>
+<td class="org-left">edebug-top-level-nonstop</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">T</td>
+<td class="org-left">edebug-Trace-fast-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">U</td>
+<td class="org-left">edebug-unset-breakpoints</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">P</td>
+<td class="org-left">edebug-view-outside</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">E</td>
+<td class="org-left">edebug-visit-eval-list</td>
+</tr>
+</tbody>
+<tbody>
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">a</td>
+<td class="org-left">abort-recursive-edit</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">p</td>
+<td class="org-left">edebug-bounce-point</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">c</td>
+<td class="org-left">edebug-continue-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">e</td>
+<td class="org-left">edebug-eval-expression</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">f</td>
+<td class="org-left">edebug-forward-sexp</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">g</td>
+<td class="org-left">edebug-go-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">h</td>
+<td class="org-left">edebug-goto-here</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">n</td>
+<td class="org-left">edebug-next-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">d</td>
+<td class="org-left">edebug-pop-to-backtrace</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">r</td>
+<td class="org-left">edebug-previous-result</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">b</td>
+<td class="org-left">edebug-set-breakpoint</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">x</td>
+<td class="org-left">edebug-set-conditional-breakpoint</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">i</td>
+<td class="org-left">edebug-step-in</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">o</td>
+<td class="org-left">edebug-step-out</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">t</td>
+<td class="org-left">edebug-trace-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">u</td>
+<td class="org-left">edebug-unset-breakpoint</td>
+</tr>
+
+<tr>
+<td class="org-left">*</td>
+<td class="org-left">v</td>
+<td class="org-left">edebug-view-outside</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">w</td>
+<td class="org-left">edebug-where</td>
+</tr>
+
+<tr>
+<td class="org-left">&#xa0;</td>
+<td class="org-left">q</td>
+<td class="org-left">top-level</td>
+</tr>
+</tbody>
+</table>
+
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left">C-c C-c</td>
+<td class="org-left">edebug-go-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">C-c C-d</td>
+<td class="org-left">edebug-unset-breakpoint</td>
+</tr>
+
+<tr>
+<td class="org-left">C-c C-l</td>
+<td class="org-left">edebug-where</td>
+</tr>
+
+<tr>
+<td class="org-left">C-c C-n</td>
+<td class="org-left">edebug-next-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">C-c C-s</td>
+<td class="org-left">edebug-step-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">C-c C-t</td>
+<td class="org-left">[byte-code]</td>
+</tr>
+
+<tr>
+<td class="org-left">C-x C-e</td>
+<td class="org-left">edebug-eval-last-sexp</td>
+</tr>
+
+<tr>
+<td class="org-left">C-x SPC</td>
+<td class="org-left">edebug-set-breakpoint</td>
+</tr>
+</tbody>
+</table>
+
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left">&lt;f12&gt; C-b</td>
+<td class="org-left">elisp-byte-compile-buffer</td>
+</tr>
+
+<tr>
+<td class="org-left">&lt;f12&gt; C-e</td>
+<td class="org-left">elisp-eval-region-or-buffer</td>
+</tr>
+
+<tr>
+<td class="org-left">&lt;f12&gt; C-f</td>
+<td class="org-left">elisp-byte-compile-file</td>
+</tr>
+</tbody>
+</table>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left">C-M-i</td>
+<td class="org-left">completion-at-point</td>
+</tr>
+
+<tr>
+<td class="org-left">C-M-q</td>
+<td class="org-left">indent-pp-sexp</td>
+</tr>
+
+<tr>
+<td class="org-left">C-M-x</td>
+<td class="org-left">eval-defun</td>
+</tr>
+
+<tr>
+<td class="org-left">C-M-q</td>
+<td class="org-left">indent-sexp</td>
+</tr>
+
+<tr>
+<td class="org-left">C-M-q</td>
+<td class="org-left">prog-indent-sexp</td>
+</tr>
+</tbody>
+</table>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-left" />
+</colgroup>
+<tbody>
+<tr>
+<td class="org-left">C-x C-a C-c</td>
+<td class="org-left">edebug-go-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">C-x C-a C-l</td>
+<td class="org-left">edebug-where</td>
+</tr>
+
+<tr>
+<td class="org-left">C-x C-a RET</td>
+<td class="org-left">edebug-set-initial-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">C-x C-a C-n</td>
+<td class="org-left">edebug-next-mode</td>
+</tr>
+
+<tr>
+<td class="org-left">C-x C-a C-s</td>
+<td class="org-left">edebug-step-mode* Backtrace</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<div id="outline-container-org21e1e74" class="outline-2">
+<h2 id="org21e1e74"><span class="section-number-2">5.</span> Only in menus</h2>
+<div class="outline-text-2" id="text-5">
+<ul class="org-ul">
+<li>edebug-toggle-save-windows</li>
+<li>edebug-save-displayed-buffer-points</li>
+<li>edebug-all-defs</li>
+<li>edebug-all-forms</li>
+</ul>
+
+<div class="org-src-container">
+<pre class="src src-emacs-lisp"><span style="color: #b7a07f; font-style: italic;">;; </span><span style="color: #b7a07f; font-style: italic;">edebug-mode-menus</span>
+
+<span style="color: #00c089;">(</span><span style="color: #af9fff;">"Edebug"</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Stop"</span> edebug-stop t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Step"</span> edebug-step-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Next"</span> edebug-next-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Trace"</span> edebug-trace-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Trace Fast"</span> edebug-Trace-fast-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Continue"</span> edebug-continue-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Continue Fast"</span> edebug-Continue-fast-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Go"</span> edebug-go-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Go Nonstop"</span> edebug-Go-nonstop-mode t<span style="color: #7fc500;">]</span>
+ <span style="color: #af9fff;">"----"</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Help"</span> edebug-help t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Abort"</span> abort-recursive-edit t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Quit to Top Level"</span> top-level t<span style="color: #7fc500;">]</span>
+ <span style="color: #7fc500;">[</span><span style="color: #af9fff;">"Quit Nonstop"</span> edebug-top-level-nonstop t<span style="color: #7fc500;">]</span>
+ <span style="color: #af9fff;">"----"</span>
+ <span style="color: #7fc500;">(</span><span style="color: #af9fff;">"Jumps"</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Forward Sexp"</span> edebug-forward-sexp t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Step In"</span> edebug-step-in t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Step Out"</span> edebug-step-out t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Goto Here"</span> edebug-goto-here t<span style="color: #5dc0aa;">]</span><span style="color: #7fc500;">)</span>
+ <span style="color: #7fc500;">(</span><span style="color: #af9fff;">"Breaks"</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Set Breakpoint"</span> edebug-set-breakpoint t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Unset Breakpoint"</span> edebug-unset-breakpoint t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Unset Breakpoints In Form"</span> edebug-unset-breakpoints t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Toggle Disable Breakpoint"</span> edebug-toggle-disable-breakpoint t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Set Conditional Breakpoint"</span> edebug-set-conditional-breakpoint t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Set Global Break Condition"</span> edebug-set-global-break-condition t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Show Next Breakpoint"</span> edebug-next-breakpoint t<span style="color: #5dc0aa;">]</span><span style="color: #7fc500;">)</span>
+ <span style="color: #7fc500;">(</span><span style="color: #af9fff;">"Views"</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Where am I?"</span> edebug-where t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Bounce to Current Point"</span> edebug-bounce-point t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"View Outside Windows"</span> edebug-view-outside t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Previous Result"</span> edebug-previous-result t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Show Backtrace"</span> edebug-pop-to-backtrace t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Display Freq Count"</span> edebug-display-freq-count t<span style="color: #5dc0aa;">]</span><span style="color: #7fc500;">)</span>
+ <span style="color: #7fc500;">(</span><span style="color: #af9fff;">"Eval"</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Expression"</span> edebug-eval-expression t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Last Sexp"</span> edebug-eval-last-sexp t<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Visit Eval List"</span> edebug-visit-eval-list t<span style="color: #5dc0aa;">]</span><span style="color: #7fc500;">)</span>
+ <span style="color: #7fc500;">(</span><span style="color: #af9fff;">"Options"</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Edebug All Defs"</span> edebug-all-defs
+   <span style="color: #3fb83f; font-weight: bold;">:style</span> toggle <span style="color: #3fb83f; font-weight: bold;">:selected</span> edebug-all-defs<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Edebug All Forms"</span> edebug-all-forms
+   <span style="color: #3fb83f; font-weight: bold;">:style</span> toggle <span style="color: #3fb83f; font-weight: bold;">:selected</span> edebug-all-forms<span style="color: #5dc0aa;">]</span>
+  <span style="color: #af9fff;">"----"</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Tracing"</span> <span style="color: #af9fff;">(</span>edebug-toggle 'edebug-trace<span style="color: #af9fff;">)</span>
+   <span style="color: #3fb83f; font-weight: bold;">:style</span> toggle <span style="color: #3fb83f; font-weight: bold;">:selected</span> edebug-trace<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Test Coverage"</span> <span style="color: #af9fff;">(</span>edebug-toggle 'edebug-test-coverage<span style="color: #af9fff;">)</span>
+   <span style="color: #3fb83f; font-weight: bold;">:style</span> toggle <span style="color: #3fb83f; font-weight: bold;">:selected</span> edebug-test-coverage<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Save Windows"</span> edebug-toggle-save-windows
+   <span style="color: #3fb83f; font-weight: bold;">:style</span> toggle <span style="color: #3fb83f; font-weight: bold;">:selected</span> edebug-save-windows<span style="color: #5dc0aa;">]</span>
+  <span style="color: #5dc0aa;">[</span><span style="color: #af9fff;">"Save Point"</span> <span style="color: #af9fff;">(</span>edebug-toggle 'edebug-save-displayed-buffer-points<span style="color: #af9fff;">)</span>
+   <span style="color: #3fb83f; font-weight: bold;">:style</span> toggle <span style="color: #3fb83f; font-weight: bold;">:selected</span> edebug-save-displayed-buffer-points<span style="color: #5dc0aa;">]</span><span style="color: #7fc500;">)</span><span style="color: #00c089;">)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+<div id="postamble" class="status">
+<p class="author">Author: David Conner</p>
+<p class="date">Created: 2023-02-26 Sun 18:29</p>
+<p class="validation"><a href="https://validator.w3.org/check?uri=referer">Validate</a></p>
+</div>
+</body>
+</html>
