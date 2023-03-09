@@ -1,0 +1,174 @@
+:PROPERTIES:
+:ID:       ed648bf1-65e3-401f-8512-30199f625e3b
+:END:
+#+title: Follow Pair Mode
+
+Basically an outline for an emacs project that's way out of my league.
+
++ It's obviously not a workable idea, but it is interesting to think about.
++ It uses somewhat older ideas and doesn't mesh well with the typical
+  containers/pods/vm's. It wouldn't work well for web-development, devops or
+  stream-processing.
++ However, there may be significantly less complexity if collaborating on
+  smaller low-level libraries.
++ There are a few existing pairing frameworks for Emacs. Two of them seem fairly
+  workable and involve far fewer moving parts. One is about a decade old and the
+  other is a few years old. I'm not very aware of the details though.
+
+* The Idea
+
+Combine bits of the following into an overly complicated system to pair with
+emacs.
+
+** The coders have Tramp configured and share an SSH filesystem.
+
+Either processes like test runners are launched outside of emacs (or as commands
+run on the remote system through emacs) ... or Tramp would need to be aware of
+the context in which commands are run to automate services. Tramp already
+supports this, but there are probably quirks
+
+** The coders divvy up the tasks beforehand
+
++ One coder writes tests, the other writes implementations.
++ One coder's emacs instance is responsible for triggering test
+
+** Project, file and VCS updates appear on a separate frame or webui.
+
++ The webui could be made available through an SSH tunnel.
++ Running a =M-x= command would cause a popup in the other coder's frame or
+  webui tab. A sidebar in the UI would display a magit like diff interface where
+  folded diffs are sorted in order of their most recent updates.
+
+** Socat can be used to forward connections across a tunnel.
+
++ AFAIK, only the remote system needs socat. The network socket just looks like
+  a network socket on the other end
+
+** A SQLite database would track the =follow-pair/ui= state
+
++ the state is contained to a single filesystem. an process/service external to
+  emacs is responsible for syncing state, which is consumed through SQLite (by
+  both remote emacs instances connected via Tramp)
++ the state would then be sent to the remote emacs via web/socket (whence the
+  socat or *cat, whatever requires the least priviledge)
+
+** A pairing-specific =.dir-locals.el= file in the remote project tree establishes project-local settings
+
+This should be used to enforce proper settings, to make file locks more obvious
+and to make it difficult to stomp on the other coder's changes. But if both devs
+are aware of how work should be divided, then this shouldn't be too much of a
+problem .......
+
+** SSH/GPG agent forwarding could allow one developer to process/sign/push commits
+
++ this is obviously not a required capability
++ The devs should be logged into the system as separate users, so as long as the
+  data related to the remote SSH/GPG agent stays private, then ... maybe? this
+  should be okay? .....
++the GPG signing should probably happen after squash/rebase when the pullrequest
+  is set up.
+
+* Benefits
+
++ both devs get the benefit of having their personal customizations while
+  sharing the remote configurations for process/test/publish/etc.
++ doesn't require sharing an emacs server
+
+* Problems
+
+** Containers/Pods/VMs complicate networking
+
+** It's just ridiculously complicated (and probably brittle)
+
+** It's inconceivable to scale this to more than one
+
+* Problems with extant pair programming approaches
+
+** Cloud IDE's don't really work
+
+You end up needing to configure a specific IDE whose performance and
+/configured/ features are always lacking. It becomes a good way to talk about
+code or show someone something, but then the benefits don't outweigh the time
+spent configuring the environment for the cloud IDE.
+
+There are other problems like an impaired ability to commit/push to VCS.
+
+Utlimately, the idea here is a twist on the Cloud IDE ... so it may have some of
+the same problems.
+
+** You can't bring your config
+
+I'm not sure how VS Code handles pairing. If you have to run from one VS Code
+config that determines personal configs (keybinds/etc) as well as
+project/process configs (starting services, running tests), then merging this is
+kinda intractible. A person's customizations are only useful to someone else
+when they understand how/why things are set that way. This is just as true for
+automation, scripts and test runners as it is for things like keybinds.
+
+So how this would end up:
+
++ the coders need to divvy up the work beforehand
++ if personal configs are merged,
+
+If VSCode provides some level of separation for personal configs
+(e.g. keybindings are translated into VSCode functions which are sent over the
+wire), then this issue would be significantly simplified.
+
+** Screensharing just doesn't feel right
+
++ You don't want to be on a video/audio call the entire time. Streaming video
+  pushes too much potential for distraction and most devs probably wouldn't use
+  it.
++ When using technology, people tend to prefer asynchronous interactions (text,
+  chat, project management) almost to the point of totally abandoning
+  synchronous media (voice/video chat)
+
+** Connecting multiple emacs clients or running multiple emacs servers is unworkable
+
+The way to figure this problem out is to analyze the system boundaries where the
+users' actions affects things -- e.g. file system, network, process.
+
+Major distinguishing factors in OS/Software/UI design (e.g. whether a system is
+multi-user or has roaming profiles) have been rendered so irrelevant (by the P
+in PC) that it's difficult for people to relate. This totally changes designs
+you would consider. The ubiquity of networking has complicated everything,
+though i'm not railing against TCP/IP. However, the simplest
+compartmentalization of state/behavior that allows programs to interoperate is
+the process.
+
+It would seem that in the 80s & 90s, sneakernet and "IRL live chat" was more
+than enough to facilitate collaboration. On a multi-user system, it should be
+possible to run a single fairly vanilla emacs server where user-spawned emacs
+clients connect and, instead of voice chat, you just chat over the cubicle wall
+to coordinate who's editing what. When a file lock is in place, you get a
+warning, so you don't edit those files. You close buffers quickly, so the file
+locks are released -- you wouldn't want to block someone else. VCS is still CVS
+and no one has a hard-drive large enough to care to store much more than what is
+essential -- besides what is published.
+
+* I would love to know how much of this is accurate
+
+... Because this is probably no better than some ChatGPT hallucination. People
+treat creativity like it's disposible, commonplace or something you can ellicit
+from the employees you you kept close at any time. We made multiple biopics
+about Steve Jobs, but it's like they propped him up as a symbol. Not that this
+is really that creative. It's just that when someone has creative sparks like no
+one else in the world, no one notices even though they all celebrate the
+commodified, artifical simulacrum of creativity which is /employable/ or
+/tolerable/.
+
+Obviously, ideas are really not valuable at all: execution is valuable. However,
+since execution can be purchased and ideas can be cheaply copied, then whoever
+has money/access easily determines who is in or out. The less relatable your
+ideas are (i.e. the more significant your creativity), the more likely you are
+to become alienated. At which point, you just look crazy as shit -- which is
+apparently something else that rich people can buy.
+
+To my credit, has anyone considered copper/aluminum vapor deposition -- via
+plasma onto common aluminum -- to cheaply make high-quality canvases for
+oil-painting? No. Probably not. Aluminum alloy, yes. Aluminum with a surface
+tuned for the electrochemistry of oil paint and drying oils, no.
+
+I could keep going for days, literally. There are some ideas that are past their
+time, some that are repressed and others that not a single person will ever
+have.
