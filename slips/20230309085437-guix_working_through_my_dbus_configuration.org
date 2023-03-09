@@ -1,0 +1,79 @@
+:PROPERTIES:
+:ID:       79d4ee7e-04d3-456e-bf95-b764735e917c
+:END:
+#+title: GUIX: Working through my DBus configuration
+
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:da888d96-a444-49f7-865f-7b122c15b14e][Desktop]]
+
+TL;DR; it seems that something shifted from underneath my configs and/or that
+I'm also an idiot.
+
+On Arch/KDE I have =d-feet= ... okay wow I have it installed on Guix too. That
+would've helped. The app allows you to interact with DBus. You can see all the
+message interfaces/ etc.
+
+* Problems
+
+** Multiple pulseaudio services running on my system
+
++ One was a system service and another user service.
++ Both appeared to be launching under the system/user shepherd,
+  respectively. They didn't appear in the =guix system shepherd-graph= or the
+  =extension-graph= and I didn't explicitly add pulse.
++ removing pulseaudio from the services in =(operating-system ...)= removed one
+  of these.
+
+** Competing XDG Portals
+
+To make things more confusing, I'm starting two competing dbus sessions in my
+X11 session: =xdg-desktop-portal= and =xdg-desktop-portal-gtk=, the former for
+which I assumed was an IPC/DBus dependency for the latter. There's a race
+condition when I login and one of them wins?
+
+in other words ~this bug almost never happens thrice in a row!~ ... probably. I
+didn't really notice anything, but if it did cause problems, they would be hard
+to trace.
+
+* Source
+
++ the dbus package is in =./gnu/packages/glib.scm= as well as some variants
++ dbus config ends up in =/etc/dbus-1=, but still no pulseaudio. this config is
+ used by =dbus-daemon-launch-helper=
+
+* Processes
+
++ there is one system dbus process (from the guix system declaration)
+  - a pair of =dbus-launch= and =dbus-daemon= processes
+  - this one should be booting upower-daemon, bluetooth, elogind, wpa-supplicant
++ somehow, two others are being started soon after init
+  - one dbus service is automatically being started under PID 1 (shepherd).
+  - at least one of these is coming from xdg-freedesktop-portal... it is
+    directly under my user shepherd (so is pulseaudio). so either
+    - the user shepherd alters how dbus makes calls to spawn/fork
+    - =xdg-free-desktop='s dbus knows how to interface w/ shepherd ... via DBus?
+    - dbus's command configures it to interface with shepherd in this way?
+  - regardless, flatpak may break if it's not right. however, the dbus it's
+    aware of is
+
+* Modifying the Guix System DBus
+
+If one did want to directly modify the system dbus's list of services, then
+something /like/ this may work. However, I didn't quite pin down what
+metaprogramming this list of services is assembled.
+
+    #+begin_src scheme :eval no
+(modify-services
+    %desktop-services
+  ;; ...
+  (dbus-root-service-type
+   config => (dbus-configuration
+              (inherit config)
+              (services (remove
+                         (lambda (srv)
+                           (eq? 'pulseaudio srv))
+                         (dbus-configuration-services config))))))
+    #+end_src
+
+    Actually, I'm pretty sure that's a terrible idea.
