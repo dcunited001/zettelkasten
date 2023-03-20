@@ -105,16 +105,55 @@ Before walking through this, it's a bit much to figure out how to set up an
 isolated emacs environment for this. A manifest may work, which helps more
 clearly define the dependencies.
 
-** Instantiating Guix Environment
+** Guix Build Dependencies
 
-... On second thought, running configure probably does benegit from a clean
-environment. So, from the checkout directory:
+Required (per se?)
+
++ -D guix
++ -D guile (or guile-3.0-latest)
++ help2man git strace pkg-config
++ gettext autoconf automake glibc
++ make
+
+Helpful for =guix shell=
+
++ procps procmisc which
++ (list bash coreutils findutils grep sed
+      diffutils patch gawk tar gzip bzip2 xz lzip)
+
+The above are from =%base-packages-utils=, but are not essential for the
+build. They may introduce impurities.
+
+Without the proper =guix shell=, then you'll get problems that imply your
+=AC_LOCAL_PATH= needs to include the =guile m4= modules or that your
+=PKG_CONFIG_PATH= needs to be adjusted. The =guix shell= should take care of
+that.
+
+**** TODO +double+ triple-check these
+
+** Instantiating Guix Shell
+
+... On second thought, +running configure probably does benefit from a clean
+environment+, a clean build of Guix is essential for reproducible builds .
+
+So, from the checkout directory:
 
 #+begin_src shell
-guix environment guix --pure ad-hoc help2man git strace pkg-config
+guix shell -D guix -D guile help2man git strace pkg-config gettext autoconf automake glibc make --pure
 ./bootstrap
+#+end_src
+
+I'm getting:
+
+=Makefile.am:852 warning: AM_GNU_GETTEXT used but 'po' not in SUBDIRS=
+
+Also, on =make clean-go=, I'm getting
+
+=warning: stray .go files: ./guix/build/po.go ./gnu/packages/key-mon.go=
+
+#+begin_src shell
 ./configure --localstatedir=/var
-make
+make -j10
 make check
 #+end_src
 

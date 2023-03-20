@@ -111,11 +111,40 @@ mechanical wear.
 
 * Drivers
 
+* MacOS
 
-* Software
+**  [[https://karabiner-elements.pqrs.org/][Karabiner]]
 
-** XKB
-*** Docs
+The main problem i wanted to solve: add a modifier key that I knew had zero
+existing mappings, so I could be sure there were no conflicts. i mostly used OSX
+at the time, where solving the hyper problem didn't result in a satisfactory
+solution: =ctrl+alt+shift+mac= isn't a true hyper, but emacs and the wm could
+recognize it.
+
+*** [[https://karabiner-elements.pqrs.org/docs/][Docs]]
+*** Resources
+**** [[https://github.com/dcunited001/dc.files.kbd][dc.files.kbd]]
+
+i added an uber key using the to defunct capslock mapped from escape.
+
+[[https://karabiner-elements.pqrs.org/][karabiner]] is slightly more extensible than XKB -- or better documented. The
+linux window managers mask a lot of the complexity which can complicate
+resolving ambiguity the libs/projects actually providing some functionality
+
+Karabiner allows mappings where key-release events on modifiers/capslock can
+become a modkey map. XKB has the same functionality ... but I don't think anyone
+knows how to use it. One feature XKB lacks is the ability to map simultaneous
+keypresses. So "up+right" can be "home" and "down+right" can be "end." Not all
+that usefuland hard to configure with modifiers.
+
+*** Issues
+
+* XKB/X11
+:PROPERTIES:
+:ID:       ee958185-81f4-42bd-abd0-5ad1801deeca
+:END:
+
+** Docs
 + [[https://github.com/xkbcommon/libxkbcommon][libxkbcommon/libxkbcommon]]
 + [[https://people.freedesktop.org/~alanc/input/XKB-Config.html][The XKB Configuration Guide]] (Ivan U. Pascal)
   - one of those things that probably should've shown up on Google earlier
@@ -126,18 +155,65 @@ mechanical wear.
     search results, i donno, maybe the first time i seriously looked into xkb.
     probably 2011/2012 i think? it never did. the best thing i found was Ivan's
     guide in like 2016.
++[[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config][xkeyboard-config]] (freedesktop gitlab)
+   - [[https://github.com/JuliaBinaryWrappers/Xorg_xkeyboard_config_jll.jl][Generated Julia binary wrapper for xkeyboard-config]] (and [[https://github.com/JuliaBinaryWrappers/Xorg_xkbcomp_jll.jl][xkbcomp]] and so on)
 
-
-*** Resources
+** Resources
 + [[https://www.reddit.com/r/linux/comments/1ydiu7/howto_different_xkb_config_for_only_certain/][Howto: Different xkb config for only certain attached evdev keyboards]]
++ [[https://www.reddit.com/r/linux/comments/ttj6yo/comment/i2y7xhi/?utm_source=share&utm_medium=web2x&context=3][r/linux comment(s) describing what's wrong with X11 input handling]]
++ XKB layout template generator: [[https://gitlab.freedesktop.org/whot/xkblayout][gitlab.freedesktop.org/whot/xkblayout]]
+  - [[https://who-t.blogspot.com/2020/09/user-specific-xkb-configuration-putting.html][User-specific XKB configuration generation]]
 
-** Loadkeys
+** Issues
+*** identifier for =ctrl:swapcaps_hyper= renamed to =ctrl:hyper_capscontrl=
 
-*** Resources
++ [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/issues/344]['Hyper' symbol options behave inconsistently]] (it references: [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/issues/344][#344]])
+  - the old =swapcaps_hyper= name still works, since it's defined in
+    =rules/compat/variantsMapping.lst=
+
+#+begin_src c
+// Swap the functions of the CapsLock key and the left Ctrl key,.
+// but make the Ctrl key a 'Hyper' modifier.
+partial modifier_keys.xkb_symbols "swapcaps_hyper" {
+    replace key <CAPS> { [ Control_L ] };
+    replace key <LCTL> { [ Hyper_L ] };
+    modifier_map Control { <CAPS> };
+    modifier_map Mod3 { <LCTL> };
+}
+#+end_src
+
+*** Dependencies for guix show =libxkbcommon=
++ it looks like both Arch and Guix use libxkbcommon (1.5.0, 1.3.0 respectively)
+  - =xkeyboard-config= provides the configs
++ libxkbcommon depends on =xkeyboard-config= for keymap data
+
+
+* Loadkeys
+:PROPERTIES:
+:ID:       f5ab9438-334c-4e39-a26e-7200a5ee30a0
+:END:
+
+** Docs
++ man loadkeys :: loads the kernel keymap for the console(s)
++ man dumpkeys :: dumps the kernel keymap
++ man keymaps :: actually explains wtf to do
+
+as usual, the answer to pretty much everything for hackers: just use startx or
+don't use a window manager. start your apps from the console like a real
+man. compile patched libsixel ... it'll put some hair on your chest. X11 is
+where all your problems start ... until wayland. i'm not a hacker, but no person
+serious about securing their setup would use a window manager on their main,
+regardless of whether its windows/macos/linux. way too much exposure.
+
+either i didn't find loadkeys or when it did, i lacked sufficient understanding
+of the abstractions in linux to remember it ... probably didn't know it was
+console-specific.
+
+** Resources
 + [[https://www.emacswiki.org/emacs/LoadKeys][EmacsWiki]]
 + [[https://wiki.archlinux.org/title/Linux_console/Keyboard_configuration][Linux Console Keyboard Config]]
-*** Issues
-**** Finding includes/configs/keymaps
+** Issues
+*** Finding includes/configs/keymaps
 
 Do a =find $keymaps -name includes -type d= to find the includes, which are
 analogous to the X11 includes like =caps:hyper= or =ctrl:hyper_capscontrol=
@@ -145,13 +221,15 @@ analogous to the X11 includes like =caps:hyper= or =ctrl:hyper_capscontrol=
 + on traditional systems :: /usr/share/kbd/keymaps
 + on guix systems :: /run/current-system/profile/share/keymaps
 
+*** Updates
+*** Generating Configs
 
+* Window Managers
+** [[id:39e14ffe-75c9-49e6-b852-6c492c4ee3e0][KDE]]
 
+** [[id:7bb87626-77c3-4577-ace4-40b791202f4e][Gnome]]
++ [[https://help.gnome.org/users/gnome-help/stable/keyboard-layouts.html.en][Use alternative keyboard layouts]]
 
-**** Updates
-**** Generating Configs
-++
-
-* Wayland
+* [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
 
 * Issues
