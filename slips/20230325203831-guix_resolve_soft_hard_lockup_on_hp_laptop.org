@@ -1,0 +1,86 @@
+:PROPERTIES:
+:ID:       8ac3f8d8-5357-4b78-9c30-2473783c3ad3
+:END:
+#+title: Guix: Resolve soft/hard lockup on HP laptop
+
+* Resources
+
++ [[Softlockup detector and hardlockup detector (aka nmi_watchdog)][Softlockup detector and hardlockup detector (aka nmi_watchdog)]]
+
+* Summary
+
+Occasionally, my fans start spinning loud, the laptop gets sluggish and if I
+don't act fast to switch to a vty, the X11 session or window manager will lock
+up.
+
+If this "loud fan" state is already happening when I return to my laptop: in
+this case, there's nothing I can do.
+
+* Potential Causes
+
+This is likely being caused by two or more issues.
+
+** On Returning to the laptop (probably TLP)
+
+On returning to the laptop, the syslog indicates a TLP timeout followed by:
+
+#+begin_quote
+0:00:00 udev[12345]: timeout '/bin/tlp auto'
+0:00:02 udev[12345]: slow '/bin/tlp auto' [12349]
+0:00:04 udev[12345]: timeout: killing '/bin/tlp auto' [12349]
+0:00:08 udev[12345]: '/bin/tlp auto' [12349] terminated by signal 9 (Killed! Dash nine)
+#+end_quote
+
+So a =kill -9= after 8 seconds, hmmmm... that escalated quickly. My guess is
+that the TLP service doesn't successfully restart afterwards ... perhaps because
+of a kernel hangup. This may be somewhat of a race condition. If TLP is supposed
+to wake up to transfer control of hardware, but gets killed in doing so, then it
+won't complete the hardware state transitions ... and theoretically the kernel
+would be left in a bit of a predicament (being without a CPU and all).
+
+*** TLP Service Configuration
+
+See the value here is that, as long as I'm using Guix, my laptop can survive
+many crashes and I don't have to edit some =/etc/tlp.conf=. I just know that
+when my PC is on power, that thing is running at 2.1 Ghz and when it's running
+on battery, it's running at 1.7 Ghz. Done.
+
+It is done, /for ever/ -- and did I mention the configuration is in source
+control? So, forward progress may seem slow -- but it is almost always
+forwards. X steps fowards, /no steps backwards/.
+
+#+begin_src scheme
+(service tlp-service-type
+         (tlp-configuration
+          (cpu-boost-on-ac? #t)
+          (tlp-default-mode "AC") ;; this is the default
+          (sound-power-save-on-bat 0)
+          (cpu-scaling-min-freq-on-bat 1700000)
+          (cpu-scaling-max-freq-on-bat 2100000)
+          (cpu-scaling-min-freq-on-ac 2100000)
+          (cpu-scaling-max-freq-on-ac 2100000)
+          (wifi-pwr-on-bat? #t)))
+#+end_src
+
+So, i'll add =(nmi-watchdog? #t)= which I had considered previously, but wasn't
+sure ... so I thought I'd leave it to the defaults. When setting this to =#t=,
+it's not clear what approach the kernel will take in managing. These are the
+only references to NMI Watchdog in the Guix Manual.
+
+*** NMI Configuration
+
+Some NMI configuration options require configuring kernel flags. One of the
+benefits I'm hoping to gain from Guix include the easy of configuring the kernel
+using a Guix package, but the time required for the feedback loop ranges from
+"meh ... medium" to "fuck I don't quite know how to chroot the =/gnu/store= when
+my kernel shits the bed."  So any kind of customization therein should be done
+simply or done cautiously.
+
+** Mysterious Firefox/Discord/Javascript(!!) problems
+
+God I hate being so dependent on apps running javascript. This has seemed
+functionally coupled to UI interactions, occasionally. The laptop will continue
+being responsive ... but with a timelag that increases exponentially.
+
+Not sure on the logs for this one. It hasn't happened recently. My guess is
+North Korean crypto-hackers.
