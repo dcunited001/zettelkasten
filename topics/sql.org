@@ -3,4 +3,165 @@
 :END:
 #+TITLE: SQL
 
-SQL
+* Roam
+
+It took me forever to find these videos again, since I couldn't even recall the
+name ... but TL;DW; it goes from high-brow category theory...
+
++ [[https://youtu.be/auIuhRjMokQ][Paolo Perrone: Probability Monads and Stochastic Dominance]]
++ [[https://youtu.be/BhKaHAY8Ec8][Evan Patterson: The Algebra of Statistical Theories and Models]]
+
+... to SQL, more or less. I never saw that coming. I wish I could sustain
+momentum, but there's really no overcoming the friction, especially when 99% of
+the energy is sourced internally. There's no visibility thus no potential for
+feedback.
+
+* SQLite
+
+** Docs
+
+** Resources
++ [[https://csrc.nist.gov/publications/detail/fips/202/final][SHA-3 Standard]]: used in =.sha3sum= command
+  - it comes in 224, 256, 384, and 512 flavors
+  - =sha256sum= implements [[https://csrc.nist.gov/publications/detail/fips/180/2/archive/2002-08-01][FIPS-180-2]] whereas =sha-3= implements [[https://csrc.nist.gov/publications/detail/fips/202/final][FIPS-202]]
+
+** Topics
+
+*** [[https://orgmode.org/worg/org-contrib/babel/languages/ob-doc-sqlite.html][ob-sqlite]]
+
+*** Prepared Statements
+
+A [[https://www.sqlite.org/c3ref/stmt.html][Prepared Statement Object]] or =sqlite3_stmt= "... represents a single SQL statement that has been
+compiled into binary form and is ready to be evaluated."
+
+#+begin_quote
+The life-cycle of a prepared statement object usually goes like this:
+
+1. Create the prepared statement object using =sqlite3_prepare_v2()=.
+
+2. Bind values to parameters using the =sqlite3_bind_*()= interfaces.
+
+3. Run the SQL by calling =sqlite3_step()= one or more times.
+
+4. Reset the prepared statement using =sqlite3_reset()= then go back to step 2. Do this zero or more times.
+
+5. Destroy the object using =sqlite3_finalize()=.
+#+end_quote
+
+The prepare phase tokenizes and parses the statement, which is
+
+
+*** Query Planning
+
++ [[https://www2.sqlite.org/queryplanner-ng.html][Next Generation Query Optimizer]]
+  - [[https://www.sqlite.org/optoverview.html][Query Optimizer Overview]] before 3.8.0
++ [[https://www2.sqlite.org/queryplanner.html][Query Planning]]
+  - [[https://www.sqlite.org/eqp.html][Explain Query Plan]]
++ [[https://www.sqlite.org/c3ref/exec.html][One-Step Query Execution Interface]]
+
+*** Authorizor Callbacks
+
+[[https://sqlite.org/c3ref/set_authorizer.html][Authorization Callbacks]] are performed in [[https://www.sqlite.org/c3ref/prepare.html][sqlite3_prepare_v{2,3}()]]. Both links,
+at least to me, were a bit cryptic. Skimming the above links & quote helped to
+grok it.
+
+Some interesting note at the end of the [[https://sqlite.org/c3ref/set_authorizer.html][set_authorizer doc]]:
+
++ only one authorizer can be active per db-connection and it's behavior can't
+  modify the database connection.
++ if the schema changes after a statements is prepared by
+  =sqlite3_prepare_v2()=, then =sqlite3_step()= may reprepare it... which sounds
+  like bad news
++ "the authorizer callback is invoked only during =sqlite3_prepare()= or its
+  variants. Authorization is not performed during statement evaluation in
+  =sqlite3_step()="
+
+*** Virtual File System
+
+[[https://www.sqlite.org/vfs.html][VFS]]: SQLite OS Interface, which enables transparent encryption/compression in
+ the underlying filestore.
+
++ [[https://github.com/techrah/sqlite3-compression-encryption-vfs][CEVFS]], [[https://www.sqlite.org/zipvfs/doc/trunk/www/howitworks.wiki][ZIPVFS]] and [[http://www.sqlite.org/cerod/doc/trunk/www/index.wiki][CEROD]] are examples. It's not clear whether all of these
+  encrypt along actual page boundaries, though that's what the SQLIte docs
+  imply.
++ It should probably involve a custom build and the presence/absence of
+  compression/crypto libs limits the options ... which probably makes
+  configuration a pain.
++ The builds need verification. I don't know anything, but I would assume that
+  handling journaling, esp during/after a crash without persisting data may be a
+  problem ... or maybe not.
++ The SQLite source includes several test/example implementations.
+
+
+*** REPL
+
+For commands, see [[https://github.com/sqlite/sqlite/blob/master/src/shell.c.in][sqlite/src/shell.c.in]] and search =azArg[0]=. The table was
+mostly sourced from [[https://cheatography.com/taotao/cheat-sheets/sqlite-and-java/][SQLite and Java Cheat Sheet (taotao)]]
+
+|----------+-------------+------------------------------------------------------|
+| category | command     | description                                          |
+|----------+-------------+------------------------------------------------------|
+| shell    | .auth       | Show authorizor callbacks                            |
+|          | .cd         |                                                      |
+|          | .dbconfig   |                                                      |
+|          | .exit       |                                                      |
+|          | .help       |                                                      |
+|          | .prompt     |                                                      |
+|          | .quit       |                                                      |
+|          | .shell      |                                                      |
+|          | .show       |                                                      |
+|          | .stats      |                                                      |
+|          | .system     |                                                      |
+|          | .vfsinfo    | info about the top-level VFS (virtual file-system)   |
+|----------+-------------+------------------------------------------------------|
+| etl      | .archive    |                                                      |
+|          | .backup     |                                                      |
+|          | .clone      |                                                      |
+|          | .dump       |                                                      |
+|          | .import     | Import from file into table                          |
+|          | .load       |                                                      |
+|          | .once       | For next query, output to file                       |
+|          | .open       | close current db & attempt connection with db @ file |
+|          | .output     |                                                      |
+|          | .read       | Read input from file                                 |
+|          | .restore    | restore content from file                            |
+|          | .save       |                                                      |
+|          | .sha3sum    | compute sha-3 of database content                    |
+|----------+-------------+------------------------------------------------------|
+| debug    | .bail       | exit on first error                                  |
+|          | .databases  |                                                      |
+|          | .dbinfo     |                                                      |
+|          | .eqp        | toggle auto-explain                                  |
+|          | .expert     | index hinting                                        |
+|          | .explain    |                                                      |
+|          | .scanstats  | toggle =sqlite3_stmt_scanstatus()= output            |
+|          | .trace      |                                                      |
+|----------+-------------+------------------------------------------------------|
+| format   | .binary     |                                                      |
+|          | .changes    |                                                      |
+|          | .echo       |                                                      |
+|          | .excel      |                                                      |
+|          | .headers    |                                                      |
+|          | .limit      |                                                      |
+|          | .log        |                                                      |
+|          | .mode       | Output mode, including org/markdown tables           |
+|          | .nullvalue  |                                                      |
+|          | .print      |                                                      |
+|          | .separator  |                                                      |
+|----------+-------------+------------------------------------------------------|
+| test     | .check      |                                                      |
+|          | .imposter   |                                                      |
+|          | .lint       |                                                      |
+|          | .selftest   | Run tests in the =SELFTEST= table                    |
+|          | .testcase   |                                                      |
+|          | .timer      |                                                      |
+|----------+-------------+------------------------------------------------------|
+| schema   | .fullschema |                                                      |
+|          | .indexes    |                                                      |
+|          | .schema     |                                                      |
+|          | .tables     |                                                      |
+|----------+-------------+------------------------------------------------------|
+| dbd      | .parameter  |                                                      |
+|          | .progress   |                                                      |
+|          | .timeout    |                                                      |
+|----------+-------------+------------------------------------------------------|
