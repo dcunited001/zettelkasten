@@ -1,0 +1,211 @@
+:PROPERTIES:
+:ID:       deb85655-351a-42bb-99cd-2a80b4d0e88e
+:END:
+#+title: Roam Notes 2021-1110
+#+CATEGORY: slips
+#+TAGS:
+
+
+* old notes from Nov 2021
+
+i had done a lot of research then and i've learned a ton since then, but holy
+crap the smallest things cost me a shit ton of time and it's mostly simple
+stuff.
+
+
+*** Using DD-WRT as layer-3 firewalls without PFSense for layer 4.
+
+I didn't realize it could route. Easily 3-month setback or more, since I was
+trying to cold-start Devops/Ansible on the router. Tried org-babel/tramp to run
+shell scripts, but it has ash not bash ...
+
+Layer-3 routing is still interesting, but a bit hard to configure. DD-WRT's
+configuration makes deterministic state and/or isomorphism difficult..... it's
+still possible/useful for (perhaps for intrusion detection, if it can run socat)
+
+I just hadn't encountered enough PFSense users to realize it can route. It was
+something other than what I thought I know it was ... until shortly after. I
+bought cisco gear. the switch had free IOS updates, but not so on the
+router... I should've known, given the price.
+
+*** Setup Proxmox to run a Garuda Arch VM with GPU passthrough
+
+... on a system where the CPU lacks video output. I researched & it was
+doable. I was able to get what I needed. so it was easy .... However, the
+networking ... not so much.
+
+I wanted to use multiple NIC's on Proxmox to isolate networks. Most configs
+barely worked: routed, 802.1q, trunked on guest & host.
+
+The reason AFAIK was I bought two Intel 82576 cards, but only randomly came
+across a review? mentioning lack of SR-IOV support and/or restrictions on how
+802.1q could be configured without passing the device though.....
+
+So I bought a third card. I mean there's like 10,000,000 details to this stuff.
+
+*** Linux VRF with networking namespaces
+
+I also tried creating VRF devices to get around the fairly naive mistake of
+thinking i could simply add more ethernet ports but still use them as bridges
+... while having my Proxmox VM's not follow a single default route. I wasn't
+sure what to expect here, so it took me awhile to combinate through proxmox's
+potential network configurations ...  starting/stopping VM's, changing their
+VLAN's and occasionally the host.
+
+I can't remember if I ever tried VRF with the new ethernet card, which supported
+SR-IOV anyways.  This was around March 2022 I guess.
+
+*** TL;DR;
+
+Most of these problems would've taken someone about 5 minutes to point me in the
+right direction, though I like doing things differently... Not to that level
+though. Things like VRF would not be recognized by most Linux people. It's like
+from before the container era.
+
+Not having consistent enough income to buy small needs or do quick fixes
+... yeh. And i could've asked other people, but I just don't know or see very
+many people. VWCC helped, but I was still new there.
+
+
+* Desktop
+
+** Proxmox Nodes
+
+*** OpenMediaVault
+
+Pooling extra SSD storage, OMV will expose it through NFS or iSCSI(LUN/LVM). OMV
+can run as a Proxmox VM node.
+
++ These are intended to be filesharess that are needed from multiple nodes at
+  any time. e.g.
+  - The org directory =/data/org=
+  - The art directory =/data/art=
+  - Parts of my dotfiles
+  - Guix system configuration specs
+
+In the above directories, access from either laptop or desktop node(s) is
+essential, but managing files should be transparent.
+- Is there a NFS-like that can merge file changes after net/VPN reconnection?
+  i.e. ... like dropbox?
+
+**** Avoid
++ unnecessary complexity in the OMV networking config
+
+
+**** Caveats
+
++ The SSD SATA devices should be passed through to the OMV node (but docs say
+  you must add the storage through OMV webadmin ... [[https://openmediavault.readthedocs.io/en/5.x/administration/storage/filesystems.html][and not as disks set up via
+  QEMU]]...)
++ Some Routing & DNS would be necessary to provide LAN/VPN access to these files.
+  - so NFS/etc is accessible from wireless or wired and via the VPN tunnel
++ If OpenMediaVault requires a share .....
+
+**** Docs
++ [[https://www.openmediavault.org/][Homepage]]
++ [[https://github.com/openmediavault/openmediavault][OMV Github project]]
+  - [[project\]\]][pbuilder Makefile]]
+**** Resources
++ [[https://forum.proxmox.com/threads/sata-controller-passthrough.42695/][SATA Controller Passthrough]]
+
+*** OpenVPN
+
+Perhaps run this on an OpenWRT install? (until i can transition to the
+Protectli?)
+
+**** Docs
+
+**** Resources
++ Proxmox: [[https://pve.proxmox.com/wiki/OpenVPN_in_LXC][OpenVPN setup (as LXC container)]]
+
+** Proxmox
+
+****** TODO set up TOTP yubikey auth
+
+*** Docs
++ Manual ([[https://pve.proxmox.com/pve-docs-6/pve-admin-guide.html][HTML]] / PDF)
+
+*** Configuring
+
+*** i3 or XMonad
+
+*** Guix
+Probably requires setting up OpenSSH (and Tramp to edit using Emacs)
+
+**** Run the distributed QEMU image
++ use it to build the PGP system
+
+**** Build Farm & Substitutes Server
++ This requires having created a guix system to create PGP keys
+  - The substitutes must be signed and the public key made available to
+    consumers. (See [[https://guix.gnu.org/en/manual/en/guix.html#On-Trusting-Binaries][trusting binaries]])
+
+**** How to configure (automated?) build/storage of guix systems
++ these would need to build and write images to a storage location
+
+*** Hardware
+PCIE is 4.0, [[https://embedtek.net/knowledge/pci-express-standards-4-0-and-5-0/][so 4x is 7.5 GB/s]]
+
+**** Do I need a second GPU?
+No. Proxmox is basically headless by default.
++ The Web UI is used to configure & connect to clients.
++ If a GPU is dedicated to a node, then ensure the monitor is directly plugged
+  up to it (not the motherboard).
+  - Start the VM and it should display
+**** Setup [[https://pve.proxmox.com/wiki/MxGPU_with_AMD_S7150_under_Proxmox_VE_5.x][AMD MxGPU]] to configure guests with vGPU
++ Github Repo: [[https://pve.proxmox.com/wiki/MxGPU_with_AMD_S7150_under_Proxmox_VE_5.x][GPUOpen-LibrariesAndSDKs/xGPU-Virtualization]]
++ Lots of complaints on the difficulty of this feature/config
+  - Only supported [[https://www.reddit.com/r/VFIO/comments/j5qnzj/has_mxgpu_ever_worked_for_anyone/][for four cards?]]
+
+**** USB Passthrough
+
+**** Second GPU reduces PCIE_1 to 8x
+
+**** Can add a 10 Gb/s network card
++ The third slot will be a 4x PCIE slot
++ This needs a wired switch/router
+  - This router takes precedence over the card, since the Mobo has a 2.5Gb/s
+  - These large network ports can have multiple virtual interfaces mapped to them
+    - however, some config will be needed to balance the load properly
+    - See Proxmox admin guide section on "Linux Bond" for ideas
+*** Storage
+**** Docs
++ Wiki: [[https://en.wikipedia.org/wiki/ISCSI#Logical_unit_number][iSCSI (LUN)]]
+
+**** See Ch. 8: "Deploy Hyper-Converged Ceph Cluster"
+Req. a minumum of 3 servers
+**** Backups
+
+**** Principles for provisioning HD
+- keep partitions to less than
+
+**** TODO Learn: Sharing disk access
++ How to accomplish something similar to shared volumes on Docker?
+  + NFS handles managing simultaneous access to files from multiple clients
+
+*** Network
+**** IP6
+
+**** DNS
+
+**** VLANS
+
+**** SDN
+
+* Tasks
+
+** Inbox
+
+** KDE
+*** TODO Misc config changes:
++ [ ] change fcitx shortcut (to?)
++ [ ] disable activities?
+
+*** TODO consider installing thunderbolt?
++ [ ] automate configuration?
+
+*** TODO install/config [[https://github.com/esjeon/krohnkite][Krohnkite]]
+** Linux
+*** DONE look into hibernation problems
+CLOSED: [2022-01-22 Sat 06:58]
+*** TODO consider KDE Neon or I3
