@@ -13,7 +13,56 @@
 ** Resources
 + Subcommands
 
+** Topics
+*** Worktrees, Submodules and Project Objects
+
+The [[https://gerrit.googlesource.com/git-repo/+/master/docs/internal-fs-layout.md][Internal FS Layout]] doc clears up some confusion about how =git-repo= handles
+worktrees, submodules and apparently project objects, a more recent development
+in git-repo.
+
++ Repo keys on the project =name= for these three means of git object
+  storage/management.
++ There be some problems if you you're developing on multiple remotes, both
+  where there are identical =name= fields for a project/module and where the
+  field's don't match for a single project.
+
+#+begin_quote
+However, this can run into problems if different remotes use the same path on
+their respective servers. Best to avoid that.
+#+end_quote
+
++ Using =is-derived= Repo distinguishes between discovered =git submodules= and
+  those explicitly defined in the manifests (as children of projects).
++ A quick glance shows there are no subprojects in =manifest.xml= files in
+  Android & Chromium. Only some projects have =clone-depth= set.
+
+**** Multiple References in a manifests meant to support builds
+
+Looking at the code, =--recurse-submodules= is quite common, but I haven't tried
+to test any use cases yet. A =manifest.xml= set up to pull =riverwm= and build
+is the first time I'm actually running into this.
+
++ River pulls 4 submodules and one of the modules shares the other three
+  dependencies.
+
+Besides being a convenient way to pull tons of code down quickly, one of the
+main benefits of repo is to support "metabranches" and allow a subset of the
+dependencies' branches to be swapped out quickly to rebuild. Using =git
+worktree= allows you to be agile on such a project without succumbing to the
+boilerplate and shielding you from the bureaucracy of pull requests & rebase
+cycles.
+
 ** Issues
+*** Speed of repo sync
+
+Use =sync-c= to limit the ref space that =repo sync= downloads for a project
+
+
+*** Worktrees vs. Submodules
+
+The git implementations of these features are maybe incompatible (and a dev
+workflow doesn't really jive with using both). The repo source
+
 *** Management
 
 **** List all projects tagged as $group
@@ -146,7 +195,19 @@ Setup account on [[gerrit.googlesource.com][gerrit.googlesource.com]] by authent
 + [[https://www.cs.cmu.edu/~15131/f15/topics/git/][Practical Ideas for Git]] (CMU)
 + [[A Hacker's Guide to Git][A Hacker's Guide to Git]]
 
+
+** Topics
+*** Worktree
+
++ [[https://stackoverflow.com/questions/31871888/what-goes-wrong-when-using-git-worktree-with-git-submodules][A brief history of time and worktree/submodule [in]compatibility]] ~2016
+  - and [[https://stackoverflow.com/questions/34460811/git-submodule-update-is-slow-how-can-i-debug-why-its-slow/52452587#52452587][the epilogue]] ~2018-2020
+
+*** Subtree
+
+[[https://www.atlassian.com/git/tutorials/git-subtree][git subtree]] goddammit
+
 ** Issues
+
 *** [[https://stackoverflow.com/a/9322283][Hard links inside git]]
 
 There be problems. it's probably not worth it
