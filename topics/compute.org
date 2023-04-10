@@ -13,6 +13,59 @@
 * Resources
 
 * Issues
+** Check Versions
+Use =gpu-viewer= if possible ... if it's broken, then:
+
++ glxinfo :: OpenGL
++ vulkaninfo :: Vulkan
++ clinfo :: OpenCL
++ es2_info :: EGL
++ vdpauinfo :: VDPAU (Supported on x11)
++ lscpu :: CPU
++ lsb_release :: Distro
++ XDG_CURRENT_DESKTOP :: Desktop
++ XDG_SESSION_TYPE :: Windowing System
++ cat /proc/meminfo | awk '/Mem/' :: Memory information
++ uname -r :: Kernel Information
+
+** Uninstall AMDGPU Pro Drivers
+
+These were for Blender, but weren't necessary for long...
+
+*** Reinstall AMDGPU Open Drivers
+
+#+begin_src shell
+yay -Syu mhwd-amdgpu xf86-video-amdgpu-git \
+    linux-hdr-headers-git \
+    vulkan-radeon vulkan-headers vulkan-validation-layers vulkan-tools \
+    mesa-git
+#+end_src
+
+But =mesa-git= conflicts with =vulkan-mesa-layers= which is provided by
+=garuda-video-linux-config= ... so just install that, which supplies these:
+
+#+begin_example
+xf86-video-ati  xf86-video-amdgpu  xf86-video-nouveau  vulkan-intel  vulkan-radeon
+intel-media-driver  libvdpau-va-gl  libva-intel-driver  libva-mesa-driver
+mesa-vdpau  vulkan-mesa-layers  vulkan-swrast  lib32-vulkan-intel
+lib32-vulkan-radeon  lib32-mesa-vdpau  lib32-libva-intel-driver
+lib32-libva-mesa-driver  lib32-vulkan-mesa-layers
+
+#Optional Deps
+
+opencl-mesa
+lib32-opencl-mesa
+intel-compute-runtime
+libva-vdpau-driver
+lib32-libva-vdpau-driver
+#+end_example
+
+Ensure the drivers aren't blacklisted in =/etc/modprobe.d= and update
+=/etc/mkinitcpio.conf=. Check kernel flags.
+
+*** Rebuild opencl-amd-dev
+
+This includes all the =hip= and =opencl= dependencies
 
 * Topics
 
@@ -41,6 +94,9 @@
 
 ** Compute (ROCm)
 
+#+begin_quote
+NOTE: check cuda support you buy a gpu..
+#+end_quote
 
 *** [[https://sep5.readthedocs.io/en/latest/][Docs]]
 
@@ -50,7 +106,21 @@
   - lots of good links
 
 ** Issues
+
+*** Use OpenCL in Docker
+
+[[https://github.com/RadeonOpenCompute/ROCm/issues/1180#top][RadeonOpenCompute/ROCm#1180]]: Figuring out that I need to run
+=HSA_OVERRIDE_GFX_VERSION=10.3.0 python= just cost me like 12 hours bc I thought
+"building native" would help me resolve issues...
+
+*** Build Tensorflow on Archlinux
+
+Something about XLA, a prematurely upgraded Bazel and some
+=intel-oneapi-grs-fuk-agpu= prevents tensorflow from building and =clinfo= from
+running on arch (as of 4/12/2023)
+
 *** Unknown EDID CEA parser results
+
 
 Similar issues, explains what it is though.
 
