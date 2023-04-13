@@ -1,7 +1,7 @@
 :PROPERTIES:
 :ID:       3daa7903-2e07-4664-8a20-04df51b715de
 :END:
-#+TITLE: C++
+#+TITLE: C/C++ (cpp)
 #+DESCRIPTION: C++
 #+TAGS:
 
@@ -16,3 +16,127 @@
 * Issues
 ** UML Generation
 + [[https://stackoverflow.com/questions/4755913/how-to-use-doxygen-to-create-uml-class-diagrams-from-c-source][Using doxygen to create UML diagrams]] (doxyfile options)
+
+* Clangd
+
+** Docs
+
+** Resources
+
+** Topics
+
+*** [[https://clangd.llvm.org/design/compile-commands][Compile Commands]]
+
+These can built out to =json= files and imported into other projects.
+
+*** Bear
+
++ Repo: [[https://github.com/rizsotto/Bear][rizsotto/Bear]]
++ [[https://github.com/rizsotto/Bear/wiki][Wiki]]
+  - [[https://github.com/rizsotto/Bear/wiki/Features][Features]]
+
+Construct a compilation/artifact database which can be updated.
+
+**** Using with =cmake=
+
+Pass =-DCMAKE_EXPORT_COMPILE_COMMANDS=ON= when calling =cmake=
+
+****
+
+
+* Bazel
+
+** Resources
++ [[https://github.com/hedronvision/bazel-compile-commands-extractor][hedronvision/bazel-compile-commands-extractor]]
+
+** Issues
+
+*** Generate metadata for clangd-based completion
+
+Follow the guide for hedronvison mentioned above. The example here is for the
+Bazel-based project [[https://github.com/google/mediapipe][google/mediapipe]] and while that's not exactly "hello world"
+difficulty, I'd rather know more about extending the behavior for complex
+builds.
+
+So this focuses on use cases =#2= and =#3= in the hedronvision guide. The
+mediapipe builds require lots of flags, which are managed by the
+buildscripts. The important stuff in there needs to be summarized. And for
+usecase =#3=, these flags should be modified based on the context.
+
+The generated =compile_commands.json= file is intended to be found at the root
+of the workspace. However, mediapipe contains a lot of subprojects.
+
+**** Setup the Bazel workspace
+
+Add this to =WORKSPACE=, which can be branched off and then applied as a cherry
+pick. Replace the commit hash with =git log --shortstat --reverse
+--pretty=oneline | cut -f1 -d' '=
+
+#+begin_src bazel
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+http_archive(
+    name = "hedron_compile_commands",
+
+    # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
+    # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-",
+    # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
+)
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()
+#+end_src
+
++ If project was frequent, I'd isolate this behavior to a specific file and
+  inject it with =bazel= command flags, but the argument structure in
+  =build_desktop_examples.sh= implies this isn't possible.
++ Therefore all the support tooling (IDE/workflows) needs to be Bazel-specific
+  or needs to be modified.
+
+***** When using CCLS instead of Clangd
+
+The directions differ when using =ccls= instead of =clangd=: instead of setting
+=targets= set =exclude_headers=true=.
+
+**** Building Mediapipe
+
++ [[https://developers.google.com/mediapipe/framework/getting_started/install][Docker build guide]]
+
+With the project cloned, build a docker image there with:
+
+#+begin_src shell
+docker build --tag=mediapipe
+#+end_src
+
+Try running the hello world with:
+
+#+begin_src shell
+docker run -it --name mediapipe mediapipe:latest
+GLOG_logtostderr=1 bazel run --define MEDIAPIPE_DISABLE_GPU=1 mediapipe/examples/desktop/hello_world
+#+end_src
+
+***** Extracting =compile_commands.json=
+
+**** Bulding Mediapipe Examples (for desktop)
+
+
+After =docker run -it --name mediapipe mediapipe:latest=, these examples are run with:
+
+#+begin_src shell
+GLOG_logtostderr=1 bazel run --define MEDIAPIPE_DISABLE_GPU=1 mediapipe/examples/desktop/hello_world
+#+end_src
+
+***** Extracting =compile_commands.json=
+
+
+**** Building Mediapipe Mobile Examples
+
+***** Extracting =compile_commands.json=
+
+I'm not sure about the Android/iOS examples, since the former are java-based and
+the latter typically require XCode, especially for various APIs (the binaries
+still must be signed in some cases. However, the hedronvision Bazel project does
+mention it works for Objective C++.
