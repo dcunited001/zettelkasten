@@ -96,10 +96,50 @@ Add =-DCMAKE_EXPORT_COMPILE_COMMANDS=1= to =cmake= invocation
 
 * Bazel
 
+** Docs
+[[https://bazel.build][bazel.build]]
+
++ [[https://bazel.build/start/cpp][C++ Tutorial]]
+
 ** Resources
+
++ [[github:bazelbuild/buildtools][bazelbuild/buildtools]]
+  - buildifier
+  - buildozer
+  - unused_deps (for unneeded =java_library= rules)
+
+*** LSP
+
 + [[https://github.com/hedronvision/bazel-compile-commands-extractor][hedronvision/bazel-compile-commands-extractor]]
 
+*** Topics
+
+**** .bazelrc
+
+***** Extending the .bazelrc for user's custom configs
+
+#+begin_quote
+If project was frequent, I'd isolate this behavior to a specific file and inject
+it with =bazel= command flags, but the argument structure in
+=build_desktop_examples.sh= implies this isn't possible.
+#+end_quote
+
+... that's what =.user.bazelrc= is for.
+
+Look for lines like these at the end of a project's =.bazelrc= file:
+
+#+begin_src bazel
+# This bazelrc file is meant to be written by a setup script.
+try-import %workspace%/.configure.bazelrc
+
+# This bazelrc file can be used for user-specific custom build settings.
+try-import %workspace%/.user.bazelrc
+#+end_src
+
+
 ** Issues
+
+
 
 *** Generate metadata for clangd-based completion
 
@@ -117,10 +157,48 @@ The generated =compile_commands.json= file is intended to be found at the root
 of the workspace. However, mediapipe contains a lot of subprojects.
 
 **** Setup the Bazel workspace
+To tangle, eval this to set the path
 
-Add this to =WORKSPACE=, which can be branched off and then applied as a cherry
-pick. Replace the commit hash with =git log --shortstat --reverse
---pretty=oneline | cut -f1 -d' '=
+#+begin_src emacs-lisp
+(setq e-g-hedron-path ".")
+#+end_src
+
+Add this to =WORKSPACE= or =.bazelrc=, which can be branched off and then applied as a cherry
+pick. Replace the commit hash with:
+
+#+name: hedronvision-hash
+#+begin_src shell :var workdir=(or e-g-hedron-path ".")
+cd $workdir
+git log -n1 --shortstat --reverse --pretty=oneline | cut -f1 -d' '
+#+end_src
+
+#+RESULTS: hedronvision-hash
+: 806522057f385acb400af1749211b85c93834b43
+
+The "package or plugin or module or magical widget" needs to be loaded. I'm not
+sure what bazel has named these things.
+
+The =(read-directory-name "prompt")= is nice, but there's no =ob-bazel= to do
+variable interpolation.
+
+#+begin_src bazel :tangle (read-file-name "Tangle .user.bazelrc to:")) :noweb yes
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+
+hedron_hash = "<<hedronvision-hash()>>"
+
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+http_archive(
+    name = "hedron_compile_commands",
+
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/" + hedron_hash + "tar.gz"
+    strip_prefix = "bazel-compile-commands-extractor-" + hedron_hash
+)
+load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
+hedron_compile_commands_setup()
+#+end_src
+
+***** Original content without =:noweb= references
 
 #+begin_src bazel
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
@@ -132,19 +210,14 @@ http_archive(
 
     # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
     # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
-    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/.tar.gz",
-    strip_prefix = "bazel-compile-commands-extractor-",
-    # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
+    url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/26cf0a8a2d117ec2f92e01ed1b7ece4dd8940fcd.tar.gz",
+    strip_prefix = "bazel-compile-commands-extractor-26cf0a8a2d117ec2f92e01ed1b7ece4dd8940fcd",
+ # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
 )
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 hedron_compile_commands_setup()
 #+end_src
 
-+ If project was frequent, I'd isolate this behavior to a specific file and
-  inject it with =bazel= command flags, but the argument structure in
-  =build_desktop_examples.sh= implies this isn't possible.
-+ Therefore all the support tooling (IDE/workflows) needs to be Bazel-specific
-  or needs to be modified.
 
 ***** When using CCLS instead of Clangd
 
@@ -172,7 +245,6 @@ GLOG_logtostderr=1 bazel run --define MEDIAPIPE_DISABLE_GPU=1 mediapipe/examples
 
 **** Bulding Mediapipe Examples (for desktop)
 
-
 After =docker run -it --name mediapipe mediapipe:latest=, these examples are run with:
 
 #+begin_src shell
@@ -180,6 +252,7 @@ GLOG_logtostderr=1 bazel run --define MEDIAPIPE_DISABLE_GPU=1 mediapipe/examples
 #+end_src
 
 ***** Extracting =compile_commands.json=
+
 
 
 **** Building Mediapipe Mobile Examples
