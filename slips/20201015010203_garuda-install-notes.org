@@ -1,0 +1,522 @@
+:PROPERTIES:
+:ID:       18af505b-a1fb-4e44-8635-8d8b9f97a629
+:END:
+#+TITLE:     Garuda: Install Notes
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+#+category: slips
+
+i had to do almost nothing to get everything working on Garuda... it
+even comes with =xf86-input-wacom=, though not complete configured.
+
+Basically, the japanese keyboard and touchpad were all i needed to
+configure
+
+* Misc Upkeep
+- occasionally run =.emacs.d/bin/doom sync=
+- until it's removed (and replaced with AUR dependencies) occasionally
+  re-enable Chaotic AUR for Garuda updates...
+
+* Misc Garuda
+- disable SMB & CUPS
+
+** Remove dependencies on Chaotic AUR
+- probably has to be done from outside of Garuda/KDE...
+
+** Disable XDM Download Manager
+- =sudo pacman -Syu garuda-xdm-browser-monitor=
+
+** Garuda Shortcuts
+- "Move to Desktop 1" => C-m-1
+- "Move to Desktop 1" => C-m-2
+
+** Garuda Network Assistant
+- open the network assistant and cut off =geoclue= option`
+
+* Misc KDE GUI
+- yellow cursor, natural scrolling
+- set to use only 2 desktops
+- [[https://fedoraproject.org/wiki/KDE/Debugging#keyboard_layouts][Debugging  KDE(log locations, etc)]]
+
+** Keyboard
+- swap alt-tab & esc
+
+** Add IO Country Flag
+[[https://askubuntu.com/questions/1035279/add-flag-as-a-label-in-the-keyboard-layout-switcher-for-layouts-that-do-not-hav][Read
+this post]]
+
+add an =io= directory to: =/usr/share/kf5/locale/countries/=
+
+** Task Switcher
+- change to grid
+
+** Desktop Effects
+- disable blur behind transparent windows
+- enable Fall Apart
+- enable Dim Screen for Admin Mode
+
+** Fucking Transparency
+- set Garuda latte theme first
+
+- then set Global Plasma Theme to Breeze Dark
+
+- some settings are app-dependent e.g. need to disable transparency in
+
+  - Konsole under the Garuda(breeze) theme
+
+* GnuPG
+pacman-keys
+
+#+begin_src sh
+pacman -S archlinux-keyring
+pacman-key --populate
+#+end_src
+
+add keyserver to =/etc/pacman.d/gnupg/gpg.conf= and =~/.gnupg/gpg.conf=:
+
+#+begin_example
+keyserver hkps://keyserver.ubuntu.com
+#+end_example
+
+keys for built packages:
+
+#+begin_src sh
+pacman-key --recv-key $keyID
+pacman-key --lsign $keyID
+#+end_src
+
+keys for makepkg
+
+#+begin_src sh
+gpg --recv-key $keyID
+gpg --lsign $keyID
+#+end_src
+
+** Dotfiles
+
+*** XDG setup
+configure =$ZDOTDIR=
+
+#+begin_src sh
+export ZDOTDIR=$HOME/.config/zsh
+#+end_src
+
+create the =XDG_RUNTIME_DIR=
+
+#+begin_src sh
+mkdir $HOME/$XDG_RUNTIME_DIR
+chmod 700 $HOME/$XDG_RUNTIME_DIR
+#+end_src
+
+add the following to =.zshrc=
+
+#+begin_src sh
+alias emacs="emacs -nw"
+export EDITOR="emacs"
+
+### Path to your oh-my-zsh installation.
+ZSH=/usr/share/oh-my-zsh/
+
+export XDG_CONFIG_HOME=$HOME/.config
+export XDG_CACHE_HOME=$HOME/.cache
+export XDG_DATA_HOME=$HOME/.local/share
+export XDG_RUNTIME_DIR=$HOME/.xdg-runtime
+
+export HISTFILE="$XDG_DATA_HOME/zsh/history"
+#+end_src
+
+and restart
+
+*** w/ chezmoi
+#+begin_src sh
+
+# install chezmoi
+sudo pacman -Syu chezmoi
+
+# init chezmoi
+chezmoi init
+
+# manage an existing file with chezmoi
+chezmoi add ~/.zshrc
+
+# open a file with $EDITOR
+chezmoi edit ~/.zshrc
+
+# see all changes not yet committed
+chezmoi diff
+
+# see all changes that would be applied (-n -v are available for all `chezmoi` commands)
+chezmoi -n -v apply
+
+# commit changes with git
+chezmoi cd
+git add dot_zshrc
+git commit -m "update .zshrc"
+#+end_src
+
+* Pacman
+- removed chaotic aur
+- set required package signatures, always
+- set MAKEOPTS="-j4" or whatever in =/etc/makepkg.conf=
+
+** Pacman Commands
+- =pacman -Qqn | sudo pacman -S -= reinstall all packages
+- =pacman -Qqm= show packages installed via =pamac=
+
+** Pamac Package List -- 2/6/21
+#+begin_example
+apple-music-electron
+arcanist-stable
+aurutils-git
+automoc4
+bcwc-pcie-git
+beignet
+clang-format-linter-git
+docker-bin
+facetimehd-firmware
+fedora-firefox-wayland-bin
+garuda-modem
+git-phab-git
+gitqlient
+kdevelop-valgrind-git
+krita-git
+krita-plugin-gmic-git
+kubernetes-bin
+libmagick6
+libphutil
+m17n-db-indic
+obs-studio-wayland
+passwordsafe
+proton-tkg-git
+python-phabricator
+qlogger-git
+qt4
+sanskrit-fonts
+snapd-glib
+ttf-juliamono
+ttf-siddhanta
+ttf-sil-annapurna
+visual-studio-code-insiders-bin
+wish-wallpapers
+zeal
+#+end_example
+
+invalid packages
+
+#+begin_example
+fcitx-input-support
+#+end_example
+
+* AUR Utils
+follow instructions in =info aur=
+
+** for cache configuration
+#+begin_src sh
+sudo mount --bind /home/aur-repos/$REPO /var/cache/pacman/$REPO
+sudo mount -o remount,bind,ro /home/aur-repos/$REPO /var/cache/pacman/$REPO
+
+# search for added line for bind mount here and add to /etc/fstab
+less /etc/mtab
+#+end_src
+
+*** AUR Commands
+#+begin_src sh
+# sync the obs repo
+aur repo -d obs --list | aur vercmp
+
+# download/build $REPO
+aur sync -d obs $REPO
+#+end_src
+
+* Touchpad
+=sudo pacman -Syu xf86-input-mtrack=
+
+* Japanese
+Wow, Garuda comes shipped with this /almost/ working...
+
+** Configure vars in =$HOME/.pam_authentication=
+these vars are already configured in another file,
+=/etc/profile.d/input-support.sh=, which should work, but in case they
+are not loaded by the time PAM needs them...
+
+#+begin_src sh
+# https://wiki.archlinux.org/index.php/Fcitx
+export GTK_IM_MODULE=fcitx
+export QT_IM_MODULE=fcitx
+export XMODIFIERS=@im=fcitx
+#+end_src
+
+** Install fonts and fcitx
+#+begin_src sh
+# there are other fonts on AUR as well
+sudo pacman -Syu \
+  ttf-juliamono \
+  adobe-source-han-sans-jp-fonts \
+  adobe-source-han-serif-jp-fonts \
+  otf-ipafont \
+  ttf-hanazono \
+  ttf-sazanami
+
+# this will give you the Kana Kanji and Hangul keyboards
+sudo pacman -Syu fcitx-kkc kcm-fcitx fcitx-hangul fcitx-table-other
+#+end_src
+
+now just restart and set Kana Kanji to be selected when you want
+
+* Firefox SSB's
+- open =about:config= and set =browser.sitessb.enabled= to true
+
+*** SSB's
+- Trello
+
+* Zeal Docs
+- Find feeds for docsets [[https://github.com/Kapeli/feeds][here]].
+
+- [[https://kapeli.com/docsets][Generate docsets with Dash]].
+
+- For Julia, use Doxygen to generate.
+
+- Docsets: bash, boost, bootstrap5, C, C++, cmake, julia, numpy, opencv,
+  python3, qt5, react, scipy, typescript ds
+
+* Cheatsheets
+
+* Pamac packages
+** CMD Line utilities
+#+begin_src sh
+sudo pacman -Syu tldr
+#+end_src
+
+** First Batch
++ GIMP
++ devhelp
++ emacs
++ VLC (fonts, projectm)
++ Arduino
++ Krita (with SeExpr)
++ Shotwell
++ Cura (3D printing)?
++ Blender?
+
+** Photo/Video
++ CAL colorimetry tools (displayCAL)\
+  - 3D LUT Maker
+  - Curve Viewer
+  - DisplayCAL
+  - ICC Profile Info
+  - Profile Loader
+  - Scripting Client
+  - Synthetic ICC
+  - Testchart Editor
+  - VRML to X3D
++ KRuler
++ gImageReader
++ XaoS
++ QCAD
++ LibreCAD
++ Chemtool
++ OpenSCAD
++ Bonzomatic (GPU livecoding)
++ OCR Feeder ?
+
+** Music/Audio
+- Patroneo
+- Geonkick
+- SuperCollider IDE
+- VMPK
+- Sonic Visualizer
+
+** Productivity
+- Zathura
+- Chromium
+- TexStudio
+- TOR Browser
+- Ethereum
+- Sweet Home 3D
+- Lyx
+- Kexi
+
+** Spyder
+python-pandas
+
+=sudo pamac install python-pandas python-pandas-datareader python-numexpr python-scipy python-blosc python-tabulate python-fsspec python-bottleneck=
+
+(spyder has a dependency cycle w/ other packages)
+
+** Math/Science
+- ParaView (dep problems)
+- Spyder
+- GeoGebra
+- Coq
+- Step
+- Rocs
+- Parley
+- KTouch/Klavaro
+- KLettres
+- Cantor
+- Stellarium
+- QGIS
+- Kiten
+- xmaxima
+- GNU Octave
+- AnkiWeb (sharable flashcards)
+- Kalzium
+- PyMOL
+- QSpectrumAnalyzer
+- Artikulate?
+
+** Communication & News
++ Gqrx
++ gWakeOnLan?
++ Electrum
++ Element (matrix chat)
++ Etherape
++ Ettercap
++ KVIrc
++ Wireshark
++ Shadowsocks
+
+** Games
++ LSkat
++ Kubrick
++ KSudoku
++ KShisen
++ KReversi
++ Kigo
++ 0 AD
++ Mame
++ KBreakout
+
+** Utilities
++ KGpG
++ KCharSelect
++ DB Browser (sqllite)
++ Subsurface (diving log & bathymetry)
++ YubiKey
+  - manager
+  - authenticator
+  - personalization tool
++ Screenkey
++ Okteta
++ Graphical Disk Map
++ GTK Wave
++ RFDump
++ Game Conqueror (analyze memory of running/profiled processes)
++ Firejail? (software/network sandpox for untrusted apps)
++ gnome-firmware? (fwupd)
+  - installs/manages UEFI and other firmware
+
+** Development
+*** VS Code
+5+ options:
+
+- Arch Official Open Source: =fda=
+- insiders binary: =visual-studio-insiders-bin=
+- stable wayland 1: =fdsa=
+- stable wayland 2: =fdas=
+- VS Code latest: =code-git=
+- VS Code stable: =code-stable-git=
+
+*** Other Dev Tools
++ =doxygen doxygen-docs=
+  - [[https://github.com/chinmaygarde/doxygen2docset][doxygen2docset]]
++ XCA
++ KAppTemplate
++ Umbrello
++ Kirigami
++ QCachegrind (profiling)
++ KCachegrind (profiling)
++ Glade
++ gEDA PCB
++ KiCad (electronics design)
++ GammaRay (Qt runtime debug/visualization)
++ poedit (interlinear translation editor)
++ KDiff3
++ Heaptrack (heap memory profiler)
++ Diffuse Merge Tool
++ QXmlEdit
++ Mysql Workbench
++ Postgres Admin
++ Giggle
++ QGit
++ gitg
++ GdaBrowser
++ Cppcheck
++ KDbg
++ DistCC Monitor (graphical view of distributed compile tasks)
++ UPnP (creating UPnP devices and control points)
+  - point AV control point
+  - network light
+  - universal control point
++ PulseView
++ ipython
++ ipython2
++ Jupyter QT?
++ Sysprof? (Gnome app/system profiler)
+
+*** Linux (and misc)
++ headers/doc
+
+* Garuda-VAAPI problems
+
+Garuda wants to install the =video-linux= stuff for compatibility with
+embedded intel graphics, but this causes the OS to default to
+=video-linux= and basically never use =nvidia= graphics...
+
+remove with this (and maybe more... gstreamer can also be removed)
+
+#+begin_src sh
+sudo pacman -Ru garuda-vaapi gstreamer-vaapi intel-media-driver libvdpau-va-gl libva-intel-driver libva-mesa-driver libva-vdpau-driver mesa-vdpau lib32-libva-intel-driver lib32-libva-mesa-driver lib32-libva-vdpau-driver
+[sudo] password for dc:
+checking dependencies...
+:: lib32-libva optionally requires lib32-libva-vdpau-driver: vdpau back-end for nvidia
+:: lib32-libva optionally requires lib32-libva-intel-driver: back-end for intel cards
+:: lib32-mesa optionally requires lib32-libva-mesa-driver: for accelerated video playback
+:: libva optionally requires intel-media-driver: backend for Intel GPUs (>= Broadwell)
+:: libva optionally requires libva-vdpau-driver: backend for Nvidia and AMD GPUs
+:: libva optionally requires libva-intel-driver: backend for Intel GPUs (<= Haswell)
+:: mesa optionally requires mesa-vdpau: for accelerated video playback
+:: mesa optionally requires libva-malsaesa-driver: for accelerated video playback
+:: obs-studio-wayland optionally requires libva-intel-driver: hardware encoding
+:: obs-studio-wayland optionally requires libva-mesa-driver: hardware encoding
+:: vlc optionally requires libva-vdpau-driver: vdpau backend nvidia
+:: vlc optionally requires libva-intel-driver: video backend intel
+
+Packages (11) garuda-vaapi-20201204-2  gstreamer-vaapi-1.18.3-1  intel-media-driver-20.4.5-1
+              lib32-libva-intel-driver-2.4.1-1  lib32-libva-mesa-driver-20.3.4-1  lib32-libva-vdpau-driver-0.7.4-6
+              libva-intel-driver-2.4.1-1  libva-mesa-driver-20.3.4-1  libva-vdpau-driver-0.7.4-5
+              libvdpau-va-gl-0.4.2-3  mesa-vdpau-20.3.4-1
+#+end_src
+
+simply trying to remove =video-linux= from GUI or with =mhwd= results in
+the following errors:
+
+#+begin_example
+Starting
+> Removing video-linux...
+Sourcing /etc/mhwd-x86_64.conf
+Has lib32 support: true
+Sourcing /var/lib/mhwd/local/pci/video-linux/MHWDCONFIG
+Processing classid: 0300
+Sourcing /var/lib/mhwd/scripts/include/0300
+Processing classid: 0380
+Processing classid: 0302
+checking dependencies...
+error: failed to prepare transaction (could not satisfy dependencies)
+:: removing intel-media-driver breaks dependency 'intel-media-driver' required by garuda-vaapi
+:: removing libvdpau-va-gl breaks dependency 'libvdpau-va-gl' required by garuda-vaapi
+:: removing libva-intel-driver breaks dependency 'libva-intel-driver' required by garuda-vaapi
+:: removing libva-mesa-driver breaks dependency 'libva-mesa-driver' required by garuda-vaapi
+:: removing libva-vdpau-driver breaks dependency 'libva-vdpau-driver' required by garuda-vaapi
+:: removing mesa-vdpau breaks dependency 'mesa-vdpau' required by garuda-vaapi
+:: removing lib32-mesa-vdpau breaks dependency 'lib32-mesa-vdpau' required by garuda-vaapi
+:: removing lib32-libva-intel-driver breaks dependency 'lib32-libva-intel-driver' required by garuda-vaapi
+:: removing lib32-libva-mesa-driver breaks dependency 'lib32-libva-mesa-driver' required by garuda-vaapi
+:: removing lib32-libva-vdpau-driver breaks dependency 'lib32-libva-vdpau-driver' required by garuda-vaapi
+Error: pacman failed!
+Error: script failed!
+
+
+Done ...
+#+end_example
