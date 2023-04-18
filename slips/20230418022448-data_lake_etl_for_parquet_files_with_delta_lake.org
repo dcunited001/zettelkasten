@@ -15,6 +15,25 @@
   - [[github:zjffdu/zeppelin-notebook][zjffdu/zeppelin-notebook]]
   - follow instructions in [[https://zjffdu.medium.com/learn-spark-on-zeppelin-in-docker-container-9f3f7b2db230][Learn Spark on Zeppelin in Docker Container]]
 
+** Compatibility
+*** Spark
+=Zeppelin 10.1= is only compatible up to =Spark 3.2.x=, given the following
+error message:
+
+#+begin_quote
+You can set zeppelin.spark.enableSupportedVersionCheck to false if you really want to try this version of spark.
+#+end_quote
+
+Although you can add =zeppelin.spark.enableSupportedVersionCheck false= to the
+=%spark.conf=. Changing this requires restarting the interpreter (kernel). And
+this apparently works ... for now.
+
+*** Delta Lake
+
+Delta Lake =2.1.x= through =2.3.x= are only compatible with =Spark 3.3.x=
+
+... so need to run Delta Lake =2.0.2=
+
 * Overview
 
 It's a lot of extra work & boilerplate to work with the data this way. However,
@@ -83,5 +102,54 @@ before creating the tables.
         └── 62590
 #+end_quote
 
-There may be some problems encountered in the partitioning format. The
-directories contained in =train_landmark_files=
+There may be some problems encountered in the partitioning formt should include
+the partition field names in their directory structure. The directories
+contained in =train_landmark_files=
+
+* Start the Zeppelin Container
+
+#+begin_src emacs-lisp
+(setq bigdata-home (getenv "PWD"))
+(setq bigdata-home "/data/vm/bigdata")
+#+end_src
+
+#+begin_src shell :tangle (expand-file-name "drun.sh" bigdata-home) :shebang #!/bin/sh  :tangle-mode (identity #o744) :mkdirp yes
+
+docker run -u $(id -u) -p 8080:8080 -p 4040:4040 --rm \
+       -v ${spark_location}:/opt/spark \
+       -v ${zeppelin_notebook}:/opt/notebook \
+       -e ZEPPELIN_NOTEBOOK_DIR=/opt/notebook \
+       -e SPARK_HOME=/opt/spark \
+       -e ZEPPELIN_LOCAL_IP=0.0.0.0 \
+       --name zeppelin apache/zeppelin:0.10.1
+#+end_src
+
+
+* Attempt to run the basic notebook
+
+Change =delta-core_2.12:1.0.0= to =delta-core_2.12:2.3.0= or the java gods get
+angry.
+
+#+begin_src shell
+%spark.conf
+
+spark.jars.packages io.delta:delta-core_2.12:2.3.0
+spark.sql.extensions io.delta.sql.DeltaSparkSessionExtension
+spark.sql.catalog.spark_catalog org.apache.spark.sql.delta.catalog.DeltaCatalog
+spark.sql.warehouse.dir /tmp/warehouse
+#+end_src
+
+Crash the box. Java gods not satisfied with your sacrifice.
+
+#+begin_src sql
+%spark.sql
+
+CREATE TABLE IF NOT EXISTS events (
+  id INT,
+  data STRING)
+USING DELTA
+#+end_src
+
+Check versions and rerun. It works!
+
+* Notes
