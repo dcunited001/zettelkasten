@@ -1,0 +1,227 @@
+:PROPERTIES:
+:ID:       0b80782f-92a8-4b48-958c-a41e7ff8713e
+:END:
+#+TITLE: Data Lake
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
+* Docs
+
+* Resources
+
+* Queries
+
+** Arrow
+
+*** Docs
+
++ [[https://arrow.apache.org/docs/][Main Docs]]
+  - [[https://arrow.apache.org/docs/index.html][User Guides]] (learning oriented & more in-depth than the cookbook)
++ [[github:apache/arrow][apache/arrow]]
++ [[https://arrow.apache.org/docs/python/index.html][Python docs]]
+
+*** Resources
+
++ Repos
+  - Rust: [[github.com:apache/arrow-rs][apache/arrow-rs]]
+  - Julia: [[github.com:apache/arrow-julia][apache/arrow-julia]]
+  - Cookbook: [[github:apache/arrow-cookbook][apache/arrow-cookbook]] (task-oriented; includes java, python, c++ and r)
+
+*** Python
+
++ [[https://arrow.apache.org/docs/python/parquet.html][Reading/writing parquet format]]
+
+Compatible with python 3.7 tp 3.11 (2023)
+
+*** Topics
+
+**** Types
+
+Primative types: int, float, string, decimal, timestamp, etc
+
+**** Parquet in Apache Spark
+
+Two Readers:
+
+*Non-vectorized* (fallback java implementation)
+
++ Supports all types (complex and primitive)
++ Reads rows
+
+*Vectorized* (spark-native implementation)
+
++ Only primitives, but some complex types in Spark 3.3
++ Reads/scans data in batches (hence vectorized)
++ much better at memory locality (and thus i/o and cache utilization)
++ offers encoding-specific optimizations
++ can use =memcpy= directly in some cases (copies 1-D regions of RAM)
+
+** Arrow SQL
+
+* Zeppelin
+
+Notebooks for Apache Spark.
+
++ Zep 10.1 was pushed on 2022/02/26. The dockerfile implies that it should work
+  with Spark 3.2
+
+** Docs
++ [[github:apache/zeppelin][apache/zeppelin]]
++ [[https://zeppelin.apache.org/docs/latest/interpreter/spark.html][Spark Interpreter for Apache Zeppelin]]
++ [[https://zeppelin.apache.org/docs/latest/quickstart/kubernetes.html][Zeppelin on Kubernetes]]
+  - Hopefully conveys how to connect to Spark on the network
+  - [[https://raw.githubusercontent.com/apache/zeppelin/master/k8s/zeppelin-server.yaml][zeppelin-server.yaml]] k8s chart
+
+
+** Resources
++ [[https://github.com/apache/zeppelin/tree/master/notebook/Spark%20Tutorial][Spark Tutorial]] for zeppelin
+  - [[https://github.com/apache/zeppelin/blob/master/Dockerfile][Dockerfile]]
+
+** Topics
+*** Docker Container
+
+I was under the assumption that, since Spark is a networked service, it needs to
+run as one ... but apparently that's not necessarily the case -- at least if
+you're working on your own or running Zeppelin notebooks. It seems that even
+doing so requires quite a bit more knowledge of the Spark ecosystem
+
+So my assumptions now:
+
++ Applications building on Spark just need the JAR to talk to a Spark
+  server/cluster anyways. This would give Zeppelin the ability to run all the
+  Spark/SQL or PySpark code ... since it's going to need those JARs.
++ And that, to connect to them with something like Zeppelin would require adding
+  some kind of connection config (like a SqlServer conncetion). This is what the
+  K8S yaml seems to imply.
+
+I would like to read from one set of Parquet files and perhaps transform them
+somewhere else.
+
+**** [[https://hub.docker.com/r/apache/zeppelin][apache/zeppelin]]
+
+The image builds =FROM openjdk:8 as builder=
+
+It sets these =MAVEN_OPTS= ... which probably need to be adjusted (or maybe not
+if using Delta Lake as a frontend for data access)
+
+|-------------------------+--------|
+| Param                   | Value  |
+|-------------------------+--------|
+| -Xms                    | 1024MB |
+| -Xmx                    | 2048MB |
+| -XX:MaxMetaspaceSize    | 1024MB |
+| -XX:-UseGCOverheadLimit |        |
+|-------------------------+--------|
+
+And =-Dorg.slf4j.simpleLogger.log.org.apache.maven.cli.transfer.Slf4jMavenTransferListener=warn=
+
+
+* Delta Lake
+
+** Docs
+
+[[https://docs.delta.io/latest/index.html][Main Docs]]
+
++ [[https://docs.delta.io/latest/quick-start.html][Quickstart]]
++ [[https://github.com/delta-io/delta/blob/master/examples/cheat_sheet/delta_lake_cheat_sheet.pdf][Cheatsheet]]
++ [[https://docs.delta.io/latest/releases.html][Releases and version compatibility]]
+
+
+*** Deployments
+Delta Lake requires being structured around a Maven project.
+
++ [[https://docs.delta.io/latest/delta-standalone.html#][Delta Standalone]]. Supports java/scala only.
+
+** Resources
++ Python [[https://delta.io/blog/2023-02-27-deltalake-0.7.0-release/][deltalake]] (with [[https://github.com/delta-io/delta-examples/blob/master/notebooks/delta-rs-python/blog_0_7_0.ipynb][notebook]])
+** Topics
+
+*** Data Ingestion
+
+**** [[https://delta.io/blog/2022-09-23-convert-parquet-to-delta/][Convert Parquet to Delta Lake]]
+
+The conversion is an in-place operation (no parquet files are modified)
+
+*** Docker Containers
+
+**** [[https://hub.docker.com/r/bitnami/spark][bitnami/spark]]
+
+The image offers a good consolidated description of the Apache Spark environment
+variables (The [[https://spark.apache.org/docs/latest/spark-standalone.html#cluster-launch-scripts][Spark docs]] contains a more complete description)
+
++ [[https://github.com/bitnami/containers/blob/main/bitnami/spark/3.3/debian-11/Dockerfile][Dockerfile]] here in the [[https://github.com/bitnami/containers][bitnami/containers]] repo.
++ [[https://github.com/bitnami/charts/tree/master/bitnami/spark][Spark charts for Kubernetes]] are here in [[https://github.com/bitnami/charts][bitnami/charts]].
+
+
+**** [[https://hub.docker.com/r/ohdsi/broadsea-spark-sql][ohdsi/broadsea-spark-sql]]
+
+[[github:OHDSI/Broadsea-Spark-SQL][OHDSI/Broadsea-Spark-Sql]], repo with Dockerfile.
+
++ This is an image building on bitnami/spark for Spark SQL with Delta Lake
+  extension. docker image here
++ It starts
+
+**** Delta Lake with Zeppelin Notebooks
+
+* Formats
+
+** Orc
+
+** Parquet
+
+*** Docs
++ [[https://arrow.apache.org/docs/python/parquet.html][Reading/Writing the Apache Parquet Format]]
+
+*** Resources
+
+*** Topics
+
+
+* ETL
+
+** Delta Live Tables
+
+Use DLT for ingest/transform
+
++ Ingest with =Auto Loader= and =COPY INTO=
++ Transform with automated ETL: DLT's API combines batch & streaming
+
+Use Databricks workflows for orchestration
+
+*** Docs
+
+*** Resources
++ [[https://www.databricks.com/blog/2022/04/25/simplifying-change-data-capture-with-databricks-delta-live-tables.html][Simplifying Change Data Capture With Databricks Delta Live Tables]]
+
+*** Topics
+
+**** Security and Governance
+
+See [[https://www.databricks.com/product/unity-catalog][Unity Catalog]]
+
+**** Automation
+
+***** Main DLT Benefits
+
+Accelerates ETL development:
+
++ Declare SQL/Python and DLT auto-orchestrates the DAG graph, handles retries
+  and adapts to changing schema in the provided data.
+
+Automates infrastructure:
+
++ recovery, autoscaling and perf. optimization are handled
+
+Ensure Data Quality
+
++ Quality Controls
++ Testing
++ Monitoring
++ Policy/Permissions Enforcement
+
+Unifies Batch/Streaming into one API
+
+* Orchestration
+
+** Databricks

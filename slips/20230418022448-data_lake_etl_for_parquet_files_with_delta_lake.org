@@ -1,0 +1,87 @@
+:PROPERTIES:
+:ID:       e2880db1-13fa-4bfe-9d66-8d8070d61cce
+:END:
+#+title: Data Lake: ETL for Parquet Files with Delta Lake
+
+* Roam
++ [[id:0b80782f-92a8-4b48-958c-a41e7ff8713e][Data Lake]]
++ [[id:4ab045b9-ea4b-489d-b49e-8431b70dd0a5][Data Science]]
++ [[id:4c531cd8-3f06-47fb-857a-e70603891ed8][Hadoop]]
+
+* Resources
+
++ Official Delta Lake tutorial on Zeppelin
++ [[https://towardsdatascience.com/deep-dive-into-delta-lake-via-apache-zeppelin-d59db1673584][Deep Dive into Delta Lake via Apache Zeppelin]]
+  - [[github:zjffdu/zeppelin-notebook][zjffdu/zeppelin-notebook]]
+  - follow instructions in [[https://zjffdu.medium.com/learn-spark-on-zeppelin-in-docker-container-9f3f7b2db230][Learn Spark on Zeppelin in Docker Container]]
+
+* Overview
+
+It's a lot of extra work & boilerplate to work with the data this way. However,
+there's a few advantages:
+
++ More control over OOM errors and disk space issues when reading/transforming
+  the parquet files. Tools like =dsq= for example will ingest the data into
+  =sqlite= and that lacks the necessary memory.
++ Zeppelin is a pretty useful tool: basically as complicated as Jupyter (to
+  which I'm new) and I get to write SQL queries
++ Eventually, if I do transform the parquet database, then I can set
+  checkpoints. However, it's so large that I'm not sure this is realistic.
+
+* Prepare dependencies
+
++ Download Spark 3.2.0
++ Pull the =apache/zeppelin:0.10.1= image
++ Get the dataset downloaded
+
+
+* Create Workspace and Volumes
+
+Three volumes are needed, which must be separate trees:
+
++ Delta databases
++ Zeppelin notebook workspace
++ Spark
+
+The directory structure should look something like this
+
+#+begin_quote
+.
+├── asl
+│   ├── asl-signs.zip
+│   ├── delta
+│   ├── dsl10-data
+│   ├── dsl46-data
+│   └── sign2pred.json
+├── spark
+│   ├── spark-3.2.4-bin-hadoop3.2
+│   └── spark-3.2.4-bin-hadoop3.2.tgz
+└── zeppelin-notebook
+    ├── Flink
+    ├── Python
+    ├── R
+    ├── README.md
+    └── Spark
+#+end_quote
+
+The goal is to create a delta table in =./asl/delta/mp= and do some ETL
+transformation to trip some columns and push them to a new delta table in
+=./asl/delta/lake=. The directory structure for =delta= should look like this
+before creating the tables.
+
+#+begin_quote
+.
+├── lake
+└── mp
+    ├── sign_to_prediction_index_map.json
+    ├── train.csv
+    └── train_landmark_files
+        ├── 16069
+        ├── 18796
+        ├──  ...
+        ├── 61333
+        └── 62590
+#+end_quote
+
+There may be some problems encountered in the partitioning format. The
+directories contained in =train_landmark_files=
