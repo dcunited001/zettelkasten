@@ -14,6 +14,7 @@
 + [[https://towardsdatascience.com/deep-dive-into-delta-lake-via-apache-zeppelin-d59db1673584][Deep Dive into Delta Lake via Apache Zeppelin]]
   - [[github:zjffdu/zeppelin-notebook][zjffdu/zeppelin-notebook]]
   - follow instructions in [[https://zjffdu.medium.com/learn-spark-on-zeppelin-in-docker-container-9f3f7b2db230][Learn Spark on Zeppelin in Docker Container]]
++ Delta Lake [[https://github.com/delta-io/delta/blob/master/examples/cheat_sheet/delta_lake_cheat_sheet.pdf][PySpark and SQL Cheatsheet]]
 
 ** Compatibility
 *** Spark
@@ -102,9 +103,12 @@ before creating the tables.
         └── 62590
 #+end_quote
 
-There may be some problems encountered in the partitioning formt should include
-the partition field names in their directory structure. The directories
-contained in =train_landmark_files=
+There may be some problems encountered with partition discovery. For directories
+contained in =train_landmark_files=, the partition field names
+=participant_id=$id= should be in their directory structure, so i've changed
+that.
+
+However, the files include the =$id= for =sequence_id= directly.
 
 * Start the Zeppelin Container
 
@@ -118,11 +122,74 @@ contained in =train_landmark_files=
 docker run -u $(id -u) -p 8080:8080 -p 4040:4040 --rm \
        -v ${spark_location}:/opt/spark \
        -v ${zeppelin_notebook}:/opt/notebook \
+       -v ${delta_db}:/opt/data \
        -e ZEPPELIN_NOTEBOOK_DIR=/opt/notebook \
        -e SPARK_HOME=/opt/spark \
        -e ZEPPELIN_LOCAL_IP=0.0.0.0 \
        --name zeppelin apache/zeppelin:0.10.1
 #+end_src
+
+** Spark Interpretor process
+
+The =%spark.conf= section needs addtional parameters:
+
++ to allow for more RAM: =spark.driver.memory= and =spark.executor.memory=
++ to enable more parallelism: =spark.executor.instances=
++ to set a persistent =spark.sql.warehouse.dir=
+
+The interpreter is shared with all notes by default -- Spark, SQL, scala, python
+and R all share the interpreter.
+
+The spark process runs like this:
+
+#+begin_quote
+/usr/lib/jvm/java-8-openjdk-amd64/bin/java
+  -cp /opt/zeppelin/local-repo/spark/*:/opt/zeppelin/interpreter/spark/*:/opt/zeppelin/interpreter/zeppelin-interpreter-shaded-0.10.1.jar:/opt/zeppelin/interpreter/spark/spark-interpreter-0.10.1.jar:/opt/spark/conf/:/opt/spark/jars/*
+  -Xmx1g
+  -Dfile.encoding=UTF-8
+  -Dlog4j.configuration=file:///opt/zeppelin/conf/log4j.properties
+  -Dlog4j.configurationFile=file:///opt/zeppelin/conf/log4j2.properties
+  -Dzeppelin.log.file=/opt/zeppelin/logs/zeppelin-interpreter-spark-shared_process--73372f2430fb.log
+  -XX:+IgnoreUnrecognizedVMOptions
+  --add-opens=java.base/java.lang=ALL-UNNAMED
+  --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+  --add-opens=java.base/java.lang.reflect=ALL-UNNAMED
+  --add-opens=java.base/java.io=ALL-UNNAMED
+  --add-opens=java.base/java.net=ALL-UNNAMED
+  --add-opens=java.base/java.nio=ALL-UNNAMED
+  --add-opens=java.base/java.util=ALL-UNNAMED
+  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+  --add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED
+  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-opens=java.base/sun.nio.cs=ALL-UNNAMED
+  --add-opens=java.base/sun.security.action=ALL-UNNAMED
+  --add-opens=java.base/sun.util.calendar=ALL-UNNAMED
+  --add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED
+  org.apache.spark.deploy.SparkSubmit
+  --conf spark.executor.memory=1g
+  --conf spark.master=local[*]
+  --conf spark.driver.memory=1g
+  --conf spark.driver.cores=1
+  --conf spark.jars.packages=io.delta:delta-core_2.12:2.3.0
+  --conf spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog
+  --conf spark.driver.extraClassPath=:/opt/zeppelin/local-repo/spark/*:/opt/zeppelin/interpreter/spark/*:::/opt/zeppelin/interpreter/zeppelin-interpreter-shaded-0.10.1.jar:/opt/zeppelin/interpreter/spark/spark-interpreter-0.10.1.jar
+  --conf spark.app.name=spark-shared_process
+  --conf spark.executor.cores=1
+  --conf spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension
+  --conf spark.executor.instances=2
+  --conf spark.webui.yarn.useProxy=false
+  --conf spark.driver.extraJavaOptions=
+  -Dfile.encoding=UTF-8
+  -Dlog4j.configuration=file:///opt/zeppelin/conf/log4j.properties
+  -Dlog4j.configurationFile=file:///opt/zeppelin/conf/log4j2.properties
+  -Dzeppelin.log.file=/opt/zeppelin/logs/zeppelin-interpreter-spark-shared_process--73372f2430fb.log
+  --conf spark.sql.warehouse.dir=/tmp/warehouse
+  --class org.apache.zeppelin.interpreter.remote.RemoteInterpreterServer
+  /opt/zeppelin/interpreter/spark/spark-interpreter-0.10.1.jar
+  0.0.0.0
+  46461
+  spark-shared_process :
+#+end_quote
 
 
 * Attempt to run the basic notebook
@@ -152,4 +219,197 @@ USING DELTA
 
 Check versions and rerun. It works!
 
-* Notes
+* Import Parquet Data
+
+** Configure the spark connection
+
+#+begin_quote
+%spark.conf
+
+spark.jars.packages io.delta:delta-core_2.12:2.3.0
+spark.sql.extensions io.delta.sql.DeltaSparkSessionExtension
+spark.sql.catalog.spark_catalog org.apache.spark.sql.delta.catalog.DeltaCatalog
+spark.sql.warehouse.dir /opt/data
+
+zeppelin.spark.enableSupportedVersionCheck false
+#+end_quote
+
+** Create the database
+
+#+begin_quote sql
+%spark.sql
+
+DROP DATABASE IF EXISTS asl;
+CREATE DATABASE asl;
+USE asl;
+#+end_quote
+
+** Create Table And Import Parquet
+
+*** Try creating with no upfront table definition
+
+=Syntax error at or near 'BY'(line 11, pos 12)=
+
+#+begin_src sql
+CREATE TABLE asl.landmarks
+USING DELTA
+AS SELECT * FROM parquet.`/opt/data/train_landmark_files`
+PARTITIONED BY (participant_id int, sequence_id int)
+#+end_src
+
+*** Try creating using =COPY INTO=
+
+Must create table first, but =sequence_id= is encoded into the =$id.parquet=
+file name
+
+#+begin_src sql
+CREATE TABLE IF NOT EXISTS asl.landmarks (
+  frame int,
+  landmark_type int,
+  landmark_index int,
+  x double,
+  y double,
+  z double)
+USING DELTA
+PARTITIONED BY (participant_id int, sequence_id int)
+#+end_src
+
+The Spark SQL interpreter doesn't seem to like the =COPY INTO=
+
+=Syntax error at or near 'COPY'(line 5, pos 0)=
+
+#+begin_src sql
+%spark.sql
+-- problem with copy into
+
+COPY INTO asl.landmarks
+FROM (SELECT
+  frame,
+  case
+    when tlf.type = "face" then 0
+    when tlf.type = "left_hand" then 1
+    when tlf.type = "right_hand" then 2
+    when tlf.type = "pose" then 3
+  end as landmark_type,
+  landmark_index,
+  x,y,z
+
+  from parquet.`/opt/data/train_landmark_files` as tlf)
+FILEFORMAT = parquet
+FORMAT_OPTIONS ('inferSchema' = 'true')
+#+end_src
+
+*** Try using =INSERT INTO=
+
+But there's a column mismatch (must declare columns, but it's not properly
+inferring from partition)
+
+#+begin_src sql
+%spark.sql
+
+INSERT INTO asl.landmarks
+SELECT
+  frame,
+  case
+    when tlf.type = "face" then 0
+    when tlf.type = "left_hand" then 1
+    when tlf.type = "right_hand" then 2
+    when tlf.type = "pose" then 3
+  end as landmark_type,
+  landmark_index,
+  x,y,z
+
+  from parquet.`/opt/data/train_landmark_files` as tlf
+#+end_src
+
+*** Try selecting from files
+
+#+begin_src sql
+%spark.sql
+
+SELECT
+  frame,
+  case
+    when tlf.type = "face" then 0
+    when tlf.type = "left_hand" then 1
+    when tlf.type = "right_hand" then 2
+    when tlf.type = "pose" then 3
+  end as landmark_type,
+  landmark_index,
+  x,y,z
+
+  from parquet.`/opt/data/train_landmark_files` as tlf
+  LIMIT 1086
+
+  --PARTITIONED BY (participant_id int, sequence_id int)
+#+end_src
+
+Which works
+
+#+begin_src csv
+frame,landmark_type,landmark_index,x,y,z
+0,0,0,0.4306562542915344,0.41647738218307495,-0.046378035098314285
+0,0,1,0.4264602065086365,0.37437817454338074,-0.06415620446205139
+0,0,2,0.4277646541595459,0.3899596035480499,-0.03977356478571892
+0,0,3,0.4132423996925354,0.3465607762336731,-0.03967443108558655
+0,0,4,0.425449401140213,0.36393827199935913,-0.06560837477445602
+0,0,5,0.4243261218070984,0.3526744842529297,-0.05735760182142258
+0,0,6,0.42156168818473816,0.32772254943847656,-0.01526414230465889
+0,0,7,0.33582550287246704,0.34232962131500244,0.028540370985865593
+0,0,8,0.4190429449081421,0.30387192964553833,4.6630375436507165E-5
+0,0,9,0.417691171169281,0.28993964195251465,0.0023495673667639494
+#+end_src
+
+* Parquet Files
+
+** Content
+
+=parquet-cli head -n 1000 asl/delta/lake/train_landmark_files/participant_id\=16069/1230387310.parquet  | grep -e "\"landmark_index\": 0"=
+
+#+begin_quote
+{"frame": 104, "row_id": "104-face-0", "type": "face", "landmark_index": 0, "x": 0.46653035283088684, "y": 0.36588236689567566, "z": -0.04517585411667824}
+{"frame": 104, "row_id": "104-left_hand-0", "type": "left_hand", "landmark_index": 0, "x": 0.6902916431427002, "y": 0.5944094657897949, "z": 4.693832238444884E-7}
+{"frame": 104, "row_id": "104-pose-0", "type": "pose", "landmark_index": 0, "x": 0.47088849544525146, "y": 0.3395295739173889, "z": -1.367483377456665}
+{"frame": 104, "row_id": "104-right_hand-0", "type": "right_hand", "landmark_index": 0, "x": null, "y": null, "z": null}
+{"frame": 105, "row_id": "105-face-0", "type": "face", "landmark_index": 0, "x": 0.46275317668914795, "y": 0.36582159996032715, "z": -0.04378129541873932}
+#+end_quote
+
+** Format
+
+=parquet-cli schema asl/delta/lake/train_landmark_files/participant_id\=16069/1230387310.parquet=
+
+#+begin_src json
+{
+  "type" : "record",
+  "name" : "schema",
+  "fields" : [ {
+    "name" : "frame",
+    "type" : [ "null", "int" ],
+    "default" : null
+  }, {
+    "name" : "row_id",
+    "type" : [ "null", "string" ],
+    "default" : null
+  }, {
+    "name" : "type",
+    "type" : [ "null", "string" ],
+    "default" : null
+  }, {
+    "name" : "landmark_index",
+    "type" : [ "null", "int" ],
+    "default" : null
+  }, {
+    "name" : "x",
+    "type" : [ "null", "double" ],
+    "default" : null
+  }, {
+    "name" : "y",
+    "type" : [ "null", "double" ],
+    "default" : null
+  }, {
+    "name" : "z",
+    "type" : [ "null", "double" ],
+    "default" : null
+  } ]
+}
+#+end_src
