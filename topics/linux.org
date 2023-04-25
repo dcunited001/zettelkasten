@@ -133,6 +133,12 @@ Extensible/Linkable Format
 + FreeBSD Handbook: [[https://web.archive.org/web/20130506160632/http://www.freebsd.org/doc/en_US.ISO8859-1/books/handbook/binary-formats.html][Binary Formats]]
 + [[https://www.technovelty.org/linux/shared-libraries-and-execute-permissions.html][Shared libraries and execute permissions]]
 
+*** Fasterthanli.me
++ [[https://fasterthanli.me/series/making-our-own-executable-packer][Making our own executable packer]] (18-part series on Linux executables)
++ [[https://fasterthanli.me/series/reading-files-the-hard-way][Reading files the hard way]] (not your averge *.exe)
+
+[[https://github.com/gco/xee/blob/4fa3a6d609dd72b8493e52a68f316f7a02903276/XeePhotoshopLoader.m#L108-L136][Some comments are gold]]
+
 ** Resources
 
 ** Topics
@@ -145,12 +151,12 @@ See =readelf= and =hexdump= org-babel output in [[id:cda3f6b5-af52-41a6-bbf3-c3b
 
 Format for executables, shared libraries and object files
 
-  |----------+----------------+-----------|
-  |          | Relevance      | Structure |
-  |----------+----------------+-----------|
-  | Segments | Only runtime   |           |
-  | Sections | Only link-time |           |
-  |----------+----------------+-----------|
+  |----------+----------------|
+  |          | Relevance      |
+  |----------+----------------|
+  | Segments | Only runtime   |
+  | Sections | Only link-time |
+  |----------+----------------|
 
 Can contain 0+ segments and sections (two completely different concepts)
 
@@ -158,15 +164,31 @@ Can contain 0+ segments and sections (two completely different concepts)
 + some segments can have zero length
 + segments and sections can overlap
 
-A simple statically linked executable contains 2 main segments to load into RAM:
+A simple statically linked ELF contains 2 main segments to load into RAM:
 
 + Data Segment: initialized globals (and other initialized data), which leaves
   room to grow.
 + Code Segment: contains the code's instructions, followed by the entry-point
   address.
 
-**** [[https://linux-audit.com/elf-binaries-on-linux-understanding-and-analysis/][The 101 of ELF files on Linux: Understanding and Analysis]]
+An ELF with a dynamically linked object does much of the same, but
 
++ The main ELF has segments pointing to the *.so ELF file, which has its own
+  data/code segments.
++ At runtime, the dynamic linking needs to adjust addresses into which the *.so
+  ELF's data/code is loaded. This can be adjusted with position independent
+  code.
+
+A C-struct defines the =E_IDENT= header section with the magic number
+=0x7F454c46=. The next two bytes define the platform (32/64-bit) and whether the
+file is encoded as little/big endian.
+
+#+begin_example
+00000000  7f 45 4c 46 02 01 01 00  00 00 00 00 00 00 00 00  |.ELF............|
+#+end_example
+
+
+**** [[https://linux-audit.com/elf-binaries-on-linux-understanding-and-analysis/][The 101 of ELF files on Linux: Understanding and Analysis]]
 
 *** Loading Dynamic libs in linux
 + How =mmap= command maps regions of =*.so= files
