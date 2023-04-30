@@ -6,16 +6,12 @@
 #+TAGS:
 * Roam
 + [[id:8d789c98-5e74-4bf8-9226-52fb43c5ca51][Gitforge]]
++ [[id:7a4a7eea-5795-44e5-86e8-eec2afebf110][GraphQL]]
 + [[id:8fb0a586-9c0f-4f36-b1ab-dc5c26681d15][Open Source]]
 
 * Docs
 
-[[https://medium.com/@tharshita13/github-graphql-api-cheatsheet-38e916fe76a3][Github GraphQL Cheatsheet]]
-
-#+begin_quote
-Honestly though, if it doesn't deal with =defaultBranchRef=, is it really much
-of a resource?
-#+end_quote
++ [[https://medium.com/@tharshita13/github-graphql-api-cheatsheet-38e916fe76a3][Github GraphQL Cheatsheet]]
 
 See [[https://github.com/magit/ghub/blob/main/lisp/ghub-graphql.el][ghub-graphql.el]] in [[https://github.com/magit/ghub][magit/ghub]] for API, particularly the queries defined as
 =defconstant= like =ghub-fetch-repository= and the matching =cl-defun=.
@@ -24,6 +20,37 @@ And see [[https://github.com/vermiculus/graphql.el][vermiculus/graphql.el]] for 
 
 #+begin_src emacs-lisp
 (setq-local org-confirm-babel-evaluate nil)
+#+end_src
+
+** Query Format for Search Interface
+
+#+begin_src graphql
+
+query($org:String!){
+  search (
+    type:REPOSITORY,
+    query: """
+      stars:>100
+      size:>2000
+      pushed:>=2020-08-08
+    """, last: 100) {
+    repos: edges {
+      repo: node {
+        ... on Repository {
+          url
+
+          allIssues: issues {
+            totalCount
+          }
+          openIssues: issues(states:OPEN) {
+            totalCount
+          }
+        }
+      }
+    }
+  }
+}
+
 #+end_src
 
 * Oh so now I figure it out
@@ -234,6 +261,8 @@ Okay jebus it's 11,500 lines long (and in my kill-ring)
 *** Repository
 
 #+name: github-type-repository
+#+header: :tangle (expand-file-name "assets/github.sdl" (cdr (project-current)))
+#+header: :mkdirp t
 #+begin_src emacs-lisp :results value code :exports both
 (ghub-graphql
  (graphql-query ((__type :arguments ((name . "Repository"))
