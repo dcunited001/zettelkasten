@@ -121,6 +121,12 @@ which socat
 
 ** Start inotifywait
 
+This version of =inotifywait= seems sensitive to the order of arguments:
+
++ =--timefmt= needs to precede =--format=
++ it considers =--output= invalid and requires =-o= after =-d=
++ if =-o= comes before =--format=, there is no output to file.
+
 inotifywait =--format= format:
 
 | %w | watched file |                       |
@@ -138,14 +144,12 @@ tmpdir="<<ob-tmpdir()>>"
 stable_tmpdir="<<ob-stable-tmpdir()>>"
 
 ilog=/tmp/inotify.log
-# [[ -e $ilog ]] && rm $ilog
+[[ -e $ilog ]] && rm $ilog
 touch $ilog
 
 if [ -z $ipid ]; then
     #iout=$(mktemp)
-
-    #echo inotifywait -m -d -o $ilog $tmpdir $stable_tmpdir
-    inotifywait -m -d -o $ilog $tmpdir $stable_tmpdir
+    inotifywait -m -d --timefmt %T --format "%T %w %e %f" -o $ilog $tmpdir $stable_tmpdir
     # ipid=$! # not backgrounded
     [[ $? -gt 0 ]] && echo "failed to start inotifywait" && exit 1;
     ipid=$(pgrep inotifywait)
@@ -158,7 +162,7 @@ echo ilog=$ilog
 
 #+RESULTS: inotify-pid
 #+begin_src sh
-ipid=7891
+ipid=9286
 ilog=/tmp/inotify.log
 #+end_src
 
@@ -171,7 +175,7 @@ without the need to parse a table or text.
 Close after timeout of 30s
 
 #+begin_src sh :results output code :noweb yes :exports both
-# < < inotify-pid > >
+<<inotify-pid()>>
 
 [[ -z $ipid ]] && ipid=$(pgrep inotifywait)
 ilog=/tmp/inotify.log
@@ -179,41 +183,22 @@ ilog=/tmp/inotify.log
 echo $ipid
 [[ -z $ipid ]] && echo "failed to get pid for inotifywait" && exit 1
 
-tail -n30 -f $ilog | socat -T10 STDIN STDOUT
+tail -f $ilog | socat -T10 STDIN STDOUT
 #+end_src
 
 #+RESULTS:
 #+begin_src sh
-ipid=7891
-ilog=/tmp/inotify.log
-7891
-/tmp/babel-Z8282u/ ACCESS ob-input-ydbqNS
-/tmp/babel-Z8282u/ CLOSE_NOWRITE,CLOSE ob-input-ydbqNS
-/tmp/babel-Z8282u/ CREATE ob-error-Uu7Jn6
-/tmp/babel-Z8282u/ OPEN ob-error-Uu7Jn6
-/tmp/babel-Z8282u/ MODIFY ob-error-Uu7Jn6
-/tmp/babel-Z8282u/ CLOSE_WRITE,CLOSE ob-error-Uu7Jn6
-/tmp/babel-Z8282u/ DELETE ob-input-ydbqNS
-/tmp/babel-Z8282u/ OPEN ob-error-Uu7Jn6
-/tmp/babel-Z8282u/ CLOSE_NOWRITE,CLOSE ob-error-Uu7Jn6
-/tmp/babel-Z8282u/ DELETE ob-error-Uu7Jn6
-/tmp/babel-Z8282u/ CREATE ob-input-3KYB8t
-/tmp/babel-Z8282u/ OPEN ob-input-3KYB8t
-/tmp/babel-Z8282u/ CLOSE_WRITE,CLOSE ob-input-3KYB8t
-/tmp/babel-Z8282u/ CREATE ob-error-GbgkIk
-/tmp/babel-Z8282u/ OPEN ob-error-GbgkIk
-/tmp/babel-Z8282u/ CLOSE_WRITE,CLOSE ob-error-GbgkIk
-/tmp/babel-Z8282u/ DELETE ob-error-GbgkIk
-/tmp/babel-Z8282u/ CREATE .#ob-input-3KYB8t
-/tmp/babel-Z8282u/ MODIFY ob-input-3KYB8t
-/tmp/babel-Z8282u/ OPEN ob-input-3KYB8t
-/tmp/babel-Z8282u/ MODIFY ob-input-3KYB8t
-/tmp/babel-Z8282u/ CLOSE_WRITE,CLOSE ob-input-3KYB8t
-/tmp/babel-Z8282u/ DELETE .#ob-input-3KYB8t
-/tmp/babel-Z8282u/ OPEN ob-input-3KYB8t
-/tmp/babel-Z8282u/ ACCESS ob-input-3KYB8t
-/tmp/babel-Z8282u/ ACCESS ob-input-3KYB8t
-/tmp/babel-Z8282u/ ACCESS ob-input-3KYB8t
+9356
+15:59:02 /tmp/babel-Z8282u/ CLOSE_WRITE,CLOSE ob-error-LUibMz
+15:59:02 /tmp/babel-Z8282u/ DELETE ob-error-LUibMz
+15:59:02 /tmp/babel-Z8282u/ CREATE .#ob-input-m9QeeX
+15:59:02 /tmp/babel-Z8282u/ MODIFY ob-input-m9QeeX
+15:59:02 /tmp/babel-Z8282u/ OPEN ob-input-m9QeeX
+15:59:02 /tmp/babel-Z8282u/ MODIFY ob-input-m9QeeX
+15:59:02 /tmp/babel-Z8282u/ CLOSE_WRITE,CLOSE ob-input-m9QeeX
+15:59:02 /tmp/babel-Z8282u/ DELETE .#ob-input-m9QeeX
+15:59:02 /tmp/babel-Z8282u/ OPEN ob-input-m9QeeX
+15:59:02 /tmp/babel-Z8282u/ ACCESS ob-input-m9QeeX
 #+end_src
 
 ** Results
@@ -222,4 +207,4 @@ The file access is logged above. The =socat= process must finish before
 org-babel will consider it's block to be complete.
 
 Org babel redirects the =STDERR= output to the =ob-error-= buffers, which are
-definied in the [[https://git.savannah.gnu.org/cgit/emacs/org-mode.git/tree/lisp/ob-eval.el#n95][ob-eval.el]] code in =org-babel--shell-command-on-region=.
+defined in the [[https://git.savannah.gnu.org/cgit/emacs/org-mode.git/tree/lisp/ob-eval.el#n95][ob-eval.el]] code in =org-babel--shell-command-on-region=.
