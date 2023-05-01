@@ -75,8 +75,6 @@ going to tell you that? Nobody.
 
 Repo is still better for this purpose though.
 
-* Ghub
-
 * Querying repositories
 
 #+begin_example emacs-lisp
@@ -101,7 +99,7 @@ again.
 ((limit . 5000)
  (cost . 1)
  (remaining . 5000)
- (resetAt . "2023-05-01T18:02:52Z"))
+ (resetAt . "2023-05-01T23:35:35Z"))
 #+end_src
 
 ** List An Organization's Repositories
@@ -267,7 +265,7 @@ Okay jebus it's 11,500 lines long (and in my kill-ring)
 #+name: github-type-repository
 #+header: :tangle (expand-file-name "assets/github.sdl" (cdr (project-current)))
 #+header: :mkdirp t
-#+begin_src emacs-lisp :results value none :exports both :file
+#+begin_src emacs-lisp :results value none :exports both
 (ghub-graphql
  (graphql-query ((__type :arguments ((name . "Repository"))
                          name kind description (fields (name))))))
@@ -281,19 +279,31 @@ Okay jebus it's 11,500 lines long (and in my kill-ring)
  (graphql-query ((__schema (types name kind description (fields (name)))))))
 #+end_src
 
-** WIth graphql-mode
+*** Dump Schema to JSON
 
-#+name: gql-query-schema-full
-#+begin_src emacs-lisp
-(graphql-query ((__schema (types name kind description (fields (name))))))
+Hmmm, but i need an =sdl= file
+
+#+begin_src emacs-lisp :results value none :exports both
+(json-encode
+ (ghub-graphql
+  (graphql-query ((__type :arguments ((name . "Repository"))
+                          name kind description (fields (name)))))))
 #+end_src
 
+** WIth ob-graphql
 
+I can't get this to work. It doesn't accept the authorization token.
 
-#+name: gql-schema-full
-#+header: :url https://api.github.com/graphql
-#+header: :headers `(("Authorization" . ,(format "Bearer %s" ghub-grapql-token))
-#+begin_src graphql :results output file :file github.sdl :exports code
+#+name: graphql-headers
+#+begin_src emacs-lisp
+'(("Authorization" . "token mytokenhere"))
+#+end_src
+
+#+name: obgql-schema-full
+#+header: :url https://api.github.com/graphql :headers graphql-headers
+#+begin_src graphql :results output :file github.sdl :exports code
+##+begin_src graphql :results output file :file github.sdl :exports code
+##+begin_src graphql :results value :file github.sdl :exports code
 query{
   __schema{
     types{
@@ -305,3 +315,121 @@ query{
   }
 }
 #+end_src
+
+** With ob-restclient
+
+#+name: gql-query-schema
+#+begin_example graphql
+query {
+  __schema {
+    types {
+      name
+      kind
+      description
+      fields { name }
+    }
+  }
+}
+#+end_example
+
+#+name: gql-request-schema
+#+header: :var token=(identity ghub-graphql-token) query=gql-query-schema
+#+begin_src restclient
+# Authorization: Bearer :token
+POST https://api.github.com/graphql
+Authorization: Bearer :token
+Content-Type: application/json
+User-Agent: Emacs
+
+{
+  "query": ":query",
+  "variables": {}
+}
+#+end_src
+
+#+RESULTS: gql-request-schema
+#+BEGIN_SRC js
+{
+  "message": "Problems parsing JSON",
+  "documentation_url": "https://docs.github.com/graphql"
+}
+// POST https://api.github.com/graphql
+// HTTP/1.1 400 Bad Request
+// Server: GitHub.com
+// Date: Mon, 01 May 2023 23:33:45 GMT
+// Content-Type: application/json; charset=utf-8
+// Content-Length: 89
+// X-OAuth-Scopes:
+// X-Accepted-OAuth-Scopes: repo
+// github-authentication-token-expiration: 2023-05-31 16:32:23 UTC
+// X-GitHub-Media-Type: github.v4; format=json
+// X-RateLimit-Limit: 5000
+// X-RateLimit-Remaining: 4999
+// X-RateLimit-Reset: 1682986006
+// X-RateLimit-Used: 1
+// X-RateLimit-Resource: graphql
+// Access-Control-Expose-Headers: ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset
+// Access-Control-Allow-Origin: *
+// Strict-Transport-Security: max-age=31536000; includeSubdomains; preload
+// X-Frame-Options: deny
+// X-Content-Type-Options: nosniff
+// X-XSS-Protection: 0
+// Referrer-Policy: origin-when-cross-origin, strict-origin-when-cross-origin
+// Content-Security-Policy: default-src 'none'
+// Vary: Accept-Encoding, Accept, X-Requested-With
+// X-GitHub-Request-Id: 818B:4D2A:894CA1:117BEF0:64504C59
+// Request duration: 0.077842s
+#+END_SRC
+
+
+#+name: curl-gql-request-test
+#+headers: :var token=(identity ghub-graphql-token) query=gql-query-schema
+#+begin_src sh :results output
+body='{ "query": "'$query'", "variables": {} }'
+
+echo $body
+echo $body | jq
+#+end_src
+
+#+RESULTS: curl-gql-request-test
+: { "query": "query{ __schema{ types{ name kind description fields{name} } } } ", "variables": {} }
+: {
+:   "query": "query{ __schema{ types{ name kind description fields{name} } } } ",
+:   "variables": {}
+: }
+
+When the quotes are too close to the brackets ='{"query": "'$query'",
+"variables": {}}'= i get an error
+
+
+#+name: curl-gql-request-schema
+#+headers: :var token=(identity ghub-graphql-token) query=gql-query-schema
+#+begin_src sh :results output :noweb t
+body='{ "query": "'$query'", "variables": {} }'
+#-H "Authorization: token $token" \
+
+echo "'"$body"'"
+echo $body
+
+body=$(echo $body | tr -d '\n')
+
+echo curl -g -X POST --silent -H "Content-Type: application/json" -H "Authorization: Bearer $token" -d $body https://api.github.com/graphql
+#echo curl -g -X POST --silent -H "Content-Type: application/json" -H "Authorization: Bearer $token" -d $body https://api.github.com/graphql
+
+curl -g -X POST \
+     --silent \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer $token" \
+     --data $body \
+     https://api.github.com/graphql
+
+#     -d '{ "query": "query{ __schema{ types{ name kind description fields{name} } } } ", "variables": {} }' \
+#     -d '"'$body'"' \
+#     -d "'"$body"'" \
+#echo $foovar
+#+end_src
+
+#+RESULTS: curl-gql-request-schema
+: '{ "query": "query{ __schema{ types{ name kind description fields{name} } } } ", "variables": {} }'
+: { "query": "query{ __schema{ types{ name kind description fields{name} } } } ", "variables": {} }
+: {"errors":[{"message":"A query attribute must be specified and must be a string."}]}

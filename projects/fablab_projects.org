@@ -65,7 +65,53 @@
 + nested gyroscopes
   + one to represent earth $\Omega$
   + one to represent the satellites $\omega$ wrt earth
-  +
+
+** 3D/CAD
+
+*** IDEA Blender: physics-based particle/fluid simulation approach to heal meshes
+
+For a mesh failing manifold checks:
+
++ if it is partially pre-processed and in decent condition
++ if it meets some other criteria (unspecified)
++ esp. if triangle normals can identify its interior or if its interior can be
+  segmented into multiple volumes
+
+Then it should be possible to run various fluid/particle simulations while
+treating solid triangles as:
+
++ permeable on one side: either the normal-facing side or on the opposite
++ impermeable on both sides
+
+For healthy meshes, it should be enough to render a particle simulation with
+gravity facing in several directions while looking for leaks.
+
+Then using path signature methods to identify hotspots where many particles
+moved through a similar area will allow you to find areas where the mesh fails
+some types of manifold checks.
+
+- particles should be modeled as [[https://experiments.withgoogle.com/fluid-particles][elastic/globular with a volume-filling approach]]
+- use a vertex buffer array to track particle ID's
+- snapshots the vertex shader output (and maybe framebuffers) at regular
+  intervals, then store in memory (to be stored on disk)
+- the particles could interact, but this may complicate the later path signature
+  analysis. for automated, non-visual simulations, it may be necessary to run
+  the simulation without particle-to-particle interactions.
+- by using a VertexTransformShader that causes particles to interfere with
+  normals centered at triangle centroids, it may accelerate the search. The
+  value for the normal would be multiplied by the triangle area, then duplicated
+  to produce the inverse effect on the opposite side.
+
+From here, the paths can be reconstructed. they could be plotted onto a 3D
+heatmap or rendered as a 2D heatmap that follows the camera orientation.
+
++ The areas with obvious manifold check failures should pop out.
++ One major issue is tuning hyperparameters (particle size, number, etc)
+  - Another is with stalled particles (though these may either be filtered out
+    or serve as validation for the nearest triangles.
++ This method probably wouldn't scale out too well, as I envision that it
+  requires manual human interaction ... but it could become automated.
++ It wouldn't satisfy most causes of manifold check failures.
 
 * Tech Ideas
 

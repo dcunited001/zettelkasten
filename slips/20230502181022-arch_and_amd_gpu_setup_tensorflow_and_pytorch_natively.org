@@ -1,0 +1,233 @@
+:PROPERTIES:
+:ID:       80ec649a-d5dc-47b2-ab57-4fff6e3c59d1
+:END:
+#+TITLE: Arch and AMD GPU: setup tensorflow and pytorch natively
+#+CATEGORY: slips
+#+TAGS:
+
+#+begin_quote
+I know that distributions are maintained by volunteer work. but it's a serious
+problem to experience these things.
+#+end_quote
+
+I am kind of "doing it wrong" by not simply using container. There are some
+reasons I would like to just run scripts:
+
++ Managing docker, its bind mounts & volumes requires a bit of thought upfront
+  about your paths of data. These paths are not available on all file
+  systems. Since file performance is critical, networked file systems are only
+  practical over 10 Gpbs connections using isci. Not only do you have
+  concurrency issues there, you also still may have to deal with concurrent
+  docker volumes. While [[https://pve.proxmox.com/wiki/Storage:_iSCSI][shared iscsi devices]] are [[https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/5/html/virtualization/sect-virtualization-shared_storage_and_virtualization-using_iscsi_for_storing_virtual_disk_images][not recommended in production]],
+  some use cases (mine) they may provide simpler management of file access for
+  [mostly?] read-only updates in Spark pipelines. It would beat the hell out of
+  Spark pulling data from S3 ... but is [maybe?] harder to manage. Very few
+  other file system methods provide shared storage acess AFAIK (see [[https://pve.proxmox.com/wiki/Storage][proxmox
+  docs]]), including CephFS where hardware for an install would cost like
+  $10,000.
++ Unless you start/stop your Jupyter/Python containers for every context
+  change. In some cases, I want to quickly switch from one to the other or maybe
+  use both (while yes, is stupid ... but still). In other cases: I just don't
+  know which one I want to use for a task. So, i may want =signitory= for path
+  signitures AND then =tfga= for geometric algebra. Maybe.
++ If I run this on another computer, it should be transparent, but because of
+  the dependency on volumes/mounts, it's not. Other people can't run my code
+  without changing these things, which isn't a huge concern here. However, If I
+  run my code on my laptop, I may have to change the code ... though AMD ROCm
+  doesn't target integrated CPUs. Still this is one aversion I have to docker.
++ Also, I really just don't like the jupyter workflow, which is fairly easy with
+  docker. Yet. You either need one monolithic Dockerfile that provides all
+  python dependencies whether you're using PyTorch or Tensorflow.
+
+Regardless, when rebuilding that container image, I absolutely will run into
+python/pip issues unless I just start coding in C/C++ or Rust ir Zig, which YES
+I have considered since this is just bullshit.
+
+Even just getting a stable install of =cupy= itself that doesn't break every 5
+days would be difficult. And since there are quite a few things I'd like to
+explore with math /that i know require opencl to be tractible for a beginner/,
+then I would like this to be local.
+
+* Roam
++ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
+
+* Resources
++ [[https://medium.com/@damngoodtech/amd-rocm-pytorch-and-ai-on-ubuntu-the-rules-of-the-jungle-24a7ab280b17][AMD, ROCM, PyTorch, and AI on Ubuntu: The Rules of the Jungle]] (2023)
++ [[https://pytorch.org/get-started/locally/][PyTorch Compatibility Matrix]]
++ [[https://www.amd.com/en/developer.html][AMD Developer Resources]]
++ [[https://docs.amd.com/][AMD ROCm Docs]]
+
+* Fix Arch Setup
+
+Notably on Reddit, =clinfo= and =gpu-viewer= have been broken for about two
+months on arch (or something). Not a good sign. Everything still works in Docker
+though...
+
++ Installing and reinstalling and re-reinstalling =opencl-amd-dev= is NOT fixing the problems.
++ Running =pacman -Fl rocm-opencl-runtime= reports files that pacman thinks it
+  owns which I can't find in the filetree.
++ Files that should be in =/etc/ld.so.conf.d= ... for example.
+
+** Reset package state
+
+So basically, just start off by removing everything.
+
+#+begin_src sh
+# i get the feeling that you have to reinstall both `opencl-amd-dev` AND
+# `opencl-amd` when you update either. there were old artifacts that aren't
+# mentioned in any of these packages.
+yay -Rns opencl-amd-dev opencl-amd opencl-headers
+yay -Rns intel-oneapi-mkl intel-oneapi-common
+yay -Rns plasma-disks clinfo gpu-viewer kinfocenter
+yay -Rns krita-plugin-gmic onednn onetbb mold
+#+end_src
+
+Then decide on whether you should:
+
++ restart before you reinstall so you can restart your computer again?
++ reenable =chaotic-aur= before reinstalling?
+
+Some environment variables may be needed to run opencl software:
+=LD_LIBRARY_PATH= and =ROCM_HOME= so who knows restarting be good.
+
+** Reinstall packages
+
+Bazel required for... opencl-dev (but the version conlicts with AUR tensorflow)
+
+Ensure bazel is upgraded =6.1.1-1 => 6.1.2-1= which will be super fun once you
+try to install the AUR =tensorflow-rocm= package and it fails because it needs
+=bazel 5.999=.
+
+I think I am retro-gressioned
+
+#+begin_src sh
+yay -Syu bazel
+#+end_src
+
+This fails with: =warning: ignoring package opencl-headers-2:2022.09.30-1= .....
+
+#+begin_src sh
+# opencl-headers (not a dep for opencl-amd/dev?)
+yay -Syu opencl-amd-dev opencl-amd opencl-headers intel-oneapi-mkl intel-oneapi-common
+#+end_src
+
+And it seems that [[https://www.reddit.com/r/archlinux/comments/11z79x9/opencl_hangs/][other]] [[https://www.reddit.com/r/archlinux/comments/124pgc1/how_to_disable_oneapi_opencl_cpu_backend/][people]] are also going through this.
+
+#+begin_src sh
+yay -Syu opencl-amd opencl-amd-dev
+#+end_src
+
+Install =gpu-viewer= and make sure that works. =clinfo= should already be there.
+
+#+begin_src sh
+yay -Syu clinfo gpu-viewer
+#+end_src
+
+And finally reinstall everything else so that one day. And hopefully krita is
+installed as configured, so that's not confusing the next time I open it.
+
+#+begin_src sh
+yay -Syu plasma-disks kinfocenter krita-plugin-gmic onednn onetbb mold
+#+end_src
+
+** Caveats
+
+*** Woo boy, bleeding edge. ROCm 5.OneTooFar
+
+The day after i commited these changes, notes and updates were added to the
+=opencl-amd-dev= packages. The version was updated from ROCm 5.4 to 5.5 ...so
+OpenCL is not accessible.
+
+And I guess I need to build [[ROCmSoftwarePlatform/tensorflow-upstream]] and the
+docs are incomprensible, which is understandable given the complexity in
+maintaining these repositories... Still, it's no immediately clear how to
+actually build the project locally. The Mediapipe project will build in a Docker
+container, but the equivalent here is a bit tough to find. The repositories have
+many false positives & links outbound to standard tensorflow. It is clear that
+people just stick to the docker image.
+
+Referencing the Dockerfiles would be fairly simple if I understood the
+python/pip tooling better ... but I don't.
+
+*** Chaotic AUR
+
+If =Chaotic AUR= is reenabled, the binary packages don't match the versions
+built with source, so it will try to reinstall other packages.
+
+I deal with this by "pinning" with =IgnorePkg= but this is probably a dumb way
+to do that. So much easier with Guix/Nix, but they don't necessarily deal with
+GPU drivers so well, although it is to some extent [[https://github.com/dr460nf1r3/dr460nixed/blob/main/hosts/slim-lair/slim-lair.nix][supported in custom Nix
+Flakes]].
+
+To utilize a second package manager (Nix, not NixOS) and download these
+drivers/libs it usually requires creating custom hooks in your primary package
+manager's update process, so the kernel modules are rebuilt with new kernel
+headers.
+
+*** Docker Image
+
+Well this worked, even when Arch's clinfo was broken.
+
+I was hoping to learn something along the way here, but that only seems to
+happen when I use Guix.
+
+* Python Setup
+
+#+begin_quote
+This requires =python 3.10= and not =3.11=, since the wheel is mysteriously
+missing from the PyPi index... So I needed to build an optimized version with
+pyenv again.
+
+I invested quite a bit of time learning about pyenv, python and its build
+tooling precisely because I thought I would pre-empt dealing with problems like
+this. Nope ... well maybe.
+
+It doesn't matter who you are or how intelligent you may be: if you are socially
+alienated, your knowledge will atrophy.
+#+end_quote
+
+Using direnv with pyenv/virtualenv
+
+Run =pip install pip_search= because ... I have no idea.
+
+** ROCm Dependencies
+
+For PyTorch, see the compatibility matrix. This fails, try changing to =--extra-index-url=...
+
+#+begin_src sh
+pip install torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/rocm5.4.2 \
+
+#    --no-no-cache-dir? even i remember that ... and that was like 8-10 years ago.
+#+end_src
+
+But without controlling the order of the indexes, this will install nvidia anyways.
+
+#+begin_src sh
+pip install torch torchvision torchaudio \
+  --index-url https://download.pytorch.org/whl/rocm5.4.2 \
+  --no-cache-dir --extra-index-url https://pypi.org/simple
+#+end_src
+
+Still doesn't work. So force =cuda-rocm= into the environment... err =cuda-rocm-5-0=.
+
+#+begin_src sh
+pip install cuda-rocm-5-0
+  --index-url https://download.pytorch.org/whl/rocm5.4.2 \
+  --no-cache-dir --extra-index-url https://pypi.org/simple
+#+end_src
+
+But then =pytorch-triton-rocm= will still try to download nvidia
+dependencies. Are these needed for headers? It turns out I needed =python 3.10=
+
+|------------+------|
+| Dependency |      |
+|------------+------|
+| cupy-rocm  | 5.0? |
+|------------+------|
+| pandas     |      |
+| pyarrow    |      |
+|------------+------|
+
+"python3 -m pip install pandas pyarrow tfga jupyterlab pillow mediapipe matplotlib && jupyter lab --allow-root"

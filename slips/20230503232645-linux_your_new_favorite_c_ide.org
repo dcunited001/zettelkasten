@@ -1,0 +1,219 @@
+:PROPERTIES:
+:ID:       a959534b-8824-4eba-977d-9f7e8f473f58
+:END:
+#+TITLE: Linux: Your New Favorite C/C++ IDE
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
+
+TL;DR;
+
++ I really would like hundreds or thousands of source repositories somewhat
+  accessible to me, since =RFTS > RTFM=. This is the main thing.
++ Making pull requests or responding to issues should be easy.
++ I spend way too much time trying to organize a personal search index because
+  the internet is too slow.
++ Package managers should distribute source as Git repositories (potentially
+  compressed and maybe signed) or it should be abundantly clear how you can get
+  your package manager to "build a work environment" where code completion/etc
+  just work.
++ These git repositories should be "fairly easy" to update with minimal
+  effort. If that could be done in some "stupid simple" way, that'd be amazing.
++ The benefits of Linux packages being distributed with sources should be made
+  apparent to new users, as well as the costs. I should not have to run KDE Neon
+  to have these things "just work".
+
+I may essentially be arguing that programming in Linux should feel more like
+Microsoft Visual Studio without realizing it ... but in the 1990's how would you
+function if you didn't have the source code locally? And does everything not
+"simply work" if it's in =/usr/local/src=?
+
+* Linux Is Basically A C/C++ IDE
+
+It kinda blew my mind the first time I ran =clangd=, jumped to a definition and
+wound up in =/usr/src=. While looking for definitions local to the source tree
+and running the commands, I just assumed that if it wasn't on my system, I'd get
+an error. I've never really been around C/C++ development, so I had no idea this
+was possible. I just assumed setting up the dependencies for C/C++ development
+must be fairly difficult, but I didn't think about it much.
+
+And it kinda hit me: this is how it was done in the 80's and 90's... This was
+just how it was and bandwidth limitations compelled people to distribute binary
+packages and ISO's. The souce needed to be distributed with the software, not
+simply because of free software ideology or license requirements or to satiate
+someone's curiosity the... but because if you didn't give socially distribute
+the source code, it would present barriers limiting the number of patches or the
+number of people who would consider making patches.
+
+If the source was actually distributed with the packages ... then it would be
+trivial to make changes to various applications, so long as your package updates
+replace anything that exists. To back up work, it could search
+=/usr/src/**/.git= directories for the relevant changes to indexes and if found,
+copy their contents to a backup directory. In practice, this doesn't work, since
+the files in =/usr/src= are owned by root.
+
+** Distribute packages with source
+
+When compiled programs are distributed with source, whether its C/C++ or Rust or
+whatever, if possible, a consistent set of metadata should be distributed along
+with the source so that any IDE compatible with LSP or clangd can automagically
+be ready to go.
+
+So if packages are distributed with Git-based source trees (eventually to be
+compatible with other VCS systems), then:
+
++ you open your editor
++ tell it where the =/usr/local/share= or =/rpm/make/source/go/here= folder is
++ make a new project whose =Makefile= or configure scripts know where things
+  should go.
+
+And thus:
+
++ All the paths are consistent, which you now don't need to remember
++ The =compile_commands.json= _could be_ ready to go... and so you're code
+  completion and access to documentation is as easy as it is with =emacs-lisp=
++ You have 1,000's of git repositories that you do not need to hunt and peck
+  through Github to clone.
++ You don't need to figure out how to reorganize projects: you just get them all
+  at once.
+
+*** Want to work on KDE?
+
+It's already there. Open the folder whose path you don't really need to
+remember. It will be the same on your other computers too. Syncthing?
+
+Can you even use that for Git or source code? Well I guess you don't need to
+huh?
+
+*** Don't know why some bug is happening in the user interface?
+
+Google keywords in the string and get vague results since Google's search index
+analyzes exabytes of data ... wait, sorry, I mean run this and limit your search
+to megabytes of data with no stack overflow results.
+
+#+begin_src
+find $src -type f -name "*.py" -exec grep --color=auto -nH --null -e $keystring
+\{\} +=
+#+end_src
+
+If Emacs didn't allow you to see that command before it runs, it's very likely
+that I just would have given up on Linux/Emacs altogether.
+
+*** Want your Window Manager to provide "click to navigate to definition" feature?
+
+Well you're going to need some kind of sourcemaps.
+
+This could happen on crash reports or perhaps on arbitrary GUI elements -- like
+the browser's "Inspect Element".
+
+** Why reinvent the wheel if you don't need to?
+
+Why create an adhoc system of organizing source trees and git repositories if
+one already exists on your Linux install? If you need to know those package
+names which have a one-to-one relationship with their source trees ... then the
+package names are basically shorthand for the file paths. You don't need to
+remember the path for the =~/projects/2013/python_thatonetime/loxodo= folder:
+it's just wherever the fuck =pacman= or =dnf= or =apt-get= put it or where you
+ask them to move the sourcetree to.
+
+** Caveats
+
+*** Builds requiring submodules
+
+The build recipe a package manager uses for many
+projects may require nested submodules. So if your package manager built binary
+packages that require submodules, then if the sources it provides are in flat
+folders in Git ... well then your =compile_commands.json= may not exactly have
+the right source.
+
+This may be unusual, since the package manager should build dependencies
+separately so other packages may make them optional dependencies.
+
+* Accelerated Development with Emacs
+
+Package managers that pull in the git repositories like
+[[github:radian-software/straight.el][radian-software/straight.el]] can accelerate open source development. In Emacs,
+you are already going to have a few issues, but here's the source code right in
+your =~/.emacs.d= folder! Ready for you to make commits. You don't need to use
+the browser to find the repository: =straight-visit-package= will open your
+browser and do that. You can use =straight-*-package= to
+push/pull/check/fetch/rebuild and merge remote changes. You're already diving
+into the code to figure out how to tweak your editor. If you can't get your
+=init.el= to do what you want, =straight.el= is practically inviting you to make
+a pull request.
+
+There are a few other languages with package managers like this, but I can't
+remember them offhand. Its extremely convenient.
+
+** xref is also an emacs killer app
+
+Along with other killer features like =M-x man= or =magit= or =tramp=, Emacs
+comes preconfigured with =xref= and a set of defaults (no =init.el= required)
+that make elisp documentation, reference finding and debugging just work
+... though I admittedly still haven't figured out debugging emacs-lisp. There's
+no play button and the code isn't instrumented by default ... and the interface
+is confusing ... but it otherwise is very simple.
+
+** Managing Forge.el database is easier with simple/known filetrees
+
+
+If the repositories you care about are in a specific directory or have some
+known filetree, then it's trivial to script Magit & Forge to add them to the
+[[https://magit.vc/manual/forge.html][Forge Database]]. And Forge is language & git-forge agnostic. It just needs to see
+a git repository with a remote and ... boom: you can create/browse issues and
+make pull requests. Responding to these threads should maybe be done in email,
+but /if you're already in your editor, then you can easily copy code snippets,
+examples and log output to paste into an issue./
+
+* Guix already provides source accessibility
+
+With Guix (and probably Nix), you can specify [[https://guix.gnu.org/manual/en/guix.html#Package-Transformation-Options][transformations]] to run on
+packages. Click the link or run =guix build --help-transform=. The options are
+available on several of the guix subcommands. Guix provides a single CLI from
+which you iterate on package development stages (from =guix download= to =guix
+build= to =guix package=)
+
+** Want a different version/branch?
+
+Run =guix build --with-branch=, but this doesn't work for packages that don't
+use =git-download=. This may not "just work" if the build recipe has diverged
+too far.
+
+** Want to supply a file-tree for a package?
+
+Run =guix build --with-source=$src=.
+
+The difference between this and general thesis of this article: while the guix
+build daemon knows how to apply the build recipe in the package definition, your
+IDE can't so easily assemble the context allow =clangd= or some other =LSP
+Server= to "just work" on a project you "just happened to need few lines for a
+pull request" which you never intended to work on.
+
+** Caveats to Guix Transformations
+
+Managing packages requires quite a bit of work, but it's about as effortless as
+it gets with Guix. So you may require features like the following, which are
+loosely listed in order of difficulty:
+
++ writing a Guix manifest.scm using scheme
++ distributing packages as a git repository that are made available with =guix
+  --load-path=
++ a guix channel, so you can push updates (this requires a GPG key and pushing
+  updates to a Git repository, which shouldn't be local to your machine)
++ =guix time-machine= to lock channel definitions for reproducible builds and
+  proof of validity for software supply chain concerns
++ usage of gexp's which allow you to specify transformations that are applied in
+  the context of the derivation (instead of at package declaration time or build
+  initialization time)
++ and hopefully you don't need to manipulate the guix derivations manually, but
+  these more advanced features can be developed in the REPL, then saved as code
+  later.
+
+* Development Without A Browser Should be Possible
+
+It should be very possible or even encouraged to interact with the community
+without using a browser. I'm not saying people shouldn't use a browser ...
+
+But it's basically a distraction machine and occasionally ... /i would like to
+turn it off, please./

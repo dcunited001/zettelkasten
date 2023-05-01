@@ -1,0 +1,135 @@
+:PROPERTIES:
+:ID:       a5ab4864-8674-4572-9eac-d657ddfeafc3
+:END:
+#+TITLE: Guix: add Flatpak config files to an installation
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:da888d96-a444-49f7-865f-7b122c15b14e][Desktop]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+You should _definitely_ be using =flatpak --installation=$installname=!
+
+It may seem like overkill and probably doesn't help too much, but you can group
+flatpak permissions that you give apps.
+
+* Notes
+
+Some things are unfortunately more complicated with Guix.
+
+Flatpak requires some configuration files for custom installations and they need
+to be in =/etc/flatpak/installations.d/*.conf=
+
+** The main issue
+
+DIsentangling this profile created several errors on the =guix system
+reconfigure= step because the Guix build daemon wouldn't replace the =xdg=.
+
+In the =xdg= profile, I needed replace the =flatpak-custom= package with
+=flatpak=, then update the profile. Then find all the old profile links, delete
+them and run =guix gc=. Since the links don't exist, it assumes it can GC those
+files. This needed to be applied several times.
+
+* Using a package
+
+This was the solution I had come up with, but I didn't want to publish it to
+github, since doing so requires the paths be exposed.
+
+They probably are anyways, but I would prefer:
+
++ my email installation be containerized within a flatpak installation
++ not to publish those paths on github =¯\_(ツ)_/¯=
+
+#+begin_src scheme
+(define-public flatpak-custom
+  (package
+    (inherit flatpak)
+    (name "flatpak-custom")
+    (version "1.12.7")
+
+    (arguments
+     (substitute-keyword-arguments (package-arguments flatpak)
+       ((#:phases phases)
+        #~(modify-phases #$phases
+            (add-after 'install 'install-flatpak-custom-config
+              (lambda* (#:key inputs outputs #:allow-other-keys)
+                (let* ((out (assoc-ref outputs "out"))
+                       (installations (string-append out "/etc/flatpak/installations.d")))
+
+                  (mkdir-p installations)
+
+                  (call-with-output-file (string-append installations "/abc.conf")
+                    (lambda (port)
+                      (format port "[Installation \"abc\"]
+Path=/flatpakapps/abc/.local/flatpak
+DisplayName=\"Abc (Flatpak)\"
+StorageType=harddisk")))
+
+                  (call-with-output-file (string-append installations "/def.conf")
+                    (lambda (port)
+                      (format port "[Installation \"def\"]
+Path=/flatpakapps/def/.local/flatpak
+DisplayName=\"Def (Flatpak)\"
+StorageType=harddisk"))))
+
+                #t))))))
+
+    (description "Extends flatpak to add specific custom installations")))
+#+end_src
+
+* Using =extra-special-file=
+
+This would work, but =/etc/flatpak/installations.d= doesn't exist yet
+
+#+begin_src scheme
+(extra-special-file
+ "/etc/flatpak/installations.d/abc.conf"
+ (local-file "flatpak/def.conf"))
+(extra-special-file
+ "/etc/flatpak/installations.d/def.conf"
+ (local-file "flatpak/def.conf"))
+#+end_src
+
+** Using =extra-special-file= and including the =flatpak= directory in the store
+
+It's important for me not to simply use =(local-file "."
+"flatpak/installations.d" ...)= since the first argument's entire path becomes
+included in the GNU store ... for reasons.
+
+#+begin_src scheme
+(extra-special-file
+ "/etc/flatpak/installations.d/abc.conf"
+ (file-append (local-file "flatpak" "installations.d" #:recursive? #t)
+              "abc.conf"))
+(extra-special-file
+ "/etc/flatpak/installations.d/def.conf"
+ (file-append (local-file "flatpak" "installations.d" #:recursive? #t)
+              "def.conf"))
+#+end_src
+
+Simply making the directories would work.  However, when applying this to a new
+system (or a reinstall), it would fail. The filesystem will not have been
+completely created and =/etc/flatpak= is a link managed by a user-level profile.
+
+** Using =file-union=
+
+This is third potential solution. The =file-union= method will bundle the
+following files in to a directory and then
+
+#+begin_src scheme
+(extra-special-file
+ "/etc/flatpak/installations.d"
+ (file-union "installations.d"
+             `(("abc.conf" ,(local-file "flatpak/abc.conf"))
+               ("def.conf" ,(local-file "flatpak/def.conf")))))
+#+end_src
+
+* Solution
+
+I think I had manually created the link
+
+=/etc/flatpak -> $HOME/.guix-extra-profiles/xdg/xdg/etc/flatpak=
+
+So the guix build daemon wasn't properly clearing it. After deleting that,
+everything works fine
