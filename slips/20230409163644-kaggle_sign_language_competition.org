@@ -18,46 +18,122 @@ investment.
 
 ** Objective
 
-* Resources
+Learn some things
 
-** Data
+** Phases
 
-
-*** Format
-
-[[https://www.kaggle.com/competitions/asl-signs/data][Data Fields]]
-
-Data Instances:
-
-#+begin_example json
-
-#+end_example
-
-
-**** MediaPipe
-
-*** External
+1) setup environment (python, data, project)
+2) test basic assertions about data
+3) find mediapipe tools and other libraries
+4) look for external data sources
+5) write some shitty models
 
 ** ASL
 + First [[https://www.handspeak.com/word/most-used/][300]] words
 
 *** Video
 
-
 + [[https://youtu.be/ianCxd71xIo][100 Basic Signs]]
 
-*** Journals
+* Resources
 
-+ [[https://doi.org/10.1145/3519391.3519396][Understanding Challenges and Opportunities of Technology-Supported Sign
-  Language Learning]]
 
-*** Articles
+** Kaggle
+
+*** Training
+
++ [[https://www.kaggle.com/code/mayukh18/end-to-end-pytorch-training-submission][End-to-End Pytorch Training + Submission]]
+
+*** Visualization
+
++ [[https://www.kaggle.com/code/tantai/gislr-background-knowledge-landmarks-visualization][GISLR Background Knowledge & Landmarks Visualization]]
++ Dynamic Dashboard Landmark Visualization
+
 
 * Notes
 
-** ASL
+** Data
 
-*** Mechanics (Anatomic)
+Data contains 543 unique strings per frame ... doesn't exactly lend itself to
+dictionary compression (compression is at page-level).
+
+Also, once you blow the page-level compression, you don't get much compression
+from parquet. This is why the max compression gains were the greatest from the
+Zip compression: from ~50 GB down to ~30 GB.
+
+This probably should've been output to flatbuffer files and i bet the dataset
+would fit in 50MB or 500 MB -- A big difference from 50 GB. Having the option of
+parquet was exteremely valuable.
+
+*** Questions
+
++ what landmarks can be guarenteed to exist?
+  - how often do landmarks appear/disappear?
++ which landmarks are affected by one-handed recording?
++ how to measure dissonance in z-coordinates?
+
+*** Artifacts
+
++ Segues & transitions: if the signs are outtakes from more complete statements,
+  then the hands will need to transition to the necessary positions, affecting
+  the presentation and creating cases that are tough to classify.
+
+*** Errors
+
+*** Leakage
+
++ repeated sequences of signs
+
+**** Hidden Proxies
+
++ Zipf-like Distribution (adjusted for the 250 signs) ... though the bias here
+  will likely not appear in the labeling, it will appear in how the ASL speakers
+  have engrained the signs.
+
+*** Cleaning
+
+95,000 training records.
+
+*** Processing
+
+
+
+* Ideas
+
+** Misc Statistics
+*** Quantify Uncertainty
+
+*** Quantify Intentionality
+
+Dimensional analysis on fingers/joints (req. labeling segments)
+
++ Not all motion is equally likely & some motion is impossible
++ Not all motion is useful for expression
++ Some subset of what's not moving may be as important as what is moving
++ A person's visual field is a fairly narrow cone
+  - the direction of visual focus can be quantified in terms of steradians
+    (angle) and min/max depth.
+    - the exact calcuations are not useful (and can't be validated)
+    - but the implication is that ASL speech should move towards the chest or
+      around the face when the speaker wants the listener to tune into the
+      facial cues (or really that when the signing moves away from these
+      regions, it would be hard to convey the speech without distance between
+      the speaker/listener)
+  - perhaps useful when deciding whether to use facial features for inference
+
+*** Use Physical Energy
+
+*** Parameter Extraction
++ points of rotation
+
+*** Mirror time in forward/reverse?
+
++ some of the z-coordinates will be skewed according to mediapipe's clear bias
+  towards forward-moving time
++if a GAN can distinguish between clips moving forwards/backwards, can it
+  identify places where there is missing information/inaccurate information.
+
+** Domain-based Ideas
 
 *** Intentionality
 
@@ -121,70 +197,364 @@ selfish, so I'm sorry about that. I've never made much progress towards ASL.
 #+end_quote
 
 
+*** Mechanics (Anatomic)
 
-** Data
+For Reimannian-based approaches for robotics, when your model is aware of the
+actuation mechanisms, then this is implicit.
 
-*** Artifacts
-
-+ Segues & transitions: if the signs are outtakes from more complete statements,
-  then the hands will need to transition to the necessary positions, affecting
-  the presentation and creating cases that are tough to classify.
-
-*** Errors
-
-*** Leakage
-
-+ repeated sequences of signs
-
-**** Hidden Proxies
-
-+ Zipf-like Distribution (adjusted for the 250 signs) ... though the bias here
-  will likely not appear in the labeling, it will appear in how the ASL speakers
-  have engrained the signs.
-
-*** Cleaning
-
-*** Processing
-
-* Issues
-
-** Compute Requirements
+[[./img/mediapipe-anatomy-of-hand.jpg]]
 
 
 
-* Ideas
-** Quantify Uncertainty
+* Containers
 
-** Quantify Intentionality
+** Podman
 
-Dimensional analysis on fingers/joints (req. labeling segments)
+#+begin_src shell
+POD_HASH=9342f1ca88689439d92fd424dfc7e46ce215b32ea61556eb923e96095a15c4ac
+#+end_src
 
-+ Not all motion is equally likely & some motion is impossible
-+ Not all motion is useful for expression
-+ Some subset of what's not moving may be as important as what is moving
-+ A person's visual field is a fairly narrow cone
-  - the direction of visual focus can be quantified in terms of steradians
-    (angle) and min/max depth.
-    - the exact calcuations are not useful (and can't be validated)
-    - but the implication is that ASL speech should move towards the chest or
-      around the face when the speaker wants the listener to tune into the
-      facial cues (or really that when the signing moves away from these
-      regions, it would be hard to convey the speech without distance between
-      the speaker/listener)
-  - perhaps useful when deciding whether to use facial features for inference
+#+begin_src shell :tangle .envrc
+export PODNAME=rocmtf
+export ASLDATA=/data/vm/bigdata/asl
+#+end_src
 
-** Use Physical Energy
+Start with:
 
-** Parameter Extraction
-+ points of rotation
+#+begin_src shell :tangle podcreate.sh :shebang #!/bin/bash
+# podman run --rm
+#    --ipc=host \
+podman create \
+    --name $PODNAME \
+    --network=host \
+    --device=/dev/kfd \
+    --device=/dev/dri \
+    --ipc=host \
+    --shm-size 16G \
+    --group-add video \
+    --group-add render \
+    --cap-add=SYS_PTRACE \
+    -v $(pwd):/root/home \
+    -e HSA_OVERRIDE_GFX_VERSION=10.3.0 \
+    docker.io/rocm/tensorflow:latest bash -c \
+    "python3 -m pip install jupyterlab pillow matplotlib && jupyter lab --allow-root"
+#+end_src
 
-* Tasks
+errors out with =cannot set shmsize when running in the host=
+
+** Docker
+
+#+begin_src shell :tangle drun.sh :shebang #!/bin/bash
+docker run \
+      -it \
+      --network=host \
+      --device=/dev/kfd \
+      --device=/dev/dri/card0 \
+      --device=/dev/dri/renderD128 \
+      --ipc=host \
+      --shm-size 16G \
+      --group-add video \
+      --group-add render \
+      --cap-add=SYS_PTRACE \
+      --security-opt seccomp=unconfined \
+      -e HSA_OVERRIDE_GFX_VERSION=10.3.0 \
+      -v $(pwd):/root/home \
+      -v $ASLDATA:/root/home/data \
+      docker.io/rocm/tensorflow:latest $@
+#+end_src
+
+Share all devices: =--device=/dev/dri=
+
+Specify device: =--device=/dev/dri/card0= and =--device=/dev/dri/renderD128=
+
+Run =drun.sh= then:
+
+#+begin_src shell
+"python3 -m pip install pandas pyarrow tfga jupyterlab pillow mediapipe matplotlib && jupyter lab --allow-root"
+#+end_src
+
+Which does not include signatory.
+
+** Accessing GPU in python
+
+See build in [[https://github.com/RadeonOpenCompute/ROCm-docker][RadeonOpenCompute/ROCm-docker]]
+
+*** Running Benchmarks
+
+#+begin_src
+sudo ./drun.sh "cd benchmarks/scripts/tf_cnn_benchmarks && python3 tf_cnn_benchmarks.py --num_gpus=1 --batch_size=32 --model=resnet50 --variable_update=parameter_server"
+#+end_src
+
+** Environment
+
+*** rocm/tensorflow:latest
+
+**** Apt Packages
+
+#+begin_example
+hsa-rocr-dev/now 1.7.0.50400-72~20.04 amd64 [installed,local]
+hsa-rocr/now 1.7.0.50400-72~20.04 amd64 [installed,local]
+hsakmt-roct-dev/now 20221020.0.2.50400-72~20.04 amd64 [installed,local]
+libcroco3/now 0.6.13-1 amd64 [installed,local]
+libpostproc55/now 7:4.2.7-0ubuntu0.1 amd64 [installed,local]
+libprocps8/now 2:3.3.16-1ubuntu2.3 amd64 [installed,local]
+procps/now 2:3.3.16-1ubuntu2.3 amd64 [installed,local]
+rocalution-dev/now 2.1.3.50400-72~20.04 amd64 [installed,local]
+rocalution/now 2.1.3.50400-72~20.04 amd64 [installed,local]
+rocblas-dev/now 2.46.0.50400-72~20.04 amd64 [installed,local]
+rocblas/now 2.46.0.50400-72~20.04 amd64 [installed,local]
+rocfft-dev/now 1.0.19.50400-72~20.04 amd64 [installed,local]
+rocfft/now 1.0.19.50400-72~20.04 amd64 [installed,local]
+rocm-clang-ocl/now 0.5.0.50400-72~20.04 amd64 [installed,local]
+rocm-cmake/now 0.8.0.50400-72~20.04 amd64 [installed,local]
+rocm-core/now 5.4.0.50400-72~20.04 amd64 [installed,local]
+rocm-dbgapi/now 0.68.0.50400-72~20.04 amd64 [installed,local]
+rocm-debug-agent/now 2.0.3.50400-72~20.04 amd64 [installed,local]
+rocm-dev/now 5.4.0.50400-72~20.04 amd64 [installed,local]
+rocm-device-libs/now 1.0.0.50400-72~20.04 amd64 [installed,local]
+rocm-gdb/now 12.1.50400-72~20.04 amd64 [installed,local]
+rocm-libs/now 5.4.0.50400-72~20.04 amd64 [installed,local]
+rocm-llvm/now 15.0.0.22465.50400-72~20.04 amd64 [installed,local]
+rocm-ocl-icd/now 2.0.0.50400-72~20.04 amd64 [installed,local]
+rocm-opencl-dev/now 2.0.0.50400-72~20.04 amd64 [installed,local]
+rocm-opencl/now 2.0.0.50400-72~20.04 amd64 [installed,local]
+rocm-smi-lib/now 5.0.0.50400-72~20.04 amd64 [installed,local]
+rocm-utils/now 5.4.0.50400-72~20.04 amd64 [installed,local]
+rocminfo/now 1.0.0.50400-72~20.04 amd64 [installed,local]
+rocprim-dev/now 2.10.9.50400-72~20.04 amd64 [installed,local]
+rocprofiler-dev/now 1.0.0.50400-72~20.04 amd64 [installed,local]
+rocrand-dev/now 2.10.9.50400-72~20.04 amd64 [installed,local]
+rocrand/now 2.10.9.50400-72~20.04 amd64 [installed,local]
+rocsolver-dev/now 3.20.0.50400-72~20.04 amd64 [installed,local]
+rocsolver/now 3.20.0.50400-72~20.04 amd64 [installed,local]
+rocsparse-dev/now 2.3.3.50400-72~20.04 amd64 [installed,local]
+rocsparse/now 2.3.3.50400-72~20.04 amd64 [installed,local]
+rocthrust-dev/now 2.10.9.50400-72~20.04 amd64 [installed,local]
+roctracer-dev/now 4.1.0.50400-72~20.04 amd64 [installed,local]
+rocwmma-dev/now 0.7.0.50400-72~20.04 amd64 [installed,local]
+#+end_example
+
+***** hip
+
+#+begin_example
+hip-dev/now 5.4.22801.50400-72~20.04 amd64 [installed,local]
+hip-doc/now 5.4.22801.50400-72~20.04 amd64 [installed,local]
+hip-runtime-amd/now 5.4.22801.50400-72~20.04 amd64 [installed,local]
+hip-samples/now 5.4.22801.50400-72~20.04 amd64 [installed,local]
+hipblas-dev/now 0.53.0.50400-72~20.04 amd64 [installed,local]
+hipblas/now 0.53.0.50400-72~20.04 amd64 [installed,local]
+hipcub-dev/now 2.10.12.50400-72~20.04 amd64 [installed,local]
+hipfft-dev/now 1.0.10.50400-72~20.04 amd64 [installed,local]
+hipfft/now 1.0.10.50400-72~20.04 amd64 [installed,local]
+hipify-clang/now 15.0.0.50400-72~20.04 amd64 [installed,local]
+hipsolver-dev/now 1.6.0.50400-72~20.04 amd64 [installed,local]
+hipsolver/now 1.6.0.50400-72~20.04 amd64 [installed,local]
+hipsparse-dev/now 2.3.3.50400-72~20.04 amd64 [installed,local]
+hipsparse/now 2.3.3.50400-72~20.04 amd64 [installed,local]
+libdrm-intel1/now 2.4.107-8ubuntu1~20.04.2 amd64 [installed,local]
+miopen-hip-dev/now 2.19.0.50400-72~20.04 amd64 [installed,local]
+miopen-hip/now 2.19.0.50400-72~20.04 amd64 [installed,local]
+#+end_example
+
+***** miopen
+
+#+begin_example
+miopen-hip-dev/now 2.19.0.50400-72~20.04 amd64 [installed,local]
+miopen-hip/now 2.19.0.50400-72~20.04 amd64 [installed,local]
+#+end_example
+
+**** Pip packages
+
+| Package                      |     Version |
+|------------------------------+-------------|
+| absl-py                      |       1.4.0 |
+| aiofiles                     |      22.1.0 |
+| aiosqlite                    |      0.18.0 |
+| anyio                        |       3.6.2 |
+| appdirs                      |       1.4.3 |
+| argon2-cffi                  |      21.3.0 |
+| argon2-cffi-bindings         |      21.2.0 |
+| arrow                        |       1.2.3 |
+| asttokens                    |       2.2.1 |
+| astunparse                   |       1.6.3 |
+| attrs                        |      22.2.0 |
+| Babel                        |      2.12.1 |
+| backcall                     |       0.2.0 |
+| beautifulsoup4               |      4.12.2 |
+| bleach                       |       6.0.0 |
+| cachetools                   |       5.3.0 |
+| certifi                      |  2019.11.28 |
+| cffi                         |      1.15.1 |
+| chardet                      |       3.0.4 |
+| charset-normalizer           |       3.1.0 |
+| cloudpickle                  |       2.2.1 |
+| comm                         |       0.1.3 |
+| contourpy                    |       1.0.7 |
+| cycler                       |      0.11.0 |
+| dbus-python                  |      1.2.16 |
+| debugpy                      |       1.6.7 |
+| decorator                    |       5.1.1 |
+| defusedxml                   |       0.7.1 |
+| distlib                      |       0.3.6 |
+| distro                       |       1.4.0 |
+| distro-info                  | 0.23ubuntu1 |
+| executing                    |       1.2.0 |
+| fastjsonschema               |      2.16.3 |
+| filelock                     |       3.9.0 |
+| flatbuffers                  |       2.0.7 |
+| fonttools                    |      4.39.3 |
+| fqdn                         |       1.5.1 |
+| gast                         |       0.4.0 |
+| google-auth                  |      2.16.1 |
+| google-auth-oauthlib         |       0.4.6 |
+| google-pasta                 |       0.2.0 |
+| grpcio                       |      1.43.0 |
+| h5py                         |       3.7.0 |
+| horovod                      |      0.27.0 |
+| idna                         |         2.8 |
+| importlib-metadata           |       6.0.0 |
+| importlib-resources          |      5.12.0 |
+| ipykernel                    |      6.22.0 |
+| ipython                      |      8.12.0 |
+| ipython-genutils             |       0.2.0 |
+| isoduration                  |     20.11.0 |
+| jax                          |      0.3.25 |
+| jaxlib                       |      0.3.25 |
+| jedi                         |      0.18.2 |
+| Jinja2                       |       3.1.2 |
+| json5                        |      0.9.11 |
+| jsonpointer                  |         2.3 |
+| jsonschema                   |      4.17.3 |
+| jupyter_client               |       8.1.0 |
+| jupyter_core                 |       5.3.0 |
+| jupyter-events               |       0.6.3 |
+| jupyter_server               |       2.5.0 |
+| jupyter_server_fileid        |       0.9.0 |
+| jupyter_server_terminals     |       0.4.4 |
+| jupyter_server_ydoc          |       0.8.0 |
+| jupyter-ydoc                 |       0.2.3 |
+| jupyterlab                   |       3.6.3 |
+| jupyterlab-pygments          |       0.2.2 |
+| jupyterlab_server            |      2.22.0 |
+| keras                        |      2.11.0 |
+| kiwisolver                   |       1.4.4 |
+| libclang                     |    15.0.6.1 |
+| Markdown                     |       3.4.1 |
+| MarkupSafe                   |       2.1.2 |
+| matplotlib                   |       3.7.1 |
+| matplotlib-inline            |       0.1.6 |
+| mistune                      |       2.0.5 |
+| more-itertools               |       4.2.0 |
+| nbclassic                    |       0.5.5 |
+| nbclient                     |       0.7.3 |
+| nbconvert                    |       7.3.1 |
+| nbformat                     |       5.8.0 |
+| nest-asyncio                 |       1.5.6 |
+| notebook                     |       6.5.4 |
+| notebook_shim                |       0.2.2 |
+| numpy                        |      1.21.6 |
+| oauthlib                     |       3.2.2 |
+| opt-einsum                   |       3.3.0 |
+| packaging                    |        23.0 |
+| pandas                       |       2.0.0 |
+| pandocfilters                |       1.5.0 |
+| parso                        |       0.8.3 |
+| pexpect                      |       4.8.0 |
+| pickleshare                  |       0.7.5 |
+| Pillow                       |       9.5.0 |
+| pip                          |      23.0.1 |
+| platformdirs                 |       3.0.0 |
+| portpicker                   |       1.4.0 |
+| prometheus-client            |      0.16.0 |
+| prompt-toolkit               |      3.0.38 |
+| protobuf                     |      3.19.6 |
+| psutil                       |       5.9.4 |
+| ptyprocess                   |       0.7.0 |
+| pure-eval                    |       0.2.2 |
+| pyarrow                      |      11.0.0 |
+| pyasn1                       |       0.4.8 |
+| pyasn1-modules               |       0.2.8 |
+| pycparser                    |        2.21 |
+| Pygments                     |      2.15.0 |
+| PyGObject                    |      3.36.0 |
+| pyparsing                    |       3.0.9 |
+| pyrsistent                   |      0.19.3 |
+| python-apt                   |       2.0.1 |
+| python-dateutil              |       2.8.2 |
+| python-json-logger           |       2.0.7 |
+| pytz                         |      2023.3 |
+| PyYAML                       |         6.0 |
+| pyzmq                        |      25.0.2 |
+| requests                     |      2.28.2 |
+| requests-oauthlib            |       1.3.1 |
+| requests-unixsocket          |       0.2.0 |
+| rfc3339-validator            |       0.1.4 |
+| rfc3986-validator            |       0.1.1 |
+| rsa                          |         4.9 |
+| scipy                        |       1.7.3 |
+| Send2Trash                   |       1.8.0 |
+| setuptools                   |      65.0.0 |
+| six                          |      1.16.0 |
+| sniffio                      |       1.3.0 |
+| soupsieve                    |         2.4 |
+| ssh-import-id                |        5.10 |
+| stack-data                   |       0.6.2 |
+| tensorboard                  |      2.11.2 |
+| tensorboard-data-server      |       0.6.1 |
+| tensorboard-plugin-wit       |       1.8.1 |
+| tensorflow-estimator         |      2.11.0 |
+| tensorflow-io-gcs-filesystem |      0.30.0 |
+| tensorflow-rocm              |  2.11.0.540 |
+| termcolor                    |       1.1.0 |
+| terminado                    |      0.17.1 |
+| tfga                         |       0.2.0 |
+| tinycss2                     |       1.2.1 |
+| tomli                        |       2.0.1 |
+| tornado                      |         6.2 |
+| traitlets                    |       5.9.0 |
+| typing-extensions            |    3.10.0.2 |
+| tzdata                       |      2023.3 |
+| unattended-upgrades          |         0.1 |
+| uri-template                 |       1.2.0 |
+| urllib3                      |      1.25.8 |
+| virtualenv                   |     20.19.0 |
+| wcwidth                      |       0.2.6 |
+| webcolors                    |        1.13 |
+| webencodings                 |       0.5.1 |
+| websocket-client             |       1.5.1 |
+| Werkzeug                     |       2.2.3 |
+| wheel                        |      0.36.2 |
+| wrapt                        |      1.12.1 |
+| y-py                         |       0.5.9 |
+| ypy-websocket                |       0.8.2 |
+| zipp                         |      3.15.0 |
 
 
-* Phases
+*** Arch ROCm
 
-1) setup environment (python, data, project)
-2) test basic assertions about data
-3) find mediapipe tools and other libraries
-4) look for external data sources
-5) write some shitty models
+**** Install these Python Deps?
+
+#+begin_example
+17  community/bazel                         -> 6.1.1-1
+(Make Dependency of python-tensorflow-opt-rocm, tensorflow-opt-rocm)
+16  community/patchelf                      -> 0.17.2-1
+(Make Dependency of python-tensorflow-opt-rocm, tensorflow-opt-rocm)
+15  community/python-absl                   -> 1.4.0-2
+14  community/python-astor                  -> 0.8.1-5
+13  community/python-astunparse             -> 1.6.3-6
+12  community/python-flatbuffers            -> 23.3.3-1
+11  community/python-gast03                 -> 0.3.3-3
+10  community/python-h5py                   -> 3.8.0-2
+(Make Dependency of tensorflow-opt-rocm, python-tensorflow-opt-rocm)
+9  community/python-keras                  -> 2.12.0-1
+8  community/python-keras-applications     -> 1.0.8-8
+a(Make Dependency of python-tensorflow-opt-rocm, tensorflow-opt-rocm)
+7  community/python-keras-preprocessing    -> 1.1.2-6
+(Make Dependency of python-tensorflow-opt-rocm, tensorflow-opt-rocm)
+6  community/python-opt_einsum             -> 3.3.0-5
+5  community/python-pasta                  -> 0.2.0-6
+4  community/python-tensorflow-estimator   -> 2.12.0-1
+3  community/python-termcolor              -> 2.2.0-1
+2  aur/python-tensorflow-opt-rocm          -> 2.12.0-1
+1  aur/tensorflow-opt-rocm                 -> 2.12.0-1
+#+end_example
