@@ -1,0 +1,390 @@
+:PROPERTIES:
+:ID:       14c1cc61-dc2d-4050-91af-55301c120a1e
+:END:
+#+TITLE: Python: Standard Library
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
+
+
+* Notes
+
+Mostly just whatever I found interesting in the standard lib docs.
+
+These were extracted with =$.('j-query')=, since that is still somewhat useful
+on websites. It's probably easier to get this from sphinx.
+
+Extracting the ToC of any PDF is something that some of the Emacs pdf libraries
+can do, like with =pdf-outline=.
+
+* Standard Lib
+
+There's really kind of a lot in here.
+
+** [[https://docs.python.org/3/library/intro.html][Introduction]]
+
+** [[https://docs.python.org/3/library/functions.html][Built-in Functions]]
+
+** [[https://docs.python.org/3/library/constants.html][Built-in Constants]]
+
+** [[https://docs.python.org/3/library/stdtypes.html][Built-in Types]]
+
+** TODO [[https://docs.python.org/3/library/exceptions.html][Built-in Exceptions]]
+
+** [[https://docs.python.org/3/library/text.html][Text Processing Services]]
+
++ re: regexp
++ stringprep: url/text encoding
+
+*** difflib
+
+This does text and sequences
+
+** [[https://docs.python.org/3/library/binary.html][Binary Data Services]]
+
+** [[https://docs.python.org/3/library/datatypes.html][Data Types]]
+
++ collections
++ copy
++ pprint
+
+*** [[https://docs.python.org/3/library/types.html][types]]
+
+maybe useful for metaprogramming (low-level)
+
+ + CellType: describes a function/lambda's closure. [[https://docs.python.org/3/c-api/cell.html][more precisely]], the locals
+   in the stack frame(s) that reference some variable. But ... =Cell objects are
+   not likely to be useful elsewhere.=
+
+*** graphlib
+
+a topological sorter for your dependency tree (that doesn't contain cycles). for
+every graph (excluding hypergraphs?) which doesn't qualify as a DAG, there is a
+[[https://en.wikipedia.org/wiki/Minimum_spanning_tree][spanning tree]] which describes how to walk the graph without cycles.
+
+*** bisect:
+
+faster insertions on sorted arrays with less bugs
+
+  (does this a btree search?)
+
+*** [[https://docs.python.org/3/glossary.html#term-abstract-base-class][collections.abc]]
+
+abstract base classes: link to table with all the =__methods__=
+
+*** heapq
+
+fast insertions, depending on partial ordering and prior knowledge. still fast
+insertions no matter what, but updating with the wrong data at the wrong time is
+not optimal.
+
+implements a "priority queue" with a tree. all nodes must have values greater
+than their parents. each node could have multiple children, but that is "less
+countable," especially when/while various non-leaf nodes have different numbers
+of children. the "countability" issues seem unrelated, since nothing is
+infinite, but countability concerns how indexable or orderable sets are.
+
+if =f : i -> x= is given an index =i=, return some value =x=, then it's
+"countable" for all practical applications of countability. if the structure of
+the function =f(i)= is irregular (more irrational), then it's less
+"countable". for data structures that have regularity, then this means
+fast/predictable reads with less time, though usually changing the structure
+disrupts the regularity. if a data structure is irregular, then metadata can
+help make it's access seem regular -- but now you have two structures to update
+on writes.  once the heap is static and regularized, you can give it =i= and it
+will return =x= the value of a memory address that you care about (which is
+likely another pointer).
+
+i.e. give me natural number =i= and the rational number =x= is returned. here,
+the function can be reduced to a formula that circumvents the need to calculate
+all the rational numbers for =f(i) from 1 to i=. p-adic numbers involve a kind
+of generalization of this.
+
+[[file:img/diagonal_argument.svg]]
+
+When dealing with inifinite graphs or trees, they can have irregular/irrational
+structures, which makes retrieving with certainty the value of some node given a
+path (these graphs/trees are are unindexable or unaddressable).
+
+this is hard to encounter if you don't study computer science. the javascript
+widgets just need to be widgeted. you don't have to care how it's done.
+
+** [[https://docs.python.org/3/library/numeric.html][Numeric and Mathematical Modules]]
+
++ math
++ cmath
++ fractions
+
+*** statistics:
+
+not as optimized as alternatives, but always there.
+
+** [[https://docs.python.org/3/library/functional.html][Functional Programming Modules]]
+
+*** functools:
+
+map/reduce and also =@decorators= such as:
+
+*@cached_property*: create a property whose value is determined by a function
+
++ acts as property, but "allows writes."
++ initialized by attempting to access the property (perhaps a little tricky if
+  the caller doesn't or can't know it's a =@cached_property=
++ "instance dictionaries" may require more space (rel. to [[https://peps.python.org/pep-0412/][key-sharing dicts]])
++ reset by "deleting the attribute"
++ see the examples in the [[https://docs.python.org/3/faq/programming.html#faq-cache-method-calls][FAQ]]
+
+*@lru_cache(maxsize)*: decorator to memoize
+
++ requires that arguments are [[https://docs.python.org/3/glossary.html#term-hashable][hashable]] (impl: =__hash__= and =__eq__=)
++ without specifying maxsize, the cache can grow without bound.
+
+
+*@total_ordering*: =a <=> b=
+
++ requires implementation of comparisons
++ slower & can complicate stack traces
+
+
+*@singledispatch*: for overloading method signatures.
+
+no multi-dispatch though :(
+
+*** [[https://docs.python.org/3/library/itertools.html][itertools]]
+
+three categories of iterators
+
++ infinite: count/cycle/repeat
++ finite: many
++ finite combinatorial: product, permutations, combinations,
+  combinations_with_replacement
+
+*** operators =+ - * /=
+
++ table showing [[https://docs.python.org/3/library/operator.html#mapping-operators-to-functions][operators to functions]]
++ [[https://docs.python.org/3/library/operator.html#in-place-operators][inplace += operators]]
+
+** [[https://docs.python.org/3/library/filesys.html][File and Directory Access]]
+
++ tempfile
++ shutil: copy, move, chown, which, etc
+
+uhhh yeh consuming this stuff piecemeal on stack overflow or via search engines
+really sucks. it's a terrible way to learn. the internet is full of bad advice
+that becomes viral or at least residual (like a pangolin covid resevoir)
+
+*** [[https://docs.python.org/3/library/os.path.html][os.path]]
+
+*** [[https://docs.python.org/3/library/stat.html][stat]]
+
+mostly +enums+ [[https://github.com/python/cpython/blob/3.11/Lib/stat.py][functions]] to compare against results of os.stat, os.lstat, and
+os.fstat. cheapter to use the constants directly, but probably more expensive to
+do things with the actual files.
+
+=fstat()= does not recurse links (see the [[https://www.mathworks.com/help/install/ug/install-noninteractively-silent-installation.html][matlab install script]] lol)
+
+*** [[https://docs.python.org/3/library/pathlib.html][pathlib]]
+
+pure paths and [[https://docs.python.org/3/library/pathlib.html#concrete-paths][concrete paths]]
+
+
+*** fnmatch
+
+unix shell wildcard patterns. glob is more useful. both are simpler than raw
+=os.path=.
+
++ fnmatch/case: validate that a path matches a pattern
+
+#+begin_src python
+import fnmatch
+import os
+
+for file in os.listdir('.'):
+    if fnmatch.fnmatch(file, '*.txt'):
+        print(file)
+#+end_src
+
+
+** [[https://docs.python.org/3/library/persistence.html][Data Persistence]]
+
++ [[https://docs.python.org/3/library/pickle.html][pickle]] serialize objects for later. not secure
++ shelve:
++ marshal:
++ sqlite: probably jsut use this ([[https://docs.python.org/3/library/sqlite3.html#sqlite3-tutorial][tutorial]])
+
+** [[https://docs.python.org/3/library/archiving.html][Data Compression and Archiving]]
+
+modules: zlib, gzip, bz2, lzma, zipfile, tarfile
+
+these depend on how python was configured to build.
+
+** [[https://docs.python.org/3/library/fileformats.html][File Formats]]
+
+csv & netrc
+
++ tomllib: parse TOML
++ configparser: parse INI
++ plistlib: parse Apple plist's
+
+** [[https://docs.python.org/3/library/crypto.html][Cryptographic Services]]
+
++ [[https://docs.python.org/3/library/secrets.html][secrets]]: secure random numbers
++ hashlib
++ hmac
+
+** [[https://docs.python.org/3/library/allos.html][Generic Operating System Services]]
+
+prefer =argparse > getopt= for option handling
+
++ errno
++ io
++ time
++ platform: =uname -a= for platforms
++ logging.*
++ curses.*
+
+*** [[https://docs.python.org/3/library/ctypes.html][ctypes]]: python FFI
+
+[[https://docs.python.org/3/library/ctypes.html#utility-functions][Utility functions]]
+
++ [[https://docs.python.org/3/library/ctypes.html#foreign-functions][_FuncPtr]]
++ _CData: superclass for [[https://docs.python.org/3/library/ctypes.html#data-types][c types]]
++ _SimpleCData: superclass for [[https://docs.python.org/3/library/ctypes.html#ctypes-fundamental-data-types-2][basic c types]]
++ [[https://docs.python.org/3/library/ctypes.html#arrays-and-pointers][Array and _Pointer]]
+
+** [[https://docs.python.org/3/library/concurrency.html][Concurrent Execution]]
+
+** [[https://docs.python.org/3/library/ipc.html][Networking and Interprocess Communication]]
+
++ ssl
++ select: low-level i/o handling
++ selectors: high-level (built on select). includes an [[https://docs.python.org/3/library/selectors.html#examples][echo server impl.]] example
++ signal: respond to IPC signals. includes [[https://docs.python.org/3/library/signal.html#examples][examples]]
++ mmap: read it into memory and then treat it like a file
+
+*** [[https://docs.python.org/3/library/socket.html][socket]]
+
+access to BSD socket interface (but available on all platforms)
+
++ contains link to [[https://udrepper.livejournal.com/20407.html][Secure File Descriptor hygeine]]
++ See [[https://docs.python.org/3/library/socketserver.html#module-socketserver][socketserver]] for high-level server setup
+
+** [[https://docs.python.org/3/library/netdata.html][Internet Data Handling]]
+
++ json
++ base64
++ binascii
++ email, mailbox, mimetypes, quopri (MIME quoted-printable data)
+
+** [[https://docs.python.org/3/library/markup.html][Structured Markup Processing Tools]]
+
++ html (and html.parser, html.entities)
++ xml.etree
++ xml.dom (and xml.dom.minidom, xml.dom.pulldom)
++ xml.sax (and .handler, .saxutils, .xmlreader)
++ xml.parsers.expat
+
+** [[https://docs.python.org/3/library/internet.html][Internet Protocols and Support]]
+
++ uuid
++ ipaddress
++ xmlrpc (.client, .server)
++ [[https://docs.python.org/3/library/webbrowser.html][webbrowser]]: remotely control browsers (if you really want to)
++ ftplib, poplib, imaplib, smtplib
+
+*** urllib
+
+modules: request, response, parse, error, robotparser
+
+** [[https://docs.python.org/3/library/mm.html][Multimedia Services]]
+
++ wave: for WAV files
+
+[[https://docs.python.org/3/library/colorsys.html][colorsys]]: for color-system conversions
+
+  + though not comprehensive (you'll need another lib)
+  + and doesn't facilitate liftable types like [[https://juliagraphics.github.io/Colors.jl/stable/][Colors.jl]]
+
+** [[https://docs.python.org/3/library/i18n.html][Internationalization]]
+
++ gettext
++ locale
+
+** [[https://docs.python.org/3/library/frameworks.html][Program Frameworks]]
+
++ [[https://docs.python.org/3/library/turtle.html][turtle]]: reimplementation of logo for nostalgic purposes
++ [[https://docs.python.org/3/library/shlex.html][shlex]]: simple DSL's
+
+
+** [[https://docs.python.org/3/library/tk.html][Graphical User Interfaces with Tk]]
+
++ tkinter stuff
+
+** [[https://docs.python.org/3/library/development.html][Development Tools]]
+
++ test: regression testing for python lang
+
+*** unittest & unittest.mock
+
+docs contains some [[https://docs.python.org/3/library/unittest.html][basic examples]]
+
+See also: [[https://wiki.python.org/moin/PythonTestingToolsTaxonomy][PythonTestingToolsTaxonomy]]
+
+** [[https://docs.python.org/3/library/debug.html][Debugging and Profiling]]
+
+** [[https://docs.python.org/3/library/distribution.html][Software Packaging and Distribution]]
+
+** [[https://docs.python.org/3/library/python.html][Python Runtime Services]]
+
+** [[https://docs.python.org/3/library/custominterp.html][Custom Python Interpreters]]
+
++ code: implement/control REPL
++ codeop: compile input (for the code module). not useful other than as impl.
+
+** [[https://docs.python.org/3/library/modules.html][Importing Modules]]
+
+how imports work
+
++ pkgutil
++ importlib
++ modulefinder
+
+** [[https://docs.python.org/3/library/language.html][Python Language Services]]
+
++ tokenize: lexer for python source
++ dis: disassmble python bytecode
+
+*** AST
+
++ [[https://docs.python.org/3/library/ast.html#ast.comprehension][ast.Comprehension]] fomo for julia's comprehensions
+
+Representations for python AST's. contains a [[https://docs.python.org/3/library/ast.html#ast.Constant][handy reference of valid syntax]] per
+data structure -- this differs from the PEG from the [[https://docs.python.org/3/reference/grammar.html][full grammar spec]] and
+explains the grammars for each lexed syntax.
+
+
+*** pyclbr
+
+readmodule_ex: find a module within paths (prepended to =sys.path=), return a
+dictionary with metadata/descriptors for its classes/functions (without
+importing the module)
+
+** [[https://docs.python.org/3/library/windows.html][MS Windows Specific Services]]
+
+** [[https://docs.python.org/3/library/unix.html][Unix Specific Services]]
+
+*** pty
+
+read/write to a forked/spawned process from it's controlling terminal
+
+hmmm....
+
+*** termios
+
++ control things like TTY input/output (redirection of file descriptors)
++ contains [[It's probably easier to get this from sphinx.][an example]] of TTY password input without display (swaps =fd=)
+
+** [[https://docs.python.org/3/library/superseded.html][Superseded Modules]]
+
+** [[https://docs.python.org/3/library/security_warnings.html][Security Considerations]]

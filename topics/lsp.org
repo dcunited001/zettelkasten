@@ -40,6 +40,230 @@ Uses the VDM language (for Theorem Proving) as an example. Lots of pictures.
 
 *** [[github:lspcontainers/lspcontainers.nvim][lspcontainers/lspcontainers.nvim]] (nvim)
 
+
+* Python LSP Server
+
+Depends on [[https://github.com/davidhalter/jedi][jedi]] and the following:
+
++ jedi>=0.17.2,<0.19.0
++ python-lsp-jsonrpc>=1.0.0
++ pluggy>=1.0.0",
++ docstring-to-markdown
++ ujson>=3.0.0
++ setuptools>=39.0.0
+
+** Docs
++ [[https://github.com/python-lsp/python-lsp-server/blob/develop/CONFIGURATION.md][Configuration]] shows defaults/options
+
+The [[github:python-lsp/cookiecutter-pylsp-plugin][python-lsp/cookiecutter-pylsp-plugin]] project templates a pylsp plugin, but
+also contains valuable examples for wtf is going on here.
+
+** Configuration
+
+This is here, but in the future, any updates will be found in
+[[github:dcunited001/.emacs.g][dcunited001/.emacs.g]], whether or not I stick with eglot & pylsp
+
+*** First Attempt
+
++ =eglot= and =pylsp= to work, the latter of which requires
+  =jedi=. both the =pylsp= and =jedi= are installed in the =venv=
++ i use =direnv= to autoload environment variables and this manages loading the
+  per-project environments.
++ in emacs the =envrc= package handles loading these
+  on a per-buffer basis. so =vterm= and =async-shell-command= run commands with
+  the correct =PATH= and everything.
++ =direnv= has a =pyenv= plugin that sets the python version and a =venv=. if
+  you don't specify a shared =venv=, then it installs everything into
+  =$project/.direnv=.
+
+The .envrc:
+
+#+begin_src sh
+pyversion=3.10.11
+pyenv=rocm
+
+use python ${pyversion}
+layout pyenv ${pyversion} # for project-local environments
+
+# for shared venv environments:
+# layout virtualenv ${pyversion} ${pyenv}
+# layout activate ${pyenv}-${pyversion}
+#+end_src
+
+I use =.dir-locals.el= to set directory-local state for emacs. this should set
+things for =eglot= to relay to =pylsp=, which needs to be restarted AFAIK when
+config is changed. eventually, what's here can be imported into =init.el= when I
+know it's fairly constant in python projects. dir-locals is =lisp-data= so
+basically a lisp version of YAML.
+
+For now, the pylsp defaults were sufficient, so I've removed =.dir-locals.el=
+and it's a little heavy-handed, since it also needs to be copied/templated into
+every project where =venv= environments be found.
+
+When things are set up to use a project-local environment installed into
+=direnv=, then features like navigation to definition seems to work. and
+completion works as well, i believe. i suspect it might just be =xref=
+automagically doing everything.
+
+the =pylsp= environment is a bit hard to probe, since =eglot= is supposed to
+establish that with JsonRPC.
+
+*** The above seems to work
+
+At least for documentation and completion, but not for code actions.
+
+Running =eglot-signal-didChangeConfiguration= is necessary to update pylsp state
+
+As for navigating to definitions outside of the project directory, this seems
+set up, but then I navigate outside the directory, so =pylsp= is no longer
+available.
+
+Running =eglot-stderr-buffer= brings up some warnings & stack traces, so now I
+have more visibility:
+
+#+begin_quote
+WARNING - pylsp.config.config - Failed to load hook pylsp_definitions: unsupported operand type(s) for -: 'NoneType' and 'int'
+#+end_quote
+
+Running =eglot-events-buffer= gives me almost too much info, but I can clearly
+see that =eglot= and =pylsp= are actively engaged.
+
+After installing =python-lsp-server[all]=, then I have =pycodestyle= managing
+flycheck. Enabling flycheck gives me some more info.
+
+So it seems I really do have the default configuration.
+
+*** Next steps For Configuration
+
+I need to go through the first & third-party plugins and decide which ones I
+want active in my projects. Since pycodestyle is already active, then
+
+**** Syntax Checking & Flycheck
+
+Choose [[deciding][flake8]] and [[https://pycodestyle.pycqa.org/en/latest/intro.html#configuration][pycodestyle]] to provide info for flycheck.
+
+****
+
+
+
+** Issues
+
+*** Code Actions
+
+Not getting any thing, really, but I'm not really sure what it's supposed to do.
+
+UML diagrams for the JsonRPC protocol would really help ingest this LSP thing.
+
+#+begin_example
+eglot--error: [eglot] No "refactor.extract" code actions here
+eglot--error: [eglot] No "refactor.rewrite" code actions here
+eglot--error: [eglot] No "refactor.extract" code actions here
+eglot--error: [eglot] No "refactor.inline" code actions here
+#+end_example
+
+*** Unsupported provider
+
+Getting the following errors:
+
+| =eglot-find-definition=      | Unsupported or ignored LSP capability :definitionProvider     |
+| =eglot-find-type-definition= | Unsupported or ignored LSP capability :typeDefinitionProvider |
+
+*** Getting Configuration State
+
+This [[https://rgoswami.me/posts/emacs-lang-servers/#python][post]] suggests using =.dir-locals.el= like below. however, this causes
+issues with JsonRPC and the =pylsp.plugins.jedi_completion= already defaults to
+true.
+
+For now, I've just disabled this, but it was a bit tough to intuit how to set
+the server configuration, not having seen someone use LSP.
+
+#+begin_src lisp-data
+((python-mode
+  . ((eglot-workspace-configuration
+      . ((:pylsp . (:plugins (:jedi_completion (:include_params t)))))))))
+#+end_src
+
+
+** Plugins
+
+*** Jedi
+
+*** From python/python-lsp-server:
+
+Enabled here determines whether the plugin will be enabled if it's installed via
+pip. This is covered in the =pylsp= docs, now that things are more clear.
+
+|-------------+---------+-----------------------------------------------------------|
+| plugin      | Enabled | purpose                                                   |
+|-------------+---------+-----------------------------------------------------------|
+| [[https://github.com/python-rope/rope][Rope]]        | n/a     | for Completions and renaming                              |
+| [[https://github.com/PyCQA/pyflakes][Pyflakes]]    |         | linter to detect various errors                           |
+| [[https://github.com/PyCQA/mccabe][McCabe]]      |         | linter for complexity checking                            |
+| [[https://github.com/PyCQA/pycodestyle][pycodestyle]] |         | linter for style checking                                 |
+| [[https://github.com/PyCQA/pydocstyle][pydocstyle]]  | false   | linter for docstring style checking (disabled by default) |
+| [[https://github.com/hhatto/autopep8][autopep8]]    |         | for code formatting                                       |
+| [[https://github.com/google/yapf][YAPF]]        | true    | for code formatting (preferred over autopep8)             |
+| [[https://github.com/pycqa/flake8][flake8]]      | false   | for error checking (disabled by default)                  |
+| [[https://github.com/PyCQA/pylint][pylint]]      | false   | for code linting (disabled by default)                    |
+|-------------+---------+-----------------------------------------------------------|
+
+*** Third-party plugins
+
+
+|------------------+---------+--------------------------------------------------------|
+| plugin           | Enabled | purpose                                                |
+|------------------+---------+--------------------------------------------------------|
+| [[https://github.com/Richardk2n/pylsp-mypy][pylsp-mypy]]       |         | [[http://mypy-lang.org/][MyPy]] type checking for Python >=3.7.                   |
+| [[https://github.com/paradoxxxzero/pyls-isort][pyls-isort]]       |         | code formatting using [[https://github.com/PyCQA/isort][isort]] (automatic import sorting) |
+| [[https://github.com/python-lsp/python-lsp-black][python-lsp-black]] |         | code formatting using [[https://github.com/psf/black][Black]].                           |
+| [[https://github.com/QuantStack/pyls-memestra][pyls-memestra]]    |         | detecting the use of deprecated APIs.                  |
+| [[https://github.com/python-rope/pylsp-rope][pylsp-rope]]       |         | Extended refactoring capabilities using [[https://github.com/python-rope/rope][Rope]].          |
+| [[https://github.com/python-lsp/python-lsp-ruff][python-lsp-ruff]]  |         | Extensive and fast linting using [[https://github.com/charliermarsh/ruff][ruff]].                 |
+|------------------+---------+--------------------------------------------------------|
+
+Running =python-lsp-server[all]= will attempt to add the following to your
+environment, which includes what's required for [many of] the third-party
+plugins. This is in addition to whatever is =pylsp= already brings in.
+
+#+begin_example diff
+9a10
+> astroid==2.15.4
+13a15
+> autopep8==2.0.2
+32a35
+> dill==0.3.6
+36a40
+> flake8==6.0.0
+58a63
+> isort==5.12.0
+80a86
+> lazy-object-proxy==1.9.0
+86a93
+> mccabe==0.7.0
+125a133
+> pycodestyle==2.10.0
+127a136,137
+> pydocstyle==6.3.0
+> pyflakes==3.0.1
+128a139
+> pylint==2.17.4
+135a147
+> pytoolconfig==1.2.5
+145a158
+> rope==1.8.0
+153a167
+> snowballstemmer==2.2.0
+167a182
+> toml==0.10.2
+168a184
+> tomlkit==0.11.8
+197a214
+> whatthepatch==1.0.5
+201a219
+> yapf==0.32.0
+#+end_example
+
+
 * Emacs
 
 ** LSP
@@ -51,12 +275,14 @@ Uses the VDM language (for Theorem Proving) as an example. Lots of pictures.
 + [[https://github.com/emacs-lsp/lsp-ui][emacs-lsp/lsp-mode]]
 + [[https://github.com/emacs-lsp/lsp-ui][emacs-lsp/lsp-ui]]
 
+
 ** DAP
 
-Requires LSP
+Requires LSP, eglot doesn't support DAP
 
 *** Docs
 + [[https://github.com/emacs-lsp/dap-mode][emacs-lsp/dap-mode]]
+
 
 *** Resources
 
@@ -67,7 +293,58 @@ Requires LSP
   - List of [[https://github.com/joaotavora/eglot#connecting-to-a-server][language servers]]
 
 *** Resources
+
+
+
 *** Topics
+
+**** Commands
+
+Produced with =embark-collect=.
+
+Eglot server/connection management:
+
+| eglot                               | Start LSP server.                                         |
+| eglot-clear-status                  | Clear the last JSONRPC error for SERVER.                  |
+| eglot-forget-pending-continuations  | Forget pending requests for SERVER.                       |
+| eglot-list-connections              | List currently active Eglot connections.                  |
+| eglot-manual                        | Open documentation.                                       |
+| eglot-reconnect                     | Reconnect to SERVER.                                      |
+| eglot-rename                        | Rename the current symbol                                 |
+| eglot-show-workspace-configuration  | Dump ‘eglot-workspace-configuration’ for debugging.       |
+| eglot-shutdown                      | Politely ask SERVER to quit.                              |
+| eglot-shutdown-all                  | Politely ask all language servers to quit, in order.      |
+| eglot-signal-didChangeConfiguration | Send a ‘:workspace/didChangeConfiguration’ signal         |
+| eglot-stderr-buffer                 | Display stderr buffer for SERVER.                         |
+
+Eglot LSP calls:
+
+| consult-eglot-symbols               | Select a symbol from the current workspace.               |
+| eglot-code-action-extract           | Execute ‘refactor.extract’ code actions                   |
+| eglot-code-action-inline            | Execute ‘refactor.inline’ code actions                    |
+| eglot-code-action-organize-imports  | Execute ‘source.organizeImports’ code actions             |
+| eglot-code-action-quickfix          | Execute ‘quickfix’ code actions                           |
+| eglot-code-action-rewrite           | Execute ‘refactor.rewrite’ code actions                   |
+| eglot-code-actions                  | Find LSP code actions of type ACTION-KIND                 |
+| eglot-code-actions-at-mouse         | Like ‘eglot-code-actions’, but intended for mouse events. |
+| eglot-events-buffer                 | Display events buffer for SERVER.                         |
+| eglot-find-declaration              | Find declaration for SYM, the identifier at point.        |
+| eglot-find-implementation           | Find implementation for SYM, the identifier at point.     |
+| eglot-find-typeDefinition           | Find type definition for SYM, the identifier at point.    |
+| eglot-format                        | Format region BEG END.                                    |
+| eglot-format-buffer                 | Format contents of current buffer.                        |
+
+Eglot Menus:
+
+| eglot-menu        | Eglot                        |
+| eglot-server-menu | Monitor server communication |
+
+Eglot Modes:
+
+| eglot-inlay-hints-mode      | Annotate buffers with LSP server’s inlay hints.        |
+| eglot-list-connections-mode | Eglot mode for listing server connections              |
+| eglot--managed-mode         | Mode for source buffers managed by some Eglot project. |
+
 
 **** Python
 
