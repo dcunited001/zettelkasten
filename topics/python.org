@@ -60,6 +60,7 @@ Lots of handy stuff in here that you don't have to do.
 + [[github:victorgarric/pip_search][victorgarric/pip_search]]: search pip
 + [[github:thebjorn/pydeps][thebjorn/pydeps]]
 + [[github:tox-dev/pipdeptree][tox-dev/pipdeptree]]
++ [[ddelange/pipgrip][ddelange/pipgrip]]
 
 ** AsyncIO
 
@@ -117,6 +118,157 @@ to indicate failure.
 ** Async
 
 
+* Environments
+
++ See [[https://github.com/direnv/direnv/wiki/Python][Direnv Integrations for Python]]
+
+** Pip
+
+*** Resources
+**** [[https://github.com/ddelange/pipgrip][pipgrip]]
+
+Python dependency resolution using the [[https://medium.com/@nex3/pubgrub-2fb6470504f][PubGrub]] algorithm ([[https://github.com/dart-lang/pub/blob/SDK-2.2.1-dev.3.0/doc/solver.md][see spec here]]) which
+apparently relates to B-SAT (but what NP doesn't)
+
+pipgrip vs. poetry:
+
+#+begin_quote
+poetry offers package management with dependency resolution, essentially
+replacing pip/setuptools. This means that poetry packages don't contain
+setup.py, and hence are not compatible with =pip install -e=:
+
+poetry projects would have to be converted to setuptools-based projects with
+e.g. dephell. To avoid such hassle, pipgrip only requires the selected
+package(s) + dependencies to be available to pip in the usual way.
+#+end_quote
+
+**** pipdeptree
+
+** [[https://github.com/python-poetry/poetry][Poetry]]
+
+*** Resources
+
++ Combining [[https://python.plainenglish.io/why-you-should-use-pyenv-poetry-for-python-projects-a13f8d234e46][Pyenv & Poetry]]
++ [[https://github.com/python-poetry/poetry/issues/5252][python/poetry#5252]] Dealing with pyenv/poetry problems:
+
+**** Poetry Install Script
+
+#+begin_quote
++ Create a new virtual environment using the built-in venv module, or the
+  virtualenv zipapp if venv is unavailable.  This will be created at a
+  platform-specific path (or =$POETRY_HOME= if =$POETRY_HOME= is set:
+  - =~/Library/Application Support/pypoetry= on macOS
+  - =$XDG_DATA_HOME/pypoetry= on Linux/Unix (=$XDG_DATA_HOME= is
+    =~/.local/share= if unset)
+  - =%APPDATA%\pypoetry= on Windows
++ Update pip inside the virtual environment to avoid bugs in older versions.
++ Install the latest (or a given) version of Poetry inside this virtual
+  environment using pip.
++ Install a =poetry= script into a platform-specific path (or =$POETRY_HOME/bin=
+  if =$POETRY_HOME= is set):
+  - =~/.local/bin= on Unix
+  - =%APPDATA%\Python\Scripts= on Windows
++ Attempt to inform the user if they need to add this bin directory to their
+  =$PATH=, as well as how to do so.
++ Upon failure, write an error log to =poetry-installer-error-<hash>.log= and
+  restore any previous environment.
+#+end_quote
+
+*** Issues
+
+**** [[https://github.com/python-poetry/poetry/blob/master/docs/managing-environments.md#managing-environments][Managing Environments]]
+
+Using with =pyenv=
+
+#+begin_quote
+If you use a tool like pyenv to manage different Python versions, you can set
+the experimental =virtualenvs.prefer-active-python= option to =true=. Poetry
+will then try to find the current python of your shell.
+#+end_quote
+
+
+Environment info
+
+#+begin_src sh
+
+#+end_src
+
+Switching Environments
+
+#+begin_src sh
+poetry env use $pythonpath
+poetry env use python3.7 # if it's in PATH (or just 3.7)
+#+end_src
+
+** Venv
+
+The oldschool way to manage deps (for some definition of oldschool) and still
+the standard.
+
+** Pyenv
+
+langenv for python
+
+*** Issues
+
+**** Don't link from =PYENV_ROOT=, just set it
+
+NOTE: if using link from =$HOME/.pyenv= to conserve space in the home partition
+then pyenv will end up create many symlinks (whose parent paths link back
+in). This adds a lot of [[https://man7.org/linux/man-pages/man7/path_resolution.7.html][directory traversal]] to early python initialization,
+which doesn't really matter.
+
+Regardless, the reason i noticed is because i'm trying to reconcile the
+differences between pyenv/poetry to see whether Poetry's
+=virtaulenvs.prefer-active-python= does what it should if direnv's =layout='s
+are managing pyenv version and poetry-installed dependencies.
+
+properly setting =$PYENV_ROOT= and then fixing the venv links causes this:
+
+#+begin_example
+$PYENV_ROOT/pyenv.d/exec/pip-rehash/pip: $PYENV_ROOT/versions/3.10.11/bin/pip: $HOME/.pyenv/versions/3.10.11/bin/python3.10: bad interpreter: No such file or directory
+#+end_example
+
+**** TKinter errors with =pyenv=
+
+Ensure tkinter is installed or run =pacman -Syu tk= and restart xorg to refresh
+path. New pythons being installed will need it.
+
+I swear TCL is like the "other Perl" -- a virtually unused language without
+which most of our technology & internets would cease functioning.
+
+What's amusing to me is that any program would really need an interface to TCL,
+itself being the universal interface to any program ... but i guess it makes
+sense. Why reinvent the wheel if some languages are just superior?
+
+**** OpenSSL errors with =pyenv=
+
+Ensure the python is building in OpenSSL support.
+
+Ben Mezger installs python versions like so [[https://github.com/benmezger/dotfiles/blob/main/Makefile#L162-L177][in this Makefile]]
+
+#+begin_example shell
+PATH="$(HOME)/.pyenv/bin:${PATH}"; \
+CFLAGS=-I/usr/include/openssl LDFLAGS=-L/usr/lib pyenv install -s 3.10.2; \
+CFLAGS=-I/usr/include/openssl LDFLAGS=-L/usr/lib pyenv install -s 3.8.12; \
+CFLAGS=-I/usr/include/openssl LDFLAGS=-L/usr/lib pyenv install -s 3.9.9; \
+CFLAGS=-I/usr/include/openssl LDFLAGS=-L/usr/lib pyenv install -s 3.11.0; \
+
+eval $(pyenv init -)
+pip install --upgrade -r scripts/requirements.txt
+#+end_example
+
+From [[https://stackoverflow.com/questions/37055420/python-how-can-i-tell-if-my-python-has-ssl][s/o How can I tell if my python has SSL?]]
+
+Test for openssl with =openssl rand -hex 20= and the installed python with:
+
+#+begin_src shell
+pyenv shell 3.11.3
+python -c "import ssl; print(ssl.OPENSSL_VERSION)"
+#+end_src
+
+#+RESULTS:
+: OpenSSL 3.0.8 7 Feb 2023
 
 
 * Jupyter
@@ -127,7 +279,14 @@ to indicate failure.
 
 ** Resources
 + [[https://adamj.eu/tech/2019/03/11/pip-install-from-a-git-repository/]['pip install' From a Git Repository]]
+
 ** Topics
+
+*** [[id:32a21c5e-8e7c-4df1-88dd-74d828f90b9c][Environment Management]]
+
+Links to other org-roam node on options for jupyter environment (using
+cloud/docker)
+
 *** Multimedia
 
 **** nglviewer/nglview
@@ -206,6 +365,60 @@ description for =dash-bootstrap-components=
 see [[https://github.com/pjotrp/guix-notes/blob/master/PYTHON.org#isolated-module-installation][pjotr's notes]]
 
 
+*** Old Arch Setup
+
++ Pipenv should be installed to =--user=, at least on guix
+  - after =guix install python pip3=, then run =pip3 install --user pipenv=
+  - or use a manifest to manage the base python and load it into the environment
+  - pip3/pipenv will install its user packages to =~/.local/=
+  - otherwise, see [[https://github.com/pjotrp/guix-notes/blob/master/PYTHON.org#isolated-module-installation][pjotr's notes]] on isolated module installation
+    - should guix/python need the package's hashed path
++ With these environment variables, then pipenv should sync the packages in
+  =Pipfile= to =./.venv=
+  - this is easier than managing a dozen =virtualenv= instances like I did
+    before the pipenv era
+  - old projects should probably be cleaned up. small files eat many inodes. i'm
+    looking at you NodeJS.
+
+#+begin_src sh :tangle .config/sh/profile.d/python-old.sh :shebang #!/bin/sh
+# to manually specify where venv's are set up
+# export WORKON_HOME=~/.venvs
+export PIPENV_VENV_IN_PROJECT=1
+
+# to load an alternate .env file
+#PIPENV_DOTENV_LOCATION=/path/to/.env pipenv shell
+
+# to prevent loading of .env files (containing config secrets)
+# PIPENV_DONT_LOAD_ENV=1
+
+# to setup shell completion in bash
+# eval "$(_PIPENV_COMPLETE=bash_source pipenv)"
+#+end_src
+
+*** Mostly residual feelings from many nodejs/frontend projects
+
+I have a lot of concerns when configuring my systems: two main workstations, but
+one with Garuda Arch and the other with Guix Systems, where some packages are
+older. This has led to friction like:
+
+- I've worked on a project on one or both laptops and now I can't get the
+  runtime to load.
+- I have to worry about what files/folders need to be added to =.gitignore=,
+  =.stow-local-ignore= AND =.stignore= so syncthing don't fuck things up or
+  transfer 40,000 files from a +python install+ nodejs project
+
+Examining all this stuff leads me to understand it more, yet it's one hell of a
+"paradox of choice" problem.
+
++ VM's would be great: but they don't work for GPU/CUDA projects ... unless I
+  have money for a external enclosure that supports multiple GPUs, I really
+  cannot justify $500 for a deskweight.
++ Network storage would be great ... but doesn't work so well for IDE's (I
+  think?)
++ The homelab (with or without kubernetes) would be great: but I'm not rich
+  enough to afford manageable storage. That's a hard requirement for K3S for me,
+  but working via Tramp may be possible.
++ The cloud would be great... but have I told you /exactly/ how poor I am?
 
 ** Packages
 
