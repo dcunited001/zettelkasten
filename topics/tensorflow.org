@@ -56,7 +56,168 @@ Both of these are defined in =./tensorflow_datasets/core/load.py=:
 
 Layer [[https://www.tensorflow.org/guide/mixed_precision][Mixed Precision]] policy
 
+* JAX
+
+Your JIT out of jail free card.
+
+** Docs
+
+** Resources
+
+** Topics
+
+*** Running on ROCm
+
+Not practical to run as a poetry project (at least not without CUDA)
+
+**** Building The Image
+
+Just run this from the =rocm/jax= image or [[https://github.com/google/jax/tree/main/build/rocm][build the docker image]]:
+
+#+begin_src sh
+./build/rocm/ci_build.sh --keep_image --runtime bash -c "./build/rocm/build_rocm.sh"
+#+end_src
+
+And launch:
+
+#+begin_src sh
+sudo docker run -it --device=/dev/kfd --device=/dev/dri --security-opt seccomp=unconfined --group-add video --entrypoint /bin/bash jax-rocm:latest
+#+end_src
+
+Tensorflow and other batteries are included in the image. i.e. AFAIK this is
+a more functional image than rocm/tensorflow-upstream.
+
+***** Problems
+
+Seeing this in =step 17/21=. This is similar to [[https://github.com/RadeonOpenCompute/ROCm/issues/1713][RadeonOpenCompute/ROCm/issues#1714]]
+
+#+begin_quote
+W: Conflicting distribution: https://repo.radeon.com/rocm/apt/5.4 ubuntu InRelease (expected ubuntu but got focal)
+WARNING: apt does not have a stable CLI interface. Use with caution in scripts.
+
+...
+
+debconf: delaying package configuration, since apt-utils is not installed
+...
+#+end_quote
+
+And then in =Step 21/21= after git clone, the image learns that numpy 1.20 was
+installed. Thanks pip.
+
+***** Change =Dockerfile.ms= to fix the pip version
+
++ #13613 :: pullreq to change build_ci.sh to default to multistage
++ both dockerfiles should have numpy bumped
++ build_ci.sh comments should change to indicate Dockerfile.ms is default
+
+#+begin_quote
+Yeh, this dockerfile was updated in February and no one at Google has bothered
+to bump the =numpy= version. The ROCm build has been broken for God knows how
+long ... and no one notices. The only reason I mention this: /that's a bad sign
+that you care about machine learning, but you bought the wrong GPU./ Not a
+single engineer at Google has run this on AMD in ... oh a month or two I'd
+guess. And not a single person has bothered to make an issue about it either.
+#+end_quote
+
+***** Running Tests
+
+Start the container with =${PWD}/jax= bound to the =/workspace= volume.
+
+#+begin_src sh
+sudo docker run -it --device=/dev/kfd --device=/dev/dri \
+     --security-opt seccomp=unconfined --group-add video \
+     --volume=${PWD}/jax:/workspace \
+     -e 'HSA_OVERRIDE_GFX_VERSION=10.3.0' \
+     --entrypoint "/bin/bash" jax-rocm:latest
+#+end_src
+
+Run tests, potentially removing the =-x= argument in
+
+#+begin_src sh
+python ./build/rocm/run_single_gpu.py
+#+end_src
+
+Most of the tests fail:
+
+#+begin_example
+----------------------------- Captured stderr call -----------------------------
+2023-05-12 05:43:25.807625: E external/xla/xla/pjrt/pjrt_stream_executor_client.cc:2469] Execution of replica 0 failed: INTERNAL: Failed to execute XLA Runtime executable: run time error: custom call 'xla.gpu.gemm' failed: Not implemented on ROCm.
+----------------------------- Captured stderr call -----------------------------
+2023-05-12 05:43:25.960866: E external/xla/xla/pjrt/pjrt_stream_executor_client.cc:2469] Execution of replica 0 failed: INTERNAL: Failed to execute XLA Runtime executable: run time error: custom call 'xla.gpu.gemm' failed: Not implemented on ROCm.
+----------------------------- Captured stderr call -----------------------------
+2023-05-12 05:43:26.106450: E external/xla/xla/pjrt/pjrt_stream_executor_client.cc:2469] Execution of replica 0 failed: INTERNAL: Failed to execute XLA Runtime executable: run time error: custom call 'xla.gpu.gemm' failed: Not implemented on ROCm.
+----------------------------- Captured stderr call -----------------------------
+2023-05-12 05:43:26.279208: E external/xla/xla/pjrt/pjrt_stream_executor_client.cc:2469] Execution of replica 0 failed: INTERNAL: Failed to execute XLA Runtime executable: run time error: custom call 'xla.gpu.gemm' failed: Not implemented on ROCm.
+=========================== short test summary info ============================
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k0 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k1 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k2 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k3 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k4 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k5 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k6 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k7 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k8 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_max_k9 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k0 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k1 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k2 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k3 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k4 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k5 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k6 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k7 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k8 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_approx_min_k9 - jaxlib.xla_extension....
+FAILED tests/ann_test.py::AnnTest::test_pmap0 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap1 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap2 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap3 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap4 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap5 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap6 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap7 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap8 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_pmap9 - jaxlib.xla_extension.XlaRunti...
+FAILED tests/ann_test.py::AnnTest::test_vmap_after - jaxlib.xla_extension.Xla...
+FAILED tests/ann_test.py::AnnTest::test_vmap_before - jaxlib.xla_extension.Xl...
+=================== 32 failed, 10 passed, 96 rerun in 34.09s ===================
+#+end_example
+
+***** Well that's a bummer
+
+Error: [[https://jax.readthedocs.io/en/latest/notebooks/autodiff_cookbook.html#jacobians-and-hessians-using-jacfwd-and-jacrev][Hessian not implemented on ROCm]] (basically)
+
+#+begin_src python
+>>> J = jacfwd(f)(W)
+>>> J = jacrev(f)(W)
+
+2023-05-12 05:47:40.848932: E external/xla/xla/pjrt/pjrt_stream_executor_client.cc:2469] Execution of replica 0 failed: INTERNAL: Failed to execute XLA Runtime executable: run time error: custom call 'xla.gpu.gemm' failed: Not implemented on ROCm.
+#+end_src
+
+***** Try again with =rocm/jax-build=
+
+And maybe delete the github issue .... ¯\_(ツ)_/¯
+
+Success: you have an army of Hessian threads.
+
+Okay, so using the unacknowledged =rocm/jax-build= image at least allows the
+Hessian to complete. Since [[https://jax.readthedocs.io/en/latest/notebooks/autodiff_cookbook.html][the example autodiff code]] begins with
+=key=random.PRNGKey(0)= and thus the values in the code should /very closely
+match/ what I'm seeing returned. This is useful when testing ML code -- I should
+thank a few podcasts for that, although this is kinda obvious.
+
+However, my output is not matching. I ran some lines multiple times ... so i
+think that's what's going on. I will be more clear once i'm doing this in
+Jupyter.
+
+**** Running Notebooks
+
+There is [[https://github.com/google/jax/blob/f75e86c08567b0a280412c071d9d04aae1b7ef75/build/build.py#L417-L420][gfx900 through gfx1030 support]], thus =HSA_OVERRIDE_GFX_VERSION=10.3.0=
+is required for me.
+
 * TFLite
+
 ** Docs
 
 ** Resources
