@@ -1,0 +1,435 @@
+:PROPERTIES:
+:ID:       4c629c53-91b5-45eb-bb45-7dd0aca51845
+:END:
+#+TITLE: Tensorflow
+#+DESCRIPTION: Google's Tensorflow
+#+TAGS:
+
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:ca4acf9b-775b-4957-b19a-0988b7f429c5][rpm]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:24c5cf12-0f0e-412b-9574-6190769b3223][LUKS]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
+
+Continued from: [[id:258fd4df-5aa1-4747-a470-5feb2f977c92][Centos: resize a Luks-encrypted LVM volume]]
+
+* Old Root (from my laptop)
+
+The main issue is that the =oldroot= disk has its Luks UUID as
+=c80d28f2-9785-43b4-b2b8-cbc6ee629370=, which is still set in the =newroot=
+disk's metadata block.
+
+however, the UUID is set on the newroot Luks partition:
+
+=blkid | grep -E "(cs-|sda3)" | sort=
+
+#+begin_example
+/dev/sda3: UUID="c80d28f2-9785-43b4-b2b8-cbc6ee629370" TYPE="crypto_LUKS" PARTUUID="b5ff81eb-d0fc-4c16-9088-ab1ae95d67aa"
+#+end_example
+
+** Block ID's
+
+=sudo blkid | grep -E "(cs-|sdb3)" | sort=
+
+#+begin_example
+/dev/mapper/cs-home: LABEL="leto-home" UUID="2d3bf713-2d04-4223-8e70-659cda72d009" BLOCK_SIZE="4096" TYPE="ext4"
+/dev/mapper/cs-root: LABEL="leto-root" UUID="13d8f961-303d-43b2-8971-8e44a0514739" BLOCK_SIZE="512" TYPE="xfs"
+/dev/mapper/cs-swap: LABEL="leto-swap" UUID="ed58c746-9ca1-4418-a2a6-36794212e7de" TYPE="swap"
+/dev/sdb3: UUID="c80d28f2-9785-43b4-b2b8-cbc6ee629370" TYPE="crypto_LUKS" PARTUUID="b5ff81eb-d0fc-4c16-9088-ab1ae95d67aa"
+#+end_example
+
+** PVS
+
+=sudo pvdisplay -m /dev/mapper/oldroot=
+
+#+begin_example
+sudo pvdisplay -m /dev/mapper/oldroot
+  --- Physical volume ---
+  PV Name               /dev/mapper/oldroot
+  VG Name               cs
+  PV Size               116.82 GiB / not usable 2.00 MiB
+  Allocatable           yes (but full)
+  PE Size               4.00 MiB
+  Total PE              29906
+  Free PE               0
+  Allocated PE          29906
+  PV UUID               vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4
+
+  --- Physical Segments ---
+  Physical extent 0 to 2003:
+    Logical volume	/dev/cs/swap
+    Logical extents	0 to 2003
+  Physical extent 2004 to 11987:
+    Logical volume	/dev/cs/home
+    Logical extents	0 to 9983
+  Physical extent 11988 to 29905:
+    Logical volume	/dev/cs/root
+    Logical extents	0 to 17917
+#+end_example
+
+=sudo pvs -a -o +devices,uuid /dev/mapper/oldroot=
+
+#+begin_example
+sudo pvs -a -o +devices,uuid /dev/mapper/oldroot
+PV                  VG Fmt  Attr PSize   PFree Devices                    PV UUID
+/dev/mapper/oldroot cs lvm2 a--  116.82g    0  /dev/mapper/oldroot(0)     vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4
+/dev/mapper/oldroot cs lvm2 a--  116.82g    0  /dev/mapper/oldroot(2004)  vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4
+/dev/mapper/oldroot cs lvm2 a--  116.82g    0  /dev/mapper/oldroot(11988) vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4
+#+end_example
+
+
+** VGS
+
+=sudo vgdisplay=
+
+#+begin_example
+  --- Volume group ---
+  VG Name               cs
+  System ID
+  Format                lvm2
+  Metadata Areas        1
+  Metadata Sequence No  4
+  VG Access             read/write
+  VG Status             resizable
+  MAX LV                0
+  Cur LV                3
+  Open LV               0
+  Max PV                0
+  Cur PV                1
+  Act PV                1
+  VG Size               116.82 GiB
+  PE Size               4.00 MiB
+  Total PE              29906
+  Alloc PE / Size       29906 / 116.82 GiB
+  Free  PE / Size       0 / 0
+  VG UUID               bfJYnT-s6nB-PF92-Pzj2-GHdo-yYvt-KkULFC
+#+end_example
+
+** LVS
+
+=sudo lvs -a -o +devices,uuid cs=
+
+#+begin_example
+  LV   VG Attr       LSize  Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert Devices                    LV UUID
+  home cs -wi-a----- 39.00g                                                     /dev/mapper/oldroot(2004)  DaTxVw-xOyP-V6Pf-kl6G-ne1n-EaIs-tJ1VWc
+  root cs -wi-a----- 69.99g                                                     /dev/mapper/oldroot(11988) lF0EGl-gFh6-ionp-9Qsg-LrkO-ZKEw-dEuE21
+  swap cs -wi-a----- <7.83g                                                     /dev/mapper/oldroot(0)     MPBgxQ-f2xa-HvLr-ew7Z-nzb2-QLbQ-WWiNFo
+#+end_example
+
+
+=sudo lvdisplay=
+
+#+begin_example
+  --- Logical volume ---
+  LV Path                /dev/cs/swap
+  LV Name                swap
+  VG Name                cs
+  LV UUID                MPBgxQ-f2xa-HvLr-ew7Z-nzb2-QLbQ-WWiNFo
+  LV Write Access        read/write
+  LV Creation host, time localhost.localdomain, 2022-05-28 04:49:38 -0400
+  LV Status              available
+  # open                 0
+  LV Size                <7.83 GiB
+  Current LE             2004
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:8
+
+  --- Logical volume ---
+  LV Path                /dev/cs/home
+  LV Name                home
+  VG Name                cs
+  LV UUID                DaTxVw-xOyP-V6Pf-kl6G-ne1n-EaIs-tJ1VWc
+  LV Write Access        read/write
+  LV Creation host, time localhost.localdomain, 2022-05-28 04:49:39 -0400
+  LV Status              available
+  # open                 0
+  LV Size                39.00 GiB
+  Current LE             9984
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:9
+
+  --- Logical volume ---
+  LV Path                /dev/cs/root
+  LV Name                root
+  VG Name                cs
+  LV UUID                lF0EGl-gFh6-ionp-9Qsg-LrkO-ZKEw-dEuE21
+  LV Write Access        read/write
+  LV Creation host, time localhost.localdomain, 2022-05-28 04:49:40 -0400
+  LV Status              available
+  # open                 0
+  LV Size                69.99 GiB
+  Current LE             17918
+  Segments               1
+  Allocation             inherit
+  Read ahead sectors     auto
+  - currently set to     256
+  Block device           253:10
+#+end_example
+
+
+* New Root (on server)
+
+** PVS
+
+=pvs -a -o +devices,uuid /dev/mapper/newroot=
+
+#+begin_example
+  PV                  VG Fmt  Attr PSize    PFree    Devices PV UUID
+  /dev/mapper/newroot cs lvm2 a--  <464.16g <464.16g         vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4
+#+end_example
+
+=pvdisplay=
+
+#+begin_example
+  --- Physical volume ---
+  PV Name               /dev/mapper/newroot
+  VG Name               cs
+  PV Size               <464.16 GiB / not usable <2.01 MiB
+  Allocatable           yes
+  PE Size               4.00 MiB
+  Total PE              118824
+  Free PE               118824
+  Allocated PE          0
+  PV UUID               vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4
+#+end_example
+
+** VGS
+
+=vgs -a -o +devices,uuid=
+
+#+begin_example
+# nothing
+#+end_example
+
+=vgdisplay=
+
+#+begin_example
+--- Volume group ---
+VG Name               cs
+System ID
+Format                lvm2
+Metadata Areas        1
+Metadata Sequence No  13
+VG Access             read/write
+VG Status             resizable
+MAX LV                0
+Cur LV                0
+Open LV               0
+Max PV                0
+Cur PV                1
+Act PV                1
+VG Size               <464.16 GiB
+PE Size               4.00 MiB
+Total PE              118824
+Alloc PE / Size       0 / 0
+Free  PE / Size       118824 / <464.16 GiB
+VG UUID               bfJYnT-s6nB-PF92-Pzj2-GHdo-yYvt-KkULFC
+#+end_example
+
+** LVS
+
+=lvs -a -o +devices,uuid cs= (nothing)
+
+=lvdisplay -m= (nothing)
+
+** LVM Metadata (raw)
+
+
+#+begin_example
+dd of=lvm/metadata.bin if=/dev/mapper/newroot skip=1 bs=4k count=1
+
+1+0 records in
+1+0 records out
+#+end_example
+
+
+
+The LVM metadata starts at the 2nd 512-byte sector on the disk.
+
+From the server: =cat ~/lvm/metadata.bin=
+
+I clipped some binary characters from the top
+
+#+begin_example
+cs {
+id = "bfJYnT-s6nB-PF92-Pzj2-GHdo-yYvt-KkULFC"
+seqno = 1
+format = "lvm2"
+status = ["RESIZEABLE", "READ", "WRITE"]
+flags = []
+extent_size = 8192
+max_lv = 0
+max_pv = 0
+metadata_copies = 0
+
+physical_volumes {
+
+pv0 {
+id = "vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4"
+device = "/dev/mapper/luks-c80d28f2-9785-43b4-b2b8-cbc6ee629370"
+
+status = ["ALLOCATABLE"]
+flags = []
+dev_size = 244994048
+pe_start = 2048
+pe_count = 29906
+}
+}
+
+
+}
+# Generated by LVM2 version 2.03.15(2)-git (2021-10-20): Sat May 28 08:49:38 2022
+
+contents = "Text Format Volume Group"
+version = 1
+
+description = "Write from vgcreate -s 4096K cs /dev/mapper/luks-c80d28f2-9785-43b4-b2b8-cbc6ee629370 '--config= log {level=7 file=/tmp/lvm.log syslog=0}' --devices=/dev/mapper/luks-c80d28f2-9785-43b4-b2b8-cbc6ee629370,/dev/mapper/luks-sdb1,/dev/mapper/luks-sda3."
+
+creation_host = "localhost.localdomain"	# Linux localhost.localdomain 5.14.0-86.el9.x86_64 #1 SMP PREEMPT_DYNAMIC Fri May 6 12:02:49 UTC 2022 x86_64
+creation_time = 1653727778	# Sat May 28 08:49:38 2022
+
+cs {
+id = "bfJYnT-s6nB-PF92-Pzj2-GHdo-yYvt-KkULFC"
+seqno = 2
+format = "lvm2"
+status = ["RESIZEABLE", "READ", "WRITE"]
+flags = []
+extent_size = 8192
+max_lv = 0
+max_pv = 0
+metadata_copies = 0
+
+physical_volumes {
+
+pv0 {
+id = "vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4"
+device = "/dev/mapper/luks-c80d28f2-9785-43b4-b2b8-cbc6ee629370"
+
+status = ["ALLOCATABLE"]
+flags = []
+dev_size = 244994048
+pe_start = 2048
+pe_count = 29906
+}
+}
+
+logical_volumes {
+
+swap {
+id = "MPBgxQ-f2xa-HvLr-ew7Z-nzb2-QLbQ-WWiNFo"
+status = ["READ", "WRITE", "VISIBLE"]
+flags = []
+creation_time = 1653727778
+creation_host = "localhost.localdomain"
+segment_count = 1
+
+segment1 {
+start_extent = 0
+extent_count = 2004
+
+type = "striped"
+stripe_count = 1
+
+stripes = [
+"pv0", 0
+]
+}
+}
+}
+
+}
+# Generated by LVM2 version 2.03.15(2)-git (2021-10-20): Sat May 28 08:49:38 2022
+
+contents = "Text Format Volume Group"
+version = 1
+
+description = "Write from lvcreate -n swap -L 8206336K -y --type linear cs '--config= log {level=7 file=/tmp/lvm.log syslog=0}' --devices=/dev/mapper/luks-c80d28f2-9785-43b4-b2b8-cbc6ee629370,/dev/mapper/luks-sdb1,/dev/mapper/luks-sda3."
+
+creation_host = "localhost.localdomain"	# Linux localhost.localdomain 5.14.0-86.el9.x86_64 #1 SMP PREEMPT_DYNAMIC Fri May 6 12:02:49 UTC 2022 x86_64
+creation_time = 1653727778	# Sat May 28 08:49:38 2022
+
+cs {
+id = "bfJYnT-s6nB-PF92-Pzj2-GHdo-yYvt-KkULFC"
+seqno = 3
+format = "lvm2"
+status = ["RESIZEABLE", "READ", "WRITE"]
+flags = []
+extent_size = 8192
+max_lv = 0
+max_pv = 0
+metadata_copies = 0
+
+physical_volumes {
+
+pv0 {
+id = "vJ11xe-NlgO-n9zd-4cFd-2yLW-B0A3-SddcA4"
+device = "/dev/mapper/luks-c80d28f2-9785-43b4-b2b8-cbc6ee629370"
+
+status = ["ALLOCATABLE"]
+flags = []
+dev_size = 244994048
+pe_start = 2048
+pe_count = 29906
+}
+}
+
+logical_volumes {
+
+swap {
+id = "MPBgxQ-f2xa-HvLr-ew7Z-nzb2-QLbQ-WWiNFo"
+status = ["READ"
+#+end_example
+
+And some of the second 512 byte block
+
+#+begin_example
+, "WRITE", "VISIBLE"]
+flags = []
+creation_time = 1653727778
+creation_host = "localhost.localdomain"
+segment_count = 1
+
+segment1 {
+start_extent = 0
+extent_count = 2004
+
+type = "striped"
+stripe_count = 1
+
+stripes = [
+"pv0", 0
+]
+}
+}
+
+home {
+id = "DaTxVw-xOyP-V6Pf-kl6G-ne1n-EaIs-tJ1VWc"
+status = ["READ", "WRITE", "VISIBLE"]
+flags = []
+creation_time = 1653727779
+creation_host = "localhost.localdomain"
+segment_count = 1
+
+segment1 {
+start_extent = 0
+extent_count = 9984
+
+type = "striped"
+stripe_count = 1
+
+stripes = [
+"pv0", 2004
+]
+}
+}
+}
+
+}
+#+end_example
