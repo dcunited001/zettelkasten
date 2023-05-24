@@ -1,0 +1,218 @@
+:PROPERTIES:
+:ID:       be3cd3ab-ac66-4934-88b9-3cedac85fc7d
+:END:
+#+TITLE: Guix: update packages
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
+
+
+* Resources
++ [[https://guix.gnu.org/manual/en/html_node/Contributing.html][Contributing]] (guix manual)
+
+* Update Guix
+
+Run =repo sync= or =git pull= in the checkout.
+
+You may want multiple copies of the repository. Whenever you pull changes, the
+you'll need to rebuild. I always run =make clean= and =make clean-go=, but this
+may not be necessary. It depends on how well you know Guile, the Guix make/build
+scripts and whether you trust the validation of completed tasks...
+
+** Validate
+Ensure you have the keyring branch:
+=git fetch savannah keyring:keyring=
+
+Then running this should validate it.
+
+#+begin_src bash
+commit=$(git log -n1 --pretty=%H) # just the HEAD commit
+query_signer='.[] | select(.name=="guix") |.introduction |.signer'
+signer=$(guix describe --format=json | jq "$query_signer")
+
+guix git authenticate "$commit" "$signer"
+#+end_src
+
+** Rebuild
+
+The make clean/go may not be required.
+
+#+begin_src sh
+guix shell -D guix -D guile help2man git \
+     strace pkg-config gettext autoconf \
+     automake glibc make --pure
+
+./bootstrap
+./configure --localstatedir=/var
+make clean
+make clean-go
+
+make -j10
+#+end_src
+
+** Set up the environment
+
+If you're working in emacs, see [[https://guix.gnu.org/manual/en/html_node/The-Perfect-Setup.html][The Perfect Setup]] to make sure your guile load
+path is configured correctly.
+
+Now that the guile =*.go= build cache has been set up, run this in your emacs
+environment.
+
+#+begin_src emacs-lisp
+(with-eval-after-load 'geiser-guile
+  (add-to-list 'geiser-guile-load-path "~/src/guix"))
+#+end_src
+
+Also check =guix-load-path= and =guix-compiled-load-path=, if you're using
+=giux-devel-mode= which is super helpful. The ultimate sources of truth are:
+=%load-path= and =%load-compiled-path= in the Geiser REPL.
+
+* Add or Update the packages
+
+If everything is set up right, you should be able to change into a module
+namespace. If it's symbols are recognized by the Geiser REPL, then you should
+just be able to reevaluate the packages you need to change.
+
+It may be easier to do some of this within a personal channel, but then you run
+into issues installing the build artifacts with the Guix CLI using naive options
+(or features like manifests)
+
+** Do you even need a new package?
+
+As long as you can use scheme, then you can write Guix manifests that obviate
+the need to write new packages.
+
+*** Guix Transformations
+
+Run =guix --help-transform= to see the options:
+
++ use another git remote or git branch
++ reference a local checkout
++ build with an alternate c/c++ toolchain
++ replace dependencies by name
++ reference a package by guid
+
+*** Inheriting from packages
+
+** Guix.el
+
+If =guix-devel-mode= is active, then you can download sources by changing the
+version in the package and hitting =C-c . d= to download. Your cursor needs to
+be within the package's sexp. If everything works out, then you'll get the new
+hash in the Geiser buffer.
+
+** Guix Import and Guix Refresh
+
+If you're updating many packages or creating new ones, then =guix refresh= and
+=guix import= allow you to do this in some situations. With =guix refresh= the
+package definition's hashes/versions should be updated (I haven't tried it
+
+Since the =guix refresh= stuff is fairly scriptable, there are usually reasons
+why some packages don't upgrade beyond a specific version, which is what I find
+when I start to dig deeper. Other things probably should not move too fast --
+like the python tooling, though it's great to have =3.10= and =poetry=.
+
+** What Changed?
+
+*** Check the Mailing Lists
+
+Check to see what others are working on.
+
++ [[https://lists.gnu.org/archive/html/guix-devel/2023-04/msg00394.html][Python feature branch]] (cover letter)
++ [[https://lists.gnu.org/archive/html/guix-devel/2023-05/msg00095.html][Re: Python feature branch]]
+
+*** Check the Changelogs and Tags
+
+Once you have the new artifacts, check the changelogs and git tags for the
+package source and for its dependencies. If you can squash the commit history
+for branches or tags, it can make it much easier to grok the change sets.
+
+*** Check For Changes to Build Tooling
+
+Many projects will use major versions as good point to update their build
+tooling or change it entirely.
+
+**** Cura 3D Printing Package
+
+For example, the Cura project changed to the Conan build/packaging framework,
+for which there are not Guix build systems. Since the =conan= toolinginvolves
+=python= in addition to a specific C++ build framework -- what? -- someone
+familiar with those pieces should handle introducing support for it.
+
+It's possible to complete the Cura update without creating a
+=conan-build-system= in Guix, but doing so creates code that isn't particularly
+maintainable. Whether it's practical depends on how much work is required to
+build Cura's dependencies. Adding packages for Conan would still be necessary
+anyways and at that point.... you might as well just do the whole thing, if you
+know what you're doing.
+
+*** Check the Dependency Graphs
+
+Run =guix graph= on the package to get a feel for the work required.
+
+#+begin_src sh :file img/python-yubikey-manager.png :results file
+# max depth:  -M 2
+guix graph -M 2 python-yubikey-manager | dot -Tpng
+#+end_src
+
+#+RESULTS:
+[[file:img/python-yubikey-manager.png]]
+
+Check the reverse depedency graphs of the lower dependencies to see what else
+might be affected. Builds for these packages should be tested.
+
+#+begin_src sh :file img/python-fido2.png :results file
+guix graph --type=reverse-package python-fido2 | dot -Tpng
+#+end_src
+
+#+RESULTS:
+[[file:img/python-fido2.png]]
+
+** Building
+
+
+**** TODO it looks like the python/yubikey stuff is coming down the pipe
+
+I'm not sure whether
+
+* Test the package
+
+** Attempt Reproducible Builds
+
+** Running Tests
+
+
+*** Package Tests
+
+*** Guix Tests
+
+*** Don't Break Guix
+
+If you're running on Guix system you don't want to hose your =/gnu/store=. It's
+a bit tough to =chroot= to fix it, IMO. The store for the root user is mostly
+separate -- it should have separate GC roots, but I'm unsure of the
+implementation details.
+
+You shouldn't have to pull into the root user's =/gnu/store=, but if you're
+working on packages that are part of the =operating-system=, then you'll have to
+do /something like/ pull from the Guix checkout. You may want a separate
+checkout for that kind of work.
+
+This tests the pull end-to-end.
+
+#+begin_src sh
+guix pull --url=/path/to/your/checkout --profile=/tmp/guix.master
+#+end_src
+
+Read through [[https://guix.gnu.org/en/manual/en/guix.html#Submitting-Patches][Submitting Patches]] and the surrounding sections, which contains
+things like this.
+
+* Submit the patch
+
+** Setup Git Send Email
+
+** Edit the patch
+
+** Set up GNUS
