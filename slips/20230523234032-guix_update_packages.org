@@ -7,6 +7,7 @@
 * Roam
 + [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
 + [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
++ [[id:8fb0a586-9c0f-4f36-b1ab-dc5c26681d15][OSS]]
 
 
 * Resources
@@ -96,6 +97,8 @@ Run =guix --help-transform= to see the options:
 
 *** Inheriting from packages
 
+**** TODO add section
+
 ** Guix.el
 
 If =guix-devel-mode= is active, then you can download sources by changing the
@@ -122,6 +125,11 @@ Check to see what others are working on.
 
 + [[https://lists.gnu.org/archive/html/guix-devel/2023-04/msg00394.html][Python feature branch]] (cover letter)
 + [[https://lists.gnu.org/archive/html/guix-devel/2023-05/msg00095.html][Re: Python feature branch]]
+
+I had started these notes intending to update what's necessary for a newer
+version =python-yubikey-manager=, but these changes all depend on bumping
+=poetry= to =1.4.2=. Since the changes are taking place anyways, I'll focus on
+submitting a patch for the =emacs-x509= package.
 
 *** Check the Changelogs and Tags
 
@@ -170,19 +178,17 @@ guix graph --type=reverse-package python-fido2 | dot -Tpng
 #+RESULTS:
 [[file:img/python-fido2.png]]
 
+** Writing the package
+
 ** Building
 
-
-**** TODO it looks like the python/yubikey stuff is coming down the pipe
+Since the python/yubikey stuff is coming down the pipe
 
 I'm not sure whether
 
 * Test the package
 
-** Attempt Reproducible Builds
-
 ** Running Tests
-
 
 *** Package Tests
 
@@ -209,10 +215,455 @@ guix pull --url=/path/to/your/checkout --profile=/tmp/guix.master
 Read through [[https://guix.gnu.org/en/manual/en/guix.html#Submitting-Patches][Submitting Patches]] and the surrounding sections, which contains
 things like this.
 
+** Attempt Reproducible Builds
+
+* Patch Workflow
+
+If at any point you need to save your work, there are several options, but
+you'll want to think about what it will be like to return to your work.
+
+** Style Conventions
+
+The definitions for these are found in =.dir-locals.el= at the root of the
+=guix= project. This code includes loading Scheme snippets into emacs, but also
+describes how emacs should format Scheme code.
+
+See also the [[https://guix.gnu.org/en/manual/en/guix.html#Coding-Style][Style Guide]] for the project.
+
+*** Why are the imports sorted?
+
+See the section on philosophy at end for more generally applicable insights.
+
+You format your code because you will need to communicate your code to
+others. It doesn't matter what formatter you use, as long as it produces fairly
+deterministic results. When you decide to sort the imports, then when lines
+change that involve imports, they will be more clear.
+
+You have to have consensus on these processes as a team a priori. The specifics
+of these norms/consensus usually don't matter -- it's more important that you
+have them. It's also important to be able to experiment.
+
+*** Well isn't the imports things obvious?
+
+Yes, maybe... it depends on how socialized your programming is. You could be a
+fairly intelligent programmer in isolation who just doesn't understand some
+things. Then you get a job and step on some toes or whatever.
+
+The above is an exercise in making your commits atomic, which really means
+transactional but perhaps also small. If the changes you've stashed or are going
+to cherry pick are small, then they are likely composable -- or more clearly if
+they're idempotent changes, then they are composable without additional
+action. You can compose them like they're functions. Depending on the workflow
+and the team, your stashed commits or patches may age rapidly and require
+maintainence.
+
+Change sets to individual packages or to package sets will generally retain
+their applicability in the Guix project -- as long as people don't mess with the
+indentation. This is why the style guide rules and the =.dir-locals.el= thing
+are important. I suppose if you adjust your =diff= and =patch= options, you can
+ignore whitespace ... but it's not so trivial if you mess with the ordering and
+line separate for arguments to functions.
+
+You can either swim upstream here or learn to adjust to the norms. Ultimately,
+the commiter who processes your patches will likely ensure that the code is
+formatted properly.
+
+** Using Magit
+
+See [[id:cd1d6f5d-a072-4d7e-9456-21dce86d191b][Emacs: Using Magit]] for info on how to extract commands that emacs packages
+run, including the git/forge commands or docker commands from Docker.el.
+
+There are several ways to create patches and several patch formats. Just be glad
+you don't have to write raw shell scripts to do this.
+
+*** Git Data Transport
+
+You'll need to understand the difference between various git objects, so you can
+effectively use things like =git stash= and =git cherrypick=
+
+This picture helps (source [[https://blog.osteele.com/2008/05/my-git-workflow/][My Git Workflow]], 2008, via [[https://stackoverflow.com/questions/3689838/whats-the-difference-between-head-working-tree-and-index-in-git][s/o]]). You probably won't
+be able to use Google's Gerrit without at least understanding some of this.
+
+[[file:img/git-transport.png]]
+
+*** Diff -> Patch
+
+Either diff the staged or unstaged files. You can do this by hitting =RET= on in
+the =magit-status= buffer. Depending on how you enter the =magit-diff= buffer,
+then the generated patch will include different change sets. This workflow makes
+it simple to get the unstaged or staged changes.
+
+In the =magit-diff= buffer, hit =W s= and pick a file. There's your diff.
+
+*** Stash -> Patch
+
+The diff method is fast, but doesn't really give you much granularity.
+
+Generally, run =z l= to open the stash buffer and list stashes to get an
+overview. If you don't have any, you'll have to make one.
+
++ Stash from staged changes: For each line/hunk/file you want in the stash, move
+  it to the staged by adding it. Review the changes here and hit =z i= to leave
+  the unstaged changes in tact.
++ If you just want all the changes, staged or not, then hit =z z=. Add a note.
+
+To get the changes back into your working tree, then use =z p= to pop a stash or
+=z a= to apply one. The former will "eat" your stash and the latter will will
+not. You can't really apply a stash twice, though git is smart and doesn't mess
+things up when it can.
+
+Starting from the =magit-stashes= buffer, hit =RET= on the stash you want. This
+shows you the diff, which may [[https://github.com/magit/magit/issues/2240][contain multiple commits with merge resolution]]
+(idk...), then then hit =W s= to create your stash.
+
+*** Commit Range -> Patch
+
+From the =magit-status= buffer, run =W c= to select options from your
+patch. Here you can select a range of commits. IMO, I would just squash
+everything into one to start out with. This results in back/forth on the mailing
+list and from here, you'll want to similarly squash commits into chunks of
+changes that are easy to grok.
+
+Once you submit your patch upstream, it will have a meaningful ID number and
+perhaps a cover letter like =0000-cover-leter.patch=. You really want to
+minimize the number of times you're asking someone to look at your work or the
+amount of work they need to do to manage your changesets.
+
+This is more fully described in [[https://guix.gnu.org/en/manual/en/guix.html#Submitting-Patches][Sending a Patch Series]].
+
+*** Interactive Rebase
+
+If you're working in a feature branch, then you may want to squash your commits
+and generate a patch from that. Two ways to do that:
+
++ From the =magit-status= buffer: hit =r i= to rebase interactively. This pulls
+  up the git log. Find a commit and hit =C-c C-c= to start the rebase.
++ Hit =l l= or however, to get to the =magit-log= buffer. From here, select the
+  commit and hit =r i= this already has the commit ref context, so it takes you
+  right to the interactive rebase.
+
+Once you're rebasing, you can rearrange commits by lines or, to make things
+simpler, just squash everything you would like to consider a single changeset.
+
 * Submit the patch
 
-** Setup Git Send Email
+Note any and all commits you would make would need to be signed, even if they
+are just sources for merge/rebase. This might not be true 100% of the time, but
+it's hard to tell what objects remain in the git index. Safely getting around
+this would require checkout out the branch against a close sibling or master and
+generating a file-based patch to bring in your commits as signed.
+
+It's just easier to write patches. You still get plenty of time to deal with the
+PGP stuff if you want to run your own channel.
 
 ** Edit the patch
 
+** Setup Git Send Email
+
+To send mail with it, you'll need:
+
++ An app specific password from GMail
++ or an SMTP relay server.
++ or a local environment sending =<fingers-crossed/>= mails that aren't spam.
+
+For the first option, this is easy enough to configure your app-specific email
+password within the Git file -- if that's your thing.
+
+***** TODO finish describing git send-mail
+
+The [[  https://git.sr.ht/~yoctocell/git-email][git-email]]
+
 ** Set up GNUS
+
+GNUS or email are as easy to use for others as it is for you. The main benefits
+to using GNUS vastly outweigh not using it, though you may not want to use GNUS
+for everything. It is very easy to set up as a reader.
+
+Benefits:
+
++ View patches inline and apply them to a working tree.
++ Inspect files within archives like =*.tar.gz=. This can also be accomplished
+  with the =archive-mode= in Emacs.
++ Download files while retaining the context they are to be applied in.
+
+Drawbacks:
+
++ It's a bit monolithic. You may not want to run it in the same emacs instance
+  you're using to edit content, but then you lose some of the benefits above.
++ Hard to sync/port your GNUS activity history between multiple laptops.
+
+*** Set up GNUS as a Reader
+
+*** Set up GNUS to Send Mail
+
+Same deal as above to configure the email handling.
+
+You'll need to configure
+
+***** TODO finish describing GNUS setup
+
+* Misc Notes
+
+#+begin_src sh
+guix shell -L . -e '(@@ (ellipsis packages security-token) python-yubikey-manager)'
+#+end_src
+
+#+begin_src sh
+guix shell -L . -e '(list (@ (ellipsis packages security-token) python-yubikey-manager) (@ (ellipsis packages security-token) python-pyscard) (@ (ellipsis packages security-token) python-fido2))'
+#+end_src
+
+** Python/Yubikey Packages
+
+*** As a separate module
+
+By using =define-public= and registering the packages with the same exported
+names, then you'll end up with some naming collisions. It may work in the Geiser
+REPL, but then it won't perform as expected when using =guix $cmd -L= to specify
+the load path.
+
+This module is in the =ellipsis= namespace, which is not currently registered as
+a channel. It could be, were I to re-add it to =~/.config/guix/channels.scm=,
+but then each change through the =guix $cmd= interface needs to be inside a git
+commit. The =-L $loadpath= workflow does seem to be simple for defining systems
+used as VM's or docker images -- and may work for experimenting with =guix home=
+-- but doesn't work too well when the packages need to be accessible to
+manifests.
+
+Module defines:
+
+#+begin_src scheme
+(define-module (ellipsis packages security-token)
+  #:use-module (guix packages)
+  #:use-module (guix utils)
+  #:use-module (guix build utils)
+  #:use-module ((guix licenses) #:prefix license:)
+
+  ;; #:use-module (guix build-system python)
+  #:use-module (guix build-system python)
+  #:use-module (guix build-system pyproject)
+  #:use-module (guix download)
+  #:use-module (guix licenses)
+
+  ;; #:use-module (gnu packages python-build)
+  #:use-module (gnu packages python-crypto)
+  #:use-module (gnu packages python-xyz)
+  ;; python-pyusb
+  #:use-module (gnu packages libusb)
+  ;; python-mock
+  #:use-module (gnu packages check)
+  #:use-module (gnu packages swig)
+  #:use-module (gnu packages pkg-config)
+  ;; python-fido2: public-suffix-list
+  #:use-module (gnu packages dns)
+  #:use-module (gnu packages security-token)
+
+  #:use-module (srfi srfi-1))
+#+end_src
+
+python-yubikey-manager
+
+#+begin_src scheme
+(define-public python-yubikey-manager
+  (package
+    (name "python-yubikey-manager")
+    (version "5.1.1")
+    (source (origin
+              (method url-fetch)
+              (uri (string-append
+                    "https://developers.yubico.com/yubikey-manager/Releases"
+                    "/yubikey_manager-" version ".tar.gz"))
+              (sha256
+               (base32
+                "1kma08rxvpzn2gf8b9vxyyb2pvrakm7hhpdmbnb54nwbdnbxp1v4"))))
+    (build-system pyproject-build-system)
+    (arguments
+     '( ;; This attempts to access
+       ;; /System/Library/Frameworks/IOKit.framework/IOKit
+       ;; The recommendation is to use tox for testing.
+       #:tests? #false))
+    (propagated-inputs
+     (list python-six
+           python-pyscard
+           python-pyusb
+           python-click
+           python-cryptography
+           python-pyopenssl
+           python-fido2))
+    (inputs
+     (list pcsc-lite))
+    (native-inputs
+     (list swig python-mock poetry))
+    (home-page "https://developers.yubico.com/yubikey-manager/")
+    (synopsis "Command line tool and library for configuring a YubiKey")
+    (description
+     "Python library and command line tool for configuring a YubiKey.  Note
+that after installing this package, you might still need to add appropriate
+udev rules to your system configuration to be able to configure the YubiKey as
+an unprivileged user.")
+    (license license:bsd-2)))
+#+end_src
+
+python-pyscard
+
+#+begin_src scheme
+;; fairly consistent changes (minimal) to setup.py from 1.9.8 - 2.0.7
+(define-public python-pyscard
+  (package
+    (name "python-pyscard")
+    (version "2.0.7")
+    (source (origin
+              (method url-fetch)
+              ;; The maintainer publishes releases on various sites, but
+              ;; SourceForge is apparently the only one with a signed release.
+              (uri (string-append
+                    "mirror://sourceforge/pyscard/pyscard/pyscard%20"
+                    version "/pyscard-" version ".tar.gz"))
+              (sha256
+               (base32
+                "1gy1hmzrhfa7bqs132v89pchm9q3rpnqf3a6225vwpx7bx959017"))))
+    (build-system python-build-system)
+    (arguments
+     `(#:phases
+       (modify-phases %standard-phases
+         ;; Tell pyscard where to find the PCSC include directory.
+         (add-after 'unpack 'patch-platform-include-dirs
+           (lambda* (#:key inputs #:allow-other-keys)
+             (let ((pcsc-include-dir (string-append
+                                      (assoc-ref inputs "pcsc-lite")
+                                      "/include/PCSC")))
+               (substitute* "setup.py"
+                 (("platform_include_dirs = \\[.*?\\]")
+                  (string-append
+                   "platform_include_dirs = ['" pcsc-include-dir "']")))
+               #t)))
+         ;; pyscard wants to dlopen libpcsclite, so tell it where it is.
+         (add-after 'unpack 'patch-dlopen
+           (lambda* (#:key inputs #:allow-other-keys)
+             (substitute* "smartcard/scard/winscarddll.c"
+               (("lib = \"libpcsclite\\.so\\.1\";")
+                (simple-format #f
+                               "lib = \"~a\";"
+                               (search-input-file inputs
+                                                  "/lib/libpcsclite.so.1"))))
+             #t)))))
+    (inputs
+     (list pcsc-lite))
+    (native-inputs
+     (list swig pkg-config))
+    (home-page "https://github.com/LudovicRousseau/pyscard")
+    (synopsis "Smart card library for Python")
+    (description
+     "The pyscard smart card library is a framework for building smart card
+aware applications in Python.  The smart card module is built on top of the
+PCSC API Python wrapper module.")
+    (license license:lgpl2.1+)))
+#+end_src
+
+python-fido2
+
+#+begin_src scheme
+;; version 1.0.0 changed from setup.py based build to pyproject.toml
+
+;; build procedures defined in:
+;; https://github.com/Yubico/python-fido2/commit/eae65b57a078b40465534bc21547073d434a89dc#diff-5c3fa597431eda03ac3339ae6bf7f05e1a50d6fc7333679ec38e21b337cb6721
+(define-public python-fido2
+  (package
+    (name "python-fido2")
+    (version "1.1.1")
+    (source (origin
+              (method url-fetch)
+              (uri
+               (string-append
+                "https://github.com/Yubico/python-fido2/releases/download/"
+                version "/fido2-" version ".tar.gz"))
+              (sha256
+               (base32
+                "1hwz0xagkmy6hhcyfl66dxf2vfa69lqqqjrv70vw7harik59bi2x"))
+              (snippet
+               ;; Remove bundled dependency.
+               '(delete-file "fido2/public_suffix_list.dat"))))
+    (build-system pyproject-build-system)
+    (arguments
+     `( ;; This attempts to access
+       ;; /System/Library/Frameworks/IOKit.framework/IOKit
+       ;; The recommendation is to use tox for testing.
+       #:tests? #false
+       #:phases
+       (modify-phases %standard-phases
+         (add-after 'unpack 'install-public-suffix-list
+           (lambda* (#:key inputs #:allow-other-keys)
+             (copy-file
+              (search-input-file inputs
+                                 (string-append
+                                  "/share/public-suffix-list-"
+                                  ,(package-version public-suffix-list)
+                                  "/public_suffix_list.dat"))
+              "fido2/public_suffix_list.dat"))))))
+    (propagated-inputs
+     (list python-cryptography python-six))
+    (native-inputs
+     (list python-mock python-pyfakefs public-suffix-list poetry))
+    (home-page "https://github.com/Yubico/python-fido2")
+    (synopsis "Python library for communicating with FIDO devices over USB")
+    (description
+     "This Python library provides functionality for communicating with a Fast
+IDentity Online (FIDO) device over Universal Serial Bus (USB) as well as
+verifying attestation and assertion signatures.  It aims to support the FIDO
+Universal 2nd Factor (U2F) and FIDO 2.0 protocols for communicating with a USB
+authenticator via the Client-to-Authenticator Protocol (CTAP 1 and 2).  In
+addition to this low-level device access, classes defined in the
+@code{fido2.client} and @code{fido2.server} modules implement higher level
+operations which are useful when interfacing with an Authenticator, or when
+implementing a Relying Party.")
+    ;; python-fido2 contains some derivative files originally from pyu2f
+    ;; (https://github.com/google/pyu2f).  These files are licensed under the
+    ;; Apache License, version 2.0.  The maintainers have customized these
+    ;; files for internal use, so they are not really a bundled dependency.
+    (license (list license:bsd-2 license:asl2.0))))
+#+end_src
+
+*** In a local checkout of Guix
+
+
+** Philosophy
+
+Just generally: seek to create, retain or identify partial/total orderings in
+things. This includes objects in a messy room, rows in a spreadsheet, stacks of
+random coins, names in a list, pebbles in a stream ... and lines in config or
+source files.
+
+For digital objects, determinism and minimalism are key.
+
+Everyone has heard:
+
+#+begin_quote
+something something laws of thermodynamics mean global entropy blah blah
+#+end_quote
+
+But they don't really live as though it's a first principle. Entropy is
+evil. Pollution is entropy. Entropy is expensive to prevent, but exponentially
+more expensive to clean up. Worse: it convolutes the interpretation of
+information that would otherwise be clear. When you look at still water, the
+source of any small ripples become clear.
+
+For pebbles in a stream, the most recently accumulated objects are on the
+top. Anything that would disturb layers of sediment is then found lower. To
+change this, a sufficient amount of energy needs to be directed at that
+sediment. Since turblence disperses energy, the amount required is
+super-additive with the mass of accumulated debris in the sediment. This is too
+complicated to reason about in totality, but considering the partial/total
+orderings of debris accumulation can yield quite a bit of information, assuming
+you can make guarantees about the nature of processes affecting those
+systems. Add a construction site upstream or change patterns of erosion and
+suddenly, you can't know anything with clarity.
+
+For natural processes, we can't apply the same insights to geological age or
+geomorphic processes after modernization/industrialization that would could
+before.
+
+For human processes, you can make assumptions about human/social behavior, but
+you have to question your assumptions. As for objects stacked/arranged on a
+desk, the most recently used objects are on the top. The most recently read
+paper/book? On the top ... /probably/. For file trees, the more frequently
+referenced by people are usually close to root (or a subroot) and have short
+pathnames.
