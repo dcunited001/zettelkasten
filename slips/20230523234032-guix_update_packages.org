@@ -345,6 +345,11 @@ and generate a patch from that. Two ways to do that:
 Once you're rebasing, you can rearrange commits by lines or, to make things
 simpler, just squash everything you would like to consider a single changeset.
 
+*** Applying a patch
+
+Depending on how the patch was generated, then from the =magit-status= buffer
+you can run =w w= or =w a= to apply a selected patch file.
+
 * Submit the patch
 
 Note any and all commits you would make would need to be signed, even if they
@@ -360,14 +365,24 @@ PGP stuff if you want to run your own channel.
 
 ** Setup Git Send Email
 
+To install on Arch, run the following. The =perl-io-socket-ssl= was a missing
+dependency for me.
+
+#+begin_src sh
+yay -Syu git-send-email perl-io-socket-ssl
+#+end_src
+
 To send mail with it, you'll need:
 
-+ An app specific password from GMail
++ An app specific password from GMail. Read [[https://gist.github.com/jasonkarns/4354421][this guide]]
++ or setup =git-send-gmail= for [[https://github.com/google/gmail-oauth2-tools/tree/master/go/sendgmail][Gmail with OAuth2]]
 + or an SMTP relay server.
 + or a local environment sending =<fingers-crossed/>= mails that aren't spam.
 
 For the first option, this is easy enough to configure your app-specific email
-password within the Git file -- if that's your thing.
+password within the Git file -- if that's your thing. You can just enter your
+password when invoking the command. (This was my biggest hangup: i guess I
+should've just tried it out)
 
 ***** TODO finish describing git send-mail
 
@@ -404,9 +419,15 @@ You'll need to configure
 
 * Misc Notes
 
+To run a shell with the package, without installing through a channel.
+
+This was failing locally because it doesn't build without =poetry-1.4=
+
 #+begin_src sh
 guix shell -L . -e '(@@ (ellipsis packages security-token) python-yubikey-manager)'
 #+end_src
+
+Attempting all three in one fails
 
 #+begin_src sh
 guix shell -L . -e '(list (@ (ellipsis packages security-token) python-yubikey-manager) (@ (ellipsis packages security-token) python-pyscard) (@ (ellipsis packages security-token) python-fido2))'
@@ -623,6 +644,118 @@ implementing a Relying Party.")
 #+end_src
 
 *** In a local checkout of Guix
+
+The changes to each package end up looking like this, about 15 lines.
+
+#+begin_src diff
+diff --git a/gnu/packages/security-token.scm b/gnu/packages/security-token.scm
+index b51d67427a..bc29affee4 100644
+--- a/gnu/packages/security-token.scm
++++ b/gnu/packages/security-token.scm
+@@ -48,6 +48,7 @@ (define-module (gnu packages security-token)
+   #:use-module (guix build-system cmake)
+   #:use-module (guix build-system gnu)
+   #:use-module (guix build-system glib-or-gtk)
++  #:use-module (guix build-system pyproject)
+   #:use-module (guix build-system python)
+   #:use-module (gnu packages autotools)
+   #:use-module (gnu packages base)
+@@ -462,7 +463,7 @@ (define-public yubikey-personalization
+ (define-public python-pyscard
+   (package
+     (name "python-pyscard")
+-    (version "1.9.9")
++    (version "2.0.7")
+     (source (origin
+               (method url-fetch)
+               ;; The maintainer publishes releases on various sites, but
+@@ -472,7 +473,7 @@ (define-public python-pyscard
+                     version "/pyscard-" version ".tar.gz"))
+               (sha256
+                (base32
+-                "082cjkbxadaz2jb4rbhr0mkrirzlqyqhcf3r823qb0q1k50ybgg6"))))
++                "1gy1hmzrhfa7bqs132v89pchm9q3rpnqf3a6225vwpx7bx959017"))))
+     (build-system python-build-system)
+     (arguments
+      `(#:phases
+@@ -501,7 +502,7 @@ (define-public python-pyscard
+     (inputs
+      (list pcsc-lite))
+     (native-inputs
+-     (list swig))
++     (list swig pkg-config))
+     (home-page "https://github.com/LudovicRousseau/pyscard")
+     (synopsis "Smart card library for Python")
+     (description
+@@ -684,7 +685,7 @@ (define-public pam-u2f
+ (define-public python-fido2
+   (package
+     (name "python-fido2")
+-    (version "0.9.3")
++    (version "1.1.1")
+     (source (origin
+               (method url-fetch)
+               (uri
+@@ -693,13 +694,13 @@ (define-public python-fido2
+                 version "/fido2-" version ".tar.gz"))
+               (sha256
+                (base32
+-                "1v366h449f8q74jkmy1291ffj2345nm7cdsipgqvgz4w22k8jpml"))
++                "1hwz0xagkmy6hhcyfl66dxf2vfa69lqqqjrv70vw7harik59bi2x"))
+               (snippet
+                ;; Remove bundled dependency.
+                '(delete-file "fido2/public_suffix_list.dat"))))
+-    (build-system python-build-system)
++    (build-system pyproject-build-system)
+     (arguments
+-     `(;; This attempts to access
++     `( ;; This attempts to access
+        ;; /System/Library/Frameworks/IOKit.framework/IOKit
+        ;; The recommendation is to use tox for testing.
+        #:tests? #false
+@@ -717,7 +718,7 @@ (define-public python-fido2
+     (propagated-inputs
+      (list python-cryptography python-six))
+     (native-inputs
+-     (list python-mock python-pyfakefs public-suffix-list))
++     (list python-mock python-pyfakefs public-suffix-list poetry))
+     (home-page "https://github.com/Yubico/python-fido2")
+     (synopsis "Python library for communicating with FIDO devices over USB")
+     (description
+@@ -739,18 +740,18 @@ (define-public python-fido2
+ (define-public python-yubikey-manager
+   (package
+     (name "python-yubikey-manager")
+-    (version "4.0.7")
++    (version "5.1.1")
+     (source (origin
+               (method url-fetch)
+               (uri (string-append
+                     "https://developers.yubico.com/yubikey-manager/Releases"
+-                    "/yubikey-manager-" version ".tar.gz"))
++                    "/yubikey_manager-" version ".tar.gz"))
+               (sha256
+                (base32
+-                "0kzwal7i4kyywm4f5zh8b823mh0ih2nsh5c0c4dfn4vw3j5dnwlr"))))
+-    (build-system python-build-system)
++                "1kma08rxvpzn2gf8b9vxyyb2pvrakm7hhpdmbnb54nwbdnbxp1v4"))))
++    (build-system pyproject-build-system)
+     (arguments
+-     '(;; This attempts to access
++     '( ;; This attempts to access
+        ;; /System/Library/Frameworks/IOKit.framework/IOKit
+        ;; The recommendation is to use tox for testing.
+        #:tests? #false))
+@@ -765,7 +766,7 @@ (define-public python-yubikey-manager
+     (inputs
+      (list pcsc-lite))
+     (native-inputs
+-     (list swig python-mock))
++     (list swig python-mock poetry))
+     (home-page "https://developers.yubico.com/yubikey-manager/")
+     (synopsis "Command line tool and library for configuring a YubiKey")
+     (description
+#+end_src
 
 
 ** Philosophy
