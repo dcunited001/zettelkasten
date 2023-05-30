@@ -1,0 +1,229 @@
+:PROPERTIES:
+:ID:       ab568678-a485-4d70-b305-29cbb4f97ba7
+:END:
+#+TITLE: Guix: Basic Services in Guix Home
+#+CATEGORY: slips
+#+TAGS:
+
+This list is probably not current and shouldn't be considered authoritative.
+
+#+NAME: homeservices
+#+begin_src shell :results output verbatim
+#  herd list-account-details jami | \
+#  recsel -p Account.username -e 'Account.rendezVous ~ "true"'
+rectemplate='{{name}} -> {{{extends}}};
+'
+guix home search - | recsel -p name,extends | \
+    recfmt "$rectemplate" | \
+    sed -E 's/\{(.*) (.*)\}/{\1;\2}/g' | \
+    sed -E 's/-(\w)/_\1/g'
+#+end_src
+
+#+RESULTS: homeservices
+#+begin_example
+home_xdg_base_directories -> {home_environment_variables;home_activation};
+home_gpg_agent -> {home_files home_shepherd;home_environment_variables};
+home_run_on_change -> {home_activation};
+home_run_on_first_login -> {home};
+home_xdg_user_directories -> {home_xdg_configuration;home_activation};
+home_xdg_mime_applications -> {home_xdg_data;home_xdg_configuration};
+home_symlink_manager -> {home_activation};
+home_dbus -> {home_shepherd;home_environment_variables};
+home_xdg_data -> {home_files};
+home_xdg_configuration -> {home_files};
+home_ssh_agent -> {home_shepherd;home_environment_variables};
+home_shell_profile -> {home_files};
+home_profile -> {home};
+pulseaudio_rtp_source -> {home_shepherd};
+pulseaudio_rtp_sink -> {home_shepherd};
+home_environment_variables -> {home};
+home_xmodmap -> {home_shepherd};
+home_unclutter -> {home_shepherd};
+home_fontconfig -> {home_xdg_configuration home_run_on_change;home_profile};
+home_files -> {home};
+home_channels -> {home_xdg_configuration};
+home_zsh -> {home_files home_xdg_configuration;home_profile};
+home_znc -> {home_shepherd};
+home_shepherd -> {home_run_on_first_login home_xdg_configuration home_activation
+home_profile};
+home_redshift -> {home_shepherd};
+home_provenance -> {home};
+home_openssh -> {home_files;home_activation};
+home_mcron -> {home_shepherd;home_profile};
+home_kodi -> {home_shepherd};
+home_fish -> {home_xdg_configuration;home_profile};
+home_batsignal -> {home_shepherd};
+home_bash -> {home_files;home_profile};
+home_activation -> {home};
+home -> {};
+#+end_example
+
+#+header: :noweb yes
+#+begin_src dot :file ./img/dot/guix-home-basic-services.png :cmdline -Kdot -Tpng
+
+Digraph G {
+
+ratio=0.5;
+
+node [fontsize="22"];
+        ratio=0.5;
+        <<homeservices()>>
+}
+
+#+end_src
+
+#+RESULTS:
+[[file:./img/dot/guix-home-basic-services.png]]
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:da888d96-a444-49f7-865f-7b122c15b14e][Desktop]]
+
+
+
+* Guix
+
++ home-shepherd :: gnu/home/services/shepherd.scm:144:2
+  - Configure and install userland Shepherd.
++ home-channels :: gnu/home/services/guix.scm:36:2
+  - Manages the per-user Guix channels specification.
++ home-provenance :: gnu/home/services.scm:624:2
+  - Store provenance information about the home environment
+
+** Home
+
++ home-activation :: gnu/home/services.scm:495:2
+  - Run gexps to activate the current generation of home environment and update
+    the state of the home directory.  `activate' script
+    automatically called during reconfiguration or generation switching.  This
+    service can be extended with one gexp, but many times, and all gexps must be
+    idempotent.
+
++ home-run-on-change :: gnu/home/services.scm:604:2
+  - G-expressions to run if the specified files have changed since the last
+    generation.
+  - The extension should be a list of lists where the first element is the
+    pattern for file or directory that expected to be changed, and the second
+    element is the G-expression to be evaluated.
+
++ home-run-on-first-login :: gnu/home/services.scm:430:2
+  - Run gexps on first user login.  Can be extended with one gexp.
+
+
+
+* Profile
+
++ home-profile :: gnu/home/services.scm:168:2
+  - The "home profile" packages and configuration files in the
+    `home-environment' record.
+
++ home-environment-variables :: gnu/home/services.scm:295:2
+  - Set the environment variables.
+
++ home-shell-profile :: gnu/home/services/shells.scm:102:2
+  - Create `~/.profile', which is used for environment initialization of POSIX
+    compliant login shells.  This service type can be extended with a list of
+    file-like objects.
+
++ home-bash :: gnu/home/services/shells.scm:483:2
+  - Install and configure GNU Bash.
++ home-fish :: gnu/home/services/shells.scm:615:2
+  - Install and configure Fish, the friendly interactive shell.
++ home-zsh :: gnu/home/services/shells.scm:290:2
+  - Install and configure Zsh.
+
+* Files
+
++ home-symlink-manager :: gnu/home/services/symlink-manager.scm:238:2
+  - Provide an `update-symlinks' script, which creates symlinks to configuration
+    files and directories on every activation.  If an existing file would be
+    overwritten by a symlink, backs up that file first
++ home-files :: gnu/home/services.scm:334:2
+  - Files that will be put in `~/.guix-home/files', and further processed during
+    activation.
+
+* XDG
+
++ home-xdg-configuration :: gnu/home/services.scm:355:2
+  - Files that will be put in `~/.guix-home/files/.config', and further
+    processed during activation.
++ home-xdg-base-directories :: gnu/home/services/xdg.scm:149:2
+  - Configure XDG base directories.  This service introduces an additional
+    `XDG_LOG_HOME' variable.  It's not a part of XDG specification, at least
+    yet, but are convenient to have, it improves the consistency between
+    different home services.  The services of this service-type is instantiated
+    by default, to provide non-default value, extend the service-type (using
+    `simple-service' for example).
++ home-xdg-user-directories :: gnu/home/services/xdg.scm:242:2
+  - Configure XDG user directories.  To disable a directory, point it to the
+    $HOME.
++ home-xdg-data :: gnu/home/services.scm:376:2
+  - Files that will be put in `~/.guix-home/files/.local/share', and further
+    processed during activation.
+
+* Application Integration
+
++ home-xdg-mime-applications :: gnu/home/services/xdg.scm:495:2
+  - Configure XDG MIME applications, and XDG desktop entries.
+
+* Connectivity
+
++ home-gpg-agent :: gnu/home/services/gnupg.scm:136:2
+  - When SSH support is enabled, `gpg-agent' acts as a drop-in replacement for
+    OpenSSH's `ssh-agent'.
++ home-openssh :: gnu/home/services/ssh.scm:316:2
+  - Provide a `~/.ssh/config' file honored by the OpenSSH client,`ssh', and by
+    other tools such as `guix deploy'.
++ home-ssh-agent :: gnu/home/services/ssh.scm:368:2
+  - Install and configure `ssh-agent' as a Shepherd service.
+
+* Desktop
+
++ home-unclutter :: gnu/home/services/desktop.scm:273:2
+  - Run the `unclutter' daemon, which, on systems using the Xorg graphical
+    display server, automatically hides the cursor after a user-defined timeout
+    has expired.
++ home-redshift :: gnu/home/services/desktop.scm:181:2
+  - Run Redshift, a program that adjusts the color temperature of display
+    according to time of day.
++ home-xmodmap :: gnu/home/services/desktop.scm:330:2
+  - Run the `xmodmap' utility to modify keymaps and pointer buttons under the
+    Xorg display server via user-defined expressions.
+
+* System Integration
+
++ home-dbus :: gnu/home/services/desktop.scm:228:2
+  - Run the session-specific D-Bus inter-process message bus
+
++ home-mcron :: gnu/home/services/mcron.scm:119:2
+  - Install and configure the GNU mcron cron job manager.
+
+* Audio
+
++ pulseaudio-rtp-sink :: gnu/home/services/sound.scm:108:2
+  - Define a PulseAudio sink to broadcast audio output over RTP, which can then
+    by played by another PulseAudio instance.
++ pulseaudio-rtp-source :: gnu/home/services/sound.scm:143:2
+  - Define a PulseAudio source to receive audio broadcasted over RTP by another
+    PulseAudio instance.
+
+* Appearance
+
++ home-fontconfig :: gnu/home/services/fontutils.scm:77:2
+  - fontconfig and make fc-* utilities aware of font packages installed in Guix
+    Home's profile.
+
+
+* Applications
+
++ home-kodi :: gnu/home/services/media.scm:60:2
+  - Install and configure the Kodi media center
+
++ home-znc :: gnu/home/services/messaging.scm:58:2
+  - Install and configure `znc', an IRC (Internet Relay Chat) bouncer, as a
+    Shepherd service.
+
+* Hardware/System
+
++ home-batsignal :: gnu/home/services/pm.scm:138:2
+  - Run batsignal, a battery watching and notification daemon.
