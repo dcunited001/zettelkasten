@@ -80,6 +80,51 @@ Another good article (from same author as Six Months of Guix-ery)
 ** Reporoducibility
 + [[https://mfelsoci.gitlabpages.inria.fr/thesis/environment.html][Reproducible Thesis using GNU Guix & Org Mode]]
 + Guix HPC [[https://gitlab.inria.fr/guix-hpc/website/-/blob/master/drafts/activity-report-2021.md][Activity Report 2021]]
+** Dynamically Linked Lib64
+*** Background
+
+When an ELF binary is compiled/linked, glibc makes a lot of metadata available
+to the process by building it into the binary. This includes =rpath= and etc.
+
+These commands from the [[id:7edab00d-1a52-4a27-b83a-f64639e84a77][Guix: installing matlab]] note give more info. Some of
+this includes paths to dyn. loaded libaries (of compatible interface).
+
+#+begin_src sh :eval no
+# print useful elf data from main bin
+patchelf --print-interpreter $MATLAB_PATH/$MATLAB_INSTALLER
+patchelf --print-rpath $MATLAB_PATH/$MATLAB_INSTALLER
+patchelf --print-soname $MATLAB_PATH/$MATLAB_INSTALLER
+patchelf --print-needed $MATLAB_PATH/$MATLAB_INSTALLER
+
+# find all dynlibs without execute bit
+find . -name "*.so*" ! -perm -u+x -exec ls -al \{\} +
+
+# print entry points for dynlibs
+find . -name "*.so*" ! -perm -u+x -exec readelf --segments \{\} +
+
+# read the RPATH from the ELF header
+readelf -d $MATLAB_PATH/$MW_INSTALLER | grep 'R.*PATH'
+#+end_src
+
+
+*** One proposed solution
+[[https://www.reddit.com/r/GUIX/comments/11iaov9/comment/jbh8u04/?context=3][This reddit comment]] recommends:
+
+#+begin_src scheme
+(extra-special-file "/lib64/ld-linux-x86-64.so.2"
+                    (file-append glibc "/lib/ld-linux-x64-64.so.2")
+#+end_src
+
+And then set =LD_LIBRARY_PATH= as needed.
+
+#+begin_src shell :eval no
+if [[ $- == *i* ]]
+then
+  export LD_LIBRARY_PATH=$LIBRARY_PATH
+fi
+#+end_src
+
+I'm not sure about setting it in =.bashrc= like that.
 
 * Code
 
@@ -170,25 +215,6 @@ This is a similar approach, but done with [[https://discourse.nixos.org/t/local-
 + [[https://nixos.wiki/wiki/Flakes][nix flakes]]
 
 ** Nonfree Software
-*** Dynamically Linking lib64
-
-[[https://www.reddit.com/r/GUIX/comments/11iaov9/comment/jbh8u04/?context=3][This reddit comment]] recommends:
-
-#+begin_src scheme
-(extra-special-file "/lib64/ld-linux-x86-64.so.2"
-                    (file-append glibc "/lib/ld-linux-x64-64.so.2")
-#+end_src
-
-And then set =LD_LIBRARY_PATH= as needed.
-
-#+begin_src shell :eval no
-if [[ $- == *i* ]]
-then
-  export LD_LIBRARY_PATH=$LIBRARY_PATH
-fi
-#+end_src
-
-I'm not sure about setting it in =.bashrc= like that.
 
 ** OS with custom locale and XKB keyboard
 ** .guix-profile vs .config/guix/current (s/o link)
@@ -233,6 +259,12 @@ Emacs guix needs a consistent guile environment (See [[https://github.com/alezos
 
 And nothing I was doing while rebuilding guix manifests and upgrading/rebuilding
 doom emacs was actually doing anything (on either arch or guix...)
+
+** GDK pixbuf issues
+
+Can't seem to load =virt-manager=, getting pixbuf failures. [[https://issues.guix.gnu.org/63427][Issue #63427]] seems to
+indicate that I can add =gdk-pixbuf= to the problematic profiles, which should
+fix things by providing a =GDK_PIXBUF_MODULE_FILE=
 
 * Installations
 ** Arch

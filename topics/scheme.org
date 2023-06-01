@@ -71,8 +71,61 @@ A [[https://spritely.institute/][Spritely]] implementation for Guile -- like Rub
 + Gimp
   - [[https://technote.fyi/programming/the-gimp/become-a-gimp-script-fu-master-with-guile-aka-scheme/][Become a Gimp Script-Fu Master: with Guile (aka Scheme)]]
 
+
+** Language
+*** Modules
+
+How to filter exports:
+
+#+begin_src scheme
+(use-modules ((ice-9 popen)
+              #:select ((foo . foo-as-foo2) bar baz)
+              #:prefix howtofilterexports:))
+#+end_src
+
+*** Features
+
++ [[https://stackoverflow.com/questions/15892214/scheme-overload-built-in-procedures-general-overloading][Overloading methods]] (s/o)
+
 * Issues
-** Guix/Geiser
+
+
+* Geiser
+
+** [[https://elpa.nongnu.org/nongnu/doc/geiser.html][Docs]]
+** Resources
+** Topics
+*** Useful functionality
+
+REPL
+
+|---------+-----+------|
+| command | key | desc |
+|---------+-----+------|
+|         |     |      |
+|---------+-----+------|
+
+Scheme
+
+|---------+-----+------|
+| command | key | desc |
+|---------+-----+------|
+|         |     |      |
+|---------+-----+------|
+
++ geiser-doc-look-up-manual, bound to C-c C-d i.
++ modules exported by
+
+Guix
+
+|---------+-------------------------------------+------------------------------|
+| command | key                                 | desc                         |
+|---------+-------------------------------------+------------------------------|
+| C-M-x   | geiser-eval-definition              | eval top-level form at point |
+|---------+-------------------------------------+------------------------------|
+
+** Issues
+
 *** Guix source needs to be compiled
 Geiser will try to compile it, but this should be done manually
 
@@ -81,6 +134,110 @@ using google repo]]
 
 Running =repo sync= will invalidate the relationships b/w compiled guile and the
 source. It may cause other problems.
+
+*** Geiser/Guile Imports
+**** By default Geiser loads =~/.guile-geiser=
+
+With no =~/.guile*= being loaded:
+
+#+begin_example scheme
+(guile)
+(system base compile)
+(ice-9 session)
+(ice-9 regex)
+(ice-9 threads)
+(value-history)
+(geiser emacs)
+#+end_example
+
+Adding the colorized module to =~/.guix-profile= and loading =~/.guile-geiser=
+
+#+begin_example diff
+2a3,5
+> (ice-9 format)
+> (ice-9 pretty-print)
+> (ice-9 colorized)
+#+end_example
+
+Properly handingling colors in emacs requires =(setq geiser-debug-treat-ansi-colors 'colors)=
+
+**** Geiser adds the local project path by default
+
+With the following config
+
+#+begin_src emacs-lisp
+(setq geiser-repl-per-project-p t)
+(setq geiser-repl-add-project-paths nil)
+#+end_src
+
+And starting a repl from the scratch-buffer:
+
+#+begin_example scheme
+("/gnu/store/7r466prr45b1v38gzqlbl4gfl0g1vc5k-emacs-geiser-guile-0.28.1/share/emacs/site-lisp/geiser-guile-0.28.1/src"
+ "/home/dc/.guix-profile/share/guile/site/3.0"
+ "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile/3.0"
+ "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile/site/3.0"
+ "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile/site"
+ "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile")
+#+end_example
+
+When Projects share their repls, then this gets messy. Loading a repl from my
+dotfiles diffs the =%load-path= like:
+
+#+begin_example diff
+c1,5
+< ("/gnu/store/7r466prr45b1v38gzqlbl4gfl0g1vc5k-emacs-geiser-guile-0.28.1/share/emacs/site-lisp/geiser-guile-0.28.1/src"
+---
+> ("/another/challenger/has/entered/load/path"
+>  "/home/dc/.dotfiles"
+>  "/home/dc/.dotfiles/ellipsis/"
+>  "/gnu/store/7r466prr45b1v38gzqlbl4gfl0g1vc5k-emacs-geiser-guile-0.28.1/share/emacs/site-lisp/geiser-guile-0.28.1/example"
+>  "~/.dotfiles/ellipsis/"
+#+end_example
+
+And this repl loads different modules ...
+
+Whereas a file like =(define-module (dc home blank))= will just show =(guile)= for
+=,imports=, after switching to a file with basic modules:
+
+#+begin_src scheme
+(define-module (dc home common)
+  #:use-module (srfi srfi-1)
+  #:use-module (ice-9 format)
+
+  #:use-module (guix gexp)
+
+  #:use-module (gnu packages)
+
+  #:use-module (gnu services)
+  #:use-module (gnu home services)
+  #:use-module (gnu home services guix)
+  #:use-module (gnu home services fontutils))
+#+end_src
+
+Will show the following imports (without loading =~/.guile-geiser=
+
+#+begin_src scheme
+(guile)
+(value-history)
+(srfi srfi-1)
+(ice-9 format)
+(guix gexp)
+(gnu packages)
+(gnu services)
+(gnu home services)
+(gnu home services guix)
+(gnu home services fontutils)
+#+end_src
+
+With the following config, it may be difficult to keep track of the REPL
+buffers, though using the =geiser-mode= functions from the scheme buffer makes
+this simpler.
+
+#+begin_src emacs-lisp
+(setq geiser-repl-per-project-p t)
+(setq geiser-repl-add-project-paths nil)
+#+end_src
 
 *** Geiser Xref doesn't function well inside guix profile with links
 
@@ -101,18 +258,3 @@ This isn't ideal. For each module in =/data/ecto/guix/guix=, the same module is
 defined elsewhere along the =%load-path=. It should be jumping to the source in
 that directory, but usually jumps to =$HOME/.config/guix/current=.
 
-
-** Language
-*** Modules
-
-How to filter exports:
-
-#+begin_src scheme
-(use-modules ((ice-9 popen)
-              #:select ((foo . foo-as-foo2) bar baz)
-              #:prefix howtofilterexports:))
-#+end_src
-
-*** Features
-
-+ [[https://stackoverflow.com/questions/15892214/scheme-overload-built-in-procedures-general-overloading][Overloading methods]] (s/o)

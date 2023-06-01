@@ -1,0 +1,121 @@
+:PROPERTIES:
+:ID:       52b38e60-3902-4d5f-957c-ac2d46f72f9b
+:END:
+#+TITLE: To Dotfiles or Not To Dotfiles
+#+CATEGORY: slips
+#+TAGS:
+
+A system's inner components are only as useful as the extent of knowledge you
+have about them. I can download some pretty powerful scripts/functions ... but
+if I don't know the names or inner structure of those things, I can't use them.
+This is why "dotfiles package managers" and really most dotfiles tools just
+don't work. You also can't properly extend those tools, so you never develop
+many of the basics of shell scripting or whatever. But if you don't manage your
+dotfiles, then you lose quite a bit of efficiency and proficiency when moving to
+a new system.
+
+Further, The interfaces and components should have some regularity and norms
+across the network. Thus, the following extends from dotfiles to network
+automation. Choosing the proper tool helps avoid some of these problems:
+
++ Ansible can deploy quite a few things with almost zero dependencies on the
+  machines it connects to), but some of these tools aren't optimal for
+  everything;
++ the cloud toolchains automate or obviate some of the setup ... for a price;
+  Terraform will provision hardware, VM's and instances, but doesn't seem to be
+  widely used for service provisioning;
++ Proxmox and other VM hosts require a set of abstractions on top of basic tools
+  and give you "power over OpenZFS, iSCSI, QEMU, etc" but then don't do much in
+  the way of automating configuration/services for things /inside/ the VM's.
+
+Usually, your employer has provided much of the tools you use for efficiency,
+expediency, visibility, etc -- e.g. Ansible AWX/Tower, essential for
+/communicating about automation/ or Hashicorp Vault, essential for /certificate
+stuff just happens/ -- but if you leave the job, you only get to keep the
+experience. Developing personal tools on the job doesn't make sense --
+e.g. personal bash scripts used in Ansible playbooks are a potential source of
+problems. So you don't really accumulate much that is your own.
+
+* Managing Dotfiles
+
+Managing and automating dotfiles "deployments" within git is a huge timesync
+... quite possible as large whatever time is required to not keep your dotfiles
+in source control. When you're using multiple distributions or platforms or
+window managers, this exacerbates the timesync. Modularizing your config or
+dealing with issues induced by the platform is a huge pain in the ass. For
+example:
+
++ You have two computers with Mac OS running on x86_64 hardware. Now you want to
+  automate your laptop setup because you just bought an M1 architecture laptop
+  ... but quite a bit of it breaks. What were previously very flat abstractions
+  now require using a different package manager -- like macports or carthage,
+  the only real package managers on Mac OS -- so you would have to refactor
+  things anyways to enable ports to install for both platforms ... but now you
+  also need to build software which isn't available for one platform or another.
+  I'm excited about apple silicon, but I'm going to wait on that LOL.
++ You have an old Macbook Pro laptop. Your dotfiles install in a fairly
+  automated manner ... just not with Linux. You're lucky, since you don't have
+  to worry about ARM or Asagi, but there's still quite a bit of work to be done
+  here.
++ You're working on one distribution that has SystemD but could conceivably run
+  some services through Shepherd and another distribution which only uses
+  Shepherd. Much of the configuration for tools is the same, but the service
+  configuration is not. Thus your abstractions are a bit like "squeeze star peg
+  through square hole" when it really shouldn't be like that. It's really not
+  that bad, but could be annoying when trying to share code specifying service
+  dependencies when some of these services will be managed by the other service
+  manager.
++ You have a handful of servers, but you're poor, so you can't "just run k8s" or
+  "just do things in the cloud." You want a consistent experience when logging
+  into servers. Ordinarily, you'd use Ansible or Terraform or something to
+  privision the hardware. Using Ansible and Ansible Vault /could work/ to deploy
+  some of these tools and configs, but for some of the things, it doesn't seem
+  to be the correct tool.
++ Your homelab needs some custom deployments because while you're poor, you're
+  also one person. So while you are otherwise technically competent to do a
+  mostly offline certificate deployment, managing certificate distribution for
+  services like libvirt, webservers, admin pages, etc is a bit too much for one
+  person to maintain once per quarter if you'd like to actually limit your
+  exposure. If you could afford a Root certificate, its storage would absolutely
+  be on an offline disk and the intermediate CA certs would likely be in on an
+  offline computer. If you could run Kubernetes, then perhaps Vault could take
+  care of this -- but probably not for every service.
++ You want to deploy specific configs to make tools available for VM's, while
+  not exposing your limited infrastructure -- the desktop computer actually
+  running your VM's -- to be systemically exploited in fairly trivial container
+  escapes. Furthermore, instead of using proxies for offline repositories
+  (Docker, Galaxy, RPM, PiPy or Guix), you'd like to have something like Ansible
+  Pulp in the middle acting as a cache. This ... however ... also requires
+  certificates because otherwise your "opsec" will depend almost completely on
+  no one knowing anything about your homelab infrastructure.
+
+If you enter my network and I have a reasonable certificate deployment, I can
+tell you what my secrets are "like" but you would have to know them. If they're
+offline or require PIV, then good luck. If I have log-shipping configured, then
+I can quite easily identify what it looks like when someone tries to connect to
+servers. Thus, you can't easily perform MitM attacks, you can't authenticate as
+a trusted user, etc ... and if you try, then I should know.
+
+However, just as it's a little insane to assume you don't need to properly
+provision certificates for services on a Cloud-based VLAN or "private network",
+it's also insane to assume your little one-off homelab can just run everything
+like the youtubers do: "See? It does the thing! We're done!" LOL no disrespect,
+since their content is helpful and can't always address all issues without
+spending more time there than on the video's obstensible topic.  That's like
+building a castle and asking people to not examine the wall or just accepting
+what appears to be an invisible wall/moat. Instead, people/hackers should be
+able to see at least some of the walls and assert that what they see provides
+some basic defensive protection. Still, since most certificate deployments and
+designs for security of network services rely so heavily on "Shhhh opsec" then
+pretty much everyone is doing something they wouldn't put in a video. Usually,
+after accumulating some experience, I've found that it's pretty easy to identify
+the missing pieces left out.
+
+* Roam
+
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:ca4acf9b-775b-4957-b19a-0988b7f429c5][RPM]]
++ [[id:cf2bd101-8e99-4a31-bbdc-a67949389b40][Virt]]
++ [[id:48d763a8-5579-4585-a9a2-e7cbb11701fe][Homelab]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
