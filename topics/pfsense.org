@@ -34,7 +34,13 @@ anticorrelation is for. Not really a practical feature though...
 + [[https://docs.netgate.com/pfsense/en/latest/development/compile-software.html][Compiling Software On The Firewall]] (don't)
 + [[https://docs.netgate.com/pfsense/en/latest/development/branches.html][Development Branch Names]]
 
+*** Systems
+
++ [[https://github.com/pfsense/FreeBSD-ports/blob/devel/GIDs][GIDs]] and [[https://github.com/pfsense/FreeBSD-ports/blob/devel/UIDs][UIDs]] (from packages)
+
 ** Resources
+
++ [[https://difyel.com/cheatsheet/freebsd-pkg-cheat-sheet/index.html][Freebsd Pkg Cheatsheet]]
 
 ** Topics
 
@@ -57,9 +63,69 @@ that.
 
 This one is recommended by the docs as an example ... it has no dependencies.
 
-**** Adding the pfsense/FreeBSD-Ports repo
+
+**** Pkg Repos
 
 Man is not included (is this foreshadowing?)
+
+
+
+***** TLDR:
+
+I should probably finish reading the cheatsheet: =pkg config REPOS_DIR=
+
+#+begin_quote
+/etc/pkg/
+/usr/local/etc/pkg/repos/
+#+end_quote
+
+In which case, we see the content
+
+#+begin_quote
+FreeBSD: { enabled: no }
+
+pfSense-core: {
+  url: "pkg+https://pkg.pfsense.org/pfSense_v2_6_0_amd64-core",
+  mirror_type: "srv",
+  signature_type: "fingerprints",
+  fingerprints: "/usr/local/share/pfSense/keys/pkg",
+  enabled: yes
+}
+
+pfSense: {
+  url: "pkg+https://pkg.pfsense.org/pfSense_v2_6_0_amd64-pfSense_v2_6_0",
+  mirror_type: "srv",
+  signature_type: "fingerprints",
+  fingerprints: "/usr/local/share/pfSense/keys/pkg",
+  enabled: yes
+}
+#+end_quote
+
+
+***** Adding the pfsense/FreeBSD-Ports repo
+
+One potential solution is here [[https://forum.netgate.com/topic/130832/solution-posted-dns-tls-getdns-stubby-from-pfsense-freebsd-ports][getdns-stubby-from-pfsense-freebsd-ports]] (2018)
+but it's hard to validate whether running stuff like =pkg install git= will
+result in a stable system. The package dependencies seem to match the system
+... for now, but they definitely overlap.
+
+|------------------+---------------------------+----------|
+| name             | origin                    |  version |
+|------------------+---------------------------+----------|
+| expat            | textproc/expat2           |    2.4.1 |
+| p5-IO-Socket-SSL | security/p5-IO-Socket-SSL |    2.072 |
+| p5-Authen-SASL   | security/p5-Authen-SASL   |   2.16_1 |
+| perl5            | lang/perl5.32             | 5.32.1_1 |
+| p5-Error         | lang/p5-Error             |  0.17029 |
+| curl             | ftp/curl                  |   7.80.0 |
+| pcre2            | devel/pcre2               |    10.39 |
+| gettext-runtime  | devel/gettext-runtime     |    0.21" |
+|------------------+---------------------------+----------|
+
+... it seems that =pkg install git= is safe-ish: [[https://docs.netgate.com/pfsense/en/latest/development/gitsync.html?highlight=pkg%20git#troubleshooting][Using gitsync [to update PHP
+files w/o Binary Updates)]]
+
+***** Trying to find pkg.conf
 
 There is =/etc/pkg/FreeBSD.conf=, but it looks like nothing's there and it tells
 you to enable the wrong repository.
@@ -101,6 +167,7 @@ before I know how runtime state is setup there.
 /etc/rc.bootup:require_once("pkg-utils.inc");
 /etc/rc.package_reinstall_all:require_once("pkg-utils.inc");
 #+end_quote
+
 
 **** ZeroTier
 
