@@ -1,11 +1,166 @@
 :PROPERTIES:
 :ID:       265a53db-5aac-4be0-9395-85e02027e512
 :END:
-#+TITLE: PFSense
+#+TITLE: PFSense and OPNSense
 #+DESCRIPTION: The Firewall
 #+TAGS:
-* Roam
+
+Being kind of an idiot ... it's a bit hard to distinguish these two things. The
+commit frequency charts are misleading. They look about the same ... but when
+the red correlates strongly to the green -- that's a refactor. You can't scale
+the Github charts, so it's a bit hard to judge the activity on either.
+
+Hardened BSD Kernel sounds sexy and all, but ... migrate my firewall for a
+plugin? Nope. Still, this is perhaps just a [[https://github.com/zerotier/ZeroTierOne/blob/dev/LICENSE.txt][sad, sad casualty of licensing]] (BSL).
+
+By the way, Github, a more useful chart on some projects would identify the
+anti-correlation between positive/negative Commit SLOC and then subtract the
+scaled magnitude of SLOC anticorrelation from the signal. The difficulties:
+finding a window function to run on any arbitrary repository and also deciding
+how to renormalize the anticorrelated signal. I think that's what
+anticorrelation is for. Not really a practical feature though...
+
+
+* PFSense
 ** Docs
-*** Resources
-**** Topics
-***** Issues
++ [[https://github.com/pfsense/pfsense][pfsense/pfsense]]
++ [[github:pfsense/FreeBSD-Ports][pfsense/FreeBSD-Ports]]
+
+*** Package Development
+
++ [[https://docs.netgate.com/pfsense/en/latest/development/develop-packages.html][Developing Packages]]
++ [[Package Port Directory Structure][Package Port Directory Structure]]
++ [[https://docs.netgate.com/pfsense/en/latest/development/package-port-list.html][FreeBSD Ports Used For Packages]]
++ [[https://docs.netgate.com/pfsense/en/latest/development/compile-software.html][Compiling Software On The Firewall]] (don't)
++ [[https://docs.netgate.com/pfsense/en/latest/development/branches.html][Development Branch Names]]
+
+** Resources
+
+** Topics
+
+*** Terminal
+
+Setting your terminal to something funny like =TERM=alacritty= before =ssh= will
+prevent you from editing files ... though I'm not sure why I set my term to
+that.
+
+*** FreeBSD Packages
+
+**** Quirks
+
++ Requires login/logout after installing for bin's to be found in path.
++ Enable emacs shortcuts in terminal by using =sh=, but I'd rather not.
+
+**** GNU Screen
+
+=pkg install screen=
+
+This one is recommended by the docs as an example ... it has no dependencies.
+
+**** Adding the pfsense/FreeBSD-Ports repo
+
+Man is not included (is this foreshadowing?)
+
+There is =/etc/pkg/FreeBSD.conf=, but it looks like nothing's there and it tells
+you to enable the wrong repository.
+
+#+begin_quote
+[2.6.0-RELEASE][user@pf.com]/root: find /etc/ -type f -exec grep -re  "FreeBSD-ports" \{\} +
+
+/etc/inc/pkg-utils.inc:             "https://github.com/pfsense/FreeBSD-ports/commits/devel/" .
+
+[2.6.0-RELEASE][user@pf.com]/root: find /usr/local/etc/ -name "*conf" -type f -exec grep -re "FreeBSD-ports" \{\} +
+
+[2.6.0-RELEASE][user@pf.com]/root: find /usr/local/etc/ -type f -exec grep -re "FreeBSD-ports" \{\} +
+
+[2.6.0-RELEASE][user@pf.com]/root: find /etc/ -type f -exec grep -re "FreeBSD-ports" \{\} +
+
+/etc/inc/pkg-utils.inc:             "https://github.com/pfsense/FreeBSD-ports/commits/devel/" .
+#+end_quote
+
+Tracing the =pkg-utils.inc= leads to these maintainance scripts, so it looks
+like I already have the repository, but it's just not enabled by a config
+file. I already tried searching =/tmp= ... since I've scripted DDWRT by =nvram=
+before I know how runtime state is setup there.
+
+#+begin_quote
+[2.6.0-RELEASE][user@pf.com]/root: find /etc/ -type f -exec grep -re "pkg-utils.inc" \{\} +
+
+/etc/rc.update_pkg_metadata:    && /usr/local/bin/php -r 'require_once("pkg-utils.inc");update_repos();' \
+/etc/rc.stop_packages:require_once("pkg-utils.inc");
+/etc/rc.start_packages:require_once("pkg-utils.inc");
+/etc/inc/pkg-utils.inc: * pkg-utils.inc
+/etc/inc/pkg-utils.inc: require_once("pkg-utils.inc");
+/etc/inc/system.inc:    require_once("pkg-utils.inc");
+/etc/phpshellsessions/uninstallpkg:require_once("pkg-utils.inc");
+/etc/phpshellsessions/installpkg:require_once("pkg-utils.inc");
+/etc/phpshellsessions/gitsync:  require_once("pkg-utils.inc");
+/etc/rc.packages:require_once("pkg-utils.inc");
+/etc/rc.initial.defaults:require_once("pkg-utils.inc");
+/etc/mtree/etc.dist:    pkg-utils.inc \
+/etc/rc.bootup:require_once("pkg-utils.inc");
+/etc/rc.package_reinstall_all:require_once("pkg-utils.inc");
+#+end_quote
+
+**** ZeroTier
+
++ [[https://forum-netgate-com.translate.goog/topic/178751/pfsense-plus-23-01%E5%AE%89%E8%A3%85%E9%85%8D%E7%BD%AEzerotier?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_hist=true][Forum Post on installing ZeroTier from pkg.freebsd.org]] ... but how do I get it
+  from the pfsense/FreeBSD-ports repository? They say [[https://forum.netgate.com/topic/174951/pfsense-pkg-from-freebsd-ports-or-repo/11][don't do it]], but I already
+  figured that out.
+
+*** Ansible Collections
+Yay [[https://galaxy.ansible.com/pfsensible/core][declarative configuration]]
+
+.... i can haz declarative configuration? Well technically it's just XML, but
+you don't see any that in the manual because too risky for business model. So
+now it's realllly risky. It beats the hell out of MikroTik or so I've heard, but
+if you're willing to reconsider, I'd like to introduce you to my friends
+=Ctrl-F= and =libxml2=.
+
+Sorry if my criticism sounds harsh, but trying to manage the firewall is verrry
+slow in the GUI. Also, my working memory does not get along with 24 browser
+tabs. Nice GUI though. The features are nice, but it's hard to experiment with
+them while controlling variables if you can't diff configs, grok config
+changesets or script things easily.
+
+I guess I just don't know enough BSD. I did customize the shell prompt though.
+
+** Issues
+
+*** ZeroTier on PFSense
+
+Now that I'm really getting into this ... it would be difficult to control
+access if ZeroTier isn't coming through the front door.
+
+According to [[https://www.reddit.com/r/PFSENSE/comments/tskpkl/official_zerotier_pfsense_package/][r/PFSense]], this feature isn't being implemented, while being
+available on OPNSense. There are mentions of [[https://github.com/ChanceM/pfSense-pkg-zerotier][ChanceM/pfSense-pkg-zerotier]], a
+custom package implementing the FreeBSD ZeroTier 1.8.6, but it doesn't seem to
+be very active.
+
+However, there are [[https://github.com/search?q=repo%3Apfsense%2FFreeBSD-ports+zerotier&type=commits][recent commits]] to PFSense indicating the package is coming
+(1.10+), but it requires installing directly from the [[https://github.com/pfsense/FreeBSD-ports/blob/main/net/zerotier/Makefile][FreeBSD "ports tree"]]. The
+main difference here is that the custom package modifies the PHP and installs as
+a bundle ... while also being incompatible with the fresh ports version.
+
+The OPNSense package, which sources an older ZeroTier package comes with this
+[[https://github.com/opnsense/ports/blob/87bbf9d6d93faceee98816de7f86989405f323d5/net/zerotier/pkg-message#L16-L23][important caveat]] addressing a potential race condition, which is mentioned as a
+problem for the custom PFSense package. The following "sysctl" should be enabled
+=net.link.tap.up_on_open=1= to address the problem (on OPNSense)
+
+
+* OPNSense
+
+
+
+** Docs
+
+** Resources
+
+** Topics
+*** Ansible Collections
+
+There are basically no downloads. That's sad.
+
+** Issues
+
+* Roam
