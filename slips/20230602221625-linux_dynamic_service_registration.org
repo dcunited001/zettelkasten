@@ -1,0 +1,44 @@
+:PROPERTIES:
+:ID:       052c566e-668e-4fe8-8794-5087e6e06d4f
+:END:
+#+TITLE: Linux: Dynamic Service Registration
+#+CATEGORY: slips
+#+TAGS:
+
+When using shepherd within the Guix interface is that the services and their
+extensions/compositions are easily defined. Still, shepherd outside of Guix
+permits custom Scheme code surrounding the service registration, which enables
+the =ports= interface for transparently handling streams/sockets/etc.
+
+Probably not a great idea to toy with Shepherd's state or the threads in its run
+loop. Still, customizing shepherd's environment give you a service manager where
+IPC can hook back into it's control. Whereas SystemD's control access is safely
+tucked away behind config files ([[https://www.freedesktop.org/software/systemd/man/systemd.syntax.html][systemd.syntax]]), calls to =daemon-reload= and
+things like =tmpfiles.d=,
+
+For a Guix system, =services= is a thunked field, but none of the fields on the
+=shepherd-service= or =shepherd-action= fields are.
+
+I'm slightly leaning towards "SystemD does not naively support [[https://discourse.nixos.org/t/dynamic-systemd-services/10041/3][dynamic service
+registration]]."  In network applications this is delegated to [[https://auth0.com/blog/an-introduction-to-microservices-part-3-the-service-registry/][service
+registries]]... apparently. If I had to guess, synchronizing the state for which
+is a large part of K8S' =etcd=.
+
+Guix records are likely incompatible with dynamic service registration (these
+don't exist at runtime, but still the logic to enact such would need to be).
+Assuming you're not leveraging the network, then when trying to maximize
+processing on a system's hardware (with hundreds of CPU's), this registration
+would usually be delegated to a managed service. I'm trying to figure out how
+you would loop those registered services or registrars back into controlling the
+Service manager when tasks would be dynamic.
+
+While googling things like "Linux maximum process bottleneck io, etc" is a bit
+of a lost cause ... it seems none of the above matters until you have an actual bus
+topology instead of a drag strip.
+
+[[https://www.fujitsu.com/global/documents/about/resources/publications/technicalreview/topics/article005.pdf][High-dimensional Interconnect Technology for the K Computer and the Supercomputer Fugaku]]
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fdcba][Unix]]
