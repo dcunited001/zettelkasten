@@ -1,0 +1,137 @@
+:PROPERTIES:
+:ID:       24fbe4d3-ddfb-4b74-9302-2f1ecc24d4ed
+:END:
+#+TITLE: Linux: syslog-mode to avoid configuring a debugger with strace
+#+CATEGORY: slips
+#+TAGS:
+
+Emacs has =syslog-mode= and it's pretty good, but probably needs a
+maintainer. It seems to complement a specific workflow, but I'm not sure what
+that is. It doubles in functionality by allowing you to fontify =strace= output.
+
+* Features
+
+It has a useful menu, etc.
+
+It seems to facility delving into man-pages for system calls in the strace
+output. open a strace log and hit =m= on a keyword and if the =strace_notes.el=
+file was loaded by the mode, then it gives you a shortlist of manpages where the
+symbol might be defined.
+
+* Notes
+
+** Syslog-mode doesn't finish loading
+
+It hits a snag by calling =(toggle-read-only)= which has been deprecated for a
+long time. It does have one reference to =read-only-mode= but this is where it
+create a buffer in =syslog-extract-fds-from-strace=.
+
+It also modifies sets a few variables, sometimes within a scope:
+
++ inhibit-read-only :: still used in Emacs to temporarily inhibit =read-only=
+  behavior.
+  - first-completion
+  - primitive-undo
+  - squeze-bidi-from-context
++ buffer-read-only :: used when modes inherit from =special-mode= & elsewhere
+
+*** Challenges in fixing
+
+**** The mode can't simply inherit from =special-mode=
+
+I think, because of how it's designed to function: you might want to clear a lot
+of crap out of a copy of a strace file.
+
+**** The mode can't simply trigger =read-only-mode=
+
+Since ... well this warning makes that clear:
+
+#+begin_quote
+Do not call =read-only-mode= from a Lisp program unless you really intend to do
+the same thing as the C-x C-q command, including possibly enabling or disabling
+View mode.
+#+end_quote
+
+**** There are performance concerns in play
+
+Strace logs could easily be a few dozen MB if with =trace=all=
+
+bc of the performance concerns, modifying the structure of loops/conditionals
+isn't a good idea and neither can you just use arbitrary functions.
+
+**** Syslog files rotate
+
+Syslog files are also large, esp when debugging is enabled ...
+
+i've already encounterd trying to use this mode on those and you need to filter
+your region of interest using something like =rsyslog= before bringing it
+in. you might source multiple logs from when doing this, which sure would make
+things more clear.
+
+The real problem is searching for patterns that may span multiple large
+files. Other tools probably process the syslog files/events downstream (using
+logshipping and stream-processing) and so the data is indexed in a more amenable
+form.
+
+The mode is designed to allow you to move to previous/next buffers, but does so
+while maintaining your current buffer. it replaces the text while setting
+=inhibit-read-only= to true. relevant functions:
+
++ syslog-previous-file
++ syslog-next-file
++ syslog-append-files :: to rotate the search around
++ syslog-open-files
++ syslog-toggle-filenames
++ syslog-strace-fds-treatment :: to process FD events that match pattherns
+
+*** How to fix?
+
+It depends on what =(toggle-read-only +/-1)= was intended to do. It may be possible to
+just =(add-advice ...)= and override the function
+
+but there's like 2000 LOC here.
+
+So probably just delete the line?  =¯\_(ツ)_/¯=
+
+** Strace says install =vscode-languageserver=
+
+Congratulations, you win a prize! What do you win? You don't have to configure
+the =xlang= debugger! Unfortunately, you're still out of inodes.
+
+#+begin_example strace-mode
+openat(AT_FDCWD, "/home/me/.npm-install-347/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/lib/common/api.js", O_RDONLY|O_CLOEXEC) = 21
+statx(21, "", AT_STATX_SYNC_AS_STAT|AT_EMPTY_PATH, STATX_ALL, {stx_mask=STATX_ALL|STATX_MNT_ID, stx_attributes=0, stx_mode=S_IFREG|0644, stx_size=2100, ...}) = 0
+read(21, "\"use strict\";\n/* ---------------"..., 2100) = 2100
+close(21)                               = 0
+statx(AT_FDCWD, "/home/me/.npm-install-347/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/lib/common/node_modules", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+statx(AT_FDCWD, "/home/me/.npm-install-347/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/lib/node_modules", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+statx(AT_FDCWD, "/home/me/.npm-install-347/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/node_modules", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+statx(AT_FDCWD, "/home/me/.npm-install-347/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/lib/common/server", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+#+end_example
+
+I'm not sure, but deploying this as an LSP server on my network ... may not work
+out. The docs seem to imply the LSP server may want to know where I'm putting my
+source files. There seem to be too many and too few other tools other there that
+allow you to write GraphQL queries with autocomplete ... I evaluated like 23
+tools to run python because I'm like that. I have a few issues with python, but
+I like it. Python and I may share a future ... NodeJS? I don't think I want to
+end up writing frontend code (think about it....) because I just do not. I want
+to write stuff that involves math not drop downs.
+
+** TIL: You can run static checks on emacs fontlocks
+
+See =simple-call-tree-info= for more info.
+
+In case you're going to fontify a single line emacs.desktop file. Or perhaps you
+forgot to specifically configure project.el to exclude the node_modules folder
+and ripgrep'd across some minified javascript file.
+
+Dick Mao explains it more eloquently: [[https://www.youtube.com/watch?v=kflDJ9L4siw&t=6s][Emacs Long Lines, This Time With Feeling]]
+
+Usually not an issue, but 1.5 MB and 10,000 lines for a =strace -e trace=all=
+isn't bad.
+
+
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]

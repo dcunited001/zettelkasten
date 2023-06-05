@@ -50,8 +50,110 @@
     issues. Add =(mode . read-only)= inside =((nil . (...) ))=
 
 * Tools
+** File System
 
-** Formattesrs
+*** Treemacs
+
+I only use dired and nothing like =treemacs=, which encourages me to actually
+use/learn =dired= functions.
+
+This also circumvents kind of a lot of issues I had when using Doom Emacs
+... you know, the important things like "do i have emojies in the
+tree-file-thingy?" Treemacs does work pretty well, but other pain points include
+sorting out how to rectify =treemacs= or =neotree= or whatever with other
+features:
+
++ perspective.el
++ projectile.el
++ project.el
++ desktop.el
+
+And dont forget to combinatorially explode that and then handle emojies wherever
+they occur -- oops the emojies (or whatever) broke your terminal emacs. you
+could be figuring out how to get xsession back in order, but now you're
+debugging a problem you can't test in the both X11 and console simultaneously.
+
+I'm not trying to be mean, the concept of browsing file trees in emacs is just
+not for me. I'd rather use dired.
+
+*** Recentf
+
+The feature provided by the function =consult-recent-file= is +useful+
+essential, IMO. If I ever sat beside another person with moderate/light
+experience in emacs, I would learn quite a bit. They would say "why don't you
+just use recentf" and I would be all like "... what's that?"
+
+Instead, the longer I use the wrong tools, the more deeply those features become
+until the keybindings are hardwired into my muscle memory .... this makes it
+hard to learn the correct way.
+
+**** Configuring
+
+Recentf is hooked into the following modes/contexts:
+
+#+begin_src
+(find-file-hook       recentf-track-opened-file)
+(write-file-functions recentf-track-opened-file)
+(kill-buffer-hook     recentf-track-closed-file)
+(kill-emacs-hook      recentf-save-list)
+#+end_src
+
+Hook like this:
+
+#+begin_src emacs-lisp
+(add-hook 'buffer-list-update-hook #'recentf-track-opened-file)
+  #+end_src
+
+
+**** Performance concerns
+
+TL;DR; maybe keep the =recentf-max-saved-items= on the low side if you notice
+problems, but it probably doesn't matter.
+
+#+begin_quote
+The reason it's important to clarify these things is some modes/features can be
+hooked into or called in quite a few calls. In a single threaded runtime, your
+CPU cycles are more important than you think. If you're not keeping track of how
+configuration changes affect glitches/lag, it can become a little harder to
+untangle, especially when you need to trace -- neither of which am I as
+proficient as I should be.
+
+Fortunately C-g works very well almost all the time.
+
+None of this is actually that difficult to learn/understand ... but on your own?
+Yes. Performance used to be a much bigger issue back in
+2013ish and it definitely is when you have lexical scoping upside down in Doom
+Emacs.
+#+end_quote
+
+=recentf-keep= and =recentf-exclude= are mapped across *N* file in
+=recentf-list=. These are given a list of *M* regexps/functions.
+
+this means N*M calls to map-apply the list every time you interact with
+recentf-list, wherever it gets employed in emacs ... nevermind, functions like
+recentf-include-p are only called when the list is modified
+
+phew! it's designed to solve the obvious problem ... okay good. I wanted to
+structure the =recentf-exclude= list using the minimal number of calls to
+optimize what regexp is good at.
+
+Only after starting did I notice this was a list ... but yeh. I attempted to
+reconstruct the original value.
+
+#+begin_src emacs-lisp
+(rx (or
+     ;; "\\(\\(COMMIT\\|MERGEREQ\\|NOTES\\|PULLREQ\\|TAG\\)_EDIT\\|MERGE_\\|\\)MSG"
+     (and (or
+           (and (or "COMMIT" "NOTES" "PULLREQ" "MERGEREQ" "TAG") "_EDIT")
+           "MERGE_" "") "MSG")
+     ;; \\(BRANCH\\|EDIT\\)_DESCRIPTION\\
+     (and (or "BRANCH" "EDIT") "_DESCRIPTION"))
+    ;; really ends with \\' .... ?
+    "'")
+#+end_src
+
+
+** Formatters
 This could be done by the language's executable itself (or some subset of the
 lang build), but it's usually not.  This should be done by tree-sitter, but
 apparently comments make that hard. LSP can do it, but that's weird and it's not
