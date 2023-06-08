@@ -10,6 +10,28 @@
 + ACME :: The challenge/response protocol used for CSR and Signed Cert delivery
 + DNS-01 :: A Domain Validation protocol used by ACME.
 
+* Most Answers Are Here
+
+[[https://news.ycombinator.com/item?id=29808233][The YCombinator thread with the answers you probably didn't care to ask]]
+
+Includes such gems as:
+
+#+begin_quote
+Running your own private CA is a great way to cause problems for yourself down
+the road (just ask anyone with a 5 year and 1 day old Kubernetes cluster).
+#+end_quote
+
+*TLDR:* Distributing Root/Intermediate CA trust in browsers/clients sounds like
+a great problem for blockchain to solve, amiright? ... though the difficulty in
+automating/maintaining this stuff serves a purpose.
+
+* Intermediate CA
+
+[[https://news.ycombinator.com/item?id=29822928][TFW your grandpa is telling war stories about DNSSEC+DANE and gets a bite]]
+
+** Resources
++ [[https://www.rfc-editor.org/rfc/rfc5280#section-4.2.1.10][Name Constraint Extension]] ([[https://news.ycombinator.com/item?id=29809419][source]])
+
 * Let's Encrypt
 
 ** Domain Delegation
@@ -52,7 +74,7 @@ I'm poor ...
 
 ... okay it sounds like maybe I do, but that a proper VPN & routing
 configuration would probably work except in sensitive networks where you don't
-want Bourgeois Bob to leak information about subnet structure simply because he
+want Bourgeois Bob to [[https://news.ycombinator.com/item?id=29810879][leak information about subnet structure]] simply because he
 doesn't know how to configure the coffee shop WiFi. I'm not 100% sure how to
 solve that problem yet, but I don't actually have /those/ problems.
 
@@ -60,9 +82,38 @@ See: [[https://newdiscourses.com/2021/05/bourgeois-overproduction-problem-fake-e
 the reference ... which may just end up in a self-own, now that I recall what
 /ressentiment/ means.
 
+** Internal Hostnames
+
+[[https://shkspr.mobi/blog/2022/01/should-you-use-lets-encrypt-for-internal-hostnames/][Should you use Let's Encrypt for Internal Hostnames?]]
+
+Not using LE for internal names makes certs expensive. as the "CA Mafia" -- as
+one News Hacker put it -- don't issue Intermediate CAs without strings and money.
+
+Not using LE wildcard certs for internal names (requesting LE certs for specific
+names) causes your hostnames to be in the Certificate Transparency (CT) logs.
+Hackers out there plotting to ransomware your SAN will know the names of many
+devices on your network.
+
+Using LE certs issued for specific names increases the workload for several
+reasons, but you will be more likely to keep the server online that facilitates
+your ACME exchanges, since the times at which they renew is inconsistent.
+
 ** Wildcard certificates
 
-[[https://community.letsencrypt.org/t/acme-v2-production-environment-wildcards/55578][Production Environment Wildcards]]
++ [[https://community.letsencrypt.org/t/acme-v2-production-environment-wildcards/55578][Production Environment Wildcards]]
+
+*** Problems with wildcard certificates
+
+... given that you can't use them as Intermediate CA's ... =@$@ !#% $@!=
+... which I guess makes sense, then you have to place too much trust in a single
+secret, which also needs to be widely distributed across your network(s). Maybe
+that doesn't apply for =*.sub.domain.com= ... Let me google that for me.
+
+See [[https://news.ycombinator.com/item?id=29810343][explanation of attacks on wildcard certs]], which loosely implies LE issues
+certs for subdomains. The response rebuts the other users deriding protecting
+internal DNS names, not that I really care about that.
+
+
 
 *** Technicalities
 
@@ -104,7 +155,7 @@ Validation Methods
 Let's Encrypt does not include a warranty (no guarantee to cover losses), nor
 does it offer a "Trust Seal" which are apparently easy to spoof.
 
-*** Common Mistaktes
+*** Common Mistakes
 
 + Not placing the intermediate certs for full chain of trust on the
   server. Results in browser/client-specific issues
@@ -126,7 +177,15 @@ off-network. Then, from the wildcard certificate, you can generate certs from
 (and for) intermediate CA's and just use these ... unless I'm missing
 something...
 
-Oh, shit I am.
+Oh, shit [[https://community.letsencrypt.org/t/does-lets-encrypt-offer-intermediate-certificates/71957][I am wrong]] (I came across the CA constraints, but couldn't verify it
+tonight since I couldn't remember the magic words to summon the Googly results)
+
+| Basic Constraints     | Value |
+| Certificate Authority | No    |
+
+This is really enough to make you want to serve Guix, RPM & Deb packages from
+the cloud, so your images can be build to trust your own certificates
+.... _which costs more money_
 
 *** Misc
 
