@@ -1,0 +1,160 @@
+:PROPERTIES:
+:ID:       6ac69b19-958b-4f9e-8d66-dd6dcfdfe4c6
+:END:
+#+TITLE: Crypto: Let's Encrypt, ACME and DNS-01
+#+CATEGORY: slips
+#+TAGS:
+
+* Concepts
++ Let's Encrypt :: The most well-known provider of certs using the Acme protocol
++ ACME :: The challenge/response protocol used for CSR and Signed Cert delivery
++ DNS-01 :: A Domain Validation protocol used by ACME.
+
+* Let's Encrypt
+
+** Domain Delegation
+
+OMFG it takes forever to find clear answers on some subjects without bounding
+your search queries to specific domains. Like FOREVER long. Like 5 hours.
+
+[[Cert for domain with only internal / delegated DNS][Cert for domain with only internal/delegated DNS]] (2023)
+
+You can create DNS TXT records on the Root DNS server for the delegated
+subdomain ... because DNS is tiered and servers facilitate consensus... Dammit.
+
+#+begin_quote
+What happens if you have conflicting values for a TXT record here? Particularly
+where the server on NS record uses a faster update time and clients have cached
+lookups to that subdomain as depending on the delegated domain?
+
+It also seems important to guard against if delegating while using "split brain"
+DNS (or perhaps in a situation where considering split-brain).
+#+end_quote
+
+[[https://community.letsencrypt.org/t/certs-for-delegated-subdomain/182860][Certs for delegated subdomain]] (2022)
+
+Clear answer on delegated subdomains.
+
+[[https://community.letsencrypt.org/t/help-understanding-dns-01-domain-delegation/149196][Help Understanding DNS-01 domain registration]]
+
+#+begin_quote
+*Q:* is there a way to simply delegate all requests for a domain to a subdomain without needing a CNAME for every single required fqdn?
+
+*A:* Name reduction only happens when you can group similar names within a single wildcard.
+Then you can CNAME the _acme-challenge entry required for that wildcard (and all others) to any other FQDN.
+Otherwise, you will likely need one-for-one CNAME entries for each name requiring a cert.
+[some can be grouped in DNS with the "*" - but that usually fails for root folder domain entries]
+#+end_quote
+
+[[https://learn.microsoft.com/en-us/windows-server/networking/dns/deploy/dns-sb-with-ad][Split-Brain DNS]]: sounds delightful; no idea what it is. The link is for the
+implementation on AD, but I really hope I don't have to use this simply because
+I'm poor ...
+
+... okay it sounds like maybe I do, but that a proper VPN & routing
+configuration would probably work except in sensitive networks where you don't
+want Bourgeois Bob to leak information about subnet structure simply because he
+doesn't know how to configure the coffee shop WiFi. I'm not 100% sure how to
+solve that problem yet, but I don't actually have /those/ problems.
+
+See: [[https://newdiscourses.com/2021/05/bourgeois-overproduction-problem-fake-elite/][Bourgeois Overproduction and the Problem of the Fake Elite]] to understand
+the reference ... which may just end up in a self-own, now that I recall what
+/ressentiment/ means.
+
+** Wildcard certificates
+
+[[https://community.letsencrypt.org/t/acme-v2-production-environment-wildcards/55578][Production Environment Wildcards]]
+
+*** Technicalities
+
+These are some of the little "technicalities" I'd like to avoid that inviolates
+whatever you planned for your DNS ... where maybe your feedback loop is long or
+error messages are vague.
+
++ Certificates must be validated by DNS-01
+
+** Notes from Video
++ [[https://www.youtube.com/watch?v=GjwrXFwWJHk&t=2856s][Let’s Encrypt 101: Secure Certificates for Web Services]]
+
+
+*** Offerings
+
+Certificate Types
+
+|-----------------+---------+-------|
+| Type            | Offered | Notes |
+|-----------------+---------+-------|
+| Single Domain   | Yes     |       |
+| Multi Domain    | Yes     |       |
+| Wildcard Domain | Yes     |       |
+|-----------------+---------+-------|
+| IP Addresses    | No      |       |
+| Code Signing    | No      |       |
+|-----------------+---------+-------|
+
+Validation Methods
+
+|-------------------------+---------+-------+-----------+-----------------------------------------------------------------------|
+| Type                    | Offered | Color | Time      | Notes                                                                 |
+|-------------------------+---------+-------+-----------+-----------------------------------------------------------------------|
+| Domain Validation       | Yes     |       | seconds   | Validate by email, HTTP upload (on FQDN) or DNS TXT record (FQDN)     |
+| Organization Validation | No      | Blue  | 1-2 days  | Authenticate organization & verify applicant's right to request cert. |
+| Extended Validation     | No      | Green | 7-10 days | Same as OV, but more extensive                                        |
+|-------------------------+---------+-------+-----------+-----------------------------------------------------------------------|
+
+Let's Encrypt does not include a warranty (no guarantee to cover losses), nor
+does it offer a "Trust Seal" which are apparently easy to spoof.
+
+*** Common Mistaktes
+
++ Not placing the intermediate certs for full chain of trust on the
+  server. Results in browser/client-specific issues
++ Not protecting your key file: you'll be transmitting this to (or from or via)
+  wherever the ACME interaction with Let's Encrypt occurs generated
+
+**** Options for protecting key file (not really in video):
+
++ Delayed response to ACME: transport the data manually to/from the public
+  server (problems with delyaing responses?)
++ SSH Forwarding: set up the server to expect an SSH connection and forward the
+  relevant traffic to Let's Encrypt.
++ GPG Forwarding (with yubikey): forward encrypted data to the server
+
+If you create a file on the server, you want to destroy the server image. The
+certs could (in theory!) be recovered from filesystems that use
+snapshots. Sounds overboard, but it's best to keep some secrets in-memory or
+off-network. Then, from the wildcard certificate, you can generate certs from
+(and for) intermediate CA's and just use these ... unless I'm missing
+something...
+
+Oh, shit I am.
+
+*** Misc
+
++ DNS CAA records :: list Root CA's for which certs are issued
+
+Configuration
+
++ Cert chains, protocol & cipher suite limitation
+
+Performance
+
++ Session resumption
++ Content caching, OCSP Stabling
+
+  HTTP/App Security
+
++ Secure Compression (no HTTPS compression)
++ Secure cookies
++ HSTS settings
++ [[https://www.ssllabs.com/ssltest][SSL Labs: SSL Test]] (used this around 2014)
+
+* ACME
+
+
+
+* DNS-01
+
+
+
+* Roam
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
