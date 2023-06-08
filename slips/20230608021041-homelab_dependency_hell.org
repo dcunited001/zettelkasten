@@ -1,0 +1,149 @@
+:PROPERTIES:
+:ID:       748ee3a7-3608-4c83-85ec-a90705462047
+:END:
+#+TITLE: Homelab: Dependency Hell
+#+CATEGORY: slips
+#+TAGS:
+
+
+I don't want to "just get a job" because most jobs will end up determining the
+next 15 years of my life to be hell. I need to work somewhere:
+
++ where I can have support and be mentored
++ where I can work on something challenging
++ where my intelligence and creativity isn't treated like a liability
+
+If I just try to apply to some random place using mediocre technology, that will
+definitely determine the next 15 years of my life to be walled in without
+options. The problem with being intelligent is that Rule #1 is "don't outshine
+the master" ... the corollary for me being: "don't have a mediocre master." We
+live in this country where you're supposed to assume that everything is sunshine
+and rainbows, but it just fucking is not. The worst part of negative social
+dynamics is that they don't necessarily (or even usually) result from anyone's
+conscious intent. The unconscious and subconscious have a much stronger effect
+on what actually happens.
+
+If you are intelligent and for some reason, you find yourself not being socially
+connected or part of something that values your skills/talents, it doesn't just
+go away and instead _it's just a curse._ My life is highly abnormal. In some
+ways, it is like 3-4 sigmas abnormal ... without taking into account how I am
+explaining it. If you do, then it's not that extraordinary: it's a logical
+consequence of social dynamics. It is just really fucked up that other people
+get to move forward, while all I ever experience are setbacks and brick walls. I
+feel like I've been held back by 20 grades, basically.
+
+Until someone in my position has control/influence/options, then you can just
+expect that social dynamics will warp themselves around an intelligent person to
+isolate them ... because that is how you control someone like that: by detaching
+them from information. The harder they work, the worse the effects of isolation
+become. Complying with society's low expectations is the only thing I'd imagine
+to be worse, considering what feels like tolerable pain now will be that much
+worse if you didn't try to do something about it. When someone is dependent on
+others, strengths like intelligence or whatever matters less and because they're
+dependent, then other people have to be roped into whatever they do. So the
+person becomes subject to other people's decisions and, if lacking reasonable
+influence/options (e.g. $3,000/year), then quite often you'll find that other
+people restrict information from them because it's just easier that way or
+because conversations are difficult or whatever. This leaves them isolated --
+and thus /lacking social information/.
+
+* Dependency Hell
+
+Here are like a dozen prerequisites for my homelab. Unfortunately, since I'mx
+poor -- oh don't worry, I'll explain and I'm so sorry that it's "inconvenient"
+for me to do so, please tell me more about how you'd like me to just be quiet...
+
+Anyways, unfortunately, since I can't afford $5/month surcharges, this makes it
+difficult to untangle this mess. Technically, these are circular dependencies
+and usually in software that means someone did something wrong
+... usually. Here, the context is "processes" and so resolving circular
+dependencies means you tackle whatever simplest cycles you can all at
+once. Since they're cyclic and complicated, it takes a long time. For me, it
+also requires a lot of reading and watching videos. And if I can't take steps
+forward within the time I have, then by the time I revisit the task, it isn't as
+fresh in my mind as I'd like ... things like Ansible.
+
+Furthermore, not having the following has made everything difficult:
+
++ Prometheus/Grafana :: gives you visibility
++ Automation :: gives you confidence in state or the recreation of that state
+  ... with less work
+
+Accessibility ::  ....
+
+** To have certificates with Let's Encrypt:
+
++ Need DNS and a publicly reachable server at a subdomain (at least long enough
+  to get the certs AFAIK)
+
+** To have a VPN or Reverse Proxy with reasonable Stability:
+
++ Need DNS or a public IP (expensive/risky)
++ ZeroTier circumvents this ... but not really, since ultimately, you need a
+  server on the internet to point to if you want to get into a ZeroTier network.
+
+** To even get started on almost everything else, I need Intermediate CA's:
+
++ You need a wildcard certificate, which itself begets quite a bit of work to
+  distribute the certificates it generates.
++ Even some of the cloud stuff is hard to take care of in an automatable manner
+  if you don't solve this problem. Not solving it is ridiculous: not only will
+  many tools will default erroring out if they don't warn, but if anything ever
+  happens, you're going to have a rough time restoring your networks' state
+  (that's networks, plural, for all you rich-ass spoiled suckers)
+
+** Intermediate CA design
+
+As far as I am concerned, every function should have a subdomain where some
+subdomains or categories of network roles can be lumped into having their certs
+generated from an intermediate CA. This is really the hardest part of all of
+this and requires the most work when you get it wrong. Fortunately, if you (at
+least somewhat frequently) have conversations with people in technology, you'll
+find that they've solved these problems ... and that the answers come in the
+form of simple patterns you can imitate without thinking of the answer yourself.
+
+See below for a pretty good pattern for [[https://blog.ctis.me/2022/12/yubikey-piv-gpg/#pki][PKI with multiple Intermediate CA's]].
+
+#+begin_quote
+                                           Root CA
+                                             |
+           +---------------------------------+----------------------------------+
+           |                                 |                                  |
+           V                                 V                                  V
+    Intermediate CA (A)       Intermediate Identity CA (A)       Intermediate Identity CA (B)
+           |                                 |                                  |
+           V                                 V                                  V
+     TLS Leaf Certs                 Human  Credentials            Device Authentication Certs
+      (HTTPS, etc)                  (PIV, S/MIME, etc)               (EAP-TLS, mTLS, etc)
+#+end_quote
+
+It's not exactly what I need, but it lays out the principles. Subdomains are not
+=1:1= with the descriptors used in certificates. It really depends on:
+
++ how many roles your networks/services have
++ and how much compartmentalization you want,
++ how you structure load balancing
++ how roles the provided are made available in multiple zones
++ whether anything you run needs to be multi-tenant or reachable for external
+  domains (and how you make that available)
++ which certificates you want to resign using PKCS#11.
++ how you plan to revoke and how much work you want to do when that happens.
++ where you place your trust (functions/roles), where your OSCP responders are
+  and how you plan to ensure that they're reachable by various network segments
+  -- which means /planning for virtual or policy-based routing to fail/.
+
+If you just do things in the cloud, you basically don't have to think about
+these problems because there's so much automation... it's not really like that,
+but it's close and at least the problems you have aren't complete non-starters.
+
+So, no, I don't know everything and, yes, my gaps in knowledge are a bit
+egregious (see [[id:2dae92fb-29f6-4714-ba86-9654c8d0795a][Cloud: Setup DNSSEC And Certbot]])... but other people don't
+actually have to reinvent the wheel. And neither do they have to attempt to do
+this while anyone they encounter as minimal faith in their abilitie -- assuming
+they should flip burgers. Actually, I'm assuming that making an average of
+$3,000 a year after being traumatized -- basically for having Aspergers --
+should probably count for something.
+
+* Roam
+
++ [[id:48d763a8-5579-4585-a9a2-e7cbb11701fe][Homelab]]
