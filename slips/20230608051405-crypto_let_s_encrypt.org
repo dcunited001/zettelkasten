@@ -101,8 +101,24 @@ your ACME exchanges, since the times at which they renew is inconsistent.
 ** Wildcard certificates
 
 + [[https://community.letsencrypt.org/t/acme-v2-production-environment-wildcards/55578][Production Environment Wildcards]]
++ The [[https://letsencrypt.org/docs/faq/#does-let-s-encrypt-issue-wildcard-certificates][DNS-01]] link on the LE FAQ for wildcard domains has a more clear
+  explanation of what's possible.
+
+*** Technicalities
+
+These are some of the little "technicalities" I'd like to avoid that inviolates
+whatever you planned for your DNS ... where maybe your feedback loop is long or
+error messages are vague.
+
++ Certificates must be validated by DNS-01
++ Wildcards for =*.domain.com= do not apply to =*.sub.domain.com= (see [[https://community.letsencrypt.org/t/does-wildcard-certificate-support-wildcards-with-www/86653][this post]])
++ use DNS validation and the TXT record would be named =_acme-challenge.sub.domain.com=
 
 *** Problems with wildcard certificates
+
++ [[https://blog.dijit.sh/please-stop-advocating-wildcard-certificates][Please stop advocating wildcard certificates]] (2016)
++ [[https://blog.dijit.sh/follow-up-wildcard-tls-certificates][Follow Up: Wildcard TLS Certificates]] (2017)
++ From the guy that brings you this gem: [[https://blog.dijit.sh/harasym-s-law][Harasym's Law]] (2022)
 
 ... given that you can't use them as Intermediate CA's ... =@$@ !#% $@!=
 ... which I guess makes sense, then you have to place too much trust in a single
@@ -113,17 +129,8 @@ See [[https://news.ycombinator.com/item?id=29810343][explanation of attacks on w
 certs for subdomains. The response rebuts the other users deriding protecting
 internal DNS names, not that I really care about that.
 
-
-
-*** Technicalities
-
-These are some of the little "technicalities" I'd like to avoid that inviolates
-whatever you planned for your DNS ... where maybe your feedback loop is long or
-error messages are vague.
-
-+ Certificates must be validated by DNS-01
-
 ** Notes from Video
+
 + [[https://www.youtube.com/watch?v=GjwrXFwWJHk&t=2856s][Let’s Encrypt 101: Secure Certificates for Web Services]]
 
 
@@ -168,11 +175,15 @@ does it offer a "Trust Seal" which are apparently easy to spoof.
   server (problems with delyaing responses?)
 + SSH Forwarding: set up the server to expect an SSH connection and forward the
   relevant traffic to Let's Encrypt.
+  - [[github:fschulze/certsling][fschulze/certsling]]
+  - LetsEncrypt post: [[https://community.letsencrypt.org/t/tutorial-page-for-using-le-with-remote-port-forwarding/127451/5][Tutorial page for using LE with Remote Port Forwarding]]
 + GPG Forwarding (with yubikey): forward encrypted data to the server
+  - [[https://coder.com/docs/v1/v1.43/guides/customization/gpg-forwarding#example-gpg-forwarding-action][Signing commits on a remote machine with GPG Forwarding]]
+  - probably enable this GPG Forwarding temporarily if you do
 
 If you create a file on the server, you want to destroy the server image. The
-certs could (in theory!) be recovered from filesystems that use
-snapshots. Sounds overboard, but it's best to keep some secrets in-memory or
+certs could (in theory!) be recovered from filesystems that use snapshots.
+Sounds overboard, but it's best to keep some secrets in-memory or
 off-network. Then, from the wildcard certificate, you can generate certs from
 (and for) intermediate CA's and just use these ... unless I'm missing
 something...
