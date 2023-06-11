@@ -170,6 +170,96 @@ Requires configuration management.
 + [[https://jayendrapatil.com/terraform-cheat-sheet/][terraform cheatsheet]] (web)
 + [[https://menendezjaume.com/post/gpg-encrypt-terraform-secrets/][GPG Encrypt Terraform Secrets]]
 
+**** Tools
+
+***** Docs
+
++ terraform-docs ::
++ terraform-plugin-docs :: generate/validate terraform plugin/provider docs
+
+***** Inventory
+
++ terraform-inventory :: from terraform state $\rightarrow$ ansible dynamic
+  inventory
++ terracognita :: read from existing cloud providers (rev. terraform) and
+  generates your infrastructure as code on terraform config.
+
+***** Misc
+
++ tfsec :: security scanner (static analysis)
++ tflint :: linter
+
+*** Topics
+
+
+**** Code & Docs Generation
+
+***** Snippets
+
+There's [[https://github.com/staticaland/terraform-generate-snippets][staticaland/terraform-generate-snippets]], which autogenerates snippets
+from =terraform providers schema -json=
+
+***** LSP
+
++ terraform-ls :: LSP server
+
+***** Project
+
++ tfautomv :: generate terraform moved blocks automatically (for refactoring)
++ terraform-index :: print the AST of an HCL file
+
+**** Project Structure
+
+[[https://www.youtube.com/watch?v=IDLGpkRmDXg][Structuring Repositories For Terraform Workspace]] A good intro to some of the
+considerations for processes/structure in teams.
+
+[[https://www.youtube.com/watch?v=Qg8VZsbaXxA][4 Considerations To Structure Terraform Code]] A deeper dive into issues for more
+modular projects
+
++ consider rate of change of project/environment components when
+  refactoring. components that would otherwise sprawl across multiple proj/env
+  could be contained.
++ don't import external modules that lack semantic versioning/tagging...
++ when components could benefit from a separate release cycle, it begins to
+  justify the cost/time and process overhead to do so.
++ use folder/module structure to constrain the set of resources affected by
+  changes. this limits risk.
++ submodules can be bad for code reuse (they usually problematize your workflow,
+  but are very useful when they're the right tool)
+
+Within a specific context (like a project's environment), it's sometimes useful
+to split out modules into sequenced subdirectories, like the following. The
+indexes can be used to guarantee that state transformations occur in order.
+
++ 0_keeper :: resources that must exist in all following stages of a terraform
+  deploy. this stage may not need to be re-run on every deploy.
++ 1_netsec :: security rules for the above TF resources which may change often
++ 2_expressroute :: apparently, the Express Routes are something in Azure that
+  you do not want to change, since it's hard to predict when TF backend decides
+  your resources should be torn-down and recreated. For Azure Express Routes, if
+  they are fully dropped & recreated instead of mutated, it results in a "devops
+  equivalent" of locking yourself out of your router/firewall.
+
+  The idea behind the last item is to limit the blast radius (& risk) that
+  changes may create. It's generally a good idea to be confident about this,
+  without needing to inefficiently /look/ for dependencies and state validation.
+
+***** Following the meaning of senses from Plato's Republic:
+
++ the visual sense is one where you must direct your visual focus (or attention)
+  consciously. You can't see everything all at once. Thus, for tech, you want to
+  simplify the structure or narrow the scope of things requiring your active
+  attention.
++ whereas your auditory sense allows you to react to things you didn't need to
+  be focused on. This follows the "push notification" or "event-driven" means of
+  messaging [queues].
++ The correct approach to structuring these projects implicitly limits the sets
+  of information or the set of event-streams (automailers/notifications) that
+  people need to tune into. However, you can't just shuffle things around on a
+  whim.
+
+.... okay not exactly germaine to the topic.
+
 * Virtualization Platforms
 ** vSphere
 
