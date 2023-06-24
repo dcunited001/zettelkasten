@@ -41,6 +41,7 @@ anticorrelation is for. Not really a practical feature though...
 ** Resources
 
 + [[https://difyel.com/cheatsheet/freebsd-pkg-cheat-sheet/index.html][Freebsd Pkg Cheatsheet]]
++ [[https://optionkey.blogspot.com/2022/03/restore-pfsense-backup-using-cli.html][Restore a PFSense Backup using the CLI]]
 
 ** Topics
 
@@ -169,9 +170,115 @@ before I know how runtime state is setup there.
 
 **** ZeroTier
 
+Zerotier has no runtime dependencies which is fantastic. It only has the
+buildtime deps: =as= for gas and =gmake= for making things.
+
 + [[https://forum-netgate-com.translate.goog/topic/178751/pfsense-plus-23-01%E5%AE%89%E8%A3%85%E9%85%8D%E7%BD%AEzerotier?_x_tr_sl=auto&_x_tr_tl=en&_x_tr_hl=en-US&_x_tr_hist=true][Forum Post on installing ZeroTier from pkg.freebsd.org]] ... but how do I get it
   from the pfsense/FreeBSD-ports repository? They say [[https://forum.netgate.com/topic/174951/pfsense-pkg-from-freebsd-ports-or-repo/11][don't do it]], but I already
   figured that out.
+
+***** Update to the beta pfSense
+
+Start by upgrading to the devel channel of pfsense, which is =12.7-beta= for
+me. This should avoid kernel mismatch problems when installing the latest
+zerotier packages.
+
+When the system comes back online, you may need to update/refresh some packages
+and restart some services. DNS and the WebConfigurator were not running properly
+at first.
+
+***** Manual install
+
+Then install these. The grungier the system, the more essential =screen= is...
+
+#+begin_src shell
+pkg install screen
+pkg install git
+#+end_src
+
+Then add the FreeBSD package tree: Edit the
+=/usr/local/etc/pkg/repos/{FreeBSD,pfSense}.conf= files and change ={ enabled no
+}= to =yes=.
+
++Run pkg upgrade and reboot+ nevermind: don't do this unless necessary. it wants
+to upgrade too many packages.
+
+Run =pkg install zerotier= and if you're running on pfSense 12.7 it will still
+complain about differences in the kernel version, but they will be minimal. You
+should see output like the following.
+
+This apparently includes instructions on how to start zerotier as a service,
+which was one point where I was a bit confused.
+
+#+begin_quote
+To ignore this error set IGNORE_OSVERSION=yes
+- package: 1400090
+- running kernel: 1400085
+Ignore the mismatch and continue? [y/N]: y
+Processing entries: 100%
+FreeBSD repository update completed. 32316 packages processed.
+Updating pfSense-core repository catalogue...
+pfSense-core repository is up to date.
+Updating pfSense repository catalogue...
+pfSense repository is up to date.
+All repositories are up to date.
+The following 1 package(s) will be affected (of 0 checked):
+
+New packages to be INSTALLED:
+	zerotier: 1.10.6 [FreeBSD]
+
+Number of packages to be installed: 1
+
+The process will require 2 MiB more space.
+551 KiB to be downloaded.
+
+Proceed with this action? [y/N]: y
+[1/1] Fetching zerotier-1.10.6.pkg: 100%  551 KiB 564.2kB/s    00:01
+Checking integrity... done (0 conflicting)
+[1/1] Installing zerotier-1.10.6...
+[1/1] Extracting zerotier-1.10.6: 100%
+=====
+Message from zerotier-1.10.6:
+
+--
+Note that ZeroTier 1.4.6+ has a *new* license prohibiting commercial SaaS
+style usage, as well as excluding government organisations. Read the
+license details carefully to ensure your compliance.
+
+First start the zerotier service:
+
+service zerotier start
+
+To connect to a zerotier network:
+
+zerotier-cli join <network>
+
+If you are running other daemons or require firewall rules to depend on
+zerotier interfaces being available at startup, you may need to enable
+the following sysctl in /etc/sysctl.conf:
+
+net.link.tap.up_on_open=1
+
+This avoids a race condition where zerotier interfaces are created, but
+not up, prior to firewalls and services trying to use them.
+
+You can place optional configuration in /var/db/zerotier-one/local.conf
+as required, see documentation at https://www.zerotier.com/manual.shtml
+
+If your system boots from DHCP (such as a laptop), there is a new rc.conf
+flag that will require that system startup will wait until the zerotier
+network is established before proceeding. Note that this flag *does not*
+work for systems configured with statically assigned IP addresses, and
+these will hang indefinitely due to an irreducible loop in rc(8) startup
+files. This flag is disabled by default.
+#+end_quote
+
+***** Testing the service
+
++ Config??
++ run =zerotier -d=
+
+***** Autostarting the service
 
 *** Ansible Collections
 Yay [[https://galaxy.ansible.com/pfsensible/core][declarative configuration]]
@@ -225,8 +332,6 @@ problem for the custom PFSense package. The following "sysctl" should be enabled
 
 
 * OPNSense
-
-
 
 ** Docs
 

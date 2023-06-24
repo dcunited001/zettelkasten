@@ -189,6 +189,10 @@ Requires configuration management.
 + tfsec :: security scanner (static analysis)
 + tflint :: linter
 
+**** Nix/Guix
+
+Guix packages for Hashicorp products are a bit sparse. This guide details getting Terraform
+
 *** Topics
 
 
@@ -227,6 +231,15 @@ modular projects
 + submodules can be bad for code reuse (they usually problematize your workflow,
   but are very useful when they're the right tool)
 
+Be aware of where Terraform state is stored:
+
++ the "Terraform workspace" layout is easy to get started with, but the state for
+  multiple environments by default shares the same backend!
+  - i.e. your dev/staging/prod state may share the same backend: anyone with
+    access to one may implicitly have access to others.
++ The "file-tree" workspace will require multiple =terraform apply= commands per
+  environment
+
 Within a specific context (like a project's environment), it's sometimes useful
 to split out modules into sequenced subdirectories, like the following. The
 indexes can be used to guarantee that state transformations occur in order.
@@ -259,6 +272,129 @@ indexes can be used to guarantee that state transformations occur in order.
   whim.
 
 .... okay not exactly germaine to the topic.
+
+
+**** Modules
+
+ Some notes from [[https://www.youtube.com/watch?v=7xngnjfIlK4&t=7408s][Complete Terraform Course]]
+
+***** Module Sources
+
+Types of module sources
+
++ Root Module :: implicit from local dir
++ Child Module :: separate module from local file
+
+Examples of module sources
+
++ Local paths
++ Github (Forges)
++ Terraform Registry. Over +3000 official modules served (and they're counting!)
+  with keys/values to learn & appreciate
++ HTTPS URL's
++ S3/GCS Buckets
+
+***** Module Design
+
+****** Good Modules:
+
++ Raise abstraction level (from HCL base types or resource types)
++ Group resources logically (or promote such grouping)
++ Expose input vars to enable customization/composition (like a modular synth)
++ Provide useful defaults
++ Return Outputs to make further integrations possible
+
+****** Code Rot
+
+The first two are exceedingly obvious. The latter two, less so. The last one is
+fairly specific to Terraform.
+
++ Unpinned versions
++ Deprecated deps
++ Out of band changes
++ Unapplied changes
+
+****** Managing Secrets
+
+Mark vars using the =sensitive= keyword
+
+Pass with:
++ TF_ENV_NOT_REALLY :: No don't actually do this without some protection
+  - the FBI hiding on your box scrolling through your =top= ...
++ -var :: use this tf cmdline option (secrets manager) ... okay maybe
++ external secret store :: congratulations you won a kubernetes!
+  - or "simply" nomad + a love of dynamic network configurations.  the choice is
+    yours.
+
+****** Basic Types
+
+Primative: string, number bool
+
+Complex (types are optional)
+
++ list<type> :: lists
++ set<type> :: sets
++ tuple[<type>,...] :: tuples
++ object{attr=<type>} :: objects
++ map<type> :: maps
+
+According to HCL docs, the following types behave identically in most situations:
+
++ Lists and Tuples
++ Maps and Objects
+
+***** Design Patterns
+
+Maybe just "design motifs" because they're pretty small in scope.
+
+****** Reuse or Create
+
+Use alternate ternary statements on variables/inputs to =DROP IF EXISTS; CREATE=
+
+#+begin_src hcl
+resource "aws_route53_zone" "primary" {
+  count = var.create_dns_zone ? 1 : 0
+  name = var.domain
+}
+
+data "aws_route53_zone" "primary" {
+  count = var.create_dns_zone ? 0 : 1
+  name = var.domain
+}
+#+end_src
+
+****** Lifecycle
+
+create_before_destroy
+
+#+begin_src hcl
+resource "azurerm_resource_group" "example" {
+  # ...
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+#+end_src
+
++ ignore_changes
++ prevent_destroy
++ terraform_remote_state
+
+
+****** Meta-args on Module Imports
+
+Can use meta-args like =count, foreach, provides, depends_on= here
+
+#+begin_src hcl
+module "webapp" {
+  source ...
+  input_var = "..."
+}
+#+end_src
+
+******* TODO examples of using metaargs there? not in notes
+
 
 * Virtualization Platforms
 ** vSphere
