@@ -1,0 +1,258 @@
+:PROPERTIES:
+:ID:       f3a83986-7163-4a3c-8e44-08f433e5bc57
+:END:
+#+TITLE: Gitforge: Paginating Github GraphQL Results
+#+CATEGORY: slips
+#+TAGS:
+
+
+I got this idea since Hashicorp uses tagging and naming conventions on its
+repos. The metadata is pretty consistent, though it's 100% consistent.  This is
+fine -- it's hard to expect that of such metadata and it's more consistent than
+i'd expect. Regardless, I'm not sure that I want to accumulate that much more
+work. Sourcegraph may fit the need I have later on.
+
+This sat undone on [[github:ectorepo/ectorepo][ectorepo/ectorepo]] for awhile. I've worked through it, but I
+just don't think it's worth it. I may run into a similar need in the future to
+ingest/organize hundreds of repositories ... in emacs ... but not today.
+
+An advantage to the repository organization structure you apply, via the XML and
+calls to =repo init=, is that you can always replicate that filetree somewhere
+else. As long as your familar with the organization, it makes finding things a
+bit easier. The structure persists and along with it, the familiarity. The
+question at this point is: what structure is best?
+
+This approach is like looking up a page in a reference book, which doesn't
+really change. Instead, the internet, Google and ChatGPT are highly dynamic. If
+I pick up a textbook or a specialized dictionary off my bookshelf, I can quickly
+find what I'm looking for because I remember it's organization, the tactile
+sensations of flipping through it, etc.
+
+It is extremely helpful. Though post-4th-industrial-revolution, perhaps a need
+best suited to AI, though ChatGPT/Copilot are a little like dynamically
+generated snippets without parameters (and a little more work to validate).
+What's sad IMO is that there was so much automation and tooling in
+linux/programming that never actually saw it's potential being met. It's unclear
+whether we'll see anything that remotely leverages the potential of
+=treesitter=, at least outside of a ChatGPT interface.
+
+For a Github org with a large number of repos, it doesn't make sense to put
+everything in a single XML.  When I ripgrep these results, it's helpful to bound
+the search results to a topic subdirectory, like =./ansible/eg/=, since
+=project.el= does some magic and 844 subdirectories isn't exactly useable. These
+are ripgrep queries that answer questions like:
+
++ find specific usages of lookup plugin X
++ find a specific yaml key
++ find a function call within a jinja template
+
+After getting some results, I can open the containing directory, which is now
+recognized by =project.el= since it has a =.git= directory. Here I've got a
+small example project where someone else solve a similar project, so I can back
+out and see how the rest of the project is organized.
+
+* Paginating Results
+
+To apply filters and sort the each repository into a single bucket based on the
+first matched filter. with the right filters, this is unlikely to change.
+
+Using another language for GraphQL would probably transparently handle the
+pagination, but the next hiccup is applying a set of rules to "drain" the first
+filters from the list of results. Basically any language is not going to make
+that so fun. It depends, but what I need is like an ACL that organizes the data
+deterministically.
+
+#+begin_src emacs-lisp :results vector value file :exports code :noweb yes :file  "data/hashicorp.eld"
+;; no way to generate pagination params without having a result? booooo
+;; https://www.apollographql.com/docs/react/pagination/cursor-based/
+
+;; call it with the results of the first query
+;; - pass error handler to ghub-graphql
+
+;; 3 cases (potentially handle in graphql call)
+
+;; - hasNextPage: merge data after [implicitly] making next call
+;; - else: last page: return data to merge up the call stack
+
+;; (setq dc/graphql-page-rx (regexp-quote "after:\"%s\","))
+(setq dc/graphql-page-param (regexp-quote "after:\"%s\","))
+(setq dc/graphql-query
+ (graphql-query
+  ((search
+    :arguments
+    ((after . "%s")
+     (first . 100)
+     (type . REPOSITORY)
+     (query . "org:hashicorp"))
+    repositoryCount
+    (pageInfo hasNextPage endCursor startCursor)
+    repos: (edges
+            repo: (node ... on (Repository
+                                url name id (owner login)
+                                (defaultBranchRef prefix name)
+                                updatedAt
+                                isArchived)))))))
+
+#+end_src
+
+To format queries:
+
+#+begin_src emacs-lisp
+;; run first query, replace after:%s entirely
+(string-replace dc/graphql-page-param "" dc/graphql-query)
+
+;; for subsequent queries, use
+(format dc/graphql-query startCursor)
+#+end_src
+
+This is what the query should look like.
+
+#+begin_src graphql
+ query {
+   search(first:100,type:REPOSITORY,query:"org:hashicorp") {
+   repositoryCount pageInfo{hasNextPage endCursor startCursor
+   } repos: edges{
+     repo: node{... on Repository
+     {
+       url
+       name
+       id
+       owner{login}
+       defaultBranchRef{prefix name}
+       updatedAt
+       isArchived
+     } } } } }
+#+end_src
+
+The call to =graphql-query= uses a bit of a hack. See [[https://github.com/vermiculus/graphql.el/issues/6#issuecomment-1586009905][vermiculus/graphql.el#6]]
+
+#+begin_src emacs-lisp :results vector value file :exports code :noweb yes :file  "data/hashicorp.eld"
+(ghub-graphql
+ (graphql-query
+  ((search
+    :arguments
+    ((first . 100)
+     (type . REPOfdsaSITORY)
+     (query . "org:hashicorp"))
+    repositoryCount
+    (pageInfo hasNextPage endCursor startCursor)
+    repos: (edges
+            repo: (node ... on (Repository
+                                url name id (owner login)
+                                (defaultBranchRef prefix name)
+                                updatedAt
+                                isArchived)))))))
+#+end_src
+
+#+RESULTS:
+[[file:data/hashicorp.eld]]
+
+** Response Format
+
+The higher-order functions and data types in Emacs Lisp just don't feel as
+intuitive, to me, as those in Clojure.
+
+This is what the query results look like (in ELD)
+
+#+begin_src emacs-lisp
+
+(setq qpginfo
+      '(pageInfo
+        (hasNextPage . t)
+        (endCursor . Y3Vyc29yOjEwMA==)
+        (startCursor . Y3Vyc29yOjE=)))
+(setq qrepos
+      '(((repo (url . https://github.com/hashicorp/terraform)
+               (name . terraform)
+               (id . MDEwOlJlcG9zaXRvcnkxNzcyODE2NA==)
+               (owner (login . hashicorp))
+               (defaultBranchRef (prefix . refs/heads/) (name . main))
+               (updatedAt . 2023-06-11T21:10:56Z)
+               (isArchived)))
+        ((repo (url . https://github.com/hashicorp/vault)
+               (name . vault)
+               (id . MDEwOlJlcG9zaXRvcnkzMTI4ODk1OA==)
+               (owner (login . hashicorp))
+               (defaultBranchRef (prefix . refs/heads/) (name . main))
+               (updatedAt . 2023-06-11T21:32:23Z)
+               (isArchived)))
+        ((repo (url . https://github.com/hashicorp/consul)
+               (name . consul)
+               (id . MDEwOlJlcG9zaXRvcnkxNDEyNTI1NA==)
+               (owner (login . hashicorp))
+               (defaultBranchRef (prefix . refs/heads/) (name . main))
+               (updatedAt . 2023-06-11T14:09:08Z)
+               (isArchived)))))
+
+(setq qdata `(data
+              (search (repositoryCount . 844))
+              ,qpginfo
+              (repos ,@qrepos)))
+
+;; ellipses are just e-lisp symbols here
+(setq qerror
+      '((errors ((path "query" "search" "type")
+                 (extensions ... ... ...)
+                 (locations ...)
+                 (message . "Argument 'type' on Field 'search' has an invalid value (REPOfdsaSITORY). Expected type 'SearchType!'.")))))
+
+#+end_src
+
+*** Accessing Data
+
+#+begin_src emacs-lisp
+(alist-get 'search qdata)
+(alist-get 'pageInfo qdata)
+(alist-get 'repos qdata)
+(alist-get 'errors qerror)
+
+(map-apply (lambda (k v)
+             ;; (message (pp k))
+             (alist-get 'name k)) (append qrepos))
+
+;; (a-assoc-in qrepos '(repo name) "value" )
+
+(a-get-in `(repos ,qrepos) '(repo name))
+#+end_src
+
+** Pseudocode
+
+#+begin_src emacs-lisp
+;; if greater than 100 results, feed results to recursive defun
+;;   otherwise, feed to post-processing
+;;   PITA because the recursive function may need to modify (repos ((..)))
+
+;; recursive defun:
+;; - extract pageinfo and endCursor
+;; - extract repos
+
+;; in args to next recursive defun call:
+;; replace (pageInfo startCursor) with endCursor
+;; append to (repos ((...))), where order may not be guaranteed...
+
+;; call recursive with defun
+;; - the order in which results are merged up the stack may be relevant, esp with
+;;   transformations on (repos ((...)))
+
+;; from recursive function results:
+;; - extract repos and order them alphabetically (or however)
+#+end_src
+
+Now that all 844 repositories are obtained, there are two paths forwards
+
++ either continue to process in elisp (store recursive defun results as .eld)
++ or convert to JSON and use jq to post-process results with the "ACL"
+
+For this, a list of functions to something like map-apply may work better than
+=jq=. Passing around =thread-first= and =thread-last= or other similar macros in
+emacs-lisp may lead you into some very interesting problems. Maybe: it's not
+entirely clear to me how lexical scoping works with more expansive macros.
+
+if the filters are applied in order, each repo can only have one result (the
+repo ID and the name of the key to append them to). this should be
+deterministic, whereas mutating the repos to drain the results one filter at a
+time is less likely to result in the same organization of repositories.
+
+* Roam
++ [[id:7a4a7eea-5795-44e5-86e8-eec2afebf110][GraphQL]]
++ [[id:8d789c98-5e74-4bf8-9226-52fb43c5ca51][Gitforge]]
