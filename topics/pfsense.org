@@ -40,6 +40,15 @@ anticorrelation is for. Not really a practical feature though...
 
 ** Resources
 
++ [[https://www.openbsdhandbook.com/pf/cheat_sheet/][pfctl cheatsheet]]
+
+*** Automation
+
++ PFSensible [[https://github.com/pfsensible/core/tree/master/examples][examples]]
++ PFSensible [[https://github.com/pfsensible/core/blob/master/openvpn.yml][openvpn.yml]]
+
+
+*** BSD
 + [[https://difyel.com/cheatsheet/freebsd-pkg-cheat-sheet/index.html][Freebsd Pkg Cheatsheet]]
 + [[https://optionkey.blogspot.com/2022/03/restore-pfsense-backup-using-cli.html][Restore a PFSense Backup using the CLI]]
 
@@ -50,6 +59,84 @@ anticorrelation is for. Not really a practical feature though...
 Setting your terminal to something funny like =TERM=alacritty= before =ssh= will
 prevent you from editing files ... though I'm not sure why I set my term to
 that.
+
+*** Automation
+
+**** Network Automation Challenges
+
+in addition to the typical challenges with network automation, you also need to
+deal with:
+
+- ensuring firewall rules are in order. this usually means that you choose GUI
+  or scripting. if you use both, you need to plan out how you update and backup
+  often.
+- knowing which configs contain secrets
+- detecting drift in your firewall's configuration state
+- flushing PFSense's firewall states during deployment
+
+***** Deterministic In-Place Updates Firewall Rules
+
+if you want to replace firewall rules, you may need to hash a unique set of
+attributes with yaml/jinja.
+
+#+begin_src yaml
+tasks:
+  - name: the tracker is usually set to a timestamp
+    pfsensible.core.pfsense_aggregate:
+      aggregated_rules:
+        - tracker: "{{ "uniq-string-from-rule-propertiees" | hash("SHA1") }}"
+```
+#+end_src
+
+Tthe point is to track firewall rules deployed on devices. This is difficult on
+any system/network, but particularly with iptables. The above should work with
+ansible/pfsense, but is probably unnecessary if you choose between GUI config or
+plain-text config. it also may be overkill to use ansible for firewall rules,
+but that's one area resulting in the most GUI-related overhead for me.
+
+also, this paper discusses a non-cryptographic hashing algorithm used to track
+packets related to a session
+
+[[https://doi.org/10.1109/TrustCom.2014.20][Stateful Mechanism for the Tree-Rule Firewall]]
+
+it's more of a data structure though and only tangentially related. the paper
+gives you an idea of how stateful firewall rules track sessions and where the
+problems are. Because of the domain similarity, the data structures are thus
+similar in nature to what would need to be hashed for firewall rule/sets to be
+tracked across updates with Ansible. it's paywalled on IEEE, but can actually
+read it on [[https://www.researchgate.net/publication/266319157_A_Stateful_Mechanism_for_the_Tree-Rule_Firewall][ResearchGate]]
+
+**** Ansible Collections
+
+Yay [[https://galaxy.ansible.com/pfsensible/core][declarative configuration]]
+
+.... i can haz declarative configuration? Well technically it's just XML, but
+you don't see any that in the manual because too risky for business model. So
+now it's realllly risky. It beats the hell out of MikroTik or so I've heard, but
+if you're willing to reconsider, I'd like to introduce you to my friends
+=Ctrl-F= and =libxml2=.
+
+Sorry if my criticism sounds harsh, but trying to manage the firewall is verrry
+slow in the GUI. Also, my working memory does not get along with 24 browser
+tabs. Nice GUI though. The features are nice, but it's hard to experiment with
+them while controlling variables if you can't diff configs, grok config
+changesets or script things easily.
+
+I guess I just don't know enough BSD. I did customize the shell prompt though.
+
+***** Automating the PFSense FreeBSD
+
+FreeBSD can be automated using some of the generic tools Ansible provides.
+
+None of these BSD systems are going to automate FreeBSD package
+installation. Pfsensible & collection_opnsense will allow you to add packages
+their builds support, but not those out of tree. you could theoretically use
+Ansible to do this -- [[https://github.com/pfsensible/core/blob/master/examples/roles/pfsense_setup/tasks/main.yml][using file/copy and other basics to manage configs]],
+but if you don't already know this, you're probably in over your head for
+package configuration. you need to ensure that FreeBSD packages are absolutely
+devoid of dependencies unless you are intermediate/advanced with BSD: if you're
+lucky, your system will outright crash; otherwise, you may deal with vague
+errors. and you won't get help with it.
 
 *** FreeBSD Packages
 
@@ -280,23 +367,6 @@ files. This flag is disabled by default.
 
 ***** Autostarting the service
 
-*** Ansible Collections
-Yay [[https://galaxy.ansible.com/pfsensible/core][declarative configuration]]
-
-.... i can haz declarative configuration? Well technically it's just XML, but
-you don't see any that in the manual because too risky for business model. So
-now it's realllly risky. It beats the hell out of MikroTik or so I've heard, but
-if you're willing to reconsider, I'd like to introduce you to my friends
-=Ctrl-F= and =libxml2=.
-
-Sorry if my criticism sounds harsh, but trying to manage the firewall is verrry
-slow in the GUI. Also, my working memory does not get along with 24 browser
-tabs. Nice GUI though. The features are nice, but it's hard to experiment with
-them while controlling variables if you can't diff configs, grok config
-changesets or script things easily.
-
-I guess I just don't know enough BSD. I did customize the shell prompt though.
-
 ** Issues
 
 *** ZeroTier on PFSense
@@ -337,10 +407,15 @@ problem for the custom PFSense package. The following "sysctl" should be enabled
 
 ** Resources
 
-** Topics
-*** Ansible Collections
+*** Automation
 
-There are basically no downloads. That's sad.
+[[https://github.com/ansibleguy/collection_opnsense][ansibleguy/collection_opnsense]]
+
+There are basically no downloads. That's sad. However, it looks like this
+collection is actually pretty good and, because of the OPNSense API, would adopt
+features more quickly.
+
+** Topics
 
 ** Issues
 

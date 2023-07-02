@@ -1,0 +1,169 @@
+:PROPERTIES:
+:ID:       45a9cba5-b13a-4cc1-a94d-28ffc56bb65c
+:END:
+#+TITLE:     Audio Analysis
+#+AUTHOR:    David Conner
+#+EMAIL: dconner.pro@gmail.com
+
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: title:nil author:nil c:nil d:(not "LOGBOOK") date:nil
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:t todo:t |:t
+#+OPTIONS: toc:nil
+
+#+SELECT_TAGS:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+
+#+STARTUP: inlineimages
+
+#+PROPERTY: header-args :eval never-export
+# #+OPTIONS: texht:t
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [a4paper]
+
+#+LATEX_HEADER_EXTRA: \usepackage{lmodern}
+# #+LATEX_HEADER_EXTRA: \usepackage{rotfloat}
+#+LATEX_HEADER: \hypersetup{colorlinks=true, linkcolor=blue}
+#+LATEX_HEADER_EXTRA: \usepackage[margin=0.5in]{geometry}
+#+LATEX_HEADER_EXTRA: \usepackage{units}
+#+LATEX_HEADER_EXTRA: \usepackage{comment}
+#+LATEX_HEADER_EXTRA: \usepackage{tabularx}
+#+LATEX_HEADER_EXTRA: \usepackage{tabu,longtable}
+#+LATEX_HEADER_EXTRA: \usepackage{booktabs}
+#+LATEX_HEADER_EXTRA: \usepackage{makeidx}
+#+LATEX_HEADER_EXTRA: \makeindex
+#+LATEX_HEADER_EXTRA: \usepackage{epstopdf}
+#+LATEX_HEADER_EXTRA: \epstopdfDeclareGraphicsRule{.gif}{png}{.png}{convert #1 \OutputFile}
+#+LATEX_HEADER_EXTRA: \AppendGraphicsExtensions{.gif}
+
+#+LATEX_HEADER: \setlength{\parskip}{0.1em}
+#+LATEX_HEADER: \setlength{\parindent}{0em}
+#+LATEX_HEADER: \setcounter{secnumdepth}{0}
+
+# colors (requires xcolor)
+#+LATEX_HEADER_EXTRA: \usepackage[table]{xcolor}
+#+LATEX_HEADER_EXTRA: \definecolor{lightgray}{gray}{0.92}
+
+#+BEGIN_EXPORT LaTeX
+\DeclareRobustCommand{\myindex}[1]{#1\index{#1}}
+#+END_EXPORT
+
+#+begin_export latex
+\thispagestyle{empty}
+{
+  \centerline{\Large Determine Audio File Authenticity}
+  \begin{center}\strut
+    \huge \bfseries Audio Forensics
+  \end{center}
+  \vfill
+
+  \begin{center}\strut
+    \Large \bfseries{Author:} \\
+    \mdseries David Conner
+  \end{center}
+  \vfill
+
+  \begin{center}\strut
+    \normalsize \bfseries{PGP:} \\
+    \mdseries 9E01 3E94 5908 1C7D 2C10  \\
+    DEB6 9FCE 9B30 64CE D760
+  \end{center}
+  \vfill
+
+  \begin{center}\strut
+    \large Data Collected on May 14, 2023, 4:21 AM EST
+  \end{center}
+  \clearpage
+}
+#+end_export
+
+
+* Analysis
+
+The spoofed sample is $\detokenize{sound_s.wav}$.
+
++ The two WAV files are encoded at separate sampling rates.
++ =Sound B= is encoded in mono at =16,000 Hz= which is particularly low. The
+  Nyquist frequency is half the sample rate.
+
+#+begin_export latex
+\begin{align}
+  f_N = \frac{f_S}{2}
+\end{align}
+#+end_export
+
++ When a sound is discretized into WAV, each value is an integer sample
+  representing the amplitude. The fourier transform cannot extract frequencies
+  approaching and exceeding $f_N$.
+
++ =Sound S= is encoded at =48,000 Hz=. This file's spectral domain has a sharp
+  dropoff at frequencies above it's $f_N$. Since the recording is at a higher
+  sample rate, its STFT can return values at higher frequencies. These can be
+  seen above =8 kHz= as a noise signature of less than =-60dB=.
+
++ However, in the spectrogram for =Sound S=, there is no clear signal above
+  =8,000 Hz=. If the cutoff was gradual, this could indicate frequency
+  limitations in the microphones, like in the lower end of the spectrogram for
+  =Sound B=. The cutoff is sharp, which indicates a reencoded recording without
+  interpolation.
+
+#+name: tbldata2
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|c|r|r|r|r|r|r|
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+| Sound                    | Label    | Channels   | Nyquist   | Sampling  | Resolution | Byte Count | Frame Count |
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+| \detokenize{sound_b.wav} | bonafide | 1 (mono)   | 8,000 Hz  | 16,000 Hz | 16 Bit     |     288000 |      144000 |
+| \detokenize{sound_s.wav} | spoof    | 2 (stereo) | 24,000 Hz | 48,000 Hz | 16 Bit     |    1812480 |      453120 |
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+
++ The byte count represents the WAV audio data and does not include the metadata.
++ There are =44 Bytes= of metadata in each file.
+
+** Tools
+
++ Language: Python
++ Libraries:  =numpy=, =matplotlib=, =wavinfo=, and =librosa=
+
+** Methods
+
++ Plotted the time-domain wave form for each WAV file.
++ Performed STFT on each channel in each WAV file.
++ Transformed STFT output from Amplitude to dB relative the maximum dB for all
+  channels in the WAV file.
++ Plotted the resulting spectral domain for each channel.
+
+#+begin_export latex
+\clearpage
+#+end_export
+
+* Sound B
+
+#+name: tbldata3
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|c|r|r|r|r|r|r|
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+| Sound                    | Label    | Channels   | Nyquist   | Sampling  | Resolution | Byte Count | Frame Count |
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+| \detokenize{sound_b.wav} | bonafide | 1 (mono)   | 8,000 Hz  | 16,000 Hz | 16 Bit     |     288000 |      144000 |
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+
+#+ATTR_LATEX: :width 14cm
+[[file:img/sound_b.png]]
+
+
+* Sound S
+
+#+name: tbldata4
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|c|r|r|r|r|r|r|
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+| Sound                    | Label    | Channels   | Nyquist   | Sampling  | Resolution | Byte Count | Frame Count |
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+| \detokenize{sound_s.wav} | spoof    | 2 (stereo) | 24,000 Hz | 48,000 Hz | 16 Bit     |    1812480 |      453120 |
+|--------------------------+----------+------------+-----------+-----------+------------+------------+-------------|
+#+ATTR_LATEX: :width 14cm
+[[file:img/sound_s.png]]
