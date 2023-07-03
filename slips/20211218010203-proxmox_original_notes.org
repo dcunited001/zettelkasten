@@ -1,0 +1,706 @@
+:PROPERTIES:
+:ID:       6d7c7716-013e-4d3c-9136-0f4f5a9bc110
+:END:
+#+TITLE: Proxmox: Original Notes
+#+AUTHOR: David Conner
+#+EMAIL: noreply@te.xel.io
+#+DESCRIPTION: original notes on proxmox GPU Passthrough
+
+
+* Setup
+
+** BIOS
+
++ IOMMU, SVT activated
++ Wireless disabled
+  - if wireless is re-enabled, this will change the order of network
+    interface setup on reboot. i.e.
+    - =enp4s0= becomes =enp5s0=
+    - =enp5s0= becomes =enp6s0=
+  - this will change the router that proxmox thinks =172.20.0.253= is
+    connected to
+
+**** TODO find out how to lock down order of network interface assignment
+
+*** TPM and Encrypted Root Partition
+
+Relevant material is in "3.12 Host Bootloader"
+    
++ A custom unit is needed to automatically hand off encryption keys to
+  =zfs load-key= as the system boots.
+  - This could be fetched from the TPM, if the system claims it early
+    enough. Error handling would be tough. There may be compatibility
+    problems elsewhere.
+
+
+** Soundcard Passthrough
+
+This wasn't going to happen without a fight
+
+**** TODO get the soundcard to passthrough
+
+** GPU Passthrough
+
+*** Update Modules
+
+
+in =/etc/modules=
+     
+#+begin_src conf
+vfio
+vfio_iommu_type1
+vfio_pci
+vfio_virqfd	
+#+end_src
+
+Then update the =initramfs=
+
+#+begin_src bash
+update-initramfs -u -k all
+#+end_src
+
+Check that it's enabled:
+
+#+begin_src bash
+dmesg | grep -e DMAR -e IOMMU -e AMD-Vi
+#+end_src
+
+Ensure these PCIe devices are in a separate IOMMU group
+
+#+begin_src bash
+find /sys/kernel/iommu_groups/ -type 1
+#+end_src
+
+*** Update Bootloader
+
++ =systemd-boot= is being used (not grub), so update
+  =/etc/kernel/cmdline= instead
++ To complete, update =proxmox-boot-tool refresh=
+
+*** Blacklist Host Drivers
+
+#+begin_src conf
+blacklist nouveau	
+blacklist nvidiafb
+blacklist nvidia
+blacklist radeon
+blacklist amdgpu
+#+end_src
+
+Then update initramfs again and check =lspci -nnk=
+
+*** Guest Conf
+
+in =/etc/pve/nodes/pve/qemu-server/100.conf=
+
+#+begin_src 
+agent: 1
+balloon: 0
+bios: ovmf
+boot: order=ide2;net0
+cores: 12
+cpu: host,flags=+md-clear;+ibpb;+virt-ssbd;+amd-ssbd;+amd-no-ssb;+pdpe1gb;-hv-tlbflush;-hv-evmcs;+aes
+efidisk0: mainzfs:base-100-disk-0,efitype=4m,pre-enrolled-keys=1,size=1M
+ide2: none,media=cdrom
+machine: q35
+memory: 12288
+meta: creation-qemu=6.1.0,ctime=1639870071
+name: kratos
+net0: virtio=5A:78:0F:2A:7B:21,bridge=vmbr1,firewall=1
+numa: 0
+ostype: l26
+scsihw: virtio-scsi-single
+smbios1: uuid=e388559d-9d2f-4bea-9d16-acf4a8db2581
+sockets: 1
+template: 1
+tpmstate0: mainzfs:base-100-disk-1,size=4M,version=v2.0
+vga: virtio
+vmgenid: d2778457-4cb5-46f6-8b79-bc053e511763
+#+end_src
+
+And 3 disks
+
+#+begin_src 
+scsi0: mainzfs:base-100-disk-2,aio=native,backup=0,iothread=1,replicate=0,size=50G,ssd=1
+scsi1: vgmedia:vm-100-disk-0,aio=native,backup=0,iothread=1,replicate=0,size=200G,ssd=1
+scsi2: vgmedia:vm-100-disk-1,aio=native,discard=on,iothread=1,size=35G,ssd=1
+#+end_src
+
+*** Linux Guest Setup
+
+#+begin_quote
+Once the drivers are blacklisted,
+#+end_quote
+
+
+
++ Add the PCI device... (select all function, pci-ex)
+  - phys gpu can forward GPU to multiple devices, but only one at a
+    time.
+  - after passing through PCIe GPU, it should appear in =lspci -nnk=
+    or in Garuda's hardware manager
+  - but the root console will freak out while the =virtio-gpu= is
+    being used ... until the driver is installed.
++ Install the driver from within the host
+
+
+*** Windows Guest Setup
+
+#+begin_quote 
+Instructions are for Nvidia
+#+end_quote
+
++ Install nvidia drivers
++ =VB Cable= Virtual Sound Device
+  - allows sound to work without a physical audio output
++ Install =Tight VNC= as "always on service"
+  - neither RDP nor proxmox console will render during config
++ Download the USB MMIDD (virtual display adapter driver)
+  - and Parsec Streaming Server (from parsec.app
+  - install later
++ Open an Admin command prompt at =C:\Program Files\NVIDIA Corporation\NVSMI=
+  - run =nvidia-smi -dm 0= to change the driver mode from =Compute Only=
+    to =WDDM Mode=. This enables NVidia Boost for higher clock rates.
++ Make a registry change to enable rendering 3d applications.
+  - Find the "Tesla K80" registry key. Delete the =AdapterType= key.
+  - =Computer\HKEY_LOCAL_MACHINE\SYSTEM\ControlSet001\Control\Class\{$UUID}\0001=
+  - This & WDDM require restarting the VM to take effect.
++ Install USM MMIDD. This will cause the VNC to automatically resize
+  - it will now include a virtual 1080p monitor.
++ Install Parsec (shared, so it can run as a service).
+  - you'll need an account and need to login
+  - configure parsec to include the USB MMIDD virtual display.
++ Disable the default VNC display (only show monitor #2)
++ Write a batchscript to automatically start =USB MMIDD= on login
+  - start.bat :: =C:\usbmmidd\deviceinstaller64 enableidd 1=
+  - save in =C:\usbmmidd\start.bat=
++ click start, open =gpedit.msc= the group policy editor
+  - under =Computer Config= open =Windows Settings= then =Scripts=
+    - go to =startup= and attach =start.bat= to the computers startup
++ reboot one last time.      
+
+** Guest Troubleshooting
+
+*** Guest Agent
+
+#+begin_src sh
+# command must be sent as array
+thiscmd=(mhwd-gpu --status)
+qm guest exec $VMID 
+#+end_src
+
+
+** Resource Pools
+
+*** Desktops
+
++ rgdesktop
+  - GPU
+  - 6 CPU
+  - 16 GiB
+    
+*** Kubernetes
+
++ k8score
+  - etcd :: 1 node
+  - api :: 2 nodes
+  - 2 CPU
+  - 4 GiB 
++ k8sworker
+  - worker :: lb + 2 worker nodes
+  - 2 CPU
+  - 4 GiB 
+
+** Debian (Host)
+
++ installed vim
+  
+*** Repositories
+
++ added the =pve-no-subscription= repository
+
+*** Packages
+
+
+*** Users
+
+**** myuser
+
++ added user =myuser= to GUI with PAM auth
+  + to create, =useradd -u 1000 -g users myuser= and set password
+
+
+** Network
+
+Isolating the management functions to the management network is kind
+of a pain. This is easy for a single-node install. Multi-node challenges include:
+
++ Multinode Proxmox clusters
++ Running Kubernetes Cluster on a node, across multiple proxmox nodes
+  or on a server not running proxmox.
++ Permitting A Rancher K3S workers access to Proxmox/Kubernetes API
++ Network design that avoids needing =iproute2= tables and =ip rule=
+  
+*** GUI: =pve-proxy=
+
+GUI is handled by =pveproxy= service
+    
++ Whatever ethernet interface comes up first (on boot or network
+  restart) gets the default route.
+  - The IP configured on install will host the PVE GUI
+  - The other IP won't respond
+  - I can't find this in the GUI
+
+*** Certificates
+
+Changing the PVE node hostname after install will cause SSL problems
+with GUI. Either reinstall, set up ACME, set up Let's Encrypt or run
+=pvecm updatecerts --force=
+
+
+*** Interfaces
+
++ Installed with IP =172.20.0.253=
+  - Then removed the "gateway"
+  - Otherwise proxmox will attempt to create a second gateway in the
+    ip routes
+    - both interfaces will have a gateway configured in
+      =/etc/network/interfaces=
+    - but what proxmox won't do is:
+      - set up the custom routing =table(s)= in
+        =/etc/iproute2/rt_tables=
+      - then setting up the proper =ip route= and =ip rule= calls, so
+        that both interfaces can be used to talk to specific address
+        ranges
+    - another option that's not available is =ip netns= to restrict
+      processes to a specific network namespace.
+  - Things are simpler this way: explicit routes are not needed for
+    every network.
+    - However, it's much more difficult to shape traffic
+      - especially when it leaves the internal network, like in hybrid
+        cloud where nodes may talk to named servers where associated
+        IP's can't be known
+      - in this case, vIP's would be needed, which are difficult to
+        sync across network infrastructure.
+   
+*** DNS
+
+The Proxmox node DNS traffic will go out the interface with a gateway
+configured. Design of router-hosted firewalls should be aware of this.
+
+*** Firewalls
+
+If possible, the firewall rules should be configured on Proxmox, not
+the routers.
+
++ The web admin traffic can be limited on proxmox node firewalls.
+
+
+*** SDN Setup
+
+#+begin_src bash
+apt install libpve-network-perl ifupdown2
+
+echo 'source /etc/network/interfaces.d/*' >> /etc/network/interfaces
+#+end_src
+
+** Storage
+
+*** Initial
+
++ mainzfs :: 2TB, ZFS pool =/dev/nvme0n1=
++ vgmedia :: 256GB, LVM 
++ lvmtp1 :: 500GB, LVM Thin pool 
+
+*** Desired
+
+
+* Networks
+
+** PVE Firewalls
+
++ there are only two tables: =raw= and =filter=
+  - see =/proc/net/ip_tables_names=
++ cluster and node rules are both added to the same lists
+  - Until I have more nodes, the cluster firewall should be disabled (it
+    blocks all traffic)
+
+** Ports
+
+More info can be found in the Firewall Macro Definitions
+   
++ 8006 (TCP) :: Web Interface (HTTP/1.1 over TLS)
++ 5900-5999(TCP, Websocket) :: VNC Web Console
++ 3128 (TCP) :: SPICE proxy
++ 2112 (TCP) :: SSH (required for cluster)
++ 111 (UDP) :: rpcbind
++ 25 (TCP, outgoing) :: sendmail
++ 5404, 5405 (UDP) :: corosync cluster traffic
++ 60000-60050 (TCP) :: live migration(VM memory and local-disk data)
+
+*** Remote Access
+
++ 9999 (TCP) :: Cockpit can be set up on some instances
+
+** Interfaces
+
+*** VLANs
+
++ [[https://wiki.dd-wrt.com/wiki/index.php/Switched_Ports][DD-WRT: Switched Ports]]
+  - probably the best starting point
++ [[https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/7/html/networking_guide/ch-configure_802_1q_vlan_tagging][Configure 802.1q VLAN Tagging]]
+  - The redhat networking guide covers a broad range of topics.
++ [[Cilium also has 802.1q support][Cilium also has 802.1q support]]
++ [[https://github.com/k8snetworkplumbingwg/multus-cni][Multus CNI enables attaching multiple nics to pods in Kubernetes]]
+
+*** Summarized routing + VLANs
+
+Having summarized routes requires obtaining an extra layer of
+abstraction/indirection. There must be a layer3-aware device on the
+boundary of the network.
+
+I tried bonding nics, then repeating the config on =rtr1=
+
+#+begin_src conf
+iface enp5s0 inet manual
+
+#iface enp5s0 inet static
+#address 172.18.0.253/24
+#gateway 172.18.0.1
+
+auto bond1
+iface bond1 inet static
+bond-slaves enp5s0
+bond-mode 802.3ad
+bond-xmit-hash-policy layer2+3
+address 172.18.0.253/24
+gateway 172.18.0.1
+
+auto vmbr1
+iface vmbr1 inet static
+address 172.18.1.1/24
+bridge-ports bond1
+bridge-stp off
+bridge-fd 0
+bridge-vlan-aware yes
+bridge-vids 2-4094
+#+end_src
+
+
+
+
+*** Adding a VLAN with NMCLI
+
+The guix =nmcli-connection-editor= fails with =sudo= and can't edit
+without permissions.
+
+#+begin_src sh
+sudo connection edit # for interactive
+
+sudo connection add type vlan dev enp2s0f0 id 1000
+sudo connection edit vlan
+#+end_src
+
+From here:
+
+#+begin_src sh
+print # and check the VLAN id
+set connection.id rtr2 192 (33)
+set ipv4.method manual
+set ipv4.dns 172.16.172.16
+set ipv4.addresses 172.20.0.11
+set ipv4.gateway 172.20.0.1
+#+end_src
+
+Ensure the VLAN matches one of the tags on the router port.
+
+
+*** Setting up interfaces for Proxmox & pfSense
+
++ [[https://docs.netgate.com/pfsense/en/latest/recipes/virtualize-proxmox-ve.html][pfSense guide is here]]
+
+*** PVE
+
+*** Mixing with PVE SDN
+
+**** Routes
+
++ If setting up =vrfN <--> vmbrN <--> vmvrN.x= the routes for the
+  vmbrN.x devices will have their routes added to the default routing
+  table
+  - unless vrfN is specified for each
+
+**** VRF Gateway
+
++ The =vmbrN= bridge should declare the gateway.
++ The =vrfN= device itself doesn't need an IP.
++ The main =vmbrN= should also have a network defined.
+
+*** DD-WRT
+
+**** Routes
+
+#+begin_quote
+The static route defined in ddwrt needs to send to an interface on
+another router. (usually the *.*.*.253 across the way)
+#+end_quote
+
+**** =Rtr2= VLANs
+
+=Rtr2= also needs vlan/route/iptable config to permit subnets in
+=172.20.0.0/16= to talk (and iptables to talk via =rtr1=)
+
+**** =Rtr1= iptables
+
+- There is a summarized route for =172.18.0.0/16= that enables the
+  VLANs on PVE =vrf1= to talk to each other, but the route exists on
+  =Rtr1=.
+  - It would be more efficient to prevent this traffic from leaving
+    PVE, but doing so requires loading VRF-specific =ip route=
+  - With a high traffic load, this will eventually strain the routers,
+    PVE interfaces and hardware interrupts.
+  - If at all possible, no container traffic should be routed outside
+    of PVE if it can stay within the =172.*.*.0/20= networks.
+- Because the traffic is routed (via =rtr1=), iptables rules are also
+  needed to forward the traffic
+
+**** =Rtr1= VLANs
+
+#+begin_quote
+When adding a new VLAN to proxmox, new VLAN configurations are
+needed in either =Rtr1= or =Rtr2=.
+#+end_quote
+
+
+The vlans config for DD-WRT mirrors the PVE =vmbrN.x= interfaces:
+
+
+***** TODO get vlan interface config; not in =/etc/network/interfaces=
+
+***** VLAN 44 (=rtr1= to pvchost/vrf1 bridge)
+
+This connects to the main pvchost interface for the 2.5g ethernet
+
+#+begin_src bash
+vlan44_nat=1
+bridgesif=br2>vlan44>128>0>1>100 br2>vlan10>128>0>1>100 br2>vlan64>128>0>1>100
+vlan44_dns_redirect=0
+vlan44_txq=1000
+vlan44_dns_ipaddr=0.0.0.0
+bat_vlan44_bridge=br0
+vlan44_hwaddr=12:34:56:78:90:AB
+vlan44_multicast=0
+vlan44_mtu=1500
+vlan44_ipaddr=172.18.0.1
+vlan44_isolation=0
+vlan44_label==Rtr1= to Pvchost
+vlan44_bridged=1
+vlan44_multicast_to_unicast=0
+vlan44_netmask=255.255.255.0
+#+end_src
+
+***** VLAN 10 (desktops network)
+
+#+begin_src bash
+vlan10_txq=1000
+vlan44_hwaddr=12:34:56:78:90:AB
+size: 45902 bytes (19634 left)
+bridgesif=br2>vlan44>128>0>1>100 br2>vlan10>128>0>1>100 br2>vlan64>128>0>1>100
+vlan10_isolation=0
+vlan10_ipaddr=0.0.0.0
+vlan10_mtu=1500
+vlan10_label=PVE 10 (Desktops)
+vlan10_dns_ipaddr=0.0.0.0
+vlan10_bloop=0
+vlan10_multicast_to_unicast=0
+vlan10_nat=1
+vlan10_bridged=1
+vlan10_multicast=0
+vlan10_netmask=0.0.0.0
+bat_vlan10_bridge=br0
+vlan10_dns_redirect=0
+#+end_src
+
+
+
+
+
+** SDN
+
+See in-depth blogs on [[https://linux-blog.anracom.com/tag/vlan-tagging-in-linux-bridges/][Linux bridges, vlans and virtual interfaces]]
+   
+*** Conventions
+
+Where possible
+
++ proxmox bridge interfaces:
+  - vmbr0 :: 172.20.0.253/24
+  - vmbr1 :: 172.18.0.253/24
+
++ vlans branch out from their bridge interface:
+  - vlan X on 172.18.X.0/24 :: vlan and class c subnet match
+  - vnet vlan (x+100) :: add 100 to get the VNet VLAN ID
+  - contiguous qinq vlans, if possible
+  - subnet addresses match qinq/vlan id's ... where possible
+
+***** TODO where to define SDN-associated routes/rules/iptables?
+
+*** Desktops
+
+***** TODO retrieve network status automatically (or just use prometheus)
+
++ vmbr1.10 :: vlan
+  - mgmt ip :: 172.18.10.1/24
++ desktops :: VLAN zone
+  - restricted to =pve= node
++ desknet :: VNet
+  - vlan :: 110
+
+here, a subnet isn't really necessary. The zone's VNet should inherit
+it's network, so IP's should be assigned from there.
+
+*** Kubernetes
+
+This will require:
+
++ A worker network
++ A control plane network
+
+*** Notes
+
+**** Multi-Node Zones
+
++ Zones (QinQ, etc) can connect across nodes, but nodes (AFAIK) must
+  be connected to the same *vlan-aware* switch.
+  - once the traffic is routed beyond the switch connecting nodes,
+    then a VxLAN is needed.
+  - such SDN config is useful (but perhaps not necessary) when a
+    Kubernetes cluster needs to replicate =etcd= when its knodes are
+    separated by any route hops.
+    - another way to spread kubernetes across a routed network:
+      * using VNet/QinQ zones
+      * using =ip route= and =ip rule= to shape traffic
+      * using =iptables= to filter traffic
+
+
+
+
+* VM Prototypes
+
++ Proxmox stores node configuration in =/etc/pve/nodes/*=, see 6.1.4
+
+** Provisioning
+
+Use [[https://libguestfs.org/virt-customize.1.html][libguestfs]] and =virt-customize=
+
+** General
+
+*** CPU
+
++ Run =numastat= or =numactl --hardware= to get info about hardware
+  - my RAM is installed in A1/B1
+
+#+begin_src conf
+md-clear=1
+ibpnp=1
+virt-ssbd=1
+amd-ssbd=1
+amd-no-ssb=1
+aes=1
+
+# if RAM performance needed
+pdpe1gb=1
+#+end_src
+
+*** Import Disk from =qcow2= images
+
+One option is described in [[https://forum.proxmox.com/threads/create-a-new-vm-from-an-existing-qcow2-image.85563/][this Proxmox forum post]] here.
+
++ See also: Proxmox forums [[https://forum.proxmox.com/tags/qcow2/][qcow2]] tag
+
++ create a new VM with most details. add a blank disk.
++ import or replace the the disk
+  + via CLI: =qm importdisk= or =qm set VMID [option] [value]=
+  + via config file: =/etc/pve/qemu-server/VIMD.conf=
+
+** Desktops
+
+*** Garuda
+
+
+The basics 
+
+#+begin_src bash
+
+#+end_src
+
+** Centos
+
++ VMID 1000 :: A CentOS-Stream LVM-Thinpool template
+
+*** Create Template
+
++ Download a new CentosStream qcow2 image from [[https://cloud.centos.org/][cloud.centos.org]]
+  - =scp $QCOW2 muhserver:/home/myuser/images
+
+
+*** 1000.conf
+
+#+begin_src sh
+agent: 1
+balloon: 0
+boot: order=scsi0;ide2;net0
+cores: 4
+cpu: host,flags=+md-clear;+ibpb;+virt-ssbd;+amd-ssbd;+amd-no-ssb;+aes
+ide2: none,media=cdrom
+memory: 2048
+meta: creation-qemu=6.1.0,ctime=1640822819
+name: CentosStream
+net0: virtio=26:A5:32:78:F5:67,bridge=vnet4010,firewall=1,tag=4010
+numa: 0
+ostype: l26
+scsi0: lvmtp1:vm-1000-disk-1,backup=0,replicate=0,size=32G,ssd=1
+scsihw: virtio-scsi-pci
+smbios1: uuid=9aade0a8-59cd-4318-99ea-40662263dbaf
+sockets: 1
+vmgenid: 59bfb5d6-8161-481e-84df-9b1973e29aa5
+#+end_src
+
+** Debian
+
++ VMID 4000 :: an Ubuntu LVM-Thinpool template
+
++ [[https://wiki.debian.org/ThomasChung/CloudImage][How to import Cloud Image to virtual machines on Debian 10]]
+  - this describes using =libguestfs-tools= and =virt-customize=
+    to reset the password on Debian qcow iamges
++ [[https://austinsnerdythings.com/2021/08/30/how-to-create-a-proxmox-ubuntu-cloud-init-image/][Using Terraform to deploy VMs in Proxmox]]
++ [[https://austinsnerdythings.com/2021/08/30/how-to-create-a-proxmox-ubuntu-cloud-init-image/][How to create a proxmox ubuntu cloud init image]]
+
+
+*** 4000.conf
+
+#+begin_src sh
+agent: 1
+balloon: 0
+boot: order=scsi0;ide2;net0
+cores: 4
+cpu: host,flags=+md-clear;+ibpb;+virt-ssbd;+amd-ssbd;+amd-no-ssb;+aes
+ide2: none,media=cdrom
+memory: 2048
+meta: creation-qemu=6.1.0,ctime=1640904713
+name: debian
+net0: virtio=0E:C9:D4:1D:DA:3F,bridge=vnet4010,firewall=1,tag=4010
+numa: 0
+ostype: l26
+scsi0: lvmtp1:vm-4000-disk-1,backup=0,replicate=0,size=2G,ssd=1
+scsihw: virtio-scsi-pci
+smbios1: uuid=caabef32-09c3-4178-a6b6-5653bcfb5872
+sockets: 1
+vmgenid: e897e861-4322-4bd6-8737-2b2d11546870
+#+end_src
+
+* Roam
+
++ [[id:54cc71a0-570a-451d-8b84-df502c42b36b][Proxmox: Setup New VM Host]]
++ [[id:cf2bd101-8e99-4a31-bbdc-a67949389b40][Virtualization]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]

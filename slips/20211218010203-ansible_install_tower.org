@@ -1,0 +1,283 @@
+:PROPERTIES:
+:ID:       b1e437f3-98d4-466e-9e3a-258c5324a79b
+:END:
+#+TITLE: Ansible: Install Tower
+#+CATEGORY: slips
+#+TAGS:
+
+Just some notes shell history on installing Ansible Tower. Ahh those were a good
+60 days, where I really knew enough about what I was doing to get stuff done.
+
+This was from I guess Dec 2021, where I was still running DD-WRT. I hadn't quite
+remembered the difference between layer 3 and layer 4 firewall ..... though I
+guess =iptables= does some of that.
+
+... oh nevermind. here's the notes. I ended up running into issues with DD-WRT
+and pihole, so i dropped the latter. Then I ran out of steam. Then I lost the
+licence.
+
+**** DONE generate a new key for the =ansible= user
+
+**** TODO activate subscription RPM for automation-hub
+
++ [ ] then continue with hub install
+
+**** TODO update docs@redhat.org
+
+**** Explore Redhat ecosystemExport
+
++ [ ] [[https://docs.ansible.com/ansible-tower/latest/html/administration/usability_data_collection.html][Ansible Tower and Insights]] (analytics on deployments)
++ [ ] Redhat Developer/Automation trial includes 60-days access to
+  their cloud. View Redhat [[http://console.redhat.com/][Hybrid Cloud Console]]
+
+* Cockpit
+
+** Firewalld
+
+Firewalld is sufficient for server-based firewalling, but individual
+services can't have complex configurations (at least not in GUI).
+
+*** Initial Zone Setup
+
+Initially includes both ssh & http in the public zone. These were
+moved to the Internal Zone.
+
++ Public Zone
+  + permits connections from anywhere
+  + dhcpv6
+  + dns
+
++ Internal Zone :: 172.16.0.0/20
+  + http :: pi-hole
+  + 9999 :: cockpit
+  + ssh
+
+*** firewall-cmd
+
++ Editing zones requires using =firewalld= at the command line
+  - or edit: =/usr/lib/firewalld/zones=
+  - or edit: =/etc/firewalld/zones=
+
+
+** Upgrading
+
+**** TODO configure TPM, so reboots =tower.ansible.local= can occur w/o key entry
+
+* Ansible *TOWER*
+
+To use Ansible Tower, follow the [[https://docs.ansible.com/ansible-tower/latest/html/quickstart/quick_start.html][quick start guide]].
+
++ Ensure that the page titles for guides or URLs for downloaded
+  packages actually specify =3.8.5=. The terminology and config keys
+  depart in version =~> 4.0=, which is confusing.
+  - i.e. =[tower]= is now =[controller]=
+  - the gzip file is =ansible-tower-setup-latest.tar.gz=
++ Ensure that =tower_package_version= is set to =3.8.5= in the group
+  vars (for the code downloaded in gzip) or it will fail. It is not clear whether there is a second gzip
+  to download.
+
+*** The process is basically the same:
+
++ Sign up for Redhat & Developer. Import the subscription.
+  - apparently this step can be done after the install for Tower 3.8.5
++ Find the =3.8.5= gzip. Extract. Setup =inventory=
+  - Create DNS entries as needed
+  - Tower :: tower.ansible.local => 172.16.172.16
+  - Hub :: hub.ansible.local => 172.16.172.16
++ Check other config keys/values in =inventory=.
+  - also check =group_vars/all.yaml=
+  - the docs don't mention nginx config keys, but they are the same.
+
++ Run =./setup.py=
+  - the install is an bootstrap playbook. sudo access is required.
+  - the script will fail if the hosts aren't in =.ssh/known_hosts=
+  - perhaps set =ANSIBLE_BECOME_METHOD=’sudo’ ANSIBLE_BECOME=True ./setup.sh=
+
+* Ansible Platform
+
+** Convert from CentOS to RHEL
+
+CentOS is not supported by Ansible Platform > 4.0, as I am slow to
+figure out.
+
+** Docs
+
++ Ansible [[https://docs.ansible.com/][docs root]]
+
++ [[https://access.redhat.com/documentation/en-us/red_hat_ansible_automation_platform/2.1/html/red_hat_ansible_automation_platform_installation_guide/single-machine-scenario#standalone-controller-non-inst-database][Installation docs]] (standalone)
++ Controller (all [[https://docs.ansible.com/automation-controller/latest/html/][latest docs]])
+  - [[https://docs.ansible.com/automation-controller/latest/html/quickstart/index.html][Quick Setup Guide]]
+  - [[https://docs.ansible.com/automation-controller/latest/html/administration/index.html][Admin Guide]]
++ Tower (all [[https://docs.ansible.com/ansible-tower/latest/html/][latest docs]])
+  - [[https://docs.ansible.com/ansible-tower/latest/html/quickstart/index.html?extIdCarryOver=true&sc_cid=701f2000001OH6fAAG][Quick Setup Guide]]
+  - [[https://docs.ansible.com/ansible-tower/latest/html/administration/index.html?extIdCarryOver=true&sc_cid=701f2000001OH6fAAG][Admin Guide]]
+  - [[https://docs.ansible.com/ansible-tower/latest/html/userguide/index.html?extIdCarryOver=true&sc_cid=701f2000001OH6fAAG][User Guide]]
++ Hub
+
+** Platform Install
+
+*** Sign up for trial
+
++ sign up for a Redhat account and a trial of Ansible Automation Platform
+  - download the gzip to the server & extract
++ add the redhat subscription id via =subscription-manager=
+  - see the [[https://access.redhat.com/products/red-hat-subscription-management/#get-started][RHSM docs]] for a guide
+  - =yum install subscription-manager subscription-manager-cockpit=
+  - from here, system registration can be done in cockpit
+
+Configure RHSM for the Ansible subscription
+
+#+begin_src sh
+subscription-manager list --available --all | grep "Ansible Automation Platform" -B 15 -A 6
+
+# find the Pool ID for the Ansible product, then activate
+subscription-manager attach --pool=$POOL_ID
+
+#verify
+subscription-manager list --consumed
+#+end_src
+
+After RHSM activation, the installer needs to be configured.
+
+*** Configure install
+
+In the =identities= file:
+
+**** DNS and nginx
+
++ DNS names
+  - A Records :: ansible.local, hub.ansible.local, controller.ansible.local
+    - these can be moved to new IP's in the future.
+    - doing so will require moving/regenerating
+  - =/etc/hosts= :: also point these names to =127.0.0.1=
+  - CNAME Records :: x1.ansible.local, x2.ansible.local, etc
+    - these may be needed in the future.
+
++ Misc configs
+  - nginx_http_port :: 8191
+  - nginx_https_port :: 9191
+
+**** Automation Controller
+
++ under =[automationcontroller]=
++ change =localhost= to the DNS name =controller.ansible.local=
+  - ensure this is configured in pihole as a =CNAME=
+  - add this to =/etc/hosts=
++ Set the admin password
+  - Set database details
+
+**** Automation Hub
+
++ under =[automationhub]=
++ change =localhost= to the DNS name =hub.ansible.local=
+  - ensure this is configured in pihole as a =CNAME=
+  - add this to =/etc/hosts=
++ Set the admin password
+  - Set database details
+
+**** Network
+
++ Ensure there are routes (and =iptables -A FORWARD= too):
+  - between controllers & execution nodes
+    - ensure there is forwarding here too
+  - between execution nodes and hub (
+    - when using hub-enabled ansible collections
++ Open ports for the above?
++ Ensure these ports are open in the CentOS firewall
+  - in case HTTP API calls? or something?
+  - ensure the =8191= http port is disabled
+
+**** Redhat Registry
+
++ Sign up for a Redhat Developer account (use the existing
+  subscription account via SSO)
++ Enter the auth details:
+  -  =registry_username= and =registry_password=
+
+**** TODO verify that SSH cert generation is not necessary =nginx_disable_https=
+
+**** TODO verify that you can run a controller & hub on the same node/nginx
+
+
+** Run Setup
+
+You
+
+#+begin_src sh
+./setup.sh
+#+end_src
+
+** Database backup
+
+The ansible automation platform can be restored from a backup by
+downloading the installer, configuring =inventory= and running:
+
+#+begin_src sh
+./setup.sh -e 'restore_backup_files=/path/to/pg_database.backup' -r
+#+end_src
+
+** DNS
+
+Follow [[https://jenglishio.wordpress.com/2020/11/20/how-to-install-pi-hole-on-centos-8-with-selinux/][this guide]], which explains handling SELinux issues.
+
+
+* From Shell History
+
+Definitely incomplete. I'm not sure how I provided the licensing here.
+
+#+begin_src shell
+sudo systemctl enable tcsd
+sudo systemctl start tcsd
+sudo yum -y install tpm-tools
+sudo systemctl restart tcsd
+tpm_version
+sudo yum update -y
+sudo vim /etc/selinux/config
+reboot
+exit
+#+end_src
+
+Tramp was working here because i hadn't installed my dotfiles.... where I
+colorized the prompt without switching on =TERM=dumb= ... why do they even call
+it that?
+
+#+begin_src shell
+exec env TERM='dumb' INSIDE_EMACS='27.2,tramp:2.4.5.27.2' ENV='' HISTFILE=~/.tramp_history PROMPT_COMMAND='' PS1=\#\$\  PS2='' PS3='' /bin/sh
+#+end_src
+
+Extract the gzip and install. No operators necessary. Look ma! I don't even know
+what AWX is! All the docs are Tower.
+
+#+begin_src shell
+tar -xzvf ansible-tower-setup-latest.tar.gz
+cd ansible-tower-setup-3.8.5-1/
+sudo ANSIBLE_BECOME_METHOD=’sudo’ ANSIBLE_BECOME=True ./setup.sh
+#+end_src
+
+Edit credentials for =automationhub= and a few other things here.
+
+I had to retry multiple times, but the installation was progressive and bailed
+out early.
+
+#+begin_src shell
+cd ansible-tower-setup-3.8.5-1/
+./setup.sh -e bundle_install=false
+yum history
+sudo yum remove --enablerepo=ansible-automation-platform-temp ansible-cor
+sudo yum remove --enablerepo=ansible-automation-platform-temp ansible-core
+sudo yum remove ansible-automation-platform-temp ansible-core
+./setup.sh
+sudo ./setup.sh
+eval $(ssh-agent)
+sudo ./setup.sh
+cat ../ansible-automation-platform-setup-bundle-2.1.0-1/inventory | grep nginx
+sudo ./setup.sh
+sudo yum-config-manager --enable automation-hub-4.2-for-rhel-8-x86_64-rpms
+#+end_src
+
+I think that's it. It was mostly one shot, one shell at a time.
+
+.... maybe bailed out to root. not sure.
+
+* Roam
++ [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
