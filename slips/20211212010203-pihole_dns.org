@@ -1,0 +1,83 @@
+#+TITLE:     Pi-Hole: DNS Config
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
+
+* Docs
+- [[https://github.com/pi-hole/pi-hole][Github]]
+* Resources
+
+** Guides
+- [[https://discourse.pi-hole.net/t/enabling-https-for-your-pi-hole-web-interface/5771][Enabling HTTPS for Pi-Hole]]
+
+* Notes
+
+** Process
+*** Prepare CentOS
+- Download "boot" image
+- Boot and setup networking
+  - For pihole, a static IP is needed (obviously)
+  - once network is configured, the boot image will begin downloading packages
+- select minimal install
+  - standard
+  - containers
+  - rpm dev
+  - development tools
+  - headless
+  - security
+  - smart card
+  - system tools
+- Configure users
+  - set root password
+  - create a non-root user
+- (for me) simply use the single-disk option
+  - ensure LUKS is active
+    - TODO find out of this is luks or luks2?
+
+*** Configure Centos
+**** TODO rehash TPM setup instructions?
+- =yum -y install tpm-tools= for tpm1.2
+- test start =systemctl start tcsd=
+- then enable
+- clear the TPM
+- use the tools to provision the TPM for CentOS, ensure a keystore? is setup
+- modify initramfs (grub is not being used on this installation)
+  - initramfs needs to query the TPM chip/module for the LUKS password
+  - this initramfs needs to be rebuilt
+  - system needs to be modified to setup initramfs rebuilds to include this config
+
+
+**** Config hostname and resov.conf
+- After install, change the DNS from =94.140.14.14=
+  - Note, i also changed =IPV6INIT=no= to deny ip6
+  - This is because my firewall rules don't block it.
+- Delete the DNS from =/etc/sysconfig/network-scripts/ifcfg-eno1=
+  - [[https://serverok.in/centos-7-resolv-conf-permanent][this page]] explains why
+  - then add it to =/etc/resolv.conf=
+  - probably reboot or restart services
+
+*** Permissify SELinux
+See [[https://jenglishio.wordpress.com/2020/11/20/how-to-install-pi-hole-on-centos-8-with-selinux/][this guide]] (and probably others)
+
+- edit =/etc/selinux/config= and set =SELINUX_=permissive=
+- =reboot=
+- set firewall rules
+- when installation is complete, undo
+
+** Pi-Hole
+
+Note, on my ethernet card, ip6 is not configured...
+
+*** Install
+
+- After install, add user to =pihole= group
+- If the hostname was not configured in the centos install menu (network)
+  - then set =/etc/hostname= and =/etc/hosts= before the pi install
+  - when these are changed the pihole services need to be restarted
+
+**** TODO Lets Encrypt + Traefik to set up HTTPS on PiHole
+
+*** Configure Firewall
+
+* Roam

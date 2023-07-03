@@ -6,6 +6,12 @@
 #+EMAIL:     noreply@te.xel.io
 #+DESCRIPTION: notes
 
+* Linux Routing
+
+** VyOS
+
++ [[https://blog.kroy.io/2019/11/21/battle-of-the-bare-metal-routers/][Battle of the Metal Routers]]
++ [[https://blog.kroy.io/2019/08/23/battle-of-the-virtual-routers/][Battle of the Virtual Routers]] (VyOS)
 
 * Cisco
 
@@ -16,24 +22,227 @@ Can't find the notes...
 ** Resources
 + [[https://etherealmind.com/cisco-ios-cli-shortcuts/][Cisco IOS Shortcuts]]
 + [[https://www.cisco.com/c/en/us/support/ios-nx-os-software/ios-15-0s/products-command-reference-list.html#anchor913][Cisco IOS Command Reference]]
-** Topics
+
 *** SSH Configuration
 
 + [[https://www.cisco.com/c/en/us/support/docs/security-vpn/terminal-access-controller-access-control-system-tacacs-/10384-security.html][Configure AAA on an access server]]
 + [[https://www.firewall.cx/cisco-technical-knowledgebase/cisco-routers/1100-cisco-routers-ssh-support-configuration-rsa-key-generation.html][Enabling/Configuring SSH on Cisco Routers]]
 
-** 2960
+** Topics
+
+*** Usability
+
++ =do show ...= from within config modes
++ =show run | beg $KEYPHRASE= is very helpful
++ Use the linux vtty's and serial.
+  - SSH and IP config aren't needed this way. No lost connections.
+  - i.e. you're better off on a server without a GUI
++ run =set BAUD 115200= in ROMMON for faster connection.
+  - commands output much more quickly.
+  - 9600 is 1200 bytes per second...
+
+*** Configuring SSH
 
 
+**** From old notes
+
+*Caveat Lector:* This section contains an incomplete description of the process,
+but it includes some some useful tricks using GNU screen if you're on a serial
+connection.
+
+Particularly, some of the older hardware uses older algorithms, but also
+certificate formats that are non-standard (or at least unusual), which makes it
+a bit wierd to import. I can't remember which method I got to work: either
+transferring files via =xmodem= or transferring text.
+
+***** TODO Describe problems with =crypto key rsa import=
+
+Yeh, som of this is reaaly really bad.
+
+***** Importing External Keys
+
+=crypto key rsa import $KEYNAME pem url xmodem:/file= was working for
+either public or private keys (when one was in PEM format).
+
+This approach wasnt working for me -- SSH user setup just needs
+=key-string= anyways.
+
+***** Generating Keypairs
+
+- Run =crypto key rsa generate rsa modulus 4096= to generate a generic
+  keypair. This requires a hostname & domain name.
+- Validate generation/upload with =do show crypto key mypubkey all=
+- Remove keys with =crypto key rsa zeroize $KEYNAME=
+
+***** Setup SSH
+
+This will let you remotely manage your router (and use tools like
+ansible)
+
++ Configuring SSH from Linux
+  - IOS doesn't accept DSA or OpenSSH keys
+  - keys need to be in the format of =ssh-rsa ... comment=
++ Refer to this post on [[https://nsrc.org/workshops/2016/renu-nsrc-cns/raw-attachment/wiki/Agenda/Using-SSH-public-key-authentication-with-Cisco.html][Cisco/SSH via Linux]]
+
+****** Generate keys
+
+Older cisco devices want RSA, but generating 4096b keys on the device
+takes forever.
+
++ Run =ssh-keygen -t rsa -b 4096 -f $FILENAME=
++ Use screen & =exec !! fold= to copy/paste into the key-string
+  - or modify the key-string in a config that you upload
++ Verify the key with =ssh-keygen -E md5 -lf $FILENAME.pub=
+
+***** Configuring SCP Transfers
+
+****** TODO maybe figure this out someday. maybe not.
+
+*** Linux Tools for Cisco
+
+**** TFTP: =dnsmasq=
+
+Ensure your firewall is temporarily configured. Only TFTP downloads
+are allowed.
+
+=dnsmasq --no-daemon --enable-tftp --tftp-root=$TFTPROOT -i $IFACE=
+
+**** Serial: =screen=
+
+***** Enable Linux Serial for User
+
+Find the =/dev/ttySn= serial file. Also, add user to =dialout= group.
+
+For faster connection, run =set BAUD 115200= or the serial gnomes won't favor
+your file transfers.
+
+***** Use Screen to Transfer Files to IOS via Serial
+
+To transfer files like IOS updates, type =C-a := in screen. Then run =exec !! sx
+-b -X $FILENAME= to copy.
+
+The =-b= flag pipes binary data into screen, so the IOS terminal can be expected
+to receive it. From what I remember, this is tricky to time right.
+
+At the correct time, press the button after typing:
+
+=copy xmodem:/flash:/filename.bin=
+
+Press it again if it didn't work. Also, this must be done from within ROMMON,
+unless the =copy= menu gives you access to =xmodem:=
+
+***** Pasting A Big SSH Key
+
+To emulate copy/paste in screen, enter content into a file, then type =C-a := in
+screen to run Screen commands.
+
+Run =exec !! fold -bw72 $FILENAME= and the content will be piped in as input.
+
+Cisco has a maximum of 254 chars per line, so the =-bw72= arg specifies a
+maximum.
+
+***** Updating IOS from ROMMON
+
+Refer to this post to [[https://stelfox.net/2019/reflashing-cisco-catalyst-with-xmodem/][Reflash Cisco Catalyst with XMODEM]]
+
+
+** Hardware
+
+*** 2960
+
+
+
+* Avaya
+
+** Issues
+
+*** Ctrl-y
+
+Avaya expects a "Ctrl-y" after boot. This is displayed to a user
+connecting to a console (with putty/etc) ... if the console cable is
+connected during the boot.
 
 * DDWRT
 
+** Docs
 
-** Issues
-*** ipkg commands report missing files or read-only file system
-+ [[https://forum.dd-wrt.com/phpBB2/viewtopic.php?p=503846][old post]] seems to indicate missing modules or potential storage issues
+*** Top Wikis
+
++ [[https://wiki.dd-wrt.com/wiki/index.php/Useful_scripts][Useful Scripts]]
++ [[https://wiki.dd-wrt.com/wiki/index.php/TFTP_flash#Linux][TFTP Flash (linux)]]
++ [[https://forum.dd-wrt.com/phpBB2/viewtopic.php?t=51486][The "Peacock" Thread]] old, but lots of useful info
+
+*** Firewall
+
++ [[https://forum.dd-wrt.com/wiki/index.php/FirewallExample][Firewall Example]]
++ [[https://forum.dd-wrt.com/wiki/index.php/Firewall][Firewall]]
++ [[https://forum.dd-wrt.com/wiki/index.php/Firmware_FAQ#Which_router_should_I_buy.3F][Firmware FAQ]]
++ [[https://forum.dd-wrt.com/wiki/index.php/Installation#Is_Your_Router_Supported.3Fhttps://forum.dd-wrt.com/wiki/index.php/Installation#Is_Your_Router_Supported.3F][Installation]]
+
+**** Netgear R7000-specific
+
++ R7000 [[https://wiki.dd-wrt.com/wiki/index.php/Category:R7000][wiki articles]]
++ R7000 [[https://forum.dd-wrt.com/phpBB2/viewtopic.php?t=264152][best practices]] (forum)
+
+** Resources
+
+*** Guides
+
+This guy has guides with the r7000 router
+
++ [[http://www.regressionist.com/2020/07/05/poor-mans-cluster/][Poor Man's Cluster]]
++ [[http://www.regressionist.com/2020/06/11/securing-a-research-vlan-on-a-retail-router-with-dd-wrt/][Securing a research VLAN on a retail router with DD-WRT]]
++ [[http://www.regressionist.com/2020/06/14/kickstarting-from-my-dd-wrt-router/][Kickstarting from my DD-WRT Router]]
++ and to top it off: [[http://www.regressionist.com/2020/06/20/reviews-of-distributed-filesystems/][Reviews of Distributed File Systems]]
++ [[https://www.tweaking4all.com/hardware/netgear-r7000-dd-wrt/][Netgear R7000 specific instructions]] (2014)
+
+*** Scripts
+
+**** [[https://github.com/tknarr/ddwrt-nvram-tools][tknarr/ddwrt-nvram-tools]]
+
++ nvram_dump & nvram_build scripts
++ diff your nvram backups
++ my notes say: "doesn't quite work" but seeing the code solved my problems
+
+**** [[https://github.com/impressiver/ddwrt_conntrack][impressiver/ddwrt_conntrack]]
+
++ QoS IP Connection Tracking/Bandwidth Monitor
+
+**** [[https://github.com/daenney/ddwrt-snmp_exporter][daenney/ddwrt-snmp_exporter]]
+
++ yaml file to enable "prometheus" to scrape DDWRT routers for SNMP
+
+**** [[github:carlosedp/ddwrt-monitoring][carlosedp/ddwrt-monitoring]]
+
++ monitor ddwrt with prometheus/graphana (configs only)
+
 
 ** Topics
+
+*** Basic Install/Config
+
+Some generic steps to walk through in the webui
+
+**** Install
++ Reset Netgear Router
++ Walk through initial Netgear setup (one last time)
++ Then flash the *.chk file to the router
+
+**** Initial Config
++ Set a new admin/password
++ Disable wifi radios
++ Set time zone
++ Configure Gateway
+  - network/cidr/gateway
++ Configure LAN
+  - network/cidr/gateway (and a router IP address)
++ Configure DHCP
++ Configure NTP
+  - most external router should sync to =time.nist.gov=
++ Configure Administration settings
+  - change protocol to HTTPS
+  - disable info site
+  - restrict  remote ip range
 
 *** Intrusion Detection
 
@@ -71,3 +280,12 @@ This requires RSA-2048 which has bit me so many times
 *** [[https://wiki.dd-wrt.com/wiki/index.php/Ipkg][ipkg]]
 
 A package manager that can get =socat= on the device somehow...
+
+
+
+** Issues
+
+*** ipkg commands report missing files or read-only file system
+
++ [[https://forum.dd-wrt.com/phpBB2/viewtopic.php?p=503846][old post]] seems to indicate missing modules or potential storage issues
+
