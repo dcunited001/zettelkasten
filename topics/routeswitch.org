@@ -15,20 +15,137 @@
 
 * Cisco
 
-Can't find the notes...
+See this [[https://www.reddit.com/r/networking/comments/12lgpmv/issues_sshing_to_eveng_cisco_routers_from_ubuntu/][r/networking]] thread. The guy is trying to do exactly what I'm trying to
+do -- goal: manage VLAN's with Ansible, particularly to support trunking
+temporarily for an IP address migration -- and the updates to remove =ssh-rsa=
+by default from most systems just break the game for homelabbers with a Cisco
+switch.
+
+Forget about:
+
++ Kubernetes
++ or setting up a GraphQL
++ the [[https://homelab.khuedoan.com/][Khue Doan homelab thing]] where you push a button (really just useful as
+  reference for me)
++ or a nomad/k3s worker to pull upwork jobs
++ or learning Scala on Coursera
++ or setting up the VPN or ZeroTier for Coursera
+
+  #+begin_quote
+NO, YOU HAVE TO CONFIGURE A GODDAMN CISCO SWITCH AND YOU DIDN"T BUY SMARTNET AND
+NOW YOURE GOING TO BE POOR FOREVER
+  #+end_quote
+
+All of those things above might get me a job. Try explaining to people that "you
+couldn't get ssh to run on X so you could configure VLAN's" .... yeh it sounds
+like you're garbage if you can't do that.
 
 ** Docs
 
 ** Resources
-+ [[https://etherealmind.com/cisco-ios-cli-shortcuts/][Cisco IOS Shortcuts]]
+
++ [[https://www.cisco.com/c/en/us/support/docs/ip/access-lists/13608-21.html#anc41][Cisco Hardening Guide]] one of the more concise guides
 + [[https://www.cisco.com/c/en/us/support/ios-nx-os-software/ios-15-0s/products-command-reference-list.html#anchor913][Cisco IOS Command Reference]]
 
 *** SSH Configuration
 
-+ [[https://www.cisco.com/c/en/us/support/docs/security-vpn/terminal-access-controller-access-control-system-tacacs-/10384-security.html][Configure AAA on an access server]]
-+ [[https://www.firewall.cx/cisco-technical-knowledgebase/cisco-routers/1100-cisco-routers-ssh-support-configuration-rsa-key-generation.html][Enabling/Configuring SSH on Cisco Routers]]
++ Authoritative Resource on [[https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst2960/software/release/15-0_1_se/configuration/guide/scg2960/swauthen.html#68859][Configuring SSH on Cisco]]
+  - [[https://www.cisco.com/c/en/us/support/docs/security-vpn/terminal-access-controller-access-control-system-tacacs-/10384-security.html][Configure AAA on an access server]]
+  - [[https://www.firewall.cx/cisco-technical-knowledgebase/cisco-routers/1100-cisco-routers-ssh-support-configuration-rsa-key-generation.html][Enabling/Configuring SSH on Cisco Routers]]
+
+*** Security
+
++ [[https://rayanfam.com/topics/cisco-switch-sec-cheatsheet/][Cisco Switch Security Features Cheatsheet]]
++ [[https://study-ccna.com/cisco-privilege-levels/][Cisco Priviledge Levels]]
+
+*** GNU Screen
+
++ [[https://unix.stackexchange.com/questions/56614/send-file-by-xmodem-or-kermit-protocol-with-gnu-screen][Advanced Uses Of GNU Screen]]
++ [[https://unix.stackexchange.com/questions/56614/send-file-by-xmodem-or-kermit-protocol-with-gnu-screen][Send file by xmodem or kermit protocol with GNU Screen]]
+
+*** Terminal Interaction
+
++ [[https://etherealmind.com/cisco-ios-cli-shortcuts/][Cisco IOS Shortcuts]]
 
 ** Topics
+
+*** File Transfer Systems
+
+See [[https://www.cisco.com/c/en/us/td/docs/ios/fundamentals/configuration/guide/15_0s/cf_15_0S_book/cf_file-transfer.html][Configuring Basic File Transfer Services]] for more information. TL;DR: [[https://www.gnu.org/software/tramp/#Inline-methods][Tramp
+supports rsh]] and if you've never had timing issues with xmodem, you should be
+very happy about that.
+
++ [[https://en.wikipedia.org/wiki/Berkeley_r-commands][Berkeley r-commands]]
+
+**** XModem
+
+On RPM-based systems, install the deps with =dnf install lrzsz= and the commands
+are found as =sx= to send-X and =rx= to receive-X and ymodem/zmodem are also
+available, whatever those are.
+
+You can use X-Modem to paste in large keys before you have =scp= or =rcp=
+available. the latter of which may be more useful to receive files from Cisco
+IOS before ssh/scp are available. Emacs Tramp, the world's best kept secret,
+should allow you to copy using =rcp/scp= from the comfort of dired.
+
+However, I haven't used =rx= to receive files and I'm not sure where to specify
+the serial device. Also, the whole point here is that you're probably connected
+via serial and if so, the active connection probably will not support file
+transfers AFAIK.
+
+**** RSH/RCP
+
+Cisco uses a custom implementation of the =rsh= protocol and thus needs a
+_temporary_ configuration for authorized users in lieu of the usual =.rhosts=
+file that your ancestors used in the 80's -- I mean "ancestors" in the
+figurative and honorific sense. And of course Emacs Tramp supports this because
+it supports more protocols for file transfer than wikipedia can list on any
+single page.
+
++ Open port =513-514, tcp/udp= on your interface if the traffic hops a network.
++ Do not leave =rsh= enabled on the router. You also probably don't want to
+  install an rsh server on your linux box just in case it automatically installs
+  a service. These are the kind of exciting things a port-scanner may discover.
++ The Cisco device needs a local user record created. If you were using RADIUS
+  or PKI, then you probably wouldn't need to jump through these hoops.
++ For RPM systems, the =emacs-nox= package avoids downloading X11
+  dependencies. You do not want those on a server.
+
+#+begin_src ios
+dnf install emacs-nox rsh
+#+end_src
+
+***** Setup rsh server on Cisco
+
+To enable rcp to accept inbound connections, run the following.
+
+#+begin_src ios
+conf t
+
+!! enable is optional and allows the usage of enable commands.
+ip rcmd remote-host $localuser $rhost $remoteuser enable
+
+!! start the server
+ip rcmd rsh-enable
+line vty 0 15
+  !! rlogin is no longer an option?
+  transport input ssh rlogin
+  !! transport input all
+exit
+
+!! to stop the server and reset line configuration
+no ip rcmd rsh-enable
+line vty 0 15
+  transport input ssh
+exit
+#+end_src
+
+***** No Setup RSH Client
+
+Connecting via rlogin/rsh results in no response. Since the option's no longer
+listed under =transport input= I assume =rsh= has been removed from Cisco like
+it has from every other OS.
+
 
 *** Usability
 
@@ -107,23 +224,26 @@ the proper DHCPv6 or SLAAC) to unmask the identity of a network assigned a
 dynamic IP is a little unsettling given the number of "smart" devices in your
 home.
 
-*** Copy files from flash
-
-This is a bit hard to search, given that downloading an IOS image from a TFTP
-server is the first thing you learn in a CCNA course. There's shortage of
-indexed internet content on that. I didn't try, but I don't think ChatGPT could
-provide a solution here. Most of the questions I have are difficult to answer.
+*** Transfer Files From TFTP Server On Switch
 
 Fortunately, there's an [[https://www.cisco.com/c/en/us/td/docs/ios/fundamentals/command/reference/cf_book/cf_t1.html][alphabetized command reference]] that describes how to get
-the switch to /act as a TFTP server/.
+the switch to /act as a TFTP server/. It's the cryptic "tftp-server" command.
 
-**** Get you a TFTP client.
+Generate your keys and start the TFTP server on the switch
 
-Preferably one that doesn't stick around on your system.
+#+begin_src ios
+tftp-server flash:$path
+#+end_src
+
+Get you a TFTP client. Preferably one that doesn't stick around on your system.
 
 #+begin_src shell
 guix shell tftp-hpa
 #+end_src
+
+Then on the linux host, run =tftp $ipaddress=. The rest is self-explanatory.
+
+*** Manipulate Files on Flash Storage
 
 Inspect the file systems on the switch. Not your switch, but the one in this
 [[https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst3850/software/release/3se/system_management/configuration_guide/b_sm_3se_3850_cg/b_sm_3se_3850_cg_chapter_010011.html][incomprehensible URL]]. Although I guess you can find device-specific docs by
@@ -133,7 +253,7 @@ net.
 I guess I'm irritated because it's realllly complicated to answer the question
 "what _actual features_ do my device and IOS support?" So I have the sneaking
 suspicion that my device only supports =3072-bit= RSA keys and I remember it was
-tough to transfer files. So if I use =4096-bit=, does that mean i'll have to
+tough to transfer files. So if I use =4096-bit=, does that mean I'll have to
 start over after getting vague errors? Only way I know to find out is to try.
 
 **** List files on the device
@@ -141,37 +261,152 @@ start over after getting vague errors? Only way I know to find out is to try.
 #+begin_src ios
 show filesystems
 
+!! list files ...
 dir
 dir flash:
-#+end_src
 
-Delete files
+!! mkdirr
+mkdir flash:/keys
 
-#+begin_src ios
+!! delete files
 delete flash:$keyname*
 #+end_src
 
-Generate your keys (see [[https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/security/a1/sec-a1-xe-3se-3850-cr-book/sec-a1-xe-3se-3850-cr-book_chapter_0110.pdf][PDF for 3800 series switches]])
+*** Update IOS
 
-#+begin_src ios
-crypto key generate rsa label $hostname exportable 4096 storage flash:
+Install/configure TFTP server, make a directory to contain the files.
+
+Ensure the firewall is open. Then run
+
+#+begin_src shell
+/usr/sbin/in.tftpd -c -p -s $share
 #+end_src
 
-And here I discover what I already found (but I guess didn't note) ...
-
-the =flash:= file system cannot store crypto keys and =show usb controllers= is
-not a valid command. soooo. =xmodem:= it is ..............
-
-**** Start the TFTP Server
-
-Generate your keys and start the TFTP server on the switch
+On the switch run:
 
 #+begin_src ios
-tftp-server flash
+enable
+
+!! then enter the host/file and transfer
+copy tftp: flash:
 #+end_src
+
 
 *** Configure SSH
 
+Status Commands
+
++ show ssh
++ show ip ssh
++ show aaa
+
+**** Current Notes
+
+Recommended configuration from [[https://www.cisco.com/c/en/us/support/docs/ip/access-lists/13608-21.html#anc41][Cisco hardening guide]]
+
+#+begin_src ios
+hostname router
+ip domain-name cisco.com
+ip ssh version 2
+ip ssh authentication-retries 5
+ip ssh time-out 120
+
+!! Specify the name of the RSA key pair (in this case, "sshkeys") to use for SSH
+ip ssh rsa keypair-name sshkeys
+
+!! Enable the SSH server for local and remote authentication on the router using
+!! the "crypto key generate" command
+!! For SSH version 2, the modulus size must be at least 768 bits
+
+crypto key generate rsa usage-keys label sshkeys modulus 2048
+#+end_src
+
+Ummm okay, but seriously why would you recommend 2048? I mean if the switch is
+not capable of processing a single 4096 RSA connection, then you should not be
+using it in a high-load situation. This is actually all the more reason to
+implement ECDSA.
+
+***** Generate your keys
+
+See [[https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/security/a1/sec-a1-xe-3se-3850-cr-book/sec-a1-xe-3se-3850-cr-book_chapter_0110.pdf][PDF for 3800 series switches]].
+
+The =$hostname= is the keypair name
+
+#+begin_src ios
+!! doesn't work
+!! crypto key generate rsa label $hostname exportable modulus 4096 storage flash:
+
+crypto key generate rsa label $hostname exportable modulus 4096
+#+end_src
+
+And here I discover what I already found (but I guess didn't note) ... The
+=flash:= file system cannot store crypto keys and =show usb controllers= is not
+a valid command.
+
+... okay, nevermind. The flash filesystem isn't secure anyways. You transfer
+keys to files with =crypto key export= and the IOS device forces you to choose
+=DES= or =3DES= to protect them ... which is the passphrase I believe I lost :(
+
+#+begin_src ios
+conf t
+crypto key export rsa $hostname pem url flash:$filename 3des $passphrase
+exit !! or end !! or ctrl-z
+
+dir flash:
+#+end_src
+
+***** Test The SSH
+
+Move the keys to =~/.ssh= and change their permissions.
+
+Start =ssh-agent=. Run =ssh-add ~/.ssh/$host.prv=. Enter the =3DES=
+password. The key should be accepted.
+
+At this point, you need to address some issues introduced by newer versions of
+OpenSSH and lack of security updates to older Cisco devices:
+
+#+begin_src ssh-config
+# the basics
+Host $host
+  Hostname $hostname
+  User $aaa_cisco
+  IdentitiesOnly yes
+  IdentityFile ~/.ssh/$host.prv
+
+  # here are the changes you'll need
+  # each line results from an additional error type
+  Ciphers aes256-cbc
+  MACs hmac-sha1
+  KexAlgorithms diffie-hellman-group14-sha1
+  PubkeyAcceptedKeyTypes +ssh-rsa
+  HostKeyAlgorithms +ssh-rsa
+
+  # ^ssh-rsa will instead bump it to the front of the list
+  # +ssh-rsa adds it as an option and -ssh-rsa removes it
+#+end_src
+
+At this point, you may finally find a comprehensive doc on Cisco/SSH -- see
+[[authoritative link]].  By running =show ip ssh= you'll discover the switch is
+running SSH 1.99, but the real problem is that it still has a =1024b= public key
+configured.
+
+#+begin_src ios
+conf t
+ip ssh version 2
+do show ip ssh !! and it says it's still running both SSHv1 and SSHv2
+
+!! sets the ssh pubkey to the proper keypair
+ip ssh rsa keypair-name $kp
+#+end_src
+
+And now the Switch's SSH server does something slightly different.
+
++ Asks me to validate the host key that the switch is offering
++ Hangs at =send packet type 30 ... expecting SSH2_MSG_KEX_ECDH_REPLY=,
++ Then receives the reply after about 10 seconds at which point =libcrypto= on
+  Centos blows up and simply reports:
+  - =Found key in ....= and =debug2: bits set: 1042/2048= whatever TF that
+    means.
 
 **** From old notes
 
@@ -229,12 +464,27 @@ takes forever.
 
 *** Linux Tools for Cisco
 
-**** TFTP: =dnsmasq=
+**** TFTP
+
+***** dnsmasq
 
 Ensure your firewall is temporarily configured. Only TFTP downloads
 are allowed.
 
 =dnsmasq --no-daemon --enable-tftp --tftp-root=$TFTPROOT -i $IFACE=
+
+***** tftp-server
+
+On RPM systems, run =dnf install tftp tftp-server=
+
++ The client will be found at =tftp= and
++ The server can be started with =/usr/sbin/in.tftpd -c -p -s $share=
+
+You'll need to enable/disable TFTP on port 69, potentially both on PFSense and
+on =firewalld=.
+
+See [[https://fedoramagazine.org/how-to-set-up-a-tftp-server-on-fedora/][How to set up a TFTP server on Fedora]], but it recommends enabling the =TFTP=
+service.... don't do that.
 
 **** Serial: =screen=
 
@@ -418,3 +668,17 @@ A package manager that can get =socat= on the device somehow...
 
 + [[https://forum.dd-wrt.com/phpBB2/viewtopic.php?p=503846][old post]] seems to indicate missing modules or potential storage issues
 
+
+*** Decompile Cisco IOS
+
++ [[https://notabug.org/viperultra/cisco-ios-reverse][viperultra/cisco-ios-reverse]]
+
+Probably violates ToS, but damn [[https://techcrunch.com/2023/04/19/russian-hackers-exploit-six-year-old-cisco-flaw-to-target-us-government-agencies/][the hand-me-down IOS is really really bad]] and
+old hardware in need of a landfill irritates the shit out of me. If it's got
+gigabit ethernet and it doesn't choke under load, why can't I use that with
+automation to configure it? Does anyone besides FAANG even buy Cisco stuff
+anymore? No offense there ... but I actually think networking's lack of
+accessibility is a serious future problem for economic growth and/or data
+privacy. And I'm not sure why a company that targets grey markets with hardware
+buybacks for new implementations would really give a shit about being offended
+here.
