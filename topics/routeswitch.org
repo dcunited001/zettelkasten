@@ -41,7 +41,136 @@ Can't find the notes...
   - commands output much more quickly.
   - 9600 is 1200 bytes per second...
 
-*** Configuring SSH
+*** Configure NTP
+
+AHHH! 1993? What the fuck?
+
+#+begin_src ios
+show ntp status
+show ntp associations
+#+end_src
+
+Configure PFSense to act as an NTP server, then get the switch to talk to it.
+
+From =conf t= configure an [[https://www.cisco.com/c/en/us/td/docs/switches/connectedgrid/cgs2520/software/release/12_2_53_ex/configuration/guide/scg2520/swadmin.html?dtid=osscdc000283#98219][ntp server association]]
+
+#+begin_src ios
+ntp server $ip
+#+end_src
+
+Cisco appears to support NTP authentication, but PFSense indicates I need
+=NTPv3= and I just don't feel like winning that round of trivia at the
+bar. Usually when protocol versions of something are needed for this device, I
+just err on the side of "i don't actually have smartnet", but it looks like my
+switch does support NTPv3. Unfortunately, NTP usually flows freely through a
+network, so not using this could render you susceptible to drift attacks, though
+Cisco's usage of MD5 really makes you wonder.
+
+#+begin_quote
+We all remember what happened with Windows and MD5, right? We remember that,
+right? ... no, no one remembers anything that happened more than a week ago.
+#+end_quote
+
+Some points on security of old cisco devices generally:
+
+- The lack of smartnet-enabled IOS updates means that you only get
+  "critical" security updates, so you can't have nice things like =ecdsa= which is
+  far more efficient to calculate.
+- There's no way these devices have an equivalent to =AES-NI= instructions
+  AFAIK. But block ciphers related to those are the only ones you can select
+  from.
+- I don't know the implementation details for =ecdsa= but I'm guessing most
+  CPU's can handle it, but lack the software requirements. My switch offers the
+  option in autocomplete ... and just errors out when you try to use it.
+
+Given the usage of weak crypto: the key takeaway here is that if you don't
+configure =ntp= with authentication on an old Cisco device, you really need to
+ensure that =port 123= traffic could only reach it if it's emitted from that
+network. I'm not sure what PFSense does with =scapy= packets generated from an
+insecure subnet, but if it doesn't reject them (and it probably won't), then you
+need a floating firewall rule to filter that from the outside in.
+
+**** No Practical Free & Open Network Devices that can be automated?
+
+The lack of reasonably configurable open/free options for route/switch/firewall
+is particularly infurating. Well plebs, if you want to automate your network
+gear for your "smart" home, you better start paying up. Your cloud bill is due
+and it's easily $500. You could always invest hundreds of hours managing your
+network, but why not give a handful of corporate giants alllll of your data.
+It's properly secured with encryption isn't it?
+
+This is almost as infurating as the lack of decent features on that Cable
+Company router that you're perpetually "renting" ... which is almost as
+infuriating as the leverage that ISP's generally have when selling your
+data. That IPv6 makes it fairly easy to use a combination of devices (even with
+the proper DHCPv6 or SLAAC) to unmask the identity of a network assigned a
+dynamic IP is a little unsettling given the number of "smart" devices in your
+home.
+
+*** Copy files from flash
+
+This is a bit hard to search, given that downloading an IOS image from a TFTP
+server is the first thing you learn in a CCNA course. There's shortage of
+indexed internet content on that. I didn't try, but I don't think ChatGPT could
+provide a solution here. Most of the questions I have are difficult to answer.
+
+Fortunately, there's an [[https://www.cisco.com/c/en/us/td/docs/ios/fundamentals/command/reference/cf_book/cf_t1.html][alphabetized command reference]] that describes how to get
+the switch to /act as a TFTP server/.
+
+**** Get you a TFTP client.
+
+Preferably one that doesn't stick around on your system.
+
+#+begin_src shell
+guix shell tftp-hpa
+#+end_src
+
+Inspect the file systems on the switch. Not your switch, but the one in this
+[[https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst3850/software/release/3se/system_management/configuration_guide/b_sm_3se_3850_cg/b_sm_3se_3850_cg_chapter_010011.html][incomprehensible URL]]. Although I guess you can find device-specific docs by
+using "my devices" in Cisco. I was under the impression that required smart
+net.
+
+I guess I'm irritated because it's realllly complicated to answer the question
+"what _actual features_ do my device and IOS support?" So I have the sneaking
+suspicion that my device only supports =3072-bit= RSA keys and I remember it was
+tough to transfer files. So if I use =4096-bit=, does that mean i'll have to
+start over after getting vague errors? Only way I know to find out is to try.
+
+**** List files on the device
+
+#+begin_src ios
+show filesystems
+
+dir
+dir flash:
+#+end_src
+
+Delete files
+
+#+begin_src ios
+delete flash:$keyname*
+#+end_src
+
+Generate your keys (see [[https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/security/a1/sec-a1-xe-3se-3850-cr-book/sec-a1-xe-3se-3850-cr-book_chapter_0110.pdf][PDF for 3800 series switches]])
+
+#+begin_src ios
+crypto key generate rsa label $hostname exportable 4096 storage flash:
+#+end_src
+
+And here I discover what I already found (but I guess didn't note) ...
+
+the =flash:= file system cannot store crypto keys and =show usb controllers= is
+not a valid command. soooo. =xmodem:= it is ..............
+
+**** Start the TFTP Server
+
+Generate your keys and start the TFTP server on the switch
+
+#+begin_src ios
+tftp-server flash
+#+end_src
+
+*** Configure SSH
 
 
 **** From old notes
