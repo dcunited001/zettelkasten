@@ -88,6 +88,56 @@ can =diff= before you =conf disable= ....
 LoL you can make that mistake one good time ... in a lab.
 
 ** Topics
+
+*** Configure Services (DNS/HTTPS/IP)
+
+TL;DR; a layer 3 switch needs to:
+
++ be a leaf node in the network, generally.
++ have robust ACL's and/or use VRF's to isolate Layer 3 across VLANs
++ disable the hell out of the HTTP/S servers
+
++ [[https://www.cisco.com/c/en/us/td/docs/ios-xml/ios/ipaddr_dns/configuration/15-sy/dns-15-sy-book/Configuring-DNS.html#GUID-C2B0D7AA-79D8-4602-AFE8-92E85AF1D838][Cisco DNS Docs]]
+
+Layer 3 switches were new when I was working with Cisco, so it's not really
+intuitive and I've always been skeptical. The switch should be transparent to
+the network and adding IP routing or the HTTP server can cause issues.
+
+If I'm reading the docs correctly, then in my network, getting DNS on the switch
+means I need default routes and potentially a static route or two ... but
+without the proper ACL's in place, if another VLAN sets an IP to route, then
+regardless of how specific the routes are, traffic will typically flow on the
+same path, given its destination.
+
++ If you're connecting to the switch via a directly connected management
+  network, that network's traffic will exit to your DNS subnet through the other
+  VLAN.
++ If you specify a default gateway on the other VLAN (or specify the route head
+  that way), then now traffic innocuously flows through your admin network.
++ ACL's don't address this, since their logic applies after routes are
+  selected. You will simply cut yourself off of services at best.
+
+Without more granular control over routing, an actual routing protocol with
+priorities and/or VRF's, then a firewall is maybe getting bypassed. The risk
+here is if you later add an IP to the second VLAN, you may not be thinking about
+the connectivity. Because it's routing and not ACL's then you may miss it in
+your firewall logs.
+
+*** OSPFv3
+
+Want dynamic adjustable routes? For IPv6? To test multicast or other things?
+Nope. Not gonna happen. With Quagga or FRP maybe.
+
+I really don't have the topology for this though (not really enough areas) and,
+for dynamic services/networks, OSPF can either be stable or unstable.
+Disruptions in connectivity can cause other issues as well. It probably doesn't
+mix well with L3 Switch in small networks.
+
+=|[ ] [ ] [+]---------[+] [ ] [ ]|=
+
+A cable could be a problem ... and loops are bad design in OSPF. Also, IPSec
+tunnels in the wrong place may cause problems.
+
 *** Security
 
 **** Use =scrypt= Passwords
