@@ -6,17 +6,109 @@
 #+TAGS:
 
 * Resources
+** Ansible
++ [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html#variable-precedence-where-should-i-put-a-variable][Variable Precedence]]
 
 ** Strategies
 
 + [[https://www.velocenetwork.com/tech/what-is-ip-migration/#Types_of_IP_Migration][IP Migration]] a solution that resembles a combination of the parallel/cutover
   strategies made the most sense to me.
 
-* Why Not Just Change the Addresses?
+* Why Not Just Change the Addresses Manually?
 
 Because that's too easy and I'd like to get far enough into an automated
 solution to understand the first/second-order problems encountered in the
-various strategies
+various strategies.
+
+That's the main gain for now, but I may give up. For now, my network is not that
+complicated and there should be x10+ less overhead doing it now (except it's
+hard to stage the changes without much experience)
+
+** Additional Benefits
+
+*** Easier specificaion of Routes, Gateways and Firewall Rules
+
+With the subnetting/addressing, I have more control over changing smaller parts
+of my network in large ways without affecting connectivity across the entire
+network. It makes it easier to see what's going on.
+
+Also, I can clearly specify groups of parameters for firewall rules (like
+traits) and then apply these on a PFSense interface or firewalld. In this way,
+they can be granular.
+
+This is also essential for making sure that ZeroTier is routed & locked down the
+way I want.
+
+*** Service Orchestration with Nomad
+
+The main difference between K8S and Nomad is that the former manages quite a bit
+of networking complexity for you whereas the latter leaves most of it up to
+you.
+
+Parameterizing my ip addressing, naming and firewall rules in the playbooks is a
+prereq or prelude to making this configuration easier for Nomad. Also, I would
+still need to solve this problem in my Ansible configs if I really want to run
+K8S.
+
+*** Setup/Teardown of Virtual Devices and Networks for =virtio=
+
+Using the =ip= tools to configure multiple network devices on a host or to pass
+through SR-IOV virtual devices (to a VM) usually requires VXLAN params. It
+sometimes requires VLAN trunking params passed to a VM config.
+
+If the Cisco Switch config is automated, then I should just be able to add
+trunked ports and pass through the SR-IOV network devices to VM's which is
+functionally equivalent for local subnets ... if I remember correctly.
+
+
+* Configuration
+
+Getting this right is key, since the structures you choose will ripple through
+your YAML keys, objects & flow control. But it's also just not possible to get
+it perfect. I don't mind ad hoc playbooks/code.
+
+(Simple) [[https://nwmichl.net/2020/05/25/working-with-ipaddr-in-ansible/][Data Structures using Ansible's ipaddr]]
+
+The faster I can get out of the networking, the better, as long as I can be
+fairly agile in the future. My code is light on facts and will probably remain
+that way. At least initially, I'm not using dynamic inventory and probably
+won't.
+
+** DCIM Data Models
+
++ [[https://docs.nautobot.com/projects/core/en/stable/models/circuits/circuit/][Nautobot]] and [[https://docs.netbox.dev/en/stable/models/circuits/circuit/][Netbox]]: DCIM implementations
+  - The [[https://github.com/netbox-community/netbox/wiki/Data-Model-Limitations][Netbox Data Model Limitations wiki]] is probably helpful
+
+Netbox/Nautobot are just too heavy handed. The docs imply that you click
+this stuff in and that's exactly what I'm trying to avoid. I'm thinking there's
+a very special kind of devops guy that writes code to script that stuff ... and
+they probably have a control plane.
+
+... The semantics/naming in the data models are very useful and correspond to
+some of the diagrams I was drawing that loosely modeled terminations ... but
+they give you hypergraphs. The wrong data model here can easily give you =N+1=
+and =N*N= problems -- which is the reason behind the "uncomplicated" in =ufw=.
+IMO, a model at least needs to support paths, which should be as easy as a list
+of names with a fairly complicated fold ... in theory. This doesn't pare well
+with how Ansible wants you to polymorphize roles though, which I still don't
+grok too good.
+
+#+begin_quote
+e.g. a route needs to be defined for to network via this network, usually a
+supernet, not a subnet.
+#+end_quote
+
+As long as the traffic can ask for directions along the way, it /should/ be
+alright. For each node in the path (if necessary), this can specified as
+reachble by relaying traffic to the penultimate hop in simple networks. Simple
+networks is key here and also, this is why the addressing scheme: is essential
+and also benefits from more bits not less -- =10/8= not =172/12=. And dear god
+please don't make me route from the hosts.
+
+At this point, I'm just trying to figure out what level of granularity is
+needed. Without circuits/terminations, there is not an explicit correspondance
+between network membership and interface on devices connected to VLAN's, which
+possibly makes VLAN trunking difficult to automated.
 
 * Plan
 
@@ -48,6 +140,40 @@ It's potentially hard to document this as I'm going along.
 
 + Routing issues with dual address spaces
 + Inability to rollback (though this should be less severe)
+
+** Transactionality
+
+#+begin_quote
+.... ummm Ansible does this right? I'm not sure how it does this, but it does do
+it right? It doesn't does it? .... because it's impossible, so I haven't been
+counting on it.
+#+end_quote
+
+If Ansible has /some/ transactionality for Network Automation, then:
+
++ deciding whether to execute across multiple devices is conditional
++ rollbacks are conditional (this complicates reasoning about playbooks)
++ it's still necessary to stage operations on devices.
+
+That is, you validate state first, then initiate automation stages and
+occasionally validate state between operations ... this is actually much less
+complicated using multiple ad hoc playbooks.
+
+The issue with "staging" something like an IP migration is that it's an "evil"
+version of the programming problem where you want to swap the values of two
+variables. Halfway through, it's totally possible for that to ummm... not
+happen. Then you get stuck in an intermediate state -- which you can't /easily/
+validate over the network. And so you need to make an awkward phone call to tech
+support at the data center before the boss finds out.
+
+This problem is mostly avoided with a control plane because that plane of the
+graph/network never loses connectivity... right? Without that, determining the
+ordering of tasks in the staging is made somewhat simpler by looking at the
+subset of the network where addressing/routing/fw changes occur. Then you
+construct the paths through the network affected by your changes and pick a
+direction -- top to bottom or bottom to top ... or top to (bottom to top). Any
+way you go about it, I'm not sure how you avoid losing connectivity for short
+periods of time without overlay networks.
 
 * Roam
 + [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
