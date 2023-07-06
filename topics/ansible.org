@@ -105,22 +105,235 @@ Ansible LSP. This could be in Docker and I'm probably connecting to a server to
 run Ansible playbooks anyways.
 
 
-** Topics
+* Topics
 
-*** [[https://docs.ansible.com/ansible/latest/collections/community/docker/index.html][Docker]]
+** Roles
 
-**** Misc
++ [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_reuse_roles.html][Playbooks: Roles]]
+
+*** Role Polymorphism
+
+You're encouraged to break out functionality into roles. They're easy to
+develop, but it gets messy since you don't necessarily want to include
+everything in =roles/a_role/tasks/main.yml=.  Almost as quickly, you'd like to
+have something like polymorphism for roles.
+
+**** Examples in Repo's
+
+There are a few repos with examples for packaging code consumed as a library
+where polymorphism is needed.
+
+***** ansible-collections.google
+
+[[https://github.com/ansible-collections/google.cloud/blob/master/roles/gcloud/tasks/main.yml][This]] seems like a more standard way of getting polymorphism. The playbook
+switches the tasks included for Debian/RPM-based Linux on
+=gcloud_install_type=. This is also how Greerling and other users are doing
+it. It's not exactly intuitive until you've seen enough of these =YAnsiML= projects.
+
+#+begin_src yaml
+---
+
+- name: Gcloud | Load Distro and OS specific variables
+  ansible.builtin.include_vars: "{{ lookup('first_found', params) }}"
+  vars:
+    params:
+      files:
+        - "os/{{ ansible_distribution | lower }}.yml"
+        - "os/{{ ansible_os_family | lower }}.yml"
+        - main.yml
+      paths:
+        - 'vars'
+
+- name: Gcloud | Install the google-cloud-sdk from {{ gcloud_install_type }}
+  ansible.builtin.include_tasks: "{{ gcloud_install_type }}/main.yml"
+#+end_src
+
+***** [[https://github.com/ansible-network/cisco_ios/tree/devel][ansible-nework.cisco_ios]]
+
+This lib is distributed as a role, not a collection and it uses =function= as a
+variable checked against =ios_functions= to run other tasks defined in the
+role. However, the lib is about 5 years old.
+
+The task to include the subtasks on demand is defined [[https://github.com/ansible-network/cisco_ios/blob/246ac29cc0bd25059314f99382ef9bd7e7658966/tasks/main.yml#L18][here]] like:
+
+#+begin_src yaml
+- name: include function specific tasks and run
+  include_tasks: "{{ function  | default('noop') }}.yaml"
+#+end_src
+
+And the subtasks are specified from the consumer's playbook like:
+
+#+begin_src yaml
+- hosts: cisco_ios
+
+  roles:
+    - name: ansible-network.cisco_ios
+      function: config_manager/get
+      source: startup
+#+end_src
+
+I thought this was ={{ function | default('noop') }}= actually a language
+feature. It's not, which I guess is why it isn't documented or easily found.
+
+*** Arguments
+
+Role vars can be validated [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_reuse_roles.html#sample-specification][according to a spec]] defined in
+=meta/argument_specs.yml=
+
+** Performance
+
+See [[https://www.redhat.com/sysadmin/faster-ansible-playbook-execution][8 Ways to increase your Ansible Playbooks]]
+
+Even though you may run playbooks in parallel, several issues can affect how
+quickly your playbooks run:
+
++ you =gather_facts= too often: this leads to a lot of overhead
++ bundling your code improperly: too much on a single role/playbook
++ alternating tasks between hosts: either your yaml doesn't lend itself to
+  "control flow" where tasks can be chunked per host or you've specified too
+  many dependencies between tasks and Ansible can't proceed.
+  - here, I'm assuming that ansible may share the same SSH connection or at
+    least reuse some state when running a sequence of tasks on a single host
+    before running other tasks afterwards. however, this could affect the
+    transactionality which would be difficult to address.
+
+*** Executing too many tasks
+
+It should be a bit of a "code smell" if your =ansible= and =ansible-playbook=
+invocations don't include many =--options=, since using these is essential to
+speeding things up.
+
+**** Create a Playbook/Role to Invoke Slow Roles/Tasks
+
+A better division of functionality than tags may be the playbook. They're cheap
+to write, once you know what you're doing with the domain vocabulary that
+configures various collections/role.
+
+**Problem**
+
+Updating the list of package repositories for a Centos host AND running =dnf
+upgrade= at the same time. For some reason, even updating the
+=/etc/yum.repos.d/*= files here takes forever. It's broken into about 8 or so
+tasks (to transfer files one at a time....) that run a loops. The file transfer
+task would be better. When nothing changes, it's just a little frustrating to
+wait for this to complete to see new changes in your roles
+
+**Solution**
+
++ Move the tasks for Centos mirrors to another playbook/role.
++ Gather facts on DNF once, early on. Then, don't run it if the DNF metadata
+  isn't stale. Configuring this with an override so you can force it to run is a
+  bit of a drag and bloats your code.
+
+**** Specify Filters on the Tasks
+
+Use command line options or conditionals like when =when:=.
+
+**** Narrow Execution Scope with Tags
+
+Greerling covers this in videos and in Ansible for Devops.
+
+You really don't want to overuse tags: they're are a feature meant for the
+end-consumer. Do a ripgrep for =tags:= in ALL of the =ansible-collections=
+repositories and you'll see: there aren't many hits in playbooks. However, there
+are a lot of hits for =tags:= in the test playbooks for these
+=ansible-collections= repositories ... so it really does help.
+
+Generally, tags as metadata are pointless when they return too many results and
+the end-user needs to specify these. Sadly for me ... I guess I need to google
+around to determine how to limit the execution of individual tasks included by
+roles.
+
+*** Gathering Facts
+
+*** Using slow crypto
+
+SSH Connection Setup with RSA keys seems slow, esp on older hardware.
+Unfortunately for now, I can't set =ecdsa= as my daily driver.
+
+**Problem**
+
+Cisco SSH connections are slow to negotiate on older devices. Even on my local
+network, other SSH connections seem to be slow because the playbook execution is
+"bursty"
+
+**Solution**
+
+According to the Redhat article, I could use whats listed below.
+
++ SSH ControlMaster :: This and =ControlPersist= are totally safe to use and
+  somewhat helpful in detaling with connection setup overhead.
++ pipelining :: this speeds up SSH by avoiding file transfers (somehow), but
+  requires =/etc/sudoers= disable =requiretty= which sounds ... like I have no
+  idea what that means beyond using =socat= to talk to myself on the other tty.
+  Pipelining is disabled by default and the implementation varies for each
+  connection plugin ... which means you get to read more docs.
+  - Here's some docs on [[https://www.baeldung.com/linux/sudo-requiretty-option][why requiretty is bad]], which seems to convey why you
+    trust nothing on the internet but everything on TV. Here's another to
+    disabmiguate [[https://www.baeldung.com/linux/pty-vs-tty#introduction][tty/pty/vty]] which also serves as a touching reminder of why we
+    owe it to carriage return to remember that shit forever.
++ async tasks :: these could get dicey when you filtered the plays by tag and
+  now they're running in some ad hoc order -- or when the tasks get refactored
+  into roles and you forgot to update the =async= when the dependency relations
+  changed for those tasks.
+
+Pipelining has security particularly bad security implications outside of
+development and maybe staging, depending on what the connection plugin uses. But
+not as bad as for security as the =keep_remote_files= config option useful for
+debugging. The digital footprint Ansible leaves behind is one particular "thing"
+that Ansible does well that's earned its trust. It's fairly simple, compared to
+agent-based approaches. It wouldn't be at RedHat or so widespread if there was
+much of a question on this.
+
+And in case you've forgotten, [[https://en.wikipedia.org/wiki/Teleprinter][teletype]] has been around for a while.
+
+[[file:img/teletype.jpg]]
+
+It has a fucking music stand lol.
+
+*** Running Slow Pre/Post-Task Operations Without Realizing It
+
+Some things be slow.
+
+**Problem**
+
+On older cisco devices, =copy run start= takes about 10 seconds to complete. To
+invoke this in Ansible, you need to explicitly pass =save: yes= or =save_when:=
+to an [[https://docs.ansible.com/archive/ansible/2.5/modules/ios_config_module.html][ios_config]] task, so it's just an example.
+
+So, determining when this happens should get your playbooks to run a lot faster,
+esp considering that, for SDN, transactionality is not only difficult but
+essential. You'll process a playbook for a transition between stages, then need
+to validate state before invoking a playbook for the next set of changes .. at
+least with my limited tools/infrastructure, that's how it its
+
+**Solution**
+
++ Defer things like =copy run start= until the end.
++ Use the =free= execution strategy. But you shouldn't script this into a
+  network automation playbook, esp. for code someone else needs to
+  run/maintain.
+  - Async resembles the =free= strategy, but limited by blocks & control flow.
+
+If the playbook is structured without many inter-host dependencies, then =free=
+should be available as =ansible-playbook -e "strategy=free"= or using some
+similar CLI. Again, not using the CLI options in ansible is a bad sign. There
+are a lot of them you need to know & use ad hoc.
+
+** [[https://docs.ansible.com/ansible/latest/collections/community/docker/index.html][Docker]]
+
+*** Misc
 + community.docker.[[https://docs.ansible.com/ansible/latest/collections/community/docker/docker_container_exec_module.html#ansible-collections-community-docker-docker-container-exec-module][docker_container_exec]]
 
-**** Registry
+*** Registry
 
 collections:
 
 + [[github:bodsch/ansible-registry][bodsch/ansible-registry]] set up a [[github:distribution/distribution][distribution/distribution]] registry
 
-*** Managing dotfiles
+** Managing dotfiles
 
-**** [[https://docs.ansible.com/ansible/latest/collections/community/general/homectl_module.html][community.general.homectl]]
+*** [[https://docs.ansible.com/ansible/latest/collections/community/general/homectl_module.html][community.general.homectl]]
 
 See the =skeleton= option, which defaults to =/etc/skel=, though it's unclear
 whether this is on the server or not ... it's pointless if it's on the server.
