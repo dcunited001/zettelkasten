@@ -1,0 +1,195 @@
+:PROPERTIES:
+:ID:       32033cc5-f706-43c7-b02c-7c97a57a7eaf
+:END:
+#+TITLE: Speedbar Cheatsheet
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
++ Speedbar (and in emacs docs)
+
+* Resources
+
+* Summary
+
+Seems to be fairly well integrated with Emacs. Way better than neotree/treemacs
+IMO because it basically requires zero config and "just works", though there are
+some quirks. It's not going to introduce dependencies though.
+
+So, the main problem with using Treemacs/Neotree as an emacs noob is that you're
+going to miss out on some of the best functionality it has to offer. Dired is
+literally a killer app and there are many dired clones like =ranger= and
+=nnn=. So, if you're not using features in Dired like =!=, =* m= or =* R= then
+you're not really using Emacs. Dired can be a pain though, but it doesn't
+require much configuration for the standard workflow (e.g. one where there
+aren't subdirectories in your dired). By copping out to a tree view file
+browser, you're going to trip up on configuration mess with Treemacs/Neotree and
+worse, you'll avoid learning how to use Dired.
+
+Emacs needs you to "think differently" and you'll encounter quite a bit of
+friction if you treat it like any other editor. The brain typically follows the
+path of least resistence and, if not, then generally it's because you directed
+some mental energy. It is very important to habitualize the "smart ways" of
+using emacs, otherwise your bad habits will become muscle memory...
+
+So, instead of using a tree to navigate files, you keep that shit closed, setup
+a project-root function for =project.el= or =projectile= and use things like
+=project-find-file= to summon your files into buffers by transforming thoughts
+into keyboard strokes. You do not "look" for things, but for this to be
+successful, it requires externalization of information into configuration. Then,
+to work with emacs, you need to be aware of the context. The configuration may
+be missing and thus noobs will stumble quite a bit. Other functions need to be
+project-scoped as well, like =consult-buffer=. You should be using consult and
+vertigo, by the way, but these features take some time/config and probably some
+real emacs-lisp.
+
+With that in mind, there is a zero-config file tree.
+
+* Keybindings
+
+Main modes for the frame
+
+|---+---+----------------------|
+| I |   | Browse Info          |
+| b |   | Browse Quick Buffers |
+| f |   | Browse Files         |
+|---+---+----------------------|
+
+** Keymaps
+
++ speedbar-mode-map
++ speedbar-file-key-map
+
++ speedbar-buffers-key-map
++ speedbar-buffers-key-map
+
+*** Menu Map
+
++ speedbar-menu-map
+
+** TODO finish writing up a cheatsheet for the keybinds
+
+* Configuration
+
+** Files
+
++ speedbar-ignored-directory-expressions :: it's only configured to ignore
+  directories named =logs= for now
++ speedbar-ignored-modes :: if the =major-mode= is included, clicking on that
+  window will not change speedbar state. this is set to ='(fundamental-mode)=
+  so, it never updates. If you don't customize these, speedbar will do wierd
+  things on buffers like =help-mode=
++ speedbar-show-unknown-files :: hide files it can't "expand with a ? in the
+  expand button." This causes YAML to be unshown, which is a bit of a shame, but
+  alas as i have discovered, Emacs' yaml-fu is not strong.
++ speedbar-file-unshown-regexp :: this includes compilation artifacts, but
+  mostly things you don't want to see.
++ speedbar-directory-unshown-regexp :: it's set to hide =.= and =..= and all
+  your =.files=
+
+** Tagging
+
++ speedbar-supported-extension-expressions :: this controls whether the files in
+  speedbar expand to show you relevant symbols in the files. Things like: org
+  headings or emacs-lisp methods.
++ speedbar-use-imenu-flag :: ok, so it does use imenu and this is the
+  default. set to nil if you want to generate etags.
+
+** UI
+
++ speedbar-track-mouse-flag :: this will cause the info in the onhover tooltip
+  to display in the echo area. needs to be set before the frame is created.
++ speedbar-indentation-width :: self-explanatory
++ speedbar-use-images :: yes, you want images. you maybe would rather have
+  icons, but the images work out of the box, so you reallllly don't care, since
+  that means it always works and you install /nothing/. yayyyy
+
+* Features
+
+** File Trees
+
+
+
+** Buffers
+
+There are =speedbar-buffers-mode= and =speedbar-quick-buffers-mode=
+
+** Mouse Menus
+
+Explore features here.
+
+** Imenu-like
+
++ Using =+= or =-= an entry in the =speedbar-buffer-mode= gives you the typical
+  features you get from imenu
+
+** VC Integration
+
+** Info Integration
+
+** VHDL integration?
+
+There are VHDL functions/commands registered for the speedbar. Interesting.
+
+* Issues
+
+** KDE Tiling Window Rules
+
+KDE Tiling doesn't seem to like it's window (which is a =dframe=) and so the
+ignore/float rules don't match speedbar when it initially opens. After floating
+it, it behaves but never matches those rules
+
+** YAML in the file browser
+
+The speedbar doesn't initially show yaml files in the file browser. There are a
+few relevant variables, but it seems this is caused by
+=speedbar-show-unknown-files= which needs to be set.
+
+
+** Only attaches to a single frame, only one speedbar can exist
+
++ This is a design limitation and would be tough to customize. The
++ It does respect tabs though, so this is nice.
++ You can change =speedbar-select-frame-method= to an integer(?), but i haven't
+  verified this. It would be better for my workflow to think ahead about where I
+  want this thing. That makes it's behavior more deterministic.
+
+** Showing a Project Root
+
+A bit clunky to get it to show subdirectories, but once it does, it seems to
+stick. It doesn't integrate with things like =project.el= and it doesn't seem to
+have a concept of =project-root= in its variables/customization.
+
+I think the logic is something like:
+
++ if navigating to a parent directory and subdirectories are open, display the
+  unfolded child directories.
++ if navigating to another file tree, find the first parent directory.
++ when speedbar refreshes
+
+** Doesn't autoupdate without configuration
+
+Set =speedbar-ignored-modes=
+
+#+begin_src emacs-lisp
+(setup (:pkg speedbar)
+  (:option speedbar-indentation-width 2
+           speedbar-track-mouse-flag nil ;; default
+           speedbar-ignored-modes
+           '(help-mode
+             custom-mode
+             eshell-mode
+             shell-mode
+             term-mode
+             vterm-mode
+             docker-image-mode
+             docker-container-mode
+             docker-volume-mode
+             docker-network-mode)))
+#+end_src
+
+
+** Potential Issues?
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
