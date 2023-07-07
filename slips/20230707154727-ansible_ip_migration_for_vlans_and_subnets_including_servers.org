@@ -1,0 +1,112 @@
+:PROPERTIES:
+:ID:       a70b9845-8c7c-4699-9e76-0fb20e836615
+:END:
+#+TITLE: Ansible: IP Migration for VLANs and Subnets, including Servers
+#+CATEGORY: slips
+#+TAGS:
+
+Yeh ... this realllly sucks LOL
+
+* Overview
+
+Yeh, I donno. I don't reallly need to do this.
+
+Ansible makes some parts easy, but managing separate configurations so you can
+move one subnet and its servers as a group is fairly complicated. You have to
+manage separate dictionaries in YAML, preferably as two files. Regardless it's
+painful, especially given that i would key the address/network and vlan/vmbr
+configuration from different YAML dictionaries based on the current state which
+changes in a given set of plays ... and if anything goes wrong, who knows what
+state it's in. Ping to find out? LOL
+
+And i'm really not sure about when to update the default gateway route on
+servers. Maybe this is somewhat less of a problem with either VM's or a
+VRF. With VM's you can throw them away and with a VRF, you can just move the
+VLAN (i think). However, with VRF's you have about 99 other problems.
+
+** The Classic Strategy
+
+The hourly rate is crazy high.
+
+** Strategy using multiple IPv4 Addresses
+
+*** Connect to PFSense
+
++ Check Interfaces/Routes
++ Change aliases
++ Check FW Rules (should use aliases)
++ Change DNS
++ Change Interfaces/Routes
++ Change FW Rules
++ Potentially add ip address alias (to interface?)
+
+*** Connect to Server
+
++ Check IP Address/Routes
++ Add IP Address
++ Wait to change default route (... maybe wait)
+  - I think the ARP tables allow you to connect to the default gateway using the
+    old IP. I was still able to ssh to the server with the new IP after applying
+    PFSense changes ...... nevermind I was on the subnet. fuck IPv4
++ Ensure reachability on new IP from subnet
+
+*** Connect to PFSense
+
++ Apply changes to Interface (this changes aliases & other settings)
++ Apply changes to DNS (separate apply for services)
+
+*** Connect to other servers/computers
+
++ Ensure reachability of new IP from various subnets
+
+*** Connect to server
+
++ Delete old IP address
++ Change default route
+
+** Alternate Strategy Using Bridged Networks
+
+*** These constraints in place:
+
++ Ignoring the Firewall...
++ Ignoring DNS, Load Balancing and flapping
++ Using VM's or VXLAN could make this simpler or harder
+
+*** Connect to switch
+
++ Get relevant range of interfaces for VLAN# A
++ Change to trunked mode (without losing connectivity)
++ Create VLAN# B and configure if necessary
++ Add VLAN# for VLAN B
+
+*** Connect to server(s)
+
++ Interface enoN always be bridged with a subdevice vmbrN.a for VLAN# A
++ Add new bridged subdevice vmbrN.b for VLAN# B
++ Set the new subdevice IP address
++ Check/add routes if necessary (change default route yet?)
+
+*** Test connectivity
+
++ Ping from old VLAN# A subnet
++ Ping from new VLAN# B subnet
++ Ping from the router and outside the subnets
+
+*** Connect to Servers
+
++ Remove vmbrN.a ip configuration
++ Remove vmbrN.a from Interface enoN
++ Ensure Default Route is set
+
+*** Test connectivity
+
+*** Connect to switch
+
++ Remove interface assignments for VLAN# A
++ Remove VLAN# A
+
+* Roam
++ [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
++ [[id:265a53db-5aac-4be0-9395-85e02027e512][PFSense]]
