@@ -7,18 +7,115 @@
 
 Yeh ... this realllly sucks LOL
 
-The cloud providers have solved some major problems, which are apparently
-difficult enough such that even the government would rather just pay
-amazon/microsoft. Devops has totally changed the rate at which mobile/social
-apps can be developed as well as how dynamic networking changes can be.
 
-And it's all so the plebs can have their Tik Tok.
 
-#+begin_quote
-"Give them their bread and their circus and they will never revolt."
+* Network Service Tasks Without Lost Connectivity
 
-- Juvenal, who apparently never wrote this, per se
-#+end_quote
+** In Ansible
+
+*** [[https://serverfault.com/questions/1123343/how-to-handle-network-changes-and-restart-with-ansible][How to handle network changes and restart with ansible]]
+
++ Call a task that sleeps for a second, make it =async: 100= and =poll=0=
++ Since it's async, the next task starts and calls =set_fact: ansible_host={{ new_ip }}"=
++ That completes instantly and proceeds to the next task, which uses =delay: 60=
+  to wait long enough for the network to come up. This calls =wait_for= with a
+  result =register: network_responding=.
++ The next task should be called with the =wait_result= and specify =when: "{{
+  network_responding }}"=
+
+*** Work through a service abstraction to make the task implicitly async
+
+This is a bit simpler than the above, especially if you can assume the service
+completes deterministically. if not, logic can be added to the ansible playbook
+to handle failure...
+
++ on the linux server, create a oneshot service in systemd or shepherd. it
+  should sleep for a bit, but invoking the service will return instantly
++ invoking the oneshot service with ansible should be followed with a period of
+  time. shepherd services can be called with parameters, whereas systemd
+  services require =systemd-escape= and a [[https://www.baeldung.com/linux/systemd-multiple-parameters][template unit file]].
+
+*** Run a script in the background and [[https://stackoverflow.com/questions/2368137/asynchronous-shell-commands][disown it]]
+
++ A more complete description: [[https://www.baeldung.com/linux/job-control-disown-nohup][disown and job control]] and [[https://www.gnu.org/software/bash/manual/html_node/Job-Control-Basics.html][job control basics]]
++ How ansible expects you to do it: [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_async.html#avoid-connection-timeouts-poll-0][poll/async]], but i guess the remote
+  =async_task= process dies if you =Ctrl-C= to kill the local Ansible. The ssh
+  tunnel should break, hence it's remote end should recognize this to die as
+  well.
++ A post from 2016 on using Ansible's =async= with =nohup=, which i thought
+  still caused the child procs to die if the parent dies.
+
+background_script:
+
+#+begin_src shell
+sleep $1 && do_something "chaotic"
+#+end_src
+
+ansible calls:
+
+#+begin_src shell
+background_script 30 &
+bg_pid=$!
+disown -h $bg_pid # -h here shields $bg_pid from SIGHUP
+#+end_src
+
++ The variable =$?= contains the success of =disown=
++ =%1= or =%-= would refer to the job, the latter being the most recent job.
+
+** For Cisco
+
+The device will instantly respond to network changes, so ... tower of hanoi it is.
+
+The route command in [[https://en.wikipedia.org/wiki/Wirth_syntax_notation][Wirth Syntax Notation (WSN)]] ... maybe? I swear there's
+another name for this.
+
+#+begin_src shell
+ip route
+  [ vrf vrf-name ]
+  prefix mask
+  { ip-address | interface-type interface-number [ip-address] }
+  [dhcp] [global] [distance] [multicast]
+  [ name next-hop-name ] [ permanent | track number ] [ tag tag ]
+#+end_src
+
+I'm pretty sure the key here is "only break one thing at a time."
+
+With a =2x2= stack of routers (each one connected to the other 3, but only two
+connected to the WAN), it should be possible to retain most active sessions (at
+least UDP, but probably TCP) if anything but a WAN connection is cut, since they
+can actively reroute around the break.
+
+*** Devices with failover
+
+In these you can typically establish connectivity with some =bastion= host
+through a tunnel. As long as you remain connected there and ensure connectivity
+to the other after changes are complete, then you can remotely manage the pair.
+
+Whichever redundant gateway you come through:
+
++ make changes on the other (with multiple IP's this could be easier)
++ ensure routes have updated on relevant devices (redistribute). some routing
+  protocols req. time to propagate. the heartbeat network should probably not
+  change.
+  - if there are static routes that don't reference an interface, these may need
+    to change. I would prefer using these as long as the conditions on the route
+    are clear ... but i don't really know what i'm doing.
+
+Then once connectivity is restored to the just configured router, complete the
+process for the other router.
+
+*** Devices without failover
+
+Here you need to configure a secondary method (perhaps on a single device) to
+connect while ensuring that your intended changes don't disrupt connectivity.
+
+If it's a router, if it has enough interfaces and if they're sufficiently
+connected enough devices, then it's much easier.
+
+If not, you may have to bounce around the network and bring up temporary
+connections to provide redundancy during changes.
+
+*** TODO update the above two when details are more clear
 
 * Towers of Hanoi From Hell
 
@@ -123,6 +220,22 @@ The hourly rate is crazy high.
 
 + Remove interface assignments for VLAN# A
 + Remove VLAN# A
+
+* Cheeky Comments
+
+The cloud providers have solved some major problems, which are apparently
+difficult enough such that even the government would rather just pay
+amazon/microsoft. This is one category of those problems. Devops has totally
+changed the rate at which mobile/social apps can be developed as well as how
+dynamic networking changes can be.
+
+And it's all so the plebs can have their Tik Tok.
+
+#+begin_quote
+"Give them their bread and their circus and they will never revolt."
+
+- Juvenal, who apparently never wrote this, per se
+#+end_quote
 
 * Roam
 + [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
