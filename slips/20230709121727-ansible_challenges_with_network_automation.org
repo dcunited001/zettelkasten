@@ -1,0 +1,125 @@
+:PROPERTIES:
+:ID:       a8ff5e0c-9472-4786-b1b7-af5674fd2dd8
+:END:
+#+TITLE: Ansible: Challenges With Network Automation
+#+CATEGORY: slips
+#+TAGS:
+
+So ansible has some problems. for Linux server stuff, it's great. Here, you
+still need to learn how to use rolles, but you can attack it any several
+ways. For the most part, the config for a task or role only occasionally
+references information off the box with the exception of config that benefits
+from DNS. There are other situations that are more difficult, but they would
+typically involve the network:
+
++ CephFS
++ DeviceMapper
++ firewalld (to some extent)
++ libvirt (again, the network)
+
+There are other examples of challenging tasks, I'm sure.
+
+* Teleology of Ansible Concepts
+
+Nowhere on the internet is explained the teleology (purpose) of several ansible
+features: the =vars= and =defaults= of roles, facts, etc. You're explained "how"
+they work, but not "why" you should use them. This is very important to
+understand or you will spend the rest of your life shuffling YAML around. It is
+a bit difficult to put into words. Every time you "get it wrong" halfway through
+and need to refactor, you risk either broken playbooks/roles or, worse, a loss
+of idempotence -- playbooks run without understanding how the state will be
+mutated. The latter is what facts are meant to address: the flaw with facts
+being that you have to refactor your playbooks to use them _unless_ you were
+targeting that config format.
+
+So for the configuration of roles:
+
++ See the =dot= graph elsewhere in this =org= file. I accidentally found it on a
+  ripgrep through the ansible source.
++ The =defaults= provides a monoid for your role's variables. A monoid takes a
+  thing (or nothing) and gives you another thing. The thing you want is a role
+  config with at least the minimum config.
++ The role =vars= provide a layer of indirection so invocations of your role can
+  be adapted to the playbook context, which is somewhat obvious now. However,
+  the role =vars= are rendered immediately before the =ansible -e= vars, so this
+  is your last opportunity to use templates before your playbooks' task
+  templates are rendered.
++ The problem with network automation: all your roles have to share common
+  configuration but this common configuration can't really exist anywhere except
+  the project since every network is different.
++ The Jinja processing of Ansible's YAML doesn't merge, it replaces. The problem
+  you'll encounter before refactoring to roles is that you do not have enough
+  layers for indirection -- the lack of merge means that you have to rely on new
+  systems of naming keys to ingest. One way around this would be to do =foobar:
+  "{{ foobar }}"=, but this creates too many interdependencies between your
+  projects' group_vars and host_vars.
+
+** Shared Config Formats:
+
+You'll encounter the above when developing config formats:
+
++ to associate VLAN's to subnets (IP, net, prefix)
++ where you want to define IP subnet configs (ideally you'd have IP config
+  appear once in your project for a network, then depend on convention and
+  =ipaddr= for determining addresses of interfaces)
++ while allowing a =cisco_switch= role to be applied to multiple switches
++ where trunking is set up on a subset of those switch interfaces
++ where PFSense is configured to match the trunks
++ and routing/gateways/fw can be generated from the structure
+
+But again, each time the values or the keys change, you'll won't just have one
+problem, you'll have 99.
+
+** The problem with Jinja
+
+And hopefully someone directs you to this page ASAP: [[https://jinja.palletsprojects.com/en/3.1.x/templates/#list-of-builtin-filters][Jinja Filters]].
+
+Because whatever you /thought/ you were going to do with those filters ... it's
+not going to work. It feels a bit like learning =jq=, but in the end, I was
+satisfied with =jq=. I still just wanted =xpath= or =SQL=, but okay it's pretty
+good. The manipulations that jinja use is at odds with a few of the problems
+mentioned above, particularly how a lack of =merge= results in a need to
+distribute your config structures over new =keys=. When you can see this coming
+it's irritating, but when it catches you by suprise it's pretty frustrating.
+
+And I'm grepping literally ever jinja template in the tests for the Ansible
+collections in my project. It's not like I can't see how other people are
+writing this stuff. Those tests are a bit self-contained (they don't integrate
+several ansible roles/plugins simultaneously), but I'm still sampling the range
+of functions available for Jinja. It seems the key to understanding Jinja is not
+so much "jinja" as it is understanding the "unjinja" -- or where /not/ to use it
+and how to rely on the YAML to do what jinja isn't going to do.
+
+Much of this is obvious after using it a bit ... but figuring this out benefits
+tremendously from just seeing how other people glued together massive projects
+in Ansible.
+
+** Network Data Structures
+
+Usually you are working with:
+
++ large scale network config: i want to talk to this service at this DNS name
++ relative-scale network config: here are my ip's and interfaces and the
+  directly connected devices are here.
+
+A lot of podcasts seem to mention "just write python." And I'm pretty sure what
+they mean is: just write scripts for what you need as you need them, don't try
+to fit it all in one monorepo.
+
+* Network Source of Truth
+
+This is why the network specification should exist in NetBox or Nautobot, which
+provides a comprehensive common format for your network. This should reflect the
+/desired network state/, according to some videos I've seen, and thus your facts
+will show deltas. One issue is that you need a functioning network to run
+NetBox/Nautobot -- which is a bit difficult since I'm still testing/learning
+network automation with Ansible.
+
+Without a sufficient level of experience, the additional iterations on design
+will cause structure of your configurations (host_vars/group_vars/roles/etc) to
+be fairly divergent. To fix some things, it will necessarily cause problems. The
+answer is to target the configuration formats that you know you'll use in the
+future: that of your network source of truth, or of the ansible facts, etc.
+
+Once I have nautobot set up, i'll probably have this common interface... but I
+don't for now.
