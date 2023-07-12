@@ -8,6 +8,21 @@
 * Resources
 See [[https://qmacro.org/blog/2022/03/05/understanding-jq's-reduce-function/][Understanding JQ's Reduce Function]] (several other good articles)
 
+* Note
+
+Most of the XML keys differ slightly from those that =pfsensible= works
+with. The =yq= results here can only be directly used sometimes.  When
+configuring multiple network devices with shared configs, you have to propagate
+the config values from a central source, whether from netbox, from yaml, from
+facts or from roles.
+
+Getting most of this information from =ansible_facts= would be preferable. It's
+definitely smarter to target the facts' config keys/structure when designing
+your roles' defaults, tasks and interface. But, being new, it's hard to
+anticipate how to work facts into a design, esp. for a role interface.
+
+Definitely check out [[https://github.com/linux-system-roles][github.com/linux-system-roles]] for examples of this.
+
 * Setup
 
 To run the =emacs-lisp= script below that sets values per PFSense backup file.
@@ -78,6 +93,40 @@ echo "[13,17,19]" | jq 'reduce ([1,2,3,4,5,6] | to_entries[]) as $kv (5; . * $kv
 
 #+RESULTS:
 : 3600
+
+*** Diff
+
+**** Show only changed lines
+
+still shows changes: =sdiff -s $1 $2 | cut -d'|' -f1=
+
+can't totally remove lines: =diff $1 $2 --new-group-format=%<=
+
+can't remove lines =sdiff -l -s $1 $2=
+
+this seems to work =diff $1 $2 -U0 | grep -e "^+" | sed -e "s/^+//"=
+
+*** Comm
+
+only works with sorted files: =comm -1 -3 $1 $2=
+
++ -1 :: suppress from file 1
++ -2 :: suppress from file 2
++ -3 :: suppress common lines
+
+Use with anon descriptors =comm -13 <(sort $1) <(sort $2)=
+
+* Interfaces
+
+
+#+header: :var file=(a-get-in fwconf '(interfaces file))
+#+begin_src shell :results output file :file (expand-file-name "interfaces-config.yml" backup-path)
+#columns="{ id, tracker, decsr, interface, floating, type, direction, ipprotocol, protocol, source, destination, disabled }"
+xq ".interfaces
+   | to_entries
+   | map({ (.key): .value })" $file | yq -y .
+#+end_src
+
 
 * Firewall Rules
 
@@ -192,6 +241,255 @@ yq "to_entries
 : jq: error (at <stdin>:1): array ([{"id":null...) and object ({"type":"ty...) cannot be added
 : [ Babel evaluation exited with code 5 ]
 
+* Networking
+
+** NAT
+
+#+header: :var file=(a-get-in fwconf '(nat file))
+#+begin_src shell :results output code :wrap src yaml
+xq "." $file | yq -y .
+#+end_src
+
+
+** Unbound DNS
+
+*** Hosts
+
+The only pfsensible module that can update Unbound DNS is =pfsense_rewrite_xml=.
+
+This contains statically defined hostnames.
+
+#+header: :var file=(a-get-in fwconf '(unbound file))
+#+begin_src shell :results output code :wrap src yaml
+xq "{unbound_hosts: .unbound.hosts}" $file | yq -y .
+#+end_src
+
+
+
+#+header: :var file=(a-get-in fwconf '(unbound file))
+#+begin_src shell :results output code :wrap src yaml
+xq ". | del(.unbound.hosts)" $file | yq -y .
+#+end_src
+
+** Aliases
+
+These can't be deleted if there are assoc. firewall rules or other dependencies,
+but they can be merged. =pfsensible= uses the same format for these as the XML.
+
+Types: host, network, port, url
+
+#+header: :var file=(a-get-in fwconf '(aliases file))
+#+begin_src shell  :results output code :wrap src yaml
+xq ".aliases.alias
+    | map(select(.type==\"host\")
+      | del(.detail)
+      | del(.type)
+      | del(.descr))
+    | { aliases: . }" $file | yq -y .
+#+end_src
+
+** DHCP
+
+*** IPv4
+
+#+header: :var file=(a-get-in fwconf '(dhcpd file))
+#+begin_src shell  :results output code :wrap src yaml
+ifx=lan
+xq ".dhcpd.$ifx
+    | { $ifx: . }" $file | yq -y .
+#+end_src
+
+*** IPv6
+
+#+header: :var file=(a-get-in fwconf '(dhcpdv6 file))
+#+begin_src shell  :results output code :wrap src yaml
+xq ".dhcpdv6" $file | yq -y .
+#+end_src
+
+
+* Misc
+
+** PFSense Setup
+
+General options (mostly)
+
+#+header: :var file=(a-get-in fwconf '(system file))
+#+begin_src shell :results output code :wrap src yaml
+columns="{ hostname, domain, dnsserver, dnslocalhost,
+           timezone, timeservers, language }"
+
+xq ".system | $columns" $file | yq -y .
+#+end_src
+
+
+#+RESULTS:
+#+begin_src yaml
+hostname: your
+domain: server
+dnsserver:
+  - 8.8.8.8
+  - 8.8.4.4
+dnslocalhost: local
+timezone: US/Eastern
+timeservers: 1.us.pool.ntp.org 2.us.pool.ntp.org 3.us.pool.ntp.org
+language: en_US
+#+end_src
+
+WebGUI options
+
+#+header: :var file=(a-get-in fwconf '(system file))
+#+begin_src shell :results output code :wrap src yaml
+columns="{ webguicss,
+           webguihostnamemenu,
+           dashboardcolumns,
+           interfacessort,
+           logincss } "
+xq ".system.webgui | $columns" $file | yq -y .
+#+end_src
+
+#+RESULTS:
+#+begin_src yaml
+webguicss: pfSense-dark.css
+webguihostnamemenu: fqdn
+dashboardcolumns: '2'
+interfacessort: null
+logincss: 1e3f75;
+#+end_src
+
+The following are options in the =pfsensible.core= format that I couldn't find in =system-config.*.xml=
+
+| dnsallowoverride   | dns_hostnames: dns[0-9]+host | dns_addresses: dns[0-9]+gw |                              |
+| authmode           | shellauth                    | session                    | loginshowhost                |
+| requirestatefilter | systemlogsfilterpanel        | systemlogsmanagelogpanel   | statusmonitoringsttingspanel |
+| webguifixedmenu    | webguileftcolumnhyper        | disablealiaspopupdetail    | roworderdragging             |
+
+** Users and Groups
+
+Groups and users mostly share the same format as =pfsensible=.
+
+#+header: :var file=(a-get-in fwconf '(system file))
+#+begin_src shell :results output code :wrap src yaml
+xq "{groups: .system.group,
+     users: (.system.user
+     | map(del(.\"sha512-hash\")
+       | del(.\"authorizedkeys\")))}" $file | yq -y .
+#+end_src
+
+
+** Packages
+
+*** Squid
+
+I had thoroughly configured this, but didn't end up using it.
+
+SquidGuard and Reverse proxy are off, but have defaults applied (hard to tell
+with Squid rev. proxy).
+
+The =squidusers= field will contain passwords.
+
+#+header: :var file=(a-get-in fwconf '(installedpackages file))
+#+begin_src shell :results output code :wrap src yaml
+columns="squid, squidnac, squidguard, squidcache, squidremote, squidusers, squidauth"
+xq ".installedpackages
+   | del(.service)
+   | del(.package)
+   | del(.menu)
+   | { $columns }" $file | yq -y .
+#+end_src
+
+** OpenVPN
+
+*** Extract Server Configs
+
+Replace =vpnid=
+
+#+header: :var file=(a-get-in fwconf '(openvpn file))
+#+begin_src shell :results output file :file (expand-file-name "openvpn-vpn1.yml" backup-path)
+xq ".openvpn.\"openvpn-server\"
+   | map(select(.vpnid==\"1\"))
+   | map(del(.tls))
+   | first" $file | yq -y .
+#+end_src
+
+*** Compare OpenVPN Configs
+
+I had spent quite a bit of time on this, but complete it. I don't have a tunnel
+or public IP for now.
+
+#+header: :var bp=(identity backup-path)
+#+begin_src shell  :results output :wrap example diff
+diff "$bp/openvpn-"{default,vpn1}".yml"
+
+# not sure why it doesn't finish
+echo ""
+#+end_src
+
+Show how the configured VPN has been changed from the defaults
+
+#+header: :var bp=(identity backup-path)
+#+begin_src shell :results output :wrap src yaml
+diff -d "$bp/openvpn-"{default,vpn1}".yml" |\
+    grep -e "^>" |\
+    sed -e 's/^> //'
+#+end_src
+
+#+RESULTS:
+#+begin_src yaml
+vpnid: '1'
+mode: server_tls
+protocol: TCP4
+interface: opt2
+description: VPN1
+caref: 0000000000000
+dh_length: none
+ecdh_curve: secp256r1
+cert_depth: '7'
+remote_cert_tls: 'yes'
+engine: rdrand
+tunnel_network: 172.15.254.252/30
+maxclients: 2.5
+create_gw: v4only
+verbosity_level: '4'
+#+end_src
+
+**** Comm
+
+Important distinguishing configs for default
+
+#+header: :var bp=(identity backup-path)
+#+begin_src shell :results output :wrap src yaml
+comm -23 <(sort $bp/openvpn-default.yml) <(sort $bp/openvpn-vpn1.yml) |\
+    yq -y "del(.caref) | del(.vpnid)"
+#+end_src
+
+#+RESULTS:
+#+begin_src yaml
+cert_depth: '1'
+connlimit: null
+create_gw: both
+description: OpenVPN Defaults
+dh_length: '2048'
+ecdh_curve: none
+engine: none
+exit_notify: '1'
+interface: WAN1
+maxclients: null
+mode: p2p_tls
+protocol: UDP4
+remote_cert_tls: null
+sndrcvbuf: null
+tunnel_network: null
+unbound_restart: null
+verbosity_level: '1'
+#+end_src
+
+And the reverse: important configs for the original VPN
+
+#+header: :var bp=(identity backup-path)
+#+begin_src shell :results output :wrap src yaml
+comm -13 <(sort $bp/openvpn-default.yml) <(sort $bp/openvpn-vpn1.yml) |\
+    yq -y "del(.caref) | del(.vpnid)"
+#+end_src
 
 * Roam
 + [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][ansible]]
