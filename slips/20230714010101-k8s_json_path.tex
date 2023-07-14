@@ -1,0 +1,78 @@
+% Created 2023-07-14 Fri 01:42
+% Intended LaTeX compiler: pdflatex
+\documentclass[a4paper,landscape]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\usepackage[margin=1.0in]{geometry}
+\date{}
+\title{K8S: Json Path}
+\hypersetup{
+ pdfauthor={David Conner},
+ pdftitle={K8S: Json Path},
+ pdfkeywords={},
+ pdfsubject={notes},
+ pdfcreator={Emacs 29.0.91 (Org mode 9.6.7)}, 
+ pdflang={English}}
+\begin{document}
+
+
+\section{JSONPath Syntax}
+\label{sec:org34bbd69}
+
+\begin{center}
+\begin{tabular}{lll}
+Function & Description & Example\\[0pt]
+\hline
+\texttt{text} & the plain text & \texttt{kind is \{.kind\}}\\[0pt]
+\texttt{@} & the current object & \texttt{\{@\}}\\[0pt]
+\texttt{.} or \texttt{[]} & child operator & \texttt{\{.kind\}}, \texttt{\{['kind']\}} or \texttt{\{['name\textbackslash{}.type']\}}\\[0pt]
+\texttt{..} & recursive descent & \texttt{\{..name\}}\\[0pt]
+\texttt{*} & wildcard. Get all objects & \texttt{\{.items[*].metadata.name\}}\\[0pt]
+\texttt{[start:end:step]} & subscript operator & \texttt{\{.users[0].name\}}\\[0pt]
+\texttt{[,]} & union operator & \texttt{\{.items[*]['metadata.name', 'status.capacity']\}}\\[0pt]
+\texttt{?()} & filter & \texttt{\{.users[?(@.name=}"e2e")].user.password\}=\\[0pt]
+\texttt{range}, \texttt{end} & iterate list & \texttt{\{range .items[*]\}[\{.metadata.name\}, \{.status.capacity\}] \{end\}}\\[0pt]
+\texttt{''} & quote interpreted string & \texttt{\{range .items[*]\}\{.metadata.name\}\{'\textbackslash{}t'\}\{end\}}\\[0pt]
+\end{tabular}
+\end{center}
+
+\subsection{Examples with \texttt{kubectl}}
+\label{sec:orgebbca79}
+
+Examples using \texttt{kubectl} and JSONPath expressions:
+
+\begin{verbatim}
+kubectl get pods -o json
+kubectl get pods -o=jsonpath='{@}'
+kubectl get pods -o=jsonpath='{.items[0]}'
+kubectl get pods -o=jsonpath='{.items[0].metadata.name}'
+kubectl get pods -o=jsonpath="{.items[*]['metadata.name', 'status.capacity']}"
+kubectl get pods -o=jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.startTime}{"\n"}{end}'
+\end{verbatim}
+
+\subsection{Regex is not supported}
+\label{sec:org17e7e19}
+
+JSONPath regular expressions are not supported. If you want to match
+using regular expressions, you can use a tool such as \texttt{jq}.
+
+\begin{verbatim}
+# kubectl does not support regular expressions for JSONpath output
+# The following command does not work
+kubectl get pods -o jsonpath='{.items[?(@.metadata.name=~/^test$/)].metadata.name}'
+
+# The following command achieves the desired result
+kubectl get pods -o json | jq -r '.items[] | select(.metadata.name | test("test-")).spec.containers[].image'
+\end{verbatim}
+
+From the \href{https://kubernetes.io/docs/reference/\_print/\#pg-a938176c695852fe70362c29cf615f1c}{JSONPath Support} section in the Kubernetes Docs
+\end{document}

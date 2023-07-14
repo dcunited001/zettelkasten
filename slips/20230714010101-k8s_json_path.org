@@ -1,0 +1,70 @@
+:PROPERTIES:
+:ID:       42b963c4-4eec-48ac-85c0-b15bf6cb5ca3
+:END:
+#+TITLE:     K8S: Json Path
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: title:nil author:nil c:nil d:(not "LOGBOOK") date:nil
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:t todo:t |:t
+#+OPTIONS: toc:nil
+
+#+SELECT_TAGS:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+
+#+STARTUP: inlineimages
+
+#+PROPERTY: header-args :eval never-export
+# #+OPTIONS: texht:t
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [a4paper,landscape]
+#+LATEX_HEADER_EXTRA: \usepackage[margin=1.0in]{geometry}
+
+* JSONPath Syntax
+
+| Function           | Description               | Example                                                         |
+|--------------------+---------------------------+-----------------------------------------------------------------|
+| =text=             | the plain text            | =kind is {.kind}=                                               |
+| =@=                | the current object        | ={@}=                                                           |
+| =.= or =[]=        | child operator            | ={.kind}=, ={['kind']}= or ={['name\.type']}=                   |
+| =..=               | recursive descent         | ={..name}=                                                      |
+| =*=                | wildcard. Get all objects | ={.items[*].metadata.name}=                                     |
+| =[start:end:step]= | subscript operator        | ={.users[0].name}=                                              |
+| =[,]=              | union operator            | ={.items[*]['metadata.name', 'status.capacity']}=               |
+| =?()=              | filter                    | ={.users[?(@.name=="e2e")].user.password}=                      |
+| =range=, =end=     | iterate list              | ={range .items[*]}[{.metadata.name}, {.status.capacity}] {end}= |
+| =''=               | quote interpreted string  | ={range .items[*]}{.metadata.name}{'\t'}{end}=                  |
+
+** Examples with =kubectl=
+
+Examples using =kubectl= and JSONPath expressions:
+
+#+begin_example shell
+kubectl get pods -o json
+kubectl get pods -o=jsonpath='{@}'
+kubectl get pods -o=jsonpath='{.items[0]}'
+kubectl get pods -o=jsonpath='{.items[0].metadata.name}'
+kubectl get pods -o=jsonpath="{.items[*]['metadata.name', 'status.capacity']}"
+kubectl get pods -o=jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.startTime}{"\n"}{end}'
+#+end_example
+
+** Regex is not supported
+
+JSONPath regular expressions are not supported. If you want to match
+using regular expressions, you can use a tool such as =jq=.
+
+#+begin_example shell
+# kubectl does not support regular expressions for JSONpath output
+# The following command does not work
+kubectl get pods -o jsonpath='{.items[?(@.metadata.name=~/^test$/)].metadata.name}'
+
+# The following command achieves the desired result
+kubectl get pods -o json | jq -r '.items[] | select(.metadata.name | test("test-")).spec.containers[].image'
+#+end_example
+
+From the [[https://kubernetes.io/docs/reference/_print/#pg-a938176c695852fe70362c29cf615f1c][JSONPath Support]] section in the Kubernetes Docs
