@@ -1,0 +1,285 @@
+:PROPERTIES:
+:ID:       b1dab949-e7d3-47cb-a22c-4ef572298c94
+:END:
+#+TITLE:     Cheatsheet: Podman Support for Kubernetes YAML
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: title:nil author:nil c:nil d:(not "LOGBOOK") date:nil
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:t todo:t |:t
+#+OPTIONS: toc:nil
+
+#+SELECT_TAGS:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+
+#+STARTUP: inlineimages
+
+#+PROPERTY: header-args :eval never-export
+# #+OPTIONS: texht:t
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [a4paper,landscape]
+#+LATEX_HEADER_EXTRA: \usepackage[margin=1.0in]{geometry}
+
+This document outlines the kube yaml fields that are currently supported by the
+*podman kube play* command. The notes were cross referenced with the Kubernetes
+Docs, particularly the [[https://kubernetes.io/docs/reference/_print/][Greppable Reference]], where printable view make Ctrl-F go
+vroom.
+
+Not Supported ❌ Not Documented ❓Supported ✅ Only with multiple nodes ☑
+
+* Pod Fields
+
+[[https://kubernetes.io/docs/reference/_print/#PodSpec][PodSpec]]
+
+|--------------------+----+---------+----|
+| Field              |    | Field   |    |
+|--------------------+----+---------+----|
+| containers         | ✅ | os.name | ❌ |
+| initContainers     | ✅ | volumes | ❌ |
+| imagePullSecrets   | ❌ |         |    |
+| enableServiceLinks | ❌ |         |    |
+|--------------------+----+---------+----|
+
+** Scheduling
+
+[[https://kubernetes.io/docs/reference/_print/#kubescheduler-config-k8s-io-v1-KubeSchedulerConfiguration][KubeSchedulerConfiguration]]: has many [[https://kubernetes.io/docs/reference/_print/#kubescheduler-config-k8s-io-v1-KubeSchedulerProfile][profiles]], each identified by a
+=schedulerName=. See also section on [[https://kubernetes.io/docs/reference/_print/#profiles][Scheduling Profiles]].
+
+|---------------+---+-------------------+----+------------------+----|
+| Field         |   | Field             |    | Field            |    |
+|---------------+---+-------------------+----+------------------+----|
+| nodeSelector  | ☑ | priority          | ❌ | preemptionPolicy | ❓ |
+| nodeName      | ☑ | priorityClassName | ❌ | overhead         | ❓ |
+| schedulerName | ☑ | runtimeClassName  | ❌ |                  |    |
+|---------------+---+-------------------+----+------------------+----|
+
++ [[https://kubernetes.io/docs/reference/_print/#PriorityClass][PriorityClass]]
++ [[https://kubernetes.io/docs/reference/_print/#RuntimeClass][RuntimeClass]]
+
+*** Affinity, Tolerations, Taints, Topology Spread Constraints
+
+|-----------------+---+-------------------+---+-----------------------------+---|
+| affinity.*      |   | tolerations.*     |   | topologySpreadConstraints.* |   |
+|-----------------+---+-------------------+---+-----------------------------+---|
+| nodeAffinity    | ☑ | key               | ☑ | maxSkew                     | ☑ |
+| podAffinity     | ☑ | operator          | ☑ | topologyKey                 | ☑ |
+| podAntiAffinity | ☑ | effect            | ☑ | whenUnsatisfiable           | ☑ |
+|                 |   | tolerationSeconds | ☑ | labelSelector               | ☑ |
+|                 |   |                   | ☑ | minDomains                  | ☑ |
+|-----------------+---+-------------------+---+-----------------------------+---|
+
+*** Lifecycle
+
+|------------------------------+----|
+| Field                        |    |
+|------------------------------+----|
+| restartPolicy                | ✅ |
+| terminationGracePeriod       | ❌ |
+| activeDeadlineSeconds        | ❌ |
+| readinessGates.conditionType | ❌ |
+|------------------------------+----|
+
+** DNS
+
+|-------------------+----+-----------------------+----+---------------+----|
+| Field             |    | hostAliases.*         |    | dnsConfig.*   |    |
+|-------------------+----+-----------------------+----+---------------+----|
+| hostname          | ✅ | hostAliases.hostnames | ✅ | nameservers   | ✅ |
+| setHostnameAsFQDN | ❌ | hostAliases.ip        | ✅ | options.name  | ✅ |
+| subdomain         | ❌ |                       |    | options.value | ✅ |
+| dnsPolicy         | ❌ |                       |    | searches      | ✅ |
+|-------------------+----+-----------------------+----+---------------+----|
+
++ hostAliases :: only valid for non-hostNetwork pods.
+
+** Security
+
+Service Accounts
+
+|------------------------------+----|
+| Field                        |    |
+|------------------------------+----|
+| serviceAccountName           | ❌ |
+| automountServiceAccountToken | ❌ |
+|------------------------------+----|
+
+** Namespaces, sysctl and [[https://kubernetes.io/docs/tasks/administer-cluster/sysctl-cluster/][seccomp]] profiles
+
+[[https://www.masteringemacs.org/article/whats-new-in-emacs-28-1][Emacs also supports seccomp profiles]], if you're paranoid and for some reason
+compiling BPF programs isn't an undue time investment.
+
+|-----------------------+----+---------------------------------+----|
+| Field                 |    | securityContext.*               |    |
+|-----------------------+----+---------------------------------+----|
+| hostNetwork           | ✅ | seccompProfile.type             | ❌ |
+| hostPID               | ✅ | seccompProfile.localhostProfile | ❌ |
+| hostIPC               | ✅ | sysctls.name                    | ❌ |
+| shareProcessNamespace | ✅ | sysctls.value                   | ❌ |
+|-----------------------+----+---------------------------------+----|
+
+** Volume/Process Ownership and SELinux
+
+Other =securityContext.*= fields for =PodSpec=
+
+|---------------------+----+-----------------------------------+----|
+| securityContext.*   |    | securityContext.*                 |    |
+|---------------------+----+-----------------------------------+----|
+| runAsUser           | ✅ | seLinuxOptions.level              | ✅ |
+| runAsNonRoot        | ❌ | seLinuxOptions.role               | ✅ |
+| runAsGroup          | ✅ | seLinuxOptions.type               | ✅ |
+| supplementalGroups  | ✅ | seLinuxOptions.user               | ✅ |
+|---------------------+----+-----------------------------------+----|
+| fsGroup             | ❌ | windowsOptions.gmsaCredentialSpec | ❌ |
+| fsGroupChangePolicy | ❌ | windowsOptions.hostProcess        | ❌ |
+|                     |    | windowsOptions.runAsUserName      | ❌ |
+|---------------------+----+-----------------------------------+----|
+
++ fsGroup/ChangePolicy :: these pertain to whether a pod can change the
+  ownership of volumes before "being exposed inside Pod." The former is a Group
+  ID and =setgid= will be set, changing ownership of files created. The latter
+  can only be set to =OnRootMismatch= or =Always=. Not entirely sure, but I
+  wouldn't want to have to fix whatever this solves.
+
+* Container Fields
+
+|-----------------+----+-------------+----+---------------------+----+-----------+----|
+| Name/Image      |    | Entry Point |    | Ports               |    | Debugging |    |
+|-----------------+----+-------------+----+---------------------+----+-----------+----|
+| name            | ✅ | command     | ✅ | ports.containerPort | ✅ | stdin     | ❌ |
+| image           | ✅ | args        | ✅ | ports.hostIP        | ✅ | stdinOnce | ❌ |
+| imagePullPolicy | ✅ | workingDir  | ✅ | ports.hostPort      | ✅ | tty       | ❌ |
+|                 |    |             |    | ports.name          | ✅ |           |    |
+|                 |    |             |    | ports.protocol      | ✅ |           |    |
+|-----------------+----+-------------+----+---------------------+----+-----------+----|
+
+** Env References
+
+Either set =env.value= or supply a reference source with =env.valueFrom=, which
+needs a corresponding =envFrom.*= source
+
+|-------+----+------------------+----+--------------------------+----+-----------------------+----|
+| env.* |    | env.valueFrom.*  |    | env.valueFrom.*          |    | env.valueFrom.*       |    |
+|-------+----+------------------+----+--------------------------+----+-----------------------+----|
+| name  | ✅ | fieldRef         | ✅ | configMapKeyRef.key      | ✅ | secretKeyRef.key      | ✅ |
+| value | ✅ | resourceFieldRef | ✅ | configMapKeyRef.name     | ✅ | secretKeyRef.name     | ✅ |
+|       |    |                  |    | configMapKeyRef.optional | ✅ | secretKeyRef.optional | ✅ |
+|-------+----+------------------+----+--------------------------+----+-----------------------+----|
+
+*env.valueFrom.fieldRef*
+
++ Composed of fieldPath & apiVersion ([[https://kubernetes.io/docs/reference/kubernetes-api/common-definitions/object-field-selector/#ObjectFieldSelector][ObjectFieldSelector]])
++ Selects a field of the pod
++ Only annotations, labels, name and namespace are supported.
+
+*env.valueFrom.resourceFieldRef*
+
++ Composed of resource, containerName, divisor ([[https://kubernetes.io/docs/reference/kubernetes-api/common-definitions/resource-field-selector/#ResourceFieldSelector][ResourceFieldSelector]])
++ Selects a resource of the container
++ Only resources limits and requests (limits.cpu, limits.memory, requests.cpu
+  and requests.memory) are currently supported.
+
+** Env Sources
+
+|-----------+----+-----------------------+----+--------------------+----|
+| envFrom.* |    | envFrom.*             |    | env.*              |    |
+|-----------+----+-----------------------+----+--------------------+----|
+| prefix    | ❌ | configMapRef.name     | ✅ | secretRef.name     | ✅ |
+|           |    | configMapRef.optional | ✅ | secretRef.optional | ✅ |
+|-----------+----+-----------------------+----+--------------------+----|
+
+** Volumes, Devices and Resources
+
+|----------------+----+------------------+----+----------------+----+-----------------+----+-------------+----|
+| volumeMounts.* |    | volumeMounts.*   |    | volumeMounts.* |    | volumeDevices.* |    | resources.* |    |
+|----------------+----+------------------+----+----------------+----+-----------------+----+-------------+----|
+| name           | ✅ | mountPath        | ✅ | subPath        | ❌ | devicePath      | ❌ | limits      | ✅ |
+| readOnly       | ✅ | mountPropagation | ❌ | subPathExpr    | ❌ | name            | ❌ | requests    | ✅ |
+|----------------+----+------------------+----+----------------+----+-----------------+----+-------------+----|
+
+** Lifecycle, Termination and Probes
+
+|---------------------+----+--------------------------+----+----------------+----|
+| [[https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#LifecycleHandler][LifecycleHandler]]    |    | TerminationMessage       |    | [[https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#Probe][Probe]]          |    |
+|---------------------+----+--------------------------+----+----------------+----|
+| lifecycle.postStart | ❌ | terminationMessagePath   | ❌ | livenessProbe  | ✅ |
+| lifecycle.preStop   | ❌ | terminationMessagePolicy | ❌ | readinessProbe | ❌ |
+|                     |    |                          |    | startupProbe   | ❌ |
+|---------------------+----+--------------------------+----+----------------+----|
+
+For the termination message, the *path* is the mounted file to which the
+container's termination message will be written and the *policy* indicates how
+the termination message should be populated.
+
+|------------------------------+----+------------------------------------------+----|
+| securityContext.*            |    | securityContext.*                        |    |
+|------------------------------+----+------------------------------------------+----|
+| securityContext.runAsUser    | ✅ | securityContext.readOnlyRootFilesystem   | ✅ |
+| securityContext.runAsNonRoot | ❌ | securityContext.procMount                | ❌ |
+| securityContext.runAsGroup   | ✅ | securityContext.privileged               | ✅ |
+|                              |    | securityContext.allowPrivilegeEscalation | ✅ |
+|------------------------------+----+------------------------------------------+----|
+
+*** Capabilities and Seccomp
+
+securityContext.*
+
+|-------------------+----+---------------------+----|
+| sc.capabilities.* |    | sc.seccompProfile.* |    |
+|-------------------+----+---------------------+----+-
+| add               | ✅ | type                | ❌ |
+| drop              | ✅ | localhostProfile    | ❌ |
+|-------------------+----+---------------------+----+-
+
+*** SELinux and Windows
+
+securityContext.*
+
+|---------------------+----+---------------------+----|
+| sc.seLinuxOptions.* |    | sc.windowsOptions.* |    |
+|---------------------+----+---------------------+----|
+| level               | ✅ | gmsaCredentialSpec  | ❌ |
+| role                | ✅ | hostProcess         | ❌ |
+| type                | ✅ | runAsUserName       | ❌ |
+| user                | ✅ |                     |    |
+|---------------------+----+---------------------+----|
+
+* PersistentVolumeClaim Fields
+
+|------------------+----+-------------+----|
+| Field            |    | resouces.*  |    |
+|------------------+----+-------------+----|
+| volumeName       | ❌ | limits      | ❌ |
+| storageClassName | ✅ | requests    | ✅ |
+| volumeMode       | ❌ | claims.name | ❓ |
+| accessModes      | ✅ |             |    |
+| selector         | ❌ |             |    |
+|------------------+----+-------------+----|
+
+* ConfigMap Fields
+
+|------------+----|
+| Field      |    |
+|------------+----|
+| binaryData | ✅ |
+| data       | ✅ |
+| immutable  | ❌ |
+|------------+----|
+
+* Deployment Fields
+
+|----------------------+----+---------------------------------------+----|
+| Field                |    | Field                                 |    |
+|----------------------+----+---------------------------------------+----|
+| replicas             | ✅ | minReadySeconds                       | ❌ |
+| selector             | ✅ | progressDeadlineSeconds               | ❌ |
+| template             | ✅ | strategy.type                         | ❌ |
+| revisionHistoryLimit | ❌ | strategy.rollingUpdate.maxSurge       | ❌ |
+| paused               | ❌ | strategy.rollingUpdate.maxUnavailable | ❌ |
+|----------------------+----+---------------------------------------+----|
+
++ (Podman) For =replicas= the actual replica count is ignored and set to 1
