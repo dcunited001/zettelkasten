@@ -29,7 +29,89 @@ know enough to know I don't know much.
 ** Resources
 + [[https://access.redhat.com/discussions/2143791#comment-1288511][List supported ciphers for client/server]]
 
+*** JumpProxy
+
++ OpenSSH Cookbook: [[OpenSSH/Cookbook/Proxies and Jump Hosts][Proxies and Jump Hosts]]
++ [[SSH ProxyCommand example][SSH Proxy Command]] for compatibility with older clients
+
 ** Topics
+
+*** SSH =JumpProxy= and =ProxyCommand=
+
+Okay wow this is a thing now. Nice to know.
+
+*** SSH Agent Forwarding
+
++ [[https://security.stackexchange.com/questions/92479/security-of-nested-ssh][Security of Nested SSH]]: Why not using agent forwarding might be a bad idea
++ [[Why using SSH agent-forwarding is a Bad Idea][Why using SSH Agent Forwarding is a bad idea]]: also explains
+
+*** Canonicalization
+
+The following options affect how DNS names specified in =ssh_config= are either
+rewritten or redirected via CNAME's. The =ProxyJump= method needs to be aware of
+an available DNS host you want to connect to (e.g. it won't have access to IP's
+in hosts configured in your local =/etc/hosts=.
+
++ CanonicalDomains :: Restrict =CanonicalizeHostname= to these upper-level
+  domains.
++ CanonicalizeFallbackLocal  ::
++ CanonicalizeMaxDots (1) :: These are processed from the left. The =man
+  ssh_config= says: "The default, 1, allows a single dot: hostname.subdomain..."
++ CanonicalizePermittedCNAMEs (none) :: rules DNS names with CNAME redirects
++ CanonicalizeHostname (no) :: set to =always= to canonicalize the
+  jumped-to-host when using =ProxyJump=.
+  - I believe this means the local ssh does the CNAME lookup/rewrite before any
+    connection and thus the request to proxy sent to the the jump-host is
+    encapsulated as canonicalized.
+
+**** Configure Why?
+
+This mainly helps you ensure that your delegated SSH connections are taking the
+right path to reach the right host. Like when:
+
++ A DNS name resolves to a different IP address outside the internal network
++ A firewall would reject your connection if your traffic takes the wrong route
++ Or a load-balancer would behave differently when forwarding your connections'
+  traffic depending on the DNS name.
+
+This would be relevant for:
+
++ Hardening SSH connections against DNS-based MitM attacks, somewhat
++ Working on networks with split-horizon DNS, the internal records for which are
+  not usually publicly available outside the network.
++ When Hairpin NAT does Hairpin NAT things (or so I've heard)
++ Relying on port-forwarding, while ensure connection is redirected to an
+  internally available hostname.
++ Ensuring the ProxyJump is jumping you to the right host and taking the
+  expected path.
++ You're on a VPN, but you don't have DNS configured right on your local host
+  (or maybe it is... since this relies on DNS)
++ You want to connect to specific server doing "GeoIP things" or that is
+  abstracted behind a VIP -- [[https://blog.twitter.com/engineering/en_us/topics/infrastructure/2019/expand-the-edge][global anycast, regional anycast, unicast]] -- but
+  you want to connect to it using the public-facing DNS name it expects (maybe
+  this describes a rational or valid situation... maybe not)
+
+See [[https://sleeplessbeastie.eu/2020/08/24/how-to-perform-hostname-canonicalization/][this blog]] for a walkthrough.
+
+The minimum configuration is something like:
+
+#+begin_example ssh-config
+CanonicalizeHostname yes
+CanonicalDomains example.org example.com
+#+end_example
+
+Another example from the blog would work (I think...) when =*.redis.example.org=
+would take send your traffic outside the network or hit a load-balancer with the
+invalid parameters.
+
+#+begin_example ssh-config
+CanonicalizeHostname yes
+CanonicalDomains example.org example.com
+CanonicalizeMaxDots 1
+CanonicalizeFallbackLocal yes
+CanonicalizePermittedCNAMEs *.redis.example.org:redis.internal.example.com
+#+end_example
+
 
 ** Issues
 
