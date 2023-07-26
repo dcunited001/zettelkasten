@@ -16,7 +16,6 @@
 ** Deployments
 + [[https://cryptsus.com/blog/secure-openvpn-setup-X509-LDAP-yubikey-2fa-authentication-Ubuntu18.04.html][Secure OpenVPN Setup With X.509, LDAP and 2FA Yubikey Auth on Ubuntu]]
 
-
 * Topics
 
 ** OpenVPN on PFSense with Yubikey Attestation Keys
@@ -41,6 +40,10 @@ especially if I don't have a static IP -- it's funny how /your ISP will _still_
 charge you for that/, but won't tell you everything is transparently routed IPv6
 end-to-end. THAT IS BULLSHIT ACTUALLY.
 
+** Deployment
+
++ [[https://support.yubico.com/hc/en-us/articles/360015668919-YubiKey-Smart-Card-Deployment-Considerations][Deployment Considerations]]
+
 ** Maximum Certificate Sizes
 
 See [[https://docs.yubico.com/yesdk/users-manual/application-piv/cert-size.html][yubikey docs on max cert size]]. Apparently, the 5.x keys can store up to 24 private key and
@@ -62,6 +65,8 @@ Signing:
 
 #+end_quote
 
+Also, using [[https://security.stackexchange.com/questions/258518/using-retired-extra-slots-82-95-on-yubikey][Retired Slots on Yubikey]]
+
 * Issues
 
 ** Management Key
@@ -74,6 +79,9 @@ new keys]] or changing the PIN policy, which isn't the same as signing/authing.
 [[therhttps://www.reddit.com/r/yubikey/comments/sq02qn/comment/hwq9d4k/?context=3][This reddit user advocates]] that for the average user, there's no significant
 benefit to configuring it, but it's more complicated to manage.
 
+However, Yubico docs indicate that one should be wary of PIN-generated
+management keys.
+
 ** PIN, PUK, Touch
 
 Generally, the PIN/PUK and Touch policies are critical in distinguishing the
@@ -84,6 +92,88 @@ card/ to perform operations. So, if someone is probing for a soft spot, you can
 generally get a feel for it.
 
 The attacker also must know the PIN/PUK if the policy forces them to.
+
+*** Pin Unlocking
+
++ See [[https://support.yubico.com/hc/en-us/articles/360013779219-Smart-Card-PIN-Unlock-Reset-Operational-Approaches][Smart Card PIN Unlock/Reset]]
+
+** Multiple Yubikey Applications
+
+GPG uses the CCID interface/driver which requires exclusive device access,
+whereas [[https://www.procustodibus.com/blog/2023/02/gpg-2-4-on-ubuntu-22-04/][other applications use pcscd]]. This should be addressed in GnuPG 2.4.
+Yubikey also has guide on [[https://lists.gnupg.org/pipermail/gnupg-devel/2019-September/034462.html][GPG's CCID Conflicts]]. This [[https://lists.gnupg.org/pipermail/gnupg-devel/2019-September/034462.html][GnuPG issue]] on GnuPG seems
+to that multi-app access in =scdaemon= addressed and coming down the pipe.
+
+#+begin_src conf
+reader-port Yubico Yubi
+disable-ccid
+pcsc-driver /usr/lib/libpcsclite.so.1
+# not libpcsc D lite.so.1 ... results in "error in libcrypto"
+#+end_src
+
+However, it's still not working on either Arch or Guix.
+
++ Both are using a Guix gnupg package =2.2.39=
++ On Arch, there /could/ be library/interface compatibility conflicts between
+  requests via Guix GnuPG and pacman pcscd
++ I tested Arch with the pacman =gpg-agent= which is =2.2.41=. This for some
+  reason requires entering the PIN with a =gpg= command first otherwise it
+  refuses to act for =ssh=. It still results in the same error for =pkcs11-tool=
+  though.
++ I'm getting the same issue on both Arch/Guix =CKR_DEVICE_ERROR=. Another
+  possibility is =udev= or permissions. However, =pkcs11-tool --list-slots=
+  works while GPG is not running, so it's likely not using PCSCD. I just don't
+  have time, but wanted to work it through bc sparse notes aren't useful.
+
+On the other hand:
+
++ The [[https://demo.yubico.com/webauthn-technical/registration][Yubico FIDO2 test registration]] works, which should use PCSCD (... it doesn't)
++ Running =ykman piv info= works. This may simply probe for metadata or pkcs11
+  objects. This may could circumvent =pcscd= since they don't require
+  authentication. Running =ssh-keygen -D /usr/lib64/pkcs11/opensc-pkcs11.so -e=
+  may also be a bad test ... but it works.
+
+The [[https://developers.yubico.com/yubico-piv-tool/Actions/test-signature.html][yubico-piv-tool actions]] don't depend on gpg-agent being configured to be
+compatible with PKCS11. =yubico-piv-tool -a verify-pin [-a other-actions] -s
+[slot]= which gives
+
+#+begin_quote
+Jul 26 08:49:26 myhost pcscd[91137]: 99999999 winscard.c:281:SCardConnect() Error Reader Exclusive
+Jul 26 09:00:33 myhost pcscd[91137]: 99999999 winscard.c:281:SCardConnect() Error Reader Exclusive
+Jul 26 09:24:27 myhost pcscd[91137]: 99999999 winscard.c:281:SCardConnect() Error Reader Exclusive
+#+end_quote
+
+So yeh, PCSCD definitely doesn't work for now.
+
+#+begin_quote
+I had assumed that CCID was somehow a feature apropos to PCSCD and SCDaemon and
+that using =disable-ccid= meant I would be resorting to a quick hack that
+downgraded security, perhaps significantly by removing "exclusive access"
+...
+
+Really(?...), any apps that interface with it ultimately proceed through drivers
+enforcement of standards/rules. Any interactions should also be further subject
+to the hardware's standards/rules.
+#+end_quote
+
+*** Why go through the trouble to use PIV?
+
+I mainly want to know if using PIV with GPG is possible/practical because it
+would make issuing certificates contained within a context easier -- e.g. TLS
+for libvirt and _it's /trivial/ to build guix systems with extra public
+keys_. It's also not hard to do similar things with Ansible, but for
+desktop/laptop, PIV would be preferable. It's a damn shame that so many people
+trash GNU/FSF, while acting like they are concerned about it.
+
+Of course, I would have none of these problems for servers if I could run
+K8S/Vault. I have enough hardware to run a k3s cluster, but I don't want to
+trust it with certificate management since it would be running on a less secure
+network segment. I'm not sure how PIV workflows function for servers. Vault can
+be run on container or on nomad, but you're cautioned against at least the
+former.
+
+I could really use some advice/help on this stuff. There are so many options for
+doing things, but too many moving parts for each strategy.
 
 ** Dealing with a stolen smartcard
 
@@ -144,15 +234,20 @@ When I first tried GPG's ssh-agent method about 2+ years ago, I had some stupid
 misconfiguration. I thought the authentication key would be used for SSH, but
 the misconfig prevented things from working. Since I didn't have anyone to ask
 and certain things were not clear, I started learning PIV, which is a bit more
-involved and on +some+ most devices (using =scdaemon=) you can't simultaneously
-access GPG and PIV on a yubikey using =scdaemon=, so this gets in the way of
-using GPG, which is more critical for me at least. It's a pain in the ass to add
-SSH keys through gpg-agent and it's a bit unclear how these are
+involved and on +some+ most devices (using =scdaemon=), but you can't
+simultaneously access GPG and PIV on a yubikey using =scdaemon=, so this gets in
+the way of using GPG, which is more critical for me at least. It's a pain in the
+ass to add SSH keys through gpg-agent and it's a bit unclear how these are
 encrypted/protected. I believe I have notes on that somewhere and ... I think
 they are, since encrypting these would like basically be the whole fucking
 point, right? Well good luck googling that ... but every other programmer/devops
 person just knows someone who could answer ... not if you're on Tom Hanks Island
 though.
+
+#+begin_quote
+okay, apparently I misinterpreted the purpose of =disable-ccid=. see issue on
+multiple applications.
+#+end_quote
 
 In other words, _it really, really sucks_ to miss out on that "cloudflare
 5'oclock free yubikey giveaway" especially when your management setup is
