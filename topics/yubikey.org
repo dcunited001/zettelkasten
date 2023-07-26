@@ -8,6 +8,8 @@
 ** PIV
 
 + [[https://developers.yubico.com/PIV/Guides/Certificate_authority.html][CA with a Yubikey]]
++ [[https://docs.yubico.com/yesdk/users-manual/application-piv/slots.html][PIV Slots]]
+
 
 * Resources
 
@@ -39,7 +41,101 @@ especially if I don't have a static IP -- it's funny how /your ISP will _still_
 charge you for that/, but won't tell you everything is transparently routed IPv6
 end-to-end. THAT IS BULLSHIT ACTUALLY.
 
+** Maximum Certificate Sizes
+
+See [[https://docs.yubico.com/yesdk/users-manual/application-piv/cert-size.html][yubikey docs on max cert size]]. Apparently, the 5.x keys can store up to 24 private key and
+certifcate pairs at around 2KB per slot. I'm not sure where these extra slots
+are though. Hmmmm. These may be a bit troublesome to use though.
+
+See [[https://docs.yubico.com/yesdk/users-manual/application-piv/slots.html][PIV Slots]]:
+
+#+begin_quote
+Generate and import asymmetric keys:
+
+Slots =9A, 9C, 9D, 9E, 82 - 95 and F9= hold asymmetric keys ... all slots other
+than =80, 81, and =9B= hold asymmetric keys.
+
+Signing:
+
+[in addition to =9C= ...], it is also possible to sign using the keys in slots
+=9A, 9D, 9E, and 82 - 95= as well.
+
+#+end_quote
+
 * Issues
+
+** Management Key
+
+*** Risks Associated to Management Key
+
+Unless configured by a user, the 3DES management key is transparently derived
+from the PIN. By compromising it ... you can do exciting things like [[https://docs.yubico.com/yesdk/users-manual/application-piv/pin-puk-mgmt-key.html#operations-that-require-the-management-key][generating
+new keys]] or changing the PIN policy, which isn't the same as signing/authing.
+[[therhttps://www.reddit.com/r/yubikey/comments/sq02qn/comment/hwq9d4k/?context=3][This reddit user advocates]] that for the average user, there's no significant
+benefit to configuring it, but it's more complicated to manage.
+
+** PIN, PUK, Touch
+
+Generally, the PIN/PUK and Touch policies are critical in distinguishing the
+Yubikey (or generic USB Smart Cards) from other security methods. They require
+physical access to the card and so physical security is also critical. This
+requirement also /compels someone to get physically close to you or a backup
+card/ to perform operations. So, if someone is probing for a soft spot, you can
+generally get a feel for it.
+
+The attacker also must know the PIN/PUK if the policy forces them to.
+
+** Dealing with a stolen smartcard
+
+If someone steals a card, you should have a backup Yubikey with mostly similar
+configuration. If you have a spare, you can at least securely identify yourself
+for long enough to change things out.
+
+The PIN/PUK /should/ prevent them from using it.
+
+*** Stolen Card with GPG
+
+Additionally, for the OpenPGP application, you should have multiple backups of
+the masterkey and subkeys along with revocation certificates store on an
+encrypted flash drive. You really need multiple flash drives, especially if they
+are older or have a lot of storage, since they are known to degrade.
+
+This can require a lot of overhead in the longrun, but you may need more than
+one key anyways. However, it pays to be able to manage this stuff quickly. The
+GPG application is easy in GUI land which works for most users -- you just need
+to work in a custom =$GNUPGHOME= and get the keys off your device ASAP. Even
+then, understanding number of backups, planning revocation, etc will typically
+be prohibitively difficult for most people to understand without having
+experienced it or having someone help them out.
+
+** GPG Keys
+
+*** Key parameters on multiple yubikeys
+
+If you have multiple yubikeys that you plan on loading GPG subkeys to, then for
+some of the subkeys, it's not practical to load different subkeys to different
+cards.
+
+Older cards and older GPG/SSH applications have more limitations on algorithms,
+so you need to use the "least common denominator" for at least some functions.
+
+I can't remember all of the specifics, but if you have 3x RSA and 3x EC
+
+Unless all of your cards are yubikey 5.x, then you'll need to use RSA for at
+least some of the keys and 2048 keys take up a lot of space. Thus, for redundant
+cards, you should just avoid loading all the GPG subkeys and retain =RSA
+4096-bit= keys where possible.
+
+In other words, it _really sucks_ to miss out on that "cloudflare 5'oclock free
+yubikey giveaway" especially when your management setup is airgapped and you
+need to redistribute your keys to HKPS.
+
+*** Misc
+
++ Older Cisco devices without smartnet have poor compatibility with key exchange
+  algorithms, so if GPG Agent is acting as SSH Agent, then =RSA 4096-bit= keys
+  will take 30+ seconds to exchange keys and negotiate a connection with the
+  strong-er but embarrasingly weak hashing algorithms these versions of IOS use.
 
 ** PKCS#11
 
