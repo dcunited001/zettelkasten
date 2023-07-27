@@ -1,0 +1,76 @@
+:PROPERTIES:
+:ID:       66d23065-7df5-425c-9e52-0fc04d01988b
+:END:
+#+TITLE: Containers: Sharing Unix Sockets
+#+CATEGORY: slips
+#+TAGS:
+
+Depending on how badly you'd like to expose secrets on disk -- like to avoid
+typing long Ansible Vault passwords (which /should/ be long) but need an Ansible
+EE runtime which you should have -- then you may want to share GPG sockets with
+the container:
+
++ You probably don't though, do you?
++ Because that's a pretty bad idea isn't it?
++ You'd just rather have vault in a cluster, wouldn't you?
++ ... yeh, you probably would.
+
+* Sharing Sockets
+
+How to do this?
+
++ [[ \[\[https://gist.github.com/christianberg/eaec4028fbb77a0c3c8c\]\[share a Unix socket between Docker container & host\]\] ...][Socat for socket between Docker container & host]]: requires running socat in
+  the container (and on the host), which isn't what's needed, but is interesting
+  and basic.
++ [[https://dev.to/douglasmakey/a-simple-example-of-using-unix-domain-socket-in-kubernetes-1fga][Simple example of using unix domain socket in Kubernetes with go]]: also
+  interesting and fairly basic, but probably a good way to freak your security
+  team out.
++ You'll probably need to understand [[https://stackoverflow.com/questions/75288384/share-hosts-gpg-forward-gpg-agent-with-a-docker-container-access-host-gpg-fr][how Unix Sockets manage multiple clients]]
+  because otherwise the k8s example doesn't make much sense.
++ You could maybe just mount your =/run/user/1000= directory. Why not?
+
+Finally, [[https://www.miketheman.net/2021/12/28/container-to-container-communication/][Container-to-Container Communication]] describes benchmarking an attempt
+to replicate how Redis used unix domain sockets between =nginx= terminating to
+=gunicorn= and a python =starlette= webapp.
+
+I'm really not trying to take a cheap shot at the post author there. This is
+fairly simple for me to [at least think I] understand, given that the post above
+analyzed their benchmarks and gave me the answer to work back from. I still have
+a ton of questions.
+
++ They expected better performance, which may be possible, but I think the
+  benchmarked process model doesn't scale enough to outweigh the benefit of TLS
+  =keep-alive=. If it is to scale effciently, you need servers with high core
+  counts. ARM servers have higher core counts on average, though the specifics
+  here are very complicated.
++ I remember hearing about spawning/forking of processes for Rails processes way
+  back in 2011-2012, when apparently one mentor's criteria for hiring someone
+  was to write their own web server from scratch. As bundlers be bundlers and
+  unicorns be unicorns, before AES block ciphers were hardware accelerated
+  (perhaps mincing some terms), then maybe scaling with Unix sockets would pay
+  off ... but still not as much as TLS =keep-alive= for termination.
++ /Perhaps eBPF would make more sense today/, but I think it's more of a layer 3
+  thing.  Regardless, I think, TLS is important for socket security (or at least
+  how to harden these is a question I return to without ever getting clear
+  answers). eBPF does offload some of the network cost
++ Furthermore, the higher bandwidth of DPU's gives you more throughput. One one
+  hand it seems like a network bus, but it's so fast that it's more like a PCI
+  bus extension of sorts. New hardware approaches enable more complex hardware
+  configurations that rely on the networking layer as primarily an abstraction
+  for addressing/routing. So then, why does data moving through these
+  connections need to actually take the form of packets/frames or utilize
+  TCP/UDP? This reasoning may seem "not even wrong", but when everything old is
+  new again, then understanding these wierd "hypothetical what iffs" is like an
+  exercise in creativity.
+
+#+begin_quote
+"Think Different®"
+
+-- I think some hobo in the late 70's or something.
+#+end_quote
+
+* Roam
++ [[id:afe1b2f0-d765-4b68-85d0-2a9983fa2127][Containers]]
++ [[id:0a01903a-3126-4ac6-a2c8-3b6135821ef3][Kubernetes]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fdcba][Unix]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
