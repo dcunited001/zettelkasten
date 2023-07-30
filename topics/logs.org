@@ -39,3 +39,130 @@
 ** Analysis
 
 ** Backups
+
+* Security Logging
+
+** Resources
+
++ [[https://thenewstack.io/ebpf-tools-an-overview-of-falco-inspektor-gadget-hubble-and-cilium/][eBPF Tools: Falgo, Gadget, Hubble, Cilium]]
+
+* Design
+
++ [[https://dev.to/anubhavitis/push-vs-pull-api-architecture-1djo][Push vs Pull API Architecture]] ... hmmm actually for API design, not logging
++ [[https://news.ycombinator.com/item?id=15325659][HackerNews on push vs. pull]] (2017)
+
+
+** Push vs. Pull
+
+
+*** Pros/Cons
+
+#+begin_quote
+Yeh, I'm starting to think it might be a bit ridiculous to have a DaemonSet on
+three K3S nodes. Then again, I would like monitoring to extend across a hybrid
+architecture and Thanos seems over the top. Egress fees would definitely be
+another drawback, but I doubt that's an issue.
+
+Push is appealing for a small architecture because it's interactions are far
+more "stateless" though the streams themselves are stateful. Polling has a lot
+of moving parts and also transforms the data from it's original format tending
+to create additional abstraction layers, messy schemas or irreversible
+transformations. Ultimately, I'll probably go with whatever has the best
+tooling/ecosystem. I would like to think that I'd build something on top of the
+aggregated data ... but yeh.
+#+end_quote
+
+*Benefits*
+
+I still need experience with k8s logging... so I could be wrong. But I always
+kinda heard that "you never pull, you always push." Some part of this is
+probably not even wrong, I'm sure.
+
+IMO, there are many reasons you don't want pull-based patterns for
+logging. Ideally, log streams should pass their data as quickly as possible,
+since it:
+
++ Reduces memory/threading and thins out stack frames.
++ Circumvents the need for temporary storage.
++ Avoids the intermittent load (IO/etc) induced by requests for data and the
+  need to retain data to be queried. Though you still want to rotate logs, you
+  may be able to simplify container volumes or shrink them. How this affects
+  performance and design would really depend on how hard you want to run VM's or
+  whether you're just using the cloud vendor's K8S provided cluster.
++ Likely reduces total image size for pods/containers and apparently reduces the
+  number of sidecars you need.
++ The log producer in the DaemonSet can choose to which targets it pushes, which
+  can be different types of aggregators. When you need to update an aggregator,
+  this can balanced out by: DNS, load balancers, message queues redundant
+  streams or routing -- i.e. you have more granular control over where
+  individual streams go. For the pull-based model, if you want to
+  compartmentalize the logging, this may lead to more involved updates on the
+  pods your pulling from (i.e. not every prometheus should be able to pull from
+  every pod & to change that becomes complicated)
++ (afaik) A push-based model is easier to integrate with stream processing and
+  cloud message bus products. Your aggregators can =fan out= events they receive
+  and the cloud's message bus should more reliably handle sending events to
+  Kafka.
+
+*Neutral*
+
++ With moreso pull-based logging stacks like prometheus/grafana, you _may_
+  discover problems earlier, since you'd expect to see errors if logs can't be
+  fetched. A prometheus stack (afaik) is subject to problems like: config mgmt,
+  TLS certificate coordination, DNS or routing -- these can all cause false
+  positive for failure.
++ Both approaches can have networking issues. Push-based logs can consume a
+  nodes' network resources or cause congestion at the aggregator.
++ Pull-based logs are easier to implement earlier on, but may be difficult to
+  handle later. Push-based systems need more work, design and architecture.
+
+*Drawbacks*
+
+Some of the tradeoffs (I would imagine) are:
+
++ Streams can drop out if there are problems with your logging stack, where it's
+  hard to know what signals aren't being aggregated (or indexed in Elastic).
+  This is one maybe reason you still want some possibility of verifying recent
+  temporary storage on volumes.
++ What you gain in log granularity, you may pay in egress fees. Also, the loads
+  on your pods may fluctuate, which would typically result in larger volumes of
+  data. With pull-based logging, this is coming from /somewhat/ more centralized
+  containers/servers, which means less control signaling is required to
+  attenuate/change logs being pulled.
++ The DaemonSet pattern would have other coordination problems, like with
+  configuration, TLS, etc. You still need to restrict access.
++ It's not so easy to transition from something like Prometheus to Fluentd. You
+  probably don't want to be stuck in the middle or need to do both.
+
+* Container Logs
+
+** Prometheus
+
++ [[https://medium.com/@isalapiyarisi/getting-started-on-kubernetes-observability-with-ebpf-88139eb13fb2][Getting Started with K8S Observability with eBPF]] (prometheus)
++ [[https://prometheus.io/blog/2016/07/23/pull-does-not-scale-or-does-it/][Pull doesn't scale -- or does it?]]
+
+** DaemonSet
+
+ (on DaemonSet)
+
+The DaemonSet pattern ensures selected nodes run a copy of a pod, which (afaik)
+seems to facilitate push-based logs. Once the daemonset is on the nodes and its
+pods are updated, then they can push to a common pod on the node (perhaps via
+eBPF), which receives streams and forwards them to log aggregation.
+
+** Fluentd
+*** Resources
++ K8S Docs: [[https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/#writing-a-daemonset-spec][Fluentd/Elasticsearch Example]]
++ [[https://github.com/geerlingguy/ansible-role-fluentd][geerlingguy/ansible-role-fluentd]]
+
+*** Topics
+
+**** Concepts
+
++ [[https://www.youtube.com/watch?v=30KAInyvY_o][Kubernetes Deployment vs. StatefulSet vs. DaemonSet]]
+
+**** FluentBit
+
++ [[https://www.fluentd.org/faqs][Fluent (servers) vs FluentBit (containers/etc)]]
++ AWS post on [[Fluent Bit for Amazon EKS on AWS Fargate is here][FluentBit for EKS on Fargate]]
+  - [[github:aws/aws-for-fluent-bit][aws/aws-for-fluent-bit]]

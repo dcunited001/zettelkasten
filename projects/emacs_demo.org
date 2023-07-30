@@ -32,13 +32,59 @@ the shortcuts for bash. This is because GNU wrote Bash and Emacs.
 
 ** Learning Emacs
 
+Some of the functionality below like snippets does require external
+dependencies.
+
+*** Learning How To Learn Emacs
+
+This is probably the most important thing you can do as an Emacs user.
+
++ M-x :: execute-extended-command.
++ M-X :: execute-extended-command-for-buffer this is another version of the
+  command that I often forget.
++ menu-mode :: This is suited to exploring functionality and keybindings for
+  active minor-modes when you want to reinforce various habits/features, but
+  you're not sure what to do next.
++ customize-group ::
++ load-theme :: The theme functionality will help you greatly when you want to
+  learn more about how values, structures and functions in the interfaces for
+  Emacs UI/UX.
++ C-h :: Also mapped to =f1=. You can get
++ ielm :: this is a REPL for emacs-lisp, which is only suited to specific
+  sessions. In any buffer and AFAIK in any mode, you can evaluate emacs-lisp
+  using =C-x C-e= to =eval-last-sexp=, so you should be using this instead. If
+  you plan to stick around
+
+
+
+For each of these features, it matches a set of circumstances where it is
+useful, but each option is not relevant to all situations.
+
+Just like =M-x=, =C-h=
+or =customize-group=, they can be used to browse for content when you don't know
+what to do:
+
 *** Menus
 
-These are essential (don't desable them if you're new)
+These are essential -- don't desable them if you're new! It's basically the
+applicaton menu for emacs, but changes depending on what modes are active.
+
++ Browse snippets for the active minor-mode
++
+
 
 *** Help
 
 *** Backtrace
+
+*** Debugging
+
+Emacs includes debugger for elisp, but it can
+
+*** Embark
+
+This requires at least the =embark= package, as well as both =consult= and
+=vertigo=. These are new replacements for =helm= and =ivy=.
 
 ** Dired
 
@@ -78,6 +124,49 @@ source blocks. This is often a better workflow for building up shell scripts
 examples than digging through your history, though babel doesn't work for
 everything.
 
+** Treesitter
+
+Emacs comes with treesitter, but no grammers. You can use its native commands to
+download those, which usually results in a mode like =yaml-ts-mode=. This
+requires probably less than 5 lines of code for a single language, However, the
+functionality for each =lang-ts-mode= is fairly sparse at the moment.
+
+
+** XRef
+
+**** TODO describe XRef, where it works by default and where it doesn't
+
+** LSP with Clangd
+
+Emacs comes with =eglot=, which is a separate set of packages than those used by
+=lsp-mode=. However, it's usually more simple to set up when emacs-lisp packages
+exist.
+
+Since =clang-toolchain= exists on most Linux installations for developer
+workstations, then I would consider =eglot= to "to just work" out of the box
+with Emacs for C/C++.
+
+The trouble is that the only C-headers available globally on most systems are
+the Linux headers. So functions for calls to "navigate to function" will work
+there. They should also work for any package you downloaded from a sources
+repository. In other words, your Linux installation is now basically a C/C++
+IDE.
+
+*** eglot vs. lsp-mode
+
+The =lsp-mode= interface comes with tools that allow you to run /some/ LSP
+servers in docker containers, which makes them more portable. This is fantastic,
+but with LSP in Emacs you kinda need to pick Team LSP or Team Eglot, since the
+two are only compatible with quite a bit of work. Using the functionality from
+just one of these is fairly simple and even easy for a single language. Trying
+to mix them will test your emacs-lisp skills ... or your sanity if you aren't
+expecting problems.
+
+So, polyglots beware of that one. The treesitter mode implementations and Eglot
+LSP implementations are getting better though.
+
+**** TODO describe using Eglot and Clangd
+
 ** Manipulating files with regexp
 
 *** Scratch Buffer
@@ -115,6 +204,59 @@ configuration.
 
 * Features Requiring Configuration/Dependencies
 
+** Ido
+
+All you need to know about this is that after emacs loads, =ido= will have been
+turned on. It's overwrites whatever function you have active for =C-x b= with
+=ido-buffer= and similar. If you didn't explicitly turn this off, but you're
+using things like =ivy= or =consult=, then you're not actually using them for
+buffer search, which really sucks to discover later.
+
+The other buffer search functions will do things like:
+
++ show emoji's representing the buffer's mode
++ change how the buffer names and file names are formatted
++ change the ordering of the file names and whether they display as a grid
+
+** Consult, Ivy and Helm
+
+Each of these options has extended the searching and completion functionality
+for Emacs. It's a bit overwhelming to configure these all at once and you'll
+want to revisit each major package below a few times to make sure you've got it
+right.
+
+For each behavior below, the equivalent =consult= package is listed.  These
+affect search results things like buffer, LSP, autocomplete, etc.
+
++ consult :: facilitate interactive read for the command you ran. this package
+  enables opening buffers so you can preview what you're interacting with. it
+  handles opening enough preview buffers so that you don't wait too long to see
+  it and then closes them so they don't consume Emacs' resources.
++ orderless :: configure the grouping and ordering of search results display of
+  metadata specific.
++ vertigo :: tell consult where to open the buffer and how to display buffer
+  previews.
++ corfu :: mediates access to completion for major modes. it's much simpler to
+  configure than =company-mode=.
++ capf :: this helps make completion smarter, but i'm honestly not quite sure
+  what it "is" yet.
++ marginalia :: customize display of fields for =completing-read= functions. so
+  if you're searching through org-roam files, it shows the title and tags.
++ embark :: run operations on the currently displayed minibuffer result in any
+  command. When the minibuffer is active, you narrow your search down then call
+  an =embark= function to do things like: export to table or file, call a
+  function on one/more results, etc. It's an extremely powerful tool to help you
+  document variables, functions and keymaps as you're learning them.
+
+The main difference is that =consult= was designed most recently and Emacs has
+added metadata called =annotations= to it's search and display functionality,
+=completing-read=. Thus =consult= simply has capabilities that =helm= and =ivy=
+will probably never have ... to implement such would require that helm or
+ivy-dependent packages change their interfaces or consumers who don't pin
+packages will probably have their configs break. Each of these suites has a few
+dozen packages you'll want to configure (eventually), so you really don't want
+to go down the wrong road here.
+
 ** Magit
 *** Forge
 
@@ -124,6 +266,22 @@ configuration.
 
 ** Using Straight.el
 *** How to contribute to =straight.el= packages
+
+** Formatters And Linters
+
+I included this because these are essential to any developers' workflows,
+especially if you care about empty lines in your commits -- and you should care
+that you don't waste time thinking about this!
+
+The =clang-format= tool "just works" with most Emacs formatter packages, making
+it simple to configure for C/C++, java, javascript and typescript. Technically,
+you do need packages for this. Many people go for =format-all=, but to me, it's
+too comprehensive and it's difficult to use if not every language's tools are
+available in your =$PATH= by default. I would recommend =aphelia=.
+
+For python, you would need =black= or =yapf=, which you probably already have on
+your system. Those are fairly thin & unchanging. You'll still need an Emacs
+package to make the calls to the formatter and interpret its results.
 
 ** Troubleshooting Emacs Configs
 
@@ -139,3 +297,76 @@ If you use Doom Emacs, I would highly recommend this.
 ** Generating Latex Documents
 
 I probably lack sufficient time to cover this
+
+* How to Structure Your Emacs Config(s)
+
+If you have someone walk you through configuration and you can ask some
+questions, then it's pretty easy to understand how this fits together, but
+there's still a lot of things to do. When starting out, you may decide to fence
+of certain roles that Emacs can fit in your workflow and build those out.
+
+The tendency is to want everything in a single Emacs session. While the
+emacs-lisp nativecomp compilation is mostly polished at this point and prevents
+"too many packages/etc" from slowing Emacs single-thread down, you still need to
+have a second option on deck for most workflow needs. When your Emacs has some
+problems, you need to have pre-emptively limited it's scope, so it doesn't
+require time to fix things you couldn't predict were going to happen. It will
+definitely happen LOL.
+
+There are a few other things to keep in mind:
+
++ Offloading other functions to Emacs does work, but the Emacs server relies on
+  Unix sockets, so it can't be networked. You definitely want to be
+  using/launching Emacs clients that connect to a server.
++ Your =init.el= configuration is a perpetual work in progress. If someone is
+  mentoring you in Emacs, you'll avoid a lot of the time investment ... but it
+  still requires time & reading manuals. You need to understand how your
+  =init.el= establishes state and how to load lines of code to patch your
+  session as its running. In other words, you want to avoid the need to restart
+  the Emacs server frequently. The structure of your =.emacs.d= projects should
+  reflect that. It really helps to know that running =(require 'muh-package)=
+  the second time doesn't do anything, so you have to call =(load-file
+  "muh-package.el")=
++ You can build task-specific emacs configs and open them separately, but you'll
+  need to constrain them to a single Emacs server (no clients), unless you want
+  to specify a socket when they start and when you connect. This is useful for
+  "I want to read the GNU mailing list with GNUS and respond lightning fast, but
+  I don't want to close out my GNUS or email buffers when I restart my other
+  server."
++ You can open remote files in Tramp. It's incredibly powerful and fills the
+  hole created by Unix sockets not being easily networked. The default settings
+  are mostly sufficient to handle file locking, which means "Emacs on my desktop
+  can edit files open by Emacs on my Laptop." This is nice, but you'll
+  occasionally run into a popup that warns you about editing locked files or
+  starting to edit a buffer that has changed on the file system.
++ There are times when =.dir-locals=, =.enrvc= and the file-local-variables like
+  =# -*- muh-variable: true -*-= are the best way to have something behave the
+  way you want. You'll need Direnv and =.envrc=.
++ For projects you return to often, it may be useful to write functions or code
+  that is project specific. I have several =./scratch= directories stashed away
+  in each language's root directory and my =~/.emacs.g= directory. When I'm
+  experimenting with new emacs-lisp or other language I want to run in a future
+  REPL, I save it here, the ideal being that the more valuable it is, the faster
+  I bubble it up to more permanent/widespread locations. There's many times I
+  start working on something that "just takes 5 minutes" and 30 minutes later, I
+  can time box it. When I return to it /someday.../, I can quickly refresh
+  myself, but it's one less thing to break the build that I need in a git stash.
+
+** The Deal With Your Email In Emacs
+
+You can't [easily] share state across Emacs servers, so if you want your email
+here in this process, but you'd like to respond to a GNU or Linux mailing list
+email using lines of code from a file, then to access it quickly, you need to
+open that file. There are other features like the below that place Emacs Email
+at odds with a multi-Emacs workflow.
+
++ make this changeset a patch
++ add this patch to the newsthread response
++ or take this patch and apply it to my local project
+
+These features are incredibly useful, but even configuring Email in Emacs is a
+monumental task. By the end of it, you'll what the five Email Agents are MUA,
+MTA, MDA, MSA, MRA and other things that aren't going to winning Jeopardy any
+time soon. You'll either need a network-local email server or you have to roll
+your own email fetch/index process. Or you can just use GNUS, which has fairly
+minimal overhead.
