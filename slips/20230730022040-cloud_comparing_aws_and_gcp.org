@@ -8,15 +8,41 @@
 * Docs
 
 * Resources
-+ [[https://docs.aws.amazon.com/organizations/latest/userguide/orgs_getting-started_concepts.html][AWS Organizations: Terminology/Concepts]]
+** AWS
 
++ [[https://docs.aws.amazon.com/organizations/latest/userguide/orgs_getting-started_concepts.html][AWS Organizations: Terminology/Concepts]]
++ [[https://tecflair.com/how-to-reduce-amazon-ec2-costs-part-1/][How to Reduce AWS Costs]]
+
+*** IAM
+
++ [[https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html][Security Best Practices]]
++ [[https://docs.aws.amazon.com/IAM/latest/UserGuide/getting-started.html][Getting Started]]
++ [[https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-identity-source-ad.html][Connect to a Microsoft AD directory]] (don't if you can help it)
+
+AD:
+
++ [[https://docs.aws.amazon.com/singlesignon/latest/userguide/attributemappingsconcept.html][Supported directory attributes]]
++ [[https://docs.aws.amazon.com/singlesignon/latest/userguide/provision-users-groups-AD.html][Provision users/groups from AD]]
+
+IdP:
+
++ [[https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-identity-source-idp.html][Connect to an external IdP]]
+
+** GCP
+
++ [[https://cloud.google.com/iam/docs/understanding-roles][Predefined roles reference]]
++ [[https://cloud.google.com/resource-manager/docs/cloud-platform-resource-hierarchy][Resource Hierarchy]]
++ [[https://cloud.google.com/resource-manager/docs/creating-managing-organization][Creating and managing organization resources]]
+
+*** IAM
+
++ GCP doesn't have ABAC, but does have [[https://cloud.google.com/iam/docs/creating-short-lived-service-account-credentials][Short-lived Credentials]],
+  [[https://cloud.google.com/iam/docs/tags-access-control][tag-based access control]] and [[https://cloud.google.com/iam/docs/conditions-overview][IAM Conditions]] ([[https://www.reddit.com/r/googlecloud/comments/oasw5x/does_google_cloud_iam_have_abac/][source]])
++ [[https://cloud.google.com/architecture/identity/federating-gcp-with-active-directory-introduction#integrating_active_directory_and_google_cloud][AD Integration]] and [[https://cloud.google.com/architecture/identity/reference-architectures#active_directory_as_idp_and_authoritative_source][Active Directory as IdP and Authoritative Source]]
 
 * Comparison
 
 ** Pricing
-
-*** Overview
-
 
 ** Concepts
 
@@ -27,26 +53,59 @@ data structures have all the benefits and problems that DAG's are subject
 to. See multiple inheritance vs. other design patterns in programming/devops.
 This also pops up in image management and docker multi-stage builds.
 
-| Google Cloud | AWS                             |
-|--------------+---------------------------------|
-| Organization | Organizational Root (OR)        |
-| Folder       | Organizational Unit (OR)        |
-| Project      | [Management or Member] Accounts |
-| Resources    | [Shared] Resources              |
+**** Correspondance
+
+| Google Cloud     | AWS                                                       |
+|------------------+-----------------------------------------------------------|
+| Organization     | Organizational Root (OR)                                  |
+| Folder           | Organizational Unit (OR)                                  |
+| Project          | [Management or Member] Accounts                           |
+| Resources        | [Shared] Resources                                        |
+|------------------+-----------------------------------------------------------|
+|                  | Service Control Policies (SCP)                            |
+|                  |                                                           |
+|------------------+-----------------------------------------------------------|
+| Resource Manager | AWS Organizations, Control Tower, Resource Access Manager |
+|                  |                                                           |
+
++ AWS, policies can be applied to users/groups/roles. In GCP, there are
+  predefined roles, but thy are applied to users. Both are bundles of
+  permissions.
+
+**** Best practices
+
++ Your resource hierarchy should reflect your organization's structure.
++ Grant permissions/policies/roles according to least priviledge. Grants should
+  start at the smallest scope.
++ In GCP, group projects along trust boundaries
++ In GCP, it's easier to add/remove users to groups than to update a policy.
 
 **** In AWS
+
+
+
+***** Basic Models
 
 + Accounts are organized under OU and OR
 + OR has_many OU
 + OU belongs_to OU (or OR)
 + Resources belong_to Account (whether it's a mgmt or member account)
 
-Accounts
+All acounts and OU's can have exactly one parent.
+
+***** Organizations
+
++ AWS Organization :: CRUD the OU's and apply SCP's
++ AWS Control Tower :: set up permissions/automation for account management
++ AWS Resource Access Manager :: share resources across accounts.
+
+***** Accounts
 
 + There can only be one Management account per Organization. It's responsible
   for billing.
 
-From the AWS Docs:
+
+***** From the AWS Docs:
 
 [[file:img/aws/aws-ou-diagram.png]]
 
@@ -54,11 +113,129 @@ From the AWS Docs:
 
 An organization is the top-level entity with sub/folders under it.
 
-+ Subfolders may categorize regions or business areas, but
+***** Sub/folders
 
+These may categorize regions or business areas. Setting folders for each
+business unit makes its personnel accountable for billing or approval of
+access/resources.
 
++ strucuring this is difficult because you have to move/delete active resources
+  before deleting subfolders.
++ Moving subfolders without thinking about policies above/below them will tend
+  to cause great chaos engineering, esp if you're just a lowly team member who's
+  not omniscient.
++ Like IP Addressing, you probably want the categorization to just be correct
+  (or not awful) because it's realllly difficult to change later.
 
-*** IAC
+***** Roles
+
++ Organization Admin :: define IAM policies, set resource hierachy, assign IAM
+  roles. Cannot perform some actions.
++ Project Creator :: create projects
+
+***** Accounts
+
+Super admins exist for Cloud Identity and Google Workspace.
+
++ Assign org admin role
++ point of contact
++ control lifecycle of super admin roles and the organization resource
+
+***** Projects
+
++ ID's are immutable
+
+*** Pricing
+
+**** Billing
+
+|                | AWS                                                      | GCP                                    |
+|----------------+----------------------------------------------------------+----------------------------------------|
+| Billed entity  | By account or a single per-org billing account           | many billing accounts per GCP account. |
+| Rollup         | to the account (and org when using consolidated billing) | Rollup by project.                     |
+| policies       | only to IAM principles; not heritable.                   | Billing policies: any level            |
+| Org Admin      | a root user to admin the account                         | can be a super user                    |
+| account admins | account admins assigned a role                           | can be Google Users or Groups in GCP   |
+
+**** Payment Models
+
+***** AWS
+
++ Two pay-as-you-go models for EC2: on-demand and spot pricing.
+
++ Reserved Instances :: There are standard and convertible
++ Savings Plans :: Agree to pay now/later for hourly spend on VM's
+
+From [[https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ri-convertible-exchange.html][Exchange Convertible Reserved Instances]]
+
+#+begin_quote
+... as long as the new Convertible Reserved Instance is of an equal or higher value than the Convertible Reserved Instances that you are exchanging.
+
+When you exchange your Convertible Reserved Instance, the number of instances
+for your current reservation is exchanged for a number of instances that cover
+the equal or higher value of the configuration of the new Convertible Reserved
+Instance.
+#+end_quote
+
+***** Google
+
++ Sustained Usage Discounts :: based on usage threshold
++ Commitment Price :: GCP allows you to maintain commitments and swap the VM's
+  underneath (I'm not sure whether AWS allows this)
+
+*** IAM
+
+Both clouds can connect to external IdP (identity providers).
+
+|                          | AWS  | GCP |
+|--------------------------+------+-----|
+| AD Integration           | yes  | yes |
+| Tag-based access control | ABAC | yes |
+
+**** AWS
+
+***** [[https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-identity-source-ad.html][LDAP/AD]]:
+
+I'm going to assume that the IAM resource hierarchy (which includes OU's) maps
+more closely to AD, which is probably a big sell for the corporate types. I
+guess? ... dammit.
+
+*Create a self-managed directory in AD*
+
+This is an external source. I would avoid it if possible, since it may rely on a
+network connection or present caching problems ... I've long-forgotten anything
+I know about AD, so yeh.
+
+*Create directory in AWS-managed Microsoft AD*
+
+This uses AWS Directory Service and can integrate other
+
+**** GCP
+
+***** LDAP/AD
+
+*Federating GCP with AD*
+
++ Provisioning :: one way; changes in AD are only pushed to GCP.
+  - Creating users in AD will propagate to Google IAM objects, which can be
+    referenced elsewhere in GCP before the new users ever login. I'm guessing
+    this is/was a selling point of AD for AWS.
++ SSO :: GCP delegates authentication to AD using SAML. Only AD manages
+  credentials.
+
+****** [[https://cloud.google.com/architecture/identity/federating-gcp-with-active-directory-introduction#choosing_the_right_mapping][Decisions for Federating]]
+
+From GCP Docs: [[https://cloud.google.com/architecture/identity/federating-gcp-with-active-directory-introduction#choosing_the_right_mapping][Choosing the right mapping]] for federating AD to GCP with
+connectors.
+
+What resources you'll need
+
+[[file:img/gcp/federating-gcp-with-ad-decision-fleets-instances.svg]]
+
+What domains to configure
+
+[[file:img/gcp/federating-gcp-with-ad-decision-domains.svg]]
+
 
 * Roam
 + [[id:8a6898ca-2c09-47aa-9a34-a74a78f6f823][Cloud]]

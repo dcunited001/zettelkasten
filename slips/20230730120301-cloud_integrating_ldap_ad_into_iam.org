@@ -1,0 +1,166 @@
+:PROPERTIES:
+:ID:       e48e55b9-383c-4e04-99f0-05c655d3abc3
+:END:
+#+TITLE: Cloud: Integrating LDAP/AD into IAM
+#+CATEGORY: slips
+#+TAGS:
+
+Users or sysadmins may ask about an LDAP integration, citing the need for
+self-service. At this point, you should direct them to the nearest Golden Corral.
+
+Seriously though, you have to solve the identity problem and you probably don't
+want to reinvent that wheel. However, just because LDAP/AD widely used /outside
+of the cloud/ doesn't actually mean that it's the best tool whatever use-case
+you're trying to provide /within the cloud/.
+
+TL;DR: =¯\_(ツ)_/¯=
+
+* Resources
+
+LDAP (wiki)
+
++ [[https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol#Protocol_overview][Protocol Overview]]
++ [[https://en.wikipedia.org/wiki/Lightweight_Directory_Access_Protocol#Schema][Schema]]
+
+See "decisions for federating" below
+
+* Potential Problems
+
+If the reason you implement LDAP is to facilitate policy/role management to
+authorize self-service, then the technical debt from previous design decisions
+could get messy. Separate systems have separate concerns.
+
+** Cloud Design Patterns and Active Directory Forest
+
+See, now you got all that AD-stuff mixed into your nice Cloud DNS.
+
+[[file:img/gcp/active-directory-forest.jpg]]
+
+So one problem I would have is that it distorts the designs you could otherwise
+choose for how Policies connect Users/Groups to Folders/Projects as well as DNS
+to some extent
+
+The pic is from [[https://infosecwriteups.com/dns-in-active-directory-dcb93b10c3f3][Active Directory Overview]] and [[https://infosecwriteups.com/dns-in-active-directory-dcb93b10c3f3][part two]] quickly covers why AD
+uses DNS (SRV records to DC)
+
+** Just Add LDAP
+
+Managing users/groups in Linux is tough without LDAP, but I'm pretty sure that
+"just adding LDAP" doesn't solve any of your problems, esp. if you have to go
+clean up all the file/group permissions or relabel your SELinux(es) ... yay!
+
+Those are distinct issues from how a Directory Service functions in cloud
+providers or what might go wrong:
+
++ Taking your hybrid cloud to the next multi-cloud level: if you've connected
+  your on-prem to your GCP can you "just federate" to another cloud provider
+  like AWS?  No, well maybe, but it depends on where the authority is.
++ Do your AWS LDAP objects need to know about your GCP objects? Probably not,
+  but this depends on how flexible your sub/domains are. They're probably not
+  very flexible, if your authorization is coupled to your DNS, esp. if you
+  propagated your LDAP from your older on-prem to your first cloud.
+
+** A Big Hash in the Sky
+
+There are a few well known
+
++ LDAP/AD
++ DNS
++ etcd
++ Redis (it's a big cache in the sky)
+
+These are object stores. The first three conduct consensus, but the thing is:
+you never really know whether you have true consensus, so there must be some
+concept of authority and delegation of authority and thus the services must
+constantly iterate towards consensus.
+
+** X.500 Directory and X.509 Certificates
+
+LDAP/AD does provide an [[https://en.wikipedia.org/wiki/X.500][X.500]] mechanism for x.509 certificate validation
+
+#+begin_quote
+The "bound" distinguished name is located in the subject fields of the
+certificate which matches the Directory entry. X.509v3 can contain other
+extensions ... RFC-5280 PKIX describes a profile for
+fields that may be useful for applications such as encrypted email.
+
+An end user who relies on the authenticity of a certificate being presented to a
+browser or email has /no simple way/ to compare a forged certificate presented
+... with a valid certificate, without also being given the opportunity to
+validate the DN or Distinguished Name which was designed to be looked up in an
+X.500 DIT.
+
+The certificate itself is public and considered to be unforgeable and can
+therefore be distributed in any manner, *but an associated binding to an
+identity occurs in the Directory.* Binding is what links the certificate to the
+identity who claims to be using that certificate...
+
+...
+
+If a X.509v3 certificate is bound to a valid organization's distinguished name
+within the Directory, then a simple check can be made in regards to the
+authenticity of the certificate by a comparison with what is presented to the
+browser with what is present in the Directory.
+#+end_quote
+
+The validation in the last paragraph requires that:
+
++ the client knows how/to connect to an LDAP service
++ is recognized/authorized to request LDAP record validation
++ has a route to that service at IP provided via SRV record: this may not be
+  available outside a network or may not result in an ideal route to that LDAP
+  server
+
+Depending on what traffic flows your authentication requires and the routes you
+expect it to take, then fairly tame authentical flows like this one could be a
+problem. (From [[https://www.redhat.com/sysadmin/active-directory-sso-authentication][ADFS auth with Red Hat SSD using SAML]])
+
+[[file:img/gcp/ad-on-redhat.jpg]]
+
+And I think, depending on the authenticating client and its LDAP client
+implementation, it will probably just give up if it can't find the cert in the
+LDAP.
+
+IMO, the cryptography is more reliable because hashes are hashes. It is still a
+bit unexpected to find a decent reason to use LDAP other than "it would be too
+complicated not to."
+
+** LDAP/AD is a big target
+
+Also, AD is a big target (see [[https://bloodhound.readthedocs.io/en/latest/data-analysis/bloodhound-gui.html][Bloodhound]]), you should have some space outside of
+the sub/domains that are part of an AD Forest for your cloud-based
+admins. Considering how resources inherit from OU/Account or Folder/Project, you
+need some extra units above the main levels of organization if you're ever going
+to move things around. All these youngsters with their fancy clouds have never
+really had to migrate an IP addressing scheme. If you used too much of the
+=10.0.0.0/8= you can't just move things around: instead you need above or beside
+your top level group. LDAP would be similar but would play out differently.
+
++ What's the [[https://docs.aws.amazon.com/singlesignon/latest/userguide/attributemappingsconcept.html][parity is between AD objects/types]] and IAM containers? Which
+  attributes are pushed up or over?
++ How do you constrain the objects imported/managed via AD integration? Probably
+  likely to cascadethe connect configuration.
++ What happens, in detail, when things are syncing? When they're not syncing?
++ Are the domain boundaries between trees/forests really separate?
+
+Again, if you're moving fast and just pushing what exists on-prem to the cloud,
+then you lost an opportunity to restructure, which would allow you to think
+about limiting access. Thus, LDAP should maybe not be at the root of authority in the
+cloud. Your LDAP records should withstand some [[https://en.wikipedia.org/wiki/Perturbation][perturbation]] without creating an
+opening in various domains or units. The inheritance makes small things a bit more
+likely to cascade.
+
+* Decisions for Federating
+
+From GCP Docs: [[https://cloud.google.com/architecture/identity/federating-gcp-with-active-directory-introduction#choosing_the_right_mapping][Choosing the right mapping]] for federating AD to GCP with
+connectors.
+
+What resources you'll need
+
+[[file:img/gcp/federating-gcp-with-ad-decision-fleets-instances.svg]]
+
+What domains to configure
+
+[[file:img/gcp/federating-gcp-with-ad-decision-domains.svg]]
+
+* Roam
