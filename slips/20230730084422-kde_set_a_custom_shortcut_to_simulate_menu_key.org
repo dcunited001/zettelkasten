@@ -1,0 +1,99 @@
+:PROPERTIES:
+:ID:       3d5899f3-5096-4415-9d99-63ffd1f8ff68
+:END:
+#+TITLE: KDE: Set a Custom Shortcut to Simulate Menu Key
+#+CATEGORY: slips
+#+TAGS:
+
++ [[https://invent.kde.org/plasma/plasma-desktop/-/blob/master/kcms/keys/kcm_keys.cpp?ref_type=heads][kcm_keys.cpp]]
+
+Honestly (just being brutally honest here) it really seems like there's a ton of
+features in KDE/Plasma and other window managers that no one uses, which is
+shame. There are five results for [[no ]["custom shortcuts" in Plasma Desktop's project]]
+and although Gitlab's search isn't great, it's still not a good sign that no
+one's looking for a feature like this ... No one used AppleScript either and
+that doesn't even give you Bash (at least not that I remember.
+
+And I'm not saying that KDE is bad or even criticizing it really. It's just
+kinda sad that many of the best features in any OS go unused.
+
+I've seen a few videos on the Custom Shortcuts, including a bit on
+Gestures. It's pretty powerful not just for developers, but even artists or
+content creators. The other actions seem easier to use and the "Add Command"
+feature in "Shortcuts" probably works better. For some reason, finding the
+string an applciation expects for a keys is like seriously difficult for no
+reason (in any window manager or application). Doing this should really be quick
+and easy to undo or store for later; otherwise it's not worth the time.
+
+These features create additional burdens on the developers to maintain. Taking
+care of this "menu key" hack is something XKB could do, but that's brittle and
+will break in wayland anyways.
+
+But the real problem here: Firefox won't let you wire a shortcut to pin a
+fucking tab without relying on an extension and we all know that means we're
+selling our kidneys without realizing it: [[https://www.youtube.com/watch?v=cIGESSm39n4&t=202s&pp=ygUSYnJvd3NlciBleHRlbnNpb25z][How Browser Extensions Steal Your
+Data]]. So I'd like to hit the menu key and then =p= which will do the job.
+
+* Debugging KDE Custom Shortcuts
+
+How to do this isn't entirely clear: like what arbitrary string do I use in this
+app that corresponds to the XKB key I want to simulate.
+
+This is exacly why Linux should strongly encourage users to download packages
+that include sources, making it simple to distribute them. It took me about an
+hour to learn where the source was, between:
+
++ finding the source with Google
++ testing a few things to elicit some key strings (class names, etc)
++ and clicking random files on invent.kde.org to stare blankly at source
+  obfuscated behind =i18n()= calls.
+
+If you have a hammer then everything is a nail ... my hammer is find/grep
+lol. At the same time, I was simultaneously following the Google results and
+also trying =gammaray=, which seems a bit buggy on Arch.
+
+#+begin_src shell
+# give me the magic strings ...
+systemsettings --list
+#+end_src
+
+Something called [[https://www.kernel.org/doc/html/v4.15/admin-guide/LSM/Yama.html][yama]] doesn't like when GammaRay attaches to processes it
+considers special, so you must launch it.
+
+#+begin_example
+Error: gdb: Yama security extension is blocking runtime attaching, see /proc/sys/kernel/yama/ptrace_scope
+Error: lldb: The debugger executable 'lldb' could not be found
+#+end_example
+
+Anyways, =gammaray= came through in the end. KDE persists its =systemsettings=
+process to open more quickly, so you need to =pkill= it and run =gammaray
+systemsettings kcm_keys=. The last argument loads the =kcm_keys= module first
+before attempting to render anything. As debugging tracks stack frames and
+references to objects, then loading too much else will bloat GammaRay and it
+might crash.
+
+And there seem to be almost too many features, but like the GTK debugger, this
+also has the Widget Tree.
+
+[[file:img/kde_kcm_keys.jpeg]]
+
+The Custom Shortcuts page is rendered in a =ModuleView > KPageStackedWidget >
+KCMHotKkeysWidget=. This is split into mostly two widgets, one of which is the
+=HotkeysTreeView=. The keyboard actions are entered into a
+=SimpleActionDataWidget > KeyboardInputActionWidget= which contains a textbox
+generically named =input=.
+
++ Right-clicks on entries in the widget tree can bring you to relavant
+  Objects, Meta Objects, or Models, which was mentioned in code adjacent to
+  =kcm_keys.qml=.
++ Right clicks on lines in the stack frame offer to take you to the source code :)
++ The Models view helps. Right clicks here may bring you to an inferred source
+  file that instantiated the object. Many of the debugging tools have this
+  issue, which requires a bit more knowledge of QT to navigate.
+
+I'm still learning a lot that I didn't expect to encounter though. I'm going to
+have to stash away all these magic strings for later.
+
+* Roam
++ [[id:a6c90236-e3a9-4223-8afa-d02da892c676][Debug]]
++ [[id:39e14ffe-75c9-49e6-b852-6c492c4ee3e0][KDE]]
