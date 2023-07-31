@@ -56,13 +56,47 @@ your processes/code. This convolutes your projects and processes.
   network, usually internal to those entities. e.g. cloud-config or ssh keys or
   network device configuration.
 
-*** Stages
+*** Stages/Commands
 
 | write   |   |
 | init    |   |
 | plan    |   |
 | apply   |   |
 | destroy |   |
+
+*init*
+
+Basically downloads modules and preps the TF environment.
+
+*plan*
+
+The TF plan output is a diff & can be saved for input to later TF commands.
+
++ Use =-out= to save and =terraform show -json $file= to convert to json. Use
+  =jq= FTW. The JSON Format is [[https://developer.hashicorp.com/terraform/internals/json-format][here]].
++ The plan instructions are sorted according to resource identifiers
+
+*apply*
+
+This gives you a chance to review/modify values (before running apply) or to
+abort. Terraform apply will try to destroy resources according to the
+constraints imposed by the provider's backend (the plan should
+
++ The =terraform destroy= command is an alias for =terraform apply -destroy=
++ The =-state= and =-state-out= options allow you to control input/output
++ State locking with =-lock= ... interesting
++ Control threads/tasks with =-parallelism=
+
+  | option       | default           |
+  |--------------+-------------------|
+  | -state       | terraform.tfstate |
+  | -state-out   | -state            |
+  | -backup      | -state-out        |
+  | -parallelism | 10                |
+
+*fmt*
+
+Don't commit shit. Lint your codes. What is this a blog?
 
 *** Running Terraform
 
@@ -73,6 +107,18 @@ your processes/code. This convolutes your projects and processes.
 + TF on a VM: configure Google Service Accounts
 + TF outside GCP: use workload identiy fedration, generate short-lived SA key
   and set env variables. SA key rotation not allowed.
+
+** Projects
+
+*** Providers
+
+*** Inputs/Outputs
+
++ Define inputs/outputs and most logic in =main.tf=. Outputs connect modules to
+  subsequent modules (visualize a modular synth with patch cables)
++ Define variables in =vars.tf=. Change variable values for various deployment
+  environments in file =terraform.tfvars=, but these should wind up in Git (esp
+  for gitops)
 
 * Roam
 + [[id:8a6898ca-2c09-47aa-9a34-a74a78f6f823][Cloud]]

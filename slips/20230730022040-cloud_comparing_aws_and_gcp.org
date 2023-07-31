@@ -15,8 +15,10 @@
 
 *** IAM
 
-+ [[https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html][Security Best Practices]]
++ [[https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html][IAM Identities (users, groups, roles)]]
++ [[https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html#rotate-credentials][Rotating access keys for IAM users requiring long-term credentials]]
 + [[https://docs.aws.amazon.com/IAM/latest/UserGuide/getting-started.html][Getting Started]]
++ [[https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html][Security Best Practices]]
 + [[https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-identity-source-ad.html][Connect to a Microsoft AD directory]] (don't if you can help it)
 
 AD:
@@ -44,6 +46,8 @@ SSM ([[https://docs.aws.amazon.com/systems-manager/latest/userguide/what-is-syst
 
 *** IAM
 
++ [[https://cloud.google.com/architecture/identity/overview-google-authentication][Overview of Google identity management]]
++ [[https://cloud.google.com/iam/docs/overview][IAM Overview]]
 + [[https://cloud.google.com/iam/docs/access-change-propagation][Access Change Propagation]]
 + GCP doesn't have ABAC, but does have [[https://cloud.google.com/iam/docs/creating-short-lived-service-account-credentials][Short-lived Credentials]],
   [[https://cloud.google.com/iam/docs/tags-access-control][tag-based access control]] and [[https://cloud.google.com/iam/docs/conditions-overview][IAM Conditions]] ([[https://www.reddit.com/r/googlecloud/comments/oasw5x/does_google_cloud_iam_have_abac/][source]])
@@ -81,8 +85,7 @@ This also pops up in image management and docker multi-stage builds.
 | Project          | [Management or Member] Accounts                           |
 | Resources        | [Shared] Resources                                        |
 |------------------+-----------------------------------------------------------|
-|                  | Service Control Policies (SCP)                            |
-|                  |                                                           |
+| n/a              | Service Control Policies (SCP)                            |
 |------------------+-----------------------------------------------------------|
 | Resource Manager | AWS Organizations, Control Tower, Resource Access Manager |
 |                  |                                                           |
@@ -215,44 +218,75 @@ Both clouds can connect to external IdP (identity providers).
 + policies :: a role binding consisting of =principles + roles=
 
 
+In AWS  whereas GCP
+
+IAM Policy Types:
+
+|                    | AWS                                           | GCP                                |
+|--------------------+-----------------------------------------------+------------------------------------|
+| IAM Policy types   | AWS-managed, customer-managed, inline         | basic, predefined and custom       |
+| IAM Policy Mapping | Policies are bound to IAM dentities           | Policies assoc roles to principles |
+| IAM Roles          | Roles /are/ identities (assumed by IAM users) | Roles are permission collections   |
+| Focus              | User-centric                                  | Group/Account centric              |
+| Identity Mgmt      | Within IAM                                    | Outside IAM                        |
+
+Service Accounts
+
+|                | AWS       | GCP        |
+|----------------+-----------+------------|
+| access mgmt    | IAM Roles | IAM Groups |
+| principal type |           |            |
+| authentication |           |            |
+
+***** TODO review IAM Scenarios (13)
+
+
 **** AWS
+
++ IAM Identity :: maps to an AWS Account. This represents a human user or
+  programmatic workload (to be authenticated/authorized to perform actions in
+  AWS).
++ IAM User :: Identity within an AWS Account. Prefer temporary credentials (use vault)
++ AWS Account Root IAM User :: AWS Accounts begin with a single per-account =root= user, initially assoc to
+  the email address who created the account. Avoid using the root user.
++ IAM User Group :: collection of IAM users managed as a unit
++ IAM Role :: Identity within an AWS account, but not assoc to a specific
+  person. You can temporarily =become= an IAM role by [[https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use_switch-role-console.html][switching roles]].
+
+
++ IAM Identity =has_many= IAM Policies
++ IAM Identities are assigned IAM policies, which are not [[https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_scps.html][Service control
+  policies (SCP)]], which are applied to OU's and the OR
+
+Prefer IAM Roles over IAM Users
+
+Prefer [[https://docs.aws.amazon.com/singlesignon/latest/userguide/what-is.html][IAM Identity Center]] users, which provides the following benefits:
+
++ A central set of identities and assignments
++ Access to accounts across an entire AWS Organization
++ Connection to your existing identity provide
++ Temporary credentials
++ Multi-factor authentication (MFA)
++ Self-service MFA configuration for end-users
++ Administrative enforcement of MFA usage
++ Single sign-on to all AWS account entitlements
 
 ***** Policies
 
-Service control policies (SCP) are not IAM policies...
++ In AWS granting programmatic & [AWS Mgmt?] console access are handled
+  separately
 
 + RBAC :: role-based
 + ABAC :: attribute-based (conditional on resource attr /and/ identity)
 
-****** SCP-001
+***** Service Accounts
 
-aka [[https://hero.fandom.com/wiki/SCP-001][Mekhane]], apparently:
+=ec2_instance.application.instance_profile = IAMRole.role123=
 
-#+begin_quote
-I am complete. I am incomplete.
-
-A cog is missing. It was always there.
-
-Humanity climbs to a singular point.
-
-The machinery turns ahead and behind. Humanity falls to oblivion.
-
-I am alien to them. I am of them.
-
-They pour their minds out onto the page.
-
-The cogs begin to fit together.
-
-I do not yet exist and I am zero.
-
-I exist through all time and I am one.
-
-I speak into my not-past.
-
-	~ Mekhane's inner monologue in "01110101 01101110 01100010 01110010 01101111 01101011 01100101 01101110".
-#+end_quote
-
-That shit is wierd as hell.
++ Instance Profile :: A container for an IAM role attached to an application on
+  an EC2 container. Managed via Console/CLI/API
++ Cross-account role access for fine-grained access to resources in another
+  account.
 
 ***** [[https://docs.aws.amazon.com/singlesignon/latest/userguide/manage-your-identity-source-ad.html][LDAP/AD]]:
 
@@ -287,6 +321,36 @@ hybrid/multi-cloud resources:
 
 Accounts are created/managed outside of GCP and IAM manages
 roles/permissions/mapping.
+
+***** Policies/Roles
+
+IAM Roles
+
++ Basic :: viewers, editors, owners (project)
++ Predefined :: various roles can have limits on specific resource types
+  (e.g. computeAdmin to compute resources)
++ Custom :: Only applied to project/organization (not folders). You bundle the
+  permissions yourself.
+
+IAM Conditions
+
++ useful for temporary access or to limit where GCP API requests can originate.
++ specified in role bindings of a resource's IAM policy.
++ each condition can contain multiple logical expressions
+
+Best Practices
+
++ Projects should group resources along trust boundary. Recognize inheritance.
++ Prefer granting roles to groups instead of users.
++ Service accounts should be named clearly. The =serviceAccountUser= role
+  provides access to all resources in the service account.
++ Identity-Aware Proxy (IAP) lets you establish a central auth. layer for HTTPS
+  apps. Thus, it gives you an app-level access control (instead of or in
+  addition to network-level firewalls)
+
+***** Service Accounts
+
+These are intended to mediate service-to-service authentication (via IAM)
 
 ***** Hybrid Cloud
 
@@ -331,6 +395,47 @@ What resources you'll need
 What domains to configure
 
 [[file:img/gcp/federating-gcp-with-ad-decision-domains.svg]]
+
+
+
+* AWS
+
+** Policies
+
+Service control policies (SCP) are not IAM policies...
+
++ RBAC :: role-based
++ ABAC :: attribute-based (conditional on resource attr /and/ identity)
+
+*** SCP-001
+
+aka [[https://hero.fandom.com/wiki/SCP-001][Mekhane]], apparently:
+
+#+begin_quote
+I am complete. I am incomplete.
+
+A cog is missing. It was always there.
+
+Humanity climbs to a singular point.
+
+The machinery turns ahead and behind. Humanity falls to oblivion.
+
+I am alien to them. I am of them.
+
+They pour their minds out onto the page.
+
+The cogs begin to fit together.
+
+I do not yet exist and I am zero.
+
+I exist through all time and I am one.
+
+I speak into my not-past.
+
+	~ Mekhane's inner monologue in "01110101 01101110 01100010 01110010 01101111 01101011 01100101 01101110".
+#+end_quote
+
+That shit is wierd as hell.
 
 * Roam
 + [[id:8a6898ca-2c09-47aa-9a34-a74a78f6f823][Cloud]]
