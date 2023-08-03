@@ -1,0 +1,284 @@
+:PROPERTIES:
+:ID:       824d470f-e464-4daf-a9f7-6cddf73bec4a
+:END:
+#+TITLE: Org LaTeX: Overview for Emacs/Org
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+* Resources
++ [[https://emacs.stackexchange.com/questions/29016/export-org-mode-to-latex-without-preamble-and-document-environment][Avoid org-export document preamble]]
+
+* TeX-mode
+
+** Building raw =tex= buffers to =pdf=
+
+The keybind =C-c C-c= runs =TeX-command-master=, which gets called with either
+=TeX-command-default= or a selection from =TeX-command-list=, for which I've
+been selecting:
+
+#+begin_example emacs-lisp
+("LaTeX"
+  "%`%l%(mode)%' %T"
+  TeX-run-TeX
+  nil
+  (latex-mode doctex-mode)
+  :help "Run LaTeX")
+#+end_example
+
+This entry then specifies the included =TeX-run-TeX= to be called:
+
++ invokes =(TeX-run-format name command file)= to set =process= in a let
+  block. It first formats the TeX command.
++ There is an opportunity to run an interactive =TeX= process by setting
+  =TeX-interactive-mode= if you need to debug, but I haven't walked through
+  this.
++ This passes input through =(TeX-run-set-command name command)= which
+  temporarily sets =TeX-command-default=.
++ Then =TeX-run-format= continues, setting =(buffer (TeX-process-buffer-name
+  file))= and spawning =(process (TeX-run-command name command file))=.
+
+** LaTeX Environment
+
+* Org LaTeX
+
+** Emacs Config
+
+*** Org Export
+
+Some brief notes on how =org-export= mysteriously produces these PDF's, since it just
+magically does. My emacs config is here at [[github:dcunited001/.emacs.g][dcunited001/.emacs.g]].
+
+=org-latex-pdf-process= is set to:
+
+#+begin_src sh
+latexmk -f -pdf -%latex -interaction=nonstopmode -output-directory=%o %f
+#+end_src
+
+=org-latex-compile= will rewrite this to:
+
+#+begin_src sh
+latexmk -f -pdf -%L -interaction=nonstopmode -output-directory=%o %f
+#+end_src
+
+In a let block, =org-latex-compile= sets =compiler= as =pdflatex= and =process=
+as =(shell-quote-argument compiler)=. It then calls:
+
+#+begin_src emacs-lisp
+(org-compile-file
+ texfile process "pdf"
+ (format "See %S for details" log-buf-name)
+ log-buf spec)
+#+end_src
+
+On guix, I seem to have =latexmk=, which is what the =ox-latex= uses by
+default. On arch, I needed to install this dependency, which I just added to the
+=academic= profile.
+
+I'll probably set this as a Guix manifest to load with =direnv= from within the
+project, once I can set =-L= to more easily add packages from my local channel
+without committing them.
+
+** Document Setup
+
+*** Org export metadata
+
+See [[https://orgmode.org/manual/Export-Settings.html][Export Settings]] and [[https://orgmode.org/manual/LaTeX-specific-export-settings.html][Latex-Specific Export Settings]].
+
+These values can be referred to later or can be inserted in a cover page.
+
+#+begin_example org
+#+TITLE:     Lab 4: Finding Accelerations
+# +SUBTITLE:  Subtitle
+#+AUTHOR:    David Conner
+#+EMAIL:     myemail@email.vccs.edu
+#+end_example
+
+These org options affect the default behavior of org-latex exports without
+needing to rely on latex. These determine whether items like TODO's are inserted
+or the =H:3= headline level to which you want to include as sections.
+
+See [[https://raw.githubusercontent.com/dfeich/org-babel-examples/master/latex/latex-example.org][dfeich/org-babel-examples/master/latex/latex-example.org]]
+
+#+begin_example org
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: title:nil author:nil c:nil d:(not "LOGBOOK") date:nil
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:t todo:t |:t
+#+OPTIONS: toc:nil
+#+end_example
+
+*** Document Structure Classes
+
+The variable =org-latex-classes= will affect how the org headlines correspond to
+LaTeX document sections/classes.
+
+#+begin_example emacs-lisp
+(("article"
+  "\\documentclass[11pt]{article}"
+  ("\\section{%s}" . "\\section*{%s}")
+  ("\\subsection{%s}" . "\\subsection*{%s}")
+  ("\\subsubsection{%s}" . "\\subsubsection*{%s}")
+  ("\\paragraph{%s}" . "\\paragraph*{%s}")
+  ("\\subparagraph{%s}" . "\\subparagraph*{%s}"))
+ ("report"
+  "\\documentclass[11pt]{report}"
+  ("\\part{%s}" . "\\part*{%s}")
+  ("\\chapter{%s}" . "\\chapter*{%s}")
+  ("\\section{%s}" . "\\section*{%s}")
+  ("\\subsection{%s}" . "\\subsection*{%s}")
+  ("\\subsubsection{%s}" . "\\subsubsection*{%s}"))
+ ("book"
+  "\\documentclass[11pt]{book}"
+  ("\\part{%s}" . "\\part*{%s}")
+  ("\\chapter{%s}" . "\\chapter*{%s}")
+  ("\\section{%s}" . "\\section*{%s}")
+  ("\\subsection{%s}" . "\\subsection*{%s}")
+  ("\\subsubsection{%s}" . "\\subsubsection*{%s}")))
+#+end_example
+
+This was for some reason a bit hard to find elsewhere. I haven't tried it, but I
+believe you can change these to alter the export behavior.
+
+I'm guessing ... but I believe that every latex document is a =tree= with a
+single =\documentclass{...}= root. However they are not necessarily well-behaved
+trees. i.e. not all things at =level n= of the tree should have the same
+class. So trying to use these on a heavily structured document like a resume is
+probably not going to work out.
+
+In this past, when using =org-latex= to export with headlines, I've needed to
+rely on shims like =\newpage= to force things to fit ... which is probably an
+antipattern.
+
+*** Document Preable
+
+This gets inserted, populated from:
+
++ org-latex-default-class
++ org-latex-default-packages-alist
++ date/title?
++ org-latex-with-hyperref
+
+#+begin_example latex
+% Created 2023-08-03 Thu 06:30
+% Intended LaTeX compiler: pdflatex
+\documentclass[10pt,A4]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\date{}
+\title{David Conner Resume}
+\hypersetup{
+ pdfauthor={David Conner},
+ pdftitle={David Conner Resume},
+ pdfkeywords={},
+ pdfsubject={},
+ pdfcreator={Emacs 29.0.92 (Org mode 9.6.7)},
+ pdflang={English}}
+\begin{document}
+
+#+end_example
+
+**** Avoid Org-Latex's Document Preamble
+
+[[https://emacs.stackexchange.com/questions/29016/export-org-mode-to-latex-without-preamble-and-document-environment][Export org-mode to LaTeX without preamble and document environment]]
+
+When working with other latex templates, this gets a bit confusing. If there are
+many references to =texlive= packages and particularly if there are commands run
+between =\usepackage{...}= invokations, this is messy.
+
++ Use =C-c C-e= to open =org-export-dispatch= and then =C-b= to set =body-only=
+  which affects the downstream call to =org-export-as=.
+
+* Content
+
+** Loading Data into tables
+
+Some of these features, esp the more esoteric table features are a bit dense to
+figure out. e.g. using =!= to provide a shadowed set of column id's for
+reference in later blocks ... it wasn't working out to well. I gave up on that.
+
+When things like formulas work, they work fairly well, but you're better off
+loading the table data from a CSV that's been generated by python or something.
+
+***** TODO add some examples of difficult table formatting
+
+** GNU Plot
+
+This is referencing tables in later hidden headlines.
+
+#+begin_src gnuplot :file img/latex-thetamax.png :var data1=histangle1 :var data2=histangle2
+reset
+
+set title "Frequency of Observed Maximum Pendulum Angle"
+
+set xlabel "Maximum Pendulum Angle (θ)"
+set xrange [12:19]
+set xtics 10,1,20
+
+set ylabel "Frequency"
+set yrange [0:10]
+set ytics 0,1,10
+
+plot data1 u 1:2 w p lw 2 title "Medium Range", \
+     data2 u 1:2 w p lw 3 title "Long Range"
+#+end_src
+
+#+RESULTS:
+[[file:img/latex-thetamax.png]]
+
+It's an improvement over [[id:01b22509-b699-45ae-8ba2-265a33efb315][my previous attempt at using tables with gnuplot]],
+though the problems there seem to relate more to accessing column names in a
+reasonble manner. I'm really impatient when it comes to learning /yet another
+programming language./ So, yeh. One day.
+
+** No Export
+
+For GNU Plot, you can either generate these images using tables outside of the
+document and include them. This is easier and probably the way it's done
+for larger projects.
+
+However, if you do want to include the data for images inline, then you can add
+=:noexport:= tag to a Headline like =Hidden= and these won't show up in the
+final export, but you need the following =#+EXCLUDE_TAGS: noexport= org setting.
+
+#+begin_example org
+#+SELECT_TAGS:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+#+end_example
+
+The tag may also prevent these from exporting to HTML.
+
+*** Hidden
+
+#+NAME: histangle1
+| Angle | Count |
+|-------+-------|
+| 13.32 |     1 |
+| 13.41 |     6 |
+|  13.5 |     1 |
+| 13.59 |     2 |
+
+#+NAME: histangle2
+| Angle | Count |
+|-------+-------|
+| 17.46 |     1 |
+| 17.64 |     2 |
+| 17.73 |     3 |
+| 17.82 |     4 |
+
+* Roam
++ [[id:0bef6f3e-3007-4685-8679-e5edbcbb082c][Latex]]
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]

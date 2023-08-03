@@ -1,0 +1,105 @@
+:PROPERTIES:
+:ID:       0e016582-6e91-47e8-b75f-8857f7af26e5
+:END:
+#+TITLE: Python: Scrapying with Scrapy
+#+CATEGORY: slips
+#+TAGS:
+
+#+begin_quote
+Keep in mind I don't exactly know what I'm doing here.
+#+end_quote
+
+Various things can dramatically affect how you approach this.
+
++ Particularly, whether you're spiders begin on a Domain and are encouraged to
+  explore links apropos to that domain (from pages on Domain A to pages on
+  Domain B).
++ Whether you're permitted to crawl the data source.
++ Whether you distribute your processes and why.
++ Whether you're using something like Squid.
++ How much javascript affects the content of the code.
++ How clean the datasource is and what your own downstream processes look like.
+
+You should almost always use an API anyways! An API is intended /to produce/
+data /suitable to consumers/.
+
+* Overview
+
+Everything is written on top of the [[https://twistedmatrix.com/trac/][Twisted]] framework, so many/most calls are
+run asynchronously, but probably transparently to your code (for small tasks).
+
+For small tasks, esp. involving homogenous data input/output, all your code
+could go in a single file, but if so it will need to construct a runtime context
+for Twisted.
+
+** [[https://docs.scrapy.org/en/latest/topics/architecture.html][Scrappy Architecture]]
+
+Just refer to this image (source at docs) to get a feel for the components
+
+[[file:img/scrapy-architecture.png]]
+
+** Classes/Concepts
+
++ Spiders :: these will parse responses for a category of URL. you will likely
+  want to bind them to a single domain. They are not intended to correspond to a
+  single webpage's format. The [[https://docs.scrapy.org/en/latest/topics/spiders.html#scrapy.Spider.parse][parse(res)]] function must return =Request=, =Item=, =[<Request | Item>]= or =None=
++ Items :: these can be as simple as native python lists/dicts or you can
+  construct classes. the =@dataclass= can help facilitate the getters/setters on
+  these.
+
+#+begin_quote
+Items provide the /container/ of scraped data, while [[https://docs.scrapy.org/en/latest/topics/loaders.html][Item Loaders]] provide the
+mechanism for populating that container.
+#+end_quote
+
+* Topics
+
+** Structuring Data
+
+Ideally, something or a spider can easily tell you how much has changed and
+whether you need to scrape everything. You should think of Scrapy as something
+of a query on an expensive database. The items should represent rows in a
+database (potentially denormalized). But the items a spider returns may not
+correspond to the items you want to store as the end result of your Scrapy
+Pipeline or further down other pipelines (outside of Scrapy).
+
+You should enumerate parameters/types that, if this were a database, you might
+query on to completely select all the results across separate queries. e.g. if
+some table type has 4 categories, then in SQL, you might include =where
+tbl.the_type = 1= and so forth to complete cover the space. These loosely would
+correspond to the URL query parameters, but data on the web is a little less
+structured than that.
+
+** Detecting Updates
+
++ RSS or other streams.
++ For an item, you should identify a sets of fields used as input to a hashing
+  function.  This hash can act as a shortcut to the items identity or in other
+  cases can imply whether there are downstream updates.
+
+* Issues
+
+** Pagination
+
+Probably the first thing that's going to come up. This would require identifying
+a subset of URL's to pass as requests to a single object.
+
++ [[https://scrapeops.io/python-scrapy-playbook/scrapy-pagination-guide/][Six most popular pagination methods]]
+
+** Getting blocked
+
+You should probably be straightforward with your =UserAgent= and traffic if you
+can and eliminate dirty code that strains someone's web service. Most tasks
+should be event-driven
+
+Most tasks should identify key data points that either indicates a need to run
+or what pages/params to run on or, in worse cases, what to crawl. However,
+crawling is going to be expensive /for you/ and for others.
+
+** Limiting Requests
+
+This was an initial issue I ran into. However, AFAIK if =your_spider.parse(res)=
+doesn't yield any requests, it's not going to call any spiders.
+
+* Roam
+ + [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
