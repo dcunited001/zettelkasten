@@ -1,0 +1,135 @@
+:PROPERTIES:
+:ID:       87a64190-b768-4ea0-892f-1fb6df88f229
+:END:
+#+TITLE: Kafka: Deploying on Kubernetes
+#+CATEGORY: slips
+#+TAGS:
+
+* Caveats
+
+[[https://medium.com/@jankammerath/how-kubernetes-and-kafka-will-get-you-fired-a6dccbd36c77][How Kubernetes and Kafka will get you fired]]
+
+#+begin_quote
+There be dragons somewhere ... just not sure where, since i can't read this
+Medium post.
+#+end_quote
+
+Apparently, it may have something to do with the K8S =StatefulSet= used for
+zookeeper and brokers (hard to manage stateful sets in k8s)
+
+* Resources
++ Strimzi Rack
++ [[https://engineering.grab.com/zero-trust-with-kafka][Zero Trust With Kafka]]: CA deployment for Cluster/Client TLS on
+  Zookeeper/Kafka)
++ From IBM's [[https://ibm-cloud-architecture.github.io/refarch-eda/][Event Driven Architecture]] Ref. Arch
+  -  [[https://ibm-cloud-architecture.github.io/refarch-eda/technology/advanced-kafka/][Kafka Advanced Concepts]]: high availability across zones
+  - and [[https://ibm-cloud-architecture.github.io/refarch-eda/technology/kafka-mirrormaker/][Mirror Maker 2]]: more details on networking
+
+* Video: Production Grade Kafka on K8S
+
+I'm pretty much just copying the slides here. It is what it is.
+
+** Kafka Overview
+
++ Kafka is essentially a commit log with a simple data structure
++ A cluster of brokers handles the delivery of messages
++ A broker uses Apache ZooKeeper for: storing config data & cluster coordination
+
+Capabilities
+
++ Microservices (and other apps) to share data (high throughput, low latency)
++ Message ordering guarantees
++ Message rewind/replay from data storage to reconstruct application state
++ Message compaction to remove old records (when using a key/value log)
++ Horizontal scalability (in cluster configuration)
++ Replication of data to control fault tolerance
++ Retention of high volumes of data for immediate access
+
+Use Cases
+
+| Event-driven Arch. | Activity Tracking          | Operational Monitoring through metrics | Event sourcing (capture changes to app state as a log of events) |
+| Message brokering  | Log Collection/Aggregation | Commit logs for distributed systems    | Stream Processing (apps can respond to data in real time)        |
+
+*** Terminology
+
+| Term           | Def                                                                       | Notes                                                                  |
+|----------------+---------------------------------------------------------------------------+------------------------------------------------------------------------|
+| Broker         | Orchestrates storage/passing of messages                                  | aka server/node. brokers contain topics that receive/store data        |
+| Topic          | Destination for storage of data                                           | each topic split into 1+ partitions                                    |
+| Cluster        | Group of broker instances                                                 | Mirrormaker/replicator to manage migrations                            |
+| Partition      | each topic log split into multiple logs, each can live on a separate node | storing/writing/processing messages can be balanced across the cluster |
+| Part. Leader   | handles all producer req. for a topic                                     |                                                                        |
+| Part. Follower | replicates the partition data of a part. leader                           | optionally handles consumer requests                                   |
+
++ topics split by partitions (where the data is written)
++ partitions replicated across topics for fault tolerance (like RAID?)
+
+*** Deployment
+
++ Create K8S [[https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/][StatefulSet]] for Zookeeper/Brokers; deploy [[https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/][ReplicaSet]]'s for these.
++ Manage the endpoints for external access.
++ Manage versioning of all resources
++ Build observability stack
++ Perform upgrades/rollbacks
++ Manage scalability challenges
++ Build tools to manage/maintain the stack
+
+*** Strimzi
+
+Strimzi provides a way to run a Kafka cluster on K8S in various deployment
+configurations.
+
++ Development :: easy to set up a cluster on MiniKube/KinD
++ Production :: the cluster can be tailored to the application needs.
+
+Strimzi facilitates features like:
+
++ rack awareness: spread brokers across availability zones
++ using K8S taints/tolerances to run kafka on dedicated nodes
+
+Exposing Kafka outside K8S: use NodePort, LoadBalancer, Ingress & Openshift
+Routes (secured with TLS)
+
+The Kube-native management of Kafka is not limited to Broker: topics, users,
+MirrorMaker and Kafka Connect can be managed with K8S Custom Resources (see
+[[https://strimzi.io/docs/operators/latest/configuring.html][Configuring Strimzi]] for a list of 100+ custom K8S yaml specs)
+
+**** Features
+
++ deploy/run kafka clusters
++ manage components like broker/zookeeper
++ configure/secure access to kafka
++ upgrade kafka consumers/brokers... (this is always hard from what i hear)
++ create/manage topics & users
+
+**** Networking and Availability Zones
+
++ Two sets of =LoadBalancer= services across zones, one balanced across
+  zookeepers and the other across sets of brokers.
++ Microservices as producers/consumers hit the LB for brokers.
++ ZK clients hit the Zookeeper LB.
++ The Strimzi Kafka Operator has it's own K8S =LoadBalancer= which (i think) is
+  mediating K8S management of K8S cluster state.
+
+***** Other resources
+
+The video has a better diagram.  Figuring out the networking here is way more
+complicated than the Strimzi docs depict below, from [[https://strimzi.io/docs/operators/latest/configuring.html#type-Rack-reference][Rack schema reference]].
+
+[[file:img/kafka/strimzi-rack-config-availability-zones.png]]
+
+The IBM & Vault links above have good examples of networking with details.
+
+And from a Thai article, which includes K8S yaml to match the AWS example.
+
+[[https://medium.com/@selfieblue/implement-kafka-cluster-on-kubernetes-by-strimzis-kafka-operator-231bd9542974][Implement kafka cluster on kubernetes by strimzi’s kafka operator]]
+
+[[file:img/kafka/kafka-availability-zones.jpg]]
+
+**** Kafka Operator Design
+
+This diagram looks terrifying TBH
+
+* Roam
++ [[id:e7903e75-caa6-4355-ab57-b6b91baab80c][Stream Processing]]
++ [[id:0a01903a-3126-4ac6-a2c8-3b6135821ef3][Kubernetes]]
