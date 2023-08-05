@@ -138,6 +138,23 @@ for that the GCP provider implements should also extend to other providers.
 
 *** Cloud Share
 
+** Ecosystem
+
+*** TF Registry
+
+A package manage repository for TF modules
+
+*** Cloud Foundation Toolkit (CFT)
+
++ Blueprints for architecture patterns in GCP.
++ CFT supplies example modules building on modules in the standard GCP provider
+
+For example, compare an implementation using CFT =projects_iam= to the standard
+TF =google_project_iam_binding=. Here, the CFT module allows you to maintain the
+IAM roles for multiple projects within the same module, whereas the GCP provider
+requires that you loop over each project, role and binding
+
+NOTE: is it possible to loop over resource declarations?
 
 ** Projects
 
@@ -150,6 +167,99 @@ for that the GCP provider implements should also extend to other providers.
 + Define variables in =vars.tf=. Change variable values for various deployment
   environments in file =terraform.tfvars=, but these should wind up in Git (esp
   for gitops)
+
+**** Outputs
+
++ Attributes include: value, description, sensitive
++ Use =terraform output= to view output values used in a project.
++ Use outputs where possible, esp. when they are deterministically generated
+  values. They avoid the need for subsequent =.tfvars= in downstream modules,
+  reducing the configuration surface area.
+
+***** Best Practices
+
++ Avoid outputs that simply regurgitate variables or provide known information
++ Inputs/Outputs should facilitate modularity, but too many may increase
+  cognitive overhead when working in projects that combine many TF
+  modules.
+
+e.g. can you determine that for all relevant (recent) versions and for projects,
+that removing a module input/output won't break the build somewhere for someone?
+
+Only output useful information, e.g.
+
++ =fdsa.vpc-network.id=, not =fdsa.vpc-network.name=
++ default_gateway_ip4
++ id :: the ID of a resource
++ self_link :: the URI of a resource
+
+*** Variables
+
++ TF infers types for variables. This is dep. on types in the provider's modules
++ Specify =description= to affect documentation & CLI output
++ Specify =sensitive= to avoid having vars in logs/output
++ Use =default= where it makes sense.
++ Terraform automatically includes vars defined in terraform.tfvars[.json],
+  terraform.tfvars and .auto.tfvars[.json]
++ the variable values can be provided by multiple methods, but =-var= has the
+  highest precedence.
+
+Options for supplying values to vars:
+
+| type        | purpose                                                                       |
+|-------------+-------------------------------------------------------------------------------|
+| .tfvars     | switching between sets of variables and versioning them                       |
+| CLI options | useful when running quick examples on simple files (doesn't jive with gitops) |
+| Env Vars    | useful in scripts/pipelines                                                   |
+| CLI prompt  |                                                                               |
+
+**** Best Practices
+
++ Prefer specifying variable defaults in module definitions followed by
+  =.tfvars= files over using CLI =-var= options
++ Add units to variable descriptions AND names (these aren't necessarily
+  standard across cloud API's)
++ Prefer positive names for boolean variables
+
+***** When to add/remove variables
+
+Changing a var where a default value is supplied is backwards-compatible;
+removing a variable is not. Thus, only parameterize values that must vary for
+each instance/environment.
+
+Preemptively adding variable values that are later removed creates situations
+that require checking out alternate versions of code (and potentially patching)
+in order to:
+
++ apply a previous version's plan with specified/modified TF state.
++ applying a current version's plan with previous TF state (usually missing
+  variable values would be prompted)
+
+This is a bigger problem when many projects/environments share common TF
+modules. When many devs/teams share these modules, adding/removing variables can
+require version pinning, which may slow progress across teams. Having
+rules/logic in place to determine how/when to add variables avoids some simple
+situations that complicate version management in shared module dependencies.
+
+****** TODO review implications of adding/removing variables in TF modules
+
+
+
+** Resources
+
+*** Meta-arguments
+
++ count: create a set of n resourcese.g: =${count.index + 1}=
++ for_each: expose an index for looping, e.g. =toset(['us-east1', 'us-east2'])=
+  and =${each.value}=
++ depends_on: specify explicit dependencies (ordering of creation in =apply=)
++ lifecycle: handle creation/deletion or other lifecycle parameters
++ provider: specify alternate defaults for the provider configuration
+
+*** Resource Dependencies
+
++ Can be specified out of order (TF HCL is declarative)
++ View ordering of implicit deps via =terraform apply=
 
 * Roam
 + [[id:8a6898ca-2c09-47aa-9a34-a74a78f6f823][Cloud]]
