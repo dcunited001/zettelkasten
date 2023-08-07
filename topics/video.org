@@ -1,8 +1,9 @@
 :PROPERTIES:
 :ID:       e93eebbe-d702-46e6-864e-114fc4e61fc5
 :END:
-#+TITLE: video
-
+#+TITLE: Video
+#+CATEGORY: topics
+#+TAGS:
 
 * Docs
 
@@ -20,3 +21,92 @@
 ffmpeg -y -i file.mp4 -vf palettegen palette.png
 ffmpeg -y -i file.mp4 -i palette.png -filter_complex paletteuse -r 10 -s 480x320 file.gif
 #+end_src
+
+* OBS Studio
+
+** Docs
+
+** Resources
+
+** Topics
+
+*** OCR
+
+**** [[https://github.com/dram55/MarioMaker2OCR][Mario Maker 2 OCR]]
+
++ Extract text with OCR and insert into Video Stream Overlay
++ Written in C# and uses OpenCV/Tesseract (libs wrapped by [[http://www.emgu.com/wiki/index.php/Main_Page][EmguCV]] for .NET)
++ [[https://github.com/unosquare/embedio][EmbedIO]] provides a .NET-based Websocket/HTTP server interface
++ Example video: [[https://www.youtube.com/watch?v=myG9h01B4Bs&t=445s][Karibukai Play]]
+
+**** Hypothetical OCR Setup
+
+#+begin_quote
+Responding to a reddit post on OBS/OCR with translation
+#+end_quote
+
+Translating the text is going to require a few moving parts.
+
+I don't have much familiarity with the OBS or OCR ecosystems, but this
+[[https://github.com/dram55/MarioMaker2OCR][MarioMaker2OCR]] project solves some of the problems.
+
+Having a PCIe capture card would distribute the load across multiple computers,
+which itself would require some networking/automation. Without that or multiple
+GPU's, it's likely that the load from the Game, OCR and additional transcoding
+would be intermittent.
+
+This would require several services:
+
+- OBS
+- OCR-service
+- Translation-service
+
+You'd need to transcode several times and decide what kind of workload you want
+the OCR to have and how its output is encoded back onto the output video stream:
+
+- receive streaming video source into OBS
+- either duplex that stream (fast, but potentially brittle req. networking) or
+  have OBS transcode a video output to make available to OCR (slow, but easy;
+  also brittle if OBS crashes/lags)
+- at this point, sending a trigger to OCR would be useful. this could be done
+  with an FFMPEG script that takes a screenshot to forward to the OCR, so OCR
+  isn't actively processing it's input stream the entire time.
+- layer on OCR output into video -- again, creating an image-based processing
+  flow here or using an capture card would lighten the load.
+- have the OCR service send it's output to a translation web service, given some
+  conditions. it receives it's HTTPS translation response and then another
+  service makes a file available to OBS as a composited image
+- have OBS combine the final video streams as output from OBS to streaming
+  server
+
+This is what makes sense to me as a Linux guy. Depending on how OBS responds to
+file updates between Windows/Linux implementations, it may be able to detect
+changes in a file. In this case, you can just create a new image file with
+ImageMagick and update a symlink (not in Windows)
+
+Ultimately, there are a few UI/UX problems to be solved:
+
+- is there background content you don't want to translate (background images
+  with Kanji)
+- do you always want to translate text boxes?
+- where do you place the translated output on stream?
+
+It's easier to solve these problems if you have an app running on a streaming
+station with the capture card that displays the video on an overlay and
+translates content given a mouse click. However, it's a bit tough to get any of
+this to work, since it would require game-specific settings. Unless you're using
+Ansible/Git to automate a VM that gets a capture card on passthrough, whatever
+you set up will eventually become buggy and cease to work. (Windows is smoll
+brain)
+
+So then with multiple computers, there are other problems to be solved:
+
+- automation/network
+- testing and backing up the OBS & OCR service configs
+- handling service failure
+
+Getting something like this to work on a single workstation would require less
+networking/automation, but still it's likely that the configs/environment would
+be brittle.
+
+*** Ansible
