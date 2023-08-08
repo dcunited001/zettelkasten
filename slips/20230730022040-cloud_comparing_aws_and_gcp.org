@@ -55,6 +55,9 @@ SSM ([[https://docs.aws.amazon.com/systems-manager/latest/userguide/what-is-syst
 
 + [[https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html][AWS Regions and Zones]]
 + [[https://docs.aws.amazon.com/vpc/latest/userguide/configure-subnets.html][Subnets for your VPC]]
++ [[https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html][VPCs and subnets: IP Adressing]]
++ [[https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html][Route 53]]
+
 *** Security
 
 **** [[https://docs.aws.amazon.com/kms/latest/developerguide/overview.html][Amazon KMS]]
@@ -107,8 +110,13 @@ Authentication
 
 *** Networking
 
-+ [[https://cloud.google.com/compute/docs/regions-zones][Regions and Zones]]
-+ [[https://cloud.google.com/compute/docs/regions-zones/zone-virtualization][Zone Virtualization]]
++ [[https://cloud.google.com/vpc/docs/vpc][VPC Networks]]
+  - [[https://cloud.google.com/compute/docs/regions-zones][Regions and Zones]]
+  - [[https://cloud.google.com/compute/docs/regions-zones/zone-virtualization][Zone Virtualization]]
++ [[https://cloud.google.com/vpc/network-pricing#ipaddress][IP Pricing]]
++ [[https://cloud.google.com/compute/docs/internal-dns][Internal DNS]]
++ [[https://cloud.google.com/dns/docs/][Cloud DNS]]
++ [[https://cloud.google.com/vpc/docs/subnets][Subnets]]
 
 *** Security
 
@@ -325,6 +333,7 @@ VPC
 |                     | AWS                                                                       | GCP                                                     |
 |---------------------+---------------------------------------------------------------------------+---------------------------------------------------------|
 | IP Space            | Specify Custom IP Address Space (ip4 and optional ip6 CIDR blocks)        |                                                         |
+| IP Assignment       | AWS req. a VPC and a subnet before machines get IP addresses              | Any VM that starts gets an internal IP address          |
 | VPC scope           | Regional                                                                  | Global                                                  |
 | Route scope         | Regional                                                                  | Global                                                  |
 | Subnets             | Address spaces must not overlap (for VPC in region/zone/subnet)           | VPC/subnets must have distinct address space per-region |
@@ -334,9 +343,35 @@ VPC
 
 IP Addressing
 
-|   | AWS | GCP |
-|---+-----+-----|
-|   |     |     |
+|                       | AWS                   | GCP                     |
+|-----------------------+-----------------------+-------------------------|
+| Publicly Routable     | Public IP, Elastic IP | Public IP, External IP  |
+| Not Publicly Routable | Private IP            | Internal IP, Private IP |
+
+IP Pricing per hour (per month)
+
+|                                   | AWS                        | GCP                           |
+|-----------------------------------+----------------------------+-------------------------------|
+| Eph. Public IP                    | No charge (in 2024: 0.005) | 0.002 to 0.004 (0.72 to 1.44) |
+| Attached Static Public IP         | 0.005 (1.80)               | 0.004 (1.44)                  |
+| Unattached Static Public IP       | 0.005 (1.80)               | 0.01 (7.20)                   |
+| Static Public IP (NAT/forwarding) | ?                          | 0.00                          |
+| Eph. Private IP                   | 0.00 ?                     | 0.00                          |
+| Static Private IP                 | 0.00 ?                     | 0.00                          |
+
+DNS
+
+|                     | AWS | GCP   |
+| Low-latency Routing | yes | nyes? |
+| Geographic Routing  | yes | yes   |
+
+Routing Tables
+
+|                        | AWS | GCP                  |
+|------------------------+-----+----------------------|
+| Routing Table Assoc To | VPC | +Global+ VPC Network |
+|                        |     |                      |
+| Rout                   |     |                      |
 
 
 *** AWS
@@ -371,7 +406,45 @@ Availability Zone.
 
 **** VPC
 
+VPC's can extend outside of a region if you have a local zone set up for that
+region.
 
+***** Subnets
+
+Subnets are per Availability Zone and can be:
+
++ ip4 only
++ dual stack
++ ip6 only
+
+Subnet Types
+
+| Type            | Internet                          | Routes                     | Desc                  |
+|-----------------+-----------------------------------+----------------------------+-----------------------|
+| Public Subnet   | Yes                               |                            |                       |
+| Private Subnet  | No Direct Route (req. NAT Device) |                            |                       |
+| VPN-only Subnet | No Routes                         | Site-to-Site via VPGateway |                       |
+| Isolated Subnet | No Routes                         | None outside VPC           | Intra-VPC Access Only |
+
+***** IP Addressing
+
++ Auto-assign IP :: configure the auto-assign IP settings (to automatically
+  req. a /public/ IPv4 or IPv6 address for network interfaces)
++ Resource-based Name (RBN) :: specify hostname type for EC2 instances and
+  configure how DNS A & AAAA record queries are handled.
+
+| Type    | Desc                                                                                |
+| Private | Req. NAT gateway for internet, otherwise comm. with AWS nets and AWS-connected nets |
+| Elastic | static & public IPs, assoc/dissoc with instances/interfaces                         |
+| Public  | allows inbound/outbound communication                                               |
+
+#+begin_quote
+You can bring part or all of your own public IPv4 address range or IPv6 address
+range to your AWS account. You continue to own the address range, but AWS
+advertises it on the internet by default.
+#+end_quote
+
+***** Route 53 DNS
 
 *** GCP
 
@@ -407,6 +480,47 @@ allocated to it. Doing so won’t affect already configured virtual machines.
   instantiate projects, then their VPC's need Peerings to related projects.
 + Otherwise, a shared VPC can be set up across multiple projects.
 
+***** Cloud DNS
+
++ uses Google's global anycast name servers to serve your DNS Zones from
+  redundant locations
++ runs on the same infrastructure as Google
+
+***** IP Addressing
+
+| Internal                                         | External                                                              |
+|--------------------------------------------------+-----------------------------------------------------------------------|
+| Allocated from subnet range to VMs by DHCP       | assigned from a pool (ephemeral) or reserved (static)                 |
+| DHCP lease renewal: 24h                          | or BYOIP (Google handles address advertisement & RIR stuff)           |
+| IP + VM Name: registered with network-scoped DNS | VMs don't know their own external IP (it's mapped to the internal IP) |
+
++ VM-to-external-IP mapping is handled transparently by VPC
+
+****** Internal Hostname Resolution
+
++ the hostname is equivalent to the instance name
++ FQDN: =[hostname].[zone].c.[project-id].internal=
+
+Per-instance: Each has a metadata service also acting as DNS resolver.
+
++ This is provided as part of the compute engine via =169.254.169.254=.
++ This is configured on the instance via DHCP
++ The resolver provides answers for internal/external addresses
+
+****** External Hostname Resolution
+
+Instances with external IPs can allow connections from hosts outside the
+project. e.g.
+
++ Users can connect using the external IP
++ Admins can publish public DNS records pointing to the instance
+
+Public DNS records are not published automatically.
+
++ but DNS records for external addresses can be published (outside of GCP) using
+  extant DNS servers.
++ DNS zones can be hosted using Cloud DNS.
+
 **** Firewalls
 
 + VPC's share logic from globally distributed firewall rules
@@ -416,8 +530,6 @@ allocated to it. Doing so won’t affect already configured virtual machines.
 + How do you control the order of firewall rules?
 + How are the firewall policy GOTO statements working out?
 
-
-**** IP Addressing
 
 **** Misc Topics
 
