@@ -5,9 +5,13 @@
 #+CATEGORY: slips
 #+TAGS:
 
+#+LATEX_HEADER_EXTRA: \usepackage{tabularx}
+#+LATEX_HEADER_EXTRA: \usepackage{tabu,longtable}
+
 * Docs
 
 * Resources
+
 + [[https://emacs.stackexchange.com/questions/29016/export-org-mode-to-latex-without-preamble-and-document-environment][Avoid org-export document preamble]]
 
 ** Customization
@@ -20,12 +24,217 @@ running python scripts, matplotlib plots, scripts, PDF preview.
 
 + 2021 Video + [[https://jakebox.github.io/youtube/org_latex_video.html][Org/LaTeX Header & SETUPFILE Explainer]]
 
-** Presentations
+** Beamer
 
-*** Beamer
+*** Presentations
 
 + [[https://orgmode.org/worg/exporters/beamer/tutorial.html][Writing Beamer Presentations in Org Mode]]
 + [[https://orgmode.org/manual/Beamer-Export.html][Beamer Export]]
++ [[github:fniessen/refcard-org-beamer][fniessen/refcard-org-beamer]] ah the French come through again
+
+*** Themes
+
+#+begin_example latex
+% use a [beamer] theme
+\usetheme{gemini}
+
+% use a [beamer] color theme
+
+#+end_example
+
++ [[https://deic.uab.cat/~iblanes/beamer_gallery/index_by_color.html][Beamer Color Theme Gallery]] these are available in the =texlive-beamer= package
++ [[github:anishathalye/auriga][anishathalye/auriga]] dependencies: LuaTeX and raleway/lato/hack fonts
+
+*** Beamerposter
+
++ [[github:deselaers/latex-beamerposter][deselaers/latex-beamerposter]] the package
+
+**** [[github:dangom/org-beamerposter][dangom/org-beamerposter]]
+
+This is an org template for producing a poster in org-export.
+
++ [[https://github.com/dangom/org-beamerposter/blob/master/donders-poster.setup?plain=1][donders-poster.setup]] this contains the emacs-lisp needed to glue =ox-latex=
+  and =ox-beamer= so that the headlines produce the correct beamer
+  columns/frames/blocks
+
+#+begin_quote
+NOTE: this project is about 5 years old and I think the underlying packages have
+changed structure/api, so it doesn't seem to work well. however, it's still a
+good example of how to structure a template/poster when using org-beamer
+#+end_quote
+
+**** Themes
+
++ [[https://github.com/anishathalye/gemini][anishathalye/gemini]] dependencies: LuaTeX and raleway/lato fonts
+
+* TeX-engine
+
+Changing the engine is rather disorienting, since everything else just magically
+seems to work.
+
+** Caveats
+
+*** Compatibility
+
+There are incompatible packages between TeX engines.
+
+See these lines from a template in [[https://github.com/HaoZeke/dotdoom/blob/master/snippets/org-mode/eisvogelPdf][HaoZeke/dotdoom]]:
+
+The engine by default is set to =xelatex=
+
+#+begin_example org
+#
+# LaTeX Stuff (from eisvogel https://raw.githubusercontent.com/Wandmalfarbe/pandoc-latex-template/master/eisvogel.tex)
+#
+#+LATEX_COMPILER: xelatex
+#+LATEX_CLASS: koma-article
+#+LATEX_CLASS_OPTIONS: [12pt,a4paper,oneside,headinclude]
+#+end_example
+
+These packages are added and used to swap out font configurations depending on
+the compiler -- so that other Emacs users out there might also be able to cast
+the old magick.
+
+#+begin_example org
+#+LATEX_HEADER: \\usepackage{ifxetex,ifluatex}
+# ...
+#+LATEX_HEADER: \\ifnum 0\\ifxetex 1\\fi\\ifluatex 1\\fi=0 % if pdftex
+#+LATEX_HEADER: \\usepackage[T1]{fontenc} [[
+AFAIK, it seems that =xelatex= will suffice for =luatex=. I'm not 100% sure on
+this, but that's my assumption for now.]]
+#+LATEX_HEADER: \\usepackage[utf8]{inputenc}
+#+LATEX_HEADER: \\usepackage{textcomp} % provides euro and other symbols
+#+LATEX_HEADER: \\else % if luatex or xelatex
+#+LATEX_HEADER: \\usepackage{unicode-math}
+#+LATEX_HEADER: \\defaultfontfeatures{Ligatures=TeX,Scale=MatchLowercase}
+#+LATEX_HEADER: \\fi
+#+end_example
+
+Tecosaur's config also has some related notes on [[https://tecosaur.github.io/emacs-config/config.html#compiling][encountering
+org files that expect alternate latex compilers]].
+
+**** Remove =org-beamer= references to incompatible packages
+
+The =org-beamer= package is inserting =\usepackage[T1]{fontenc}= which is
+apparently incompatible with =xelatex=. So it looks like the problem is mainly
+that trying to mix =org-beamer= with =xelatex= is ... not easy for a noob.
+
+So I need to find where this preamble is defined.
+
+***** Fix =org-beamer= preamble
+
+Comparing the preambles/headers inserted into the =*.tex= documents by
+=ox-latex= and =ox-beamer=, they're quite different.
+
+#+begin_example diff
+1,5c1,3
+< % Created 2023-08-09 Wed 20:30
+< % Intended LaTeX compiler: pdflatex
+< \documentclass[a4paper]{article}
+< \usepackage[utf8]{inputenc}
+< \usepackage[T1]{fontenc}
+---
+> % Created 2023-08-09 Wed 21:59
+> % Intended LaTeX compiler: xelatex
+> \documentclass[final]{beamer}
+15,18c13
+< \hypersetup{colorlinks=true, linkcolor=blue}
+< \setlength{\parskip}{0.1em}
+< \setlength{\parindent}{0em}
+< \setcounter{secnumdepth}{0}
+---
+> \usepackage[T1]{fontenc}
+20,24c15,18
+< \usepackage[margin=in]{geometry}
+< \usepackage{units}
+< \usepackage{comment}
+< \usepackage{tabularx}
+< \usepackage{tabu,longtable}
+---
+> \usepackage[size=custom,width=120,height=72,scale=1.0]{beamerposter}
+> \usetheme{gemini}
+> \usecolortheme{gemini}
+> \usepackage{graphicx}
+26,34c20,32
+< \usepackage{makeidx}
+< \makeindex
+< \usepackage{epstopdf}
+< \epstopdfDeclareGraphicsRule{.gif}{png}{.png}{convert #1 \OutputFile}
+< \AppendGraphicsExtensions{.gif}
+< \usepackage[table]{xcolor}
+< \definecolor{lightgray}{gray}{0.92}
+< \date{}
+< \title{Lab 6: The Ballistic Pendulum}
+---
+> \usepackage{tikz}
+> \usepackage{pgfplots}
+> \pgfplotsset{compat=1.14}
+> \usepackage{anyfontsize}
+> \newlength{\sepwidth}
+> \newlength{\colwidth}
+> \setlength{\sepwidth}{0.025\paperwidth}
+> \setlength{\colwidth}{0.3\paperwidth}
+> \newcommand{\separatorcolumn}{\begin{column}{\sepwidth}\end{column}}
+> \logoright{\includegraphics[height=7cm]{logo1.pdf}}
+> \logoleft{\includegraphics[height=7cm]{logo2.pdf}}
+> \usetheme{default}
+> \author{Overleaf (Andi Zhang)}
+36,37c34,35
+<  pdfauthor={David Conner},
+<  pdftitle={Lab 6: The Ballistic Pendulum},
+---
+>  pdfauthor={Overleaf (Andi Zhang)},
+>  pdftitle={Example Beamer Graphic},
+#+end_example
+
+** xelatex
+
+AFAIK, it seems that =xelatex= will suffice for =luatex=. I'm not 100% sure on
+this, but that's my assumption for now.
+
+*** By Default, No Log Buffers
+
+When I change the =TeX-engine= I'm just running into some issues getting
+feedback from the subprocess emacs spawns.
+
+** LuaTeX
+
+*** Gemini Themes
+
+Can't use =latex= or =pdflatex= for beamerposter's gemini themes.
+
++ [[https://stackoverflow.com/a/70088405][Add a lualatex entry to your org-preview-latex-process-alist]]
++ [[https://www.reddit.com/r/emacs/comments/ujk5qx/help_using_lualatex_to_preview_latex_in_orgmode/][Help using lualatex to preview latex in org-mode]]
+
+*** Configuring TeX-engine
+
+When changing =TeX-engine= to =luatex=, I get a similar response to the one above
+from =xelatex= ... which I guess means I need to append to =TeX-command-list=
+
+#+begin_quote
+XeLaTeX: problems after [0] pages
+#+end_quote
+
+Unfortunately, I can't find much information on calling =luatex= from emacs,
+including the =TeX-command=. However, according to tecosaur's config, these all
+have fairly compatible CLI options.
+
+*** Creates a bunch of files under subdirectory ={=
+
+along with a latex process that never ends and a bunch of files under a subdirectory named `{`
+
+if i'm trying to get org-beamer to compile this poster template (where the styling requires LuaTeX) ... like where should I start?
+
+- The beamer poster template: https://www.overleaf.com/project/64d3e5ace8637206b7f5cec1
+- The beamer style: https://github.com/andiac/gemini-cam
+- An older example of `#+SETUPFILE` for a beamerposter: https://github.com/dangom/org-beamerposter
+
+At this point, I'm mostly trying to get the PDF to build from the TeX buffer. If I can get to that point, I think I can get the `org-beamer` stuff to work. but I'm just now learning what things like `dvipng` and `LuaTeX` mean.
+
+- My emacs config can build simple `org-beamer` presentations, provided that the LaTeX dependencies exist and everything is set up correctly.
+- i can normally preview latex fragments and run ox-latex. when i add `#+STARTUP: beamer` or `#+SETUPFILE: setup.org`, it changes how `org-preview-latex-fragments` works. So i just figured that one out (I thought it was the TeX-engine)
+- I've started familiarizing myself with the `TeX-` commands, so if i'm having problems with the export, there's usually a \*.tex file that I can build with `C-c C-c`. usually this leads to logs, which are also useful for basic stuff. however, when i use `M-x TeX-engine-set` and change to `xetex`, I no longer get log buffers.
+- When I change the engine to `luatex`, I get a similar response,
 
 * TeX-mode
 
@@ -96,6 +305,17 @@ default. On arch, I needed to install this dependency, which I just added to the
 I'll probably set this as a Guix manifest to load with =direnv= from within the
 project, once I can set =-L= to more easily add packages from my local channel
 without committing them.
+
+** Tecosaur Config
+
+Tecosaur has a huge configuration for latex.
+
+ith a ton of ideas
+
++ This includes light dependency management and ordering of statements in your
+  latex header, the implementation for which is in newer versions of =ox-latex=
+  than I have available (in Emacs 29.0.92 via Guix as of Aug 2023). Also, some
+  of the enhancements have not been merged upstream.
 
 ** Document Setup
 
@@ -217,6 +437,72 @@ between =\usepackage{...}= invokations, this is messy.
   which affects the downstream call to =org-export-as=.
 
 * Content
+
+** Tables
+
+#+name: tblcalibrate1
+#+CAPTION: Velocities 1:
+#+ATTR_LATEX:  :font \footnotesize :placemcent [h!] :align |r|c|c|c|c|c|
+|-----------------------+-------+-------+-------+-------+-------|
+| Trial                 |     1 |     2 |     3 |     4 |     5 |
+|-----------------------+-------+-------+-------+-------+-------|
+| Speed \unitfrac{m}{s} | 8.364 | 8.624 | 8.268 | 7.704 | 9.104 |
+|-----------------------+-------+-------+-------+-------+-------|
+| Trial                 |     6 |     7 |     8 |     9 |    10 |
+|-----------------------+-------+-------+-------+-------+-------|
+| Speed \unitfrac{m}{s} | 7.704 | 8.364 | 9.104 | 8.268 | 8.624 |
+|-----------------------+-------+-------+-------+-------+-------|
+
+*** Tabu
+
+See defines at top (requires =tabu=)
+
+#+name: tblcalibrate2
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+CAPTION: Velocities 2 (tabu):
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placemcent [h!] :align |r|c|c|c|c|c|
+|-----------------------+-------+-------+-------+-------+-------|
+| Trial                 |     1 |     2 |     3 |     4 |     5 |
+|-----------------------+-------+-------+-------+-------+-------|
+| Speed \unitfrac{m}{s} | 8.364 | 8.624 | 8.268 | 7.704 | 9.104 |
+|-----------------------+-------+-------+-------+-------+-------|
+| Trial                 |     6 |     7 |     8 |     9 |    10 |
+|-----------------------+-------+-------+-------+-------+-------|
+| Speed \unitfrac{m}{s} | 7.704 | 8.364 | 9.104 | 8.268 | 8.624 |
+|-----------------------+-------+-------+-------+-------+-------|
+
+*** With booktabs
+
+See this post for a [[https://nhigham.com/2019/11/19/better-latex-tables-with-booktabs/][visual explanation]]
+
+This is noted in tecosaur's config, but I can't seem to find an example. Set
+=org-latex-tables-booktabs= to use them. The variable docs also say.
+
+#+begin_quote
+ignored locally with ":booktabs t" and ":booktabs nil" LaTeX attributes.
+#+end_quote
+
+When using booktabs, you'll want to remove the pipes from =|r|c|l|=
+
+Apparently, multicolumn cells can be used [[https://emacs.stackexchange.com/questions/7299/multicolumn-cells-in-org-mode-tables][like this]], but I can't really get it
+to export to LaTeX (for now anyways, not a priority). The typical org commands
+reformat the table. The booktabs look alot better with multicolumn formatting,
+which should work when adding =+= on the junctions of =|= and ===.
+
+#+name: tblcalibrate3
+#+CAPTION: Velocities (booktabs):
+#+ATTR_LATEX:  :font \footnotesize :placemcent [h!] :align rccccc
++-----------------------+-------+-------+-------+-------+-------+
+|                       | Trial                                 |
+|                       +---------------------------------------+
+|                       |     1 |     2 |     3 |     4 |     5 |
++-----------------------+-------+-------+-------+-------+-------+
+| Speed \unitfrac{m}{s} | 8.364 | 8.624 | 8.268 | 7.704 | 9.104 |
+|-----------------------+-------+-------+-------+-------+-------|
+| Speed \unitfrac{m}{s} | 7.704 | 8.364 | 9.104 | 8.268 | 8.624 |
+|-----------------------+-------+-------+-------+-------+-------|
+
+
 
 ** Loading Data into tables
 
