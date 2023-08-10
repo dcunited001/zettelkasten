@@ -30,7 +30,13 @@ running python scripts, matplotlib plots, scripts, PDF preview.
 
 + [[https://orgmode.org/worg/exporters/beamer/tutorial.html][Writing Beamer Presentations in Org Mode]]
 + [[https://orgmode.org/manual/Beamer-Export.html][Beamer Export]]
-+ [[github:fniessen/refcard-org-beamer][fniessen/refcard-org-beamer]] ah the French come through again
+
+**** A better resource
+
+[[github:fniessen/refcard-org-beamer][fniessen/refcard-org-beamer]] ah the French come through again
+
+It covers a bunch of issues that I'm probably about to encounter, including what
+will go wrong.
 
 *** Themes
 
@@ -48,6 +54,8 @@ running python scripts, matplotlib plots, scripts, PDF preview.
 *** Beamerposter
 
 + [[github:deselaers/latex-beamerposter][deselaers/latex-beamerposter]] the package
++ [[https://www.overleaf.com/project/64d3e5ace8637206b7f5cec1][Beamer Poster Template (overleaf)]] 120x72 poster template
++ [[https://github.com/andiac/gemini-cam][The beamer poster style]]
 
 **** [[github:dangom/org-beamerposter][dangom/org-beamerposter]]
 
@@ -76,7 +84,9 @@ seems to work.
 
 *** Compatibility
 
-There are incompatible packages between TeX engines.
+**** Packages
+
+There +are+ /may be/ incompatible packages between TeX engines.
 
 See these lines from a template in [[https://github.com/HaoZeke/dotdoom/blob/master/snippets/org-mode/eisvogelPdf][HaoZeke/dotdoom]]:
 
@@ -113,100 +123,75 @@ this, but that's my assumption for now.]]
 Tecosaur's config also has some related notes on [[https://tecosaur.github.io/emacs-config/config.html#compiling][encountering
 org files that expect alternate latex compilers]].
 
-**** Remove =org-beamer= references to incompatible packages
-
-The =org-beamer= package is inserting =\usepackage[T1]{fontenc}= which is
-apparently incompatible with =xelatex=. So it looks like the problem is mainly
-that trying to mix =org-beamer= with =xelatex= is ... not easy for a noob.
-
-So I need to find where this preamble is defined.
-
-***** Fix =org-beamer= preamble
-
-Comparing the preambles/headers inserted into the =*.tex= documents by
-=ox-latex= and =ox-beamer=, they're quite different.
-
-#+begin_example diff
-1,5c1,3
-< % Created 2023-08-09 Wed 20:30
-< % Intended LaTeX compiler: pdflatex
-< \documentclass[a4paper]{article}
-< \usepackage[utf8]{inputenc}
-< \usepackage[T1]{fontenc}
----
-> % Created 2023-08-09 Wed 21:59
-> % Intended LaTeX compiler: xelatex
-> \documentclass[final]{beamer}
-15,18c13
-< \hypersetup{colorlinks=true, linkcolor=blue}
-< \setlength{\parskip}{0.1em}
-< \setlength{\parindent}{0em}
-< \setcounter{secnumdepth}{0}
----
-> \usepackage[T1]{fontenc}
-20,24c15,18
-< \usepackage[margin=in]{geometry}
-< \usepackage{units}
-< \usepackage{comment}
-< \usepackage{tabularx}
-< \usepackage{tabu,longtable}
----
-> \usepackage[size=custom,width=120,height=72,scale=1.0]{beamerposter}
-> \usetheme{gemini}
-> \usecolortheme{gemini}
-> \usepackage{graphicx}
-26,34c20,32
-< \usepackage{makeidx}
-< \makeindex
-< \usepackage{epstopdf}
-< \epstopdfDeclareGraphicsRule{.gif}{png}{.png}{convert #1 \OutputFile}
-< \AppendGraphicsExtensions{.gif}
-< \usepackage[table]{xcolor}
-< \definecolor{lightgray}{gray}{0.92}
-< \date{}
-< \title{Lab 6: The Ballistic Pendulum}
----
-> \usepackage{tikz}
-> \usepackage{pgfplots}
-> \pgfplotsset{compat=1.14}
-> \usepackage{anyfontsize}
-> \newlength{\sepwidth}
-> \newlength{\colwidth}
-> \setlength{\sepwidth}{0.025\paperwidth}
-> \setlength{\colwidth}{0.3\paperwidth}
-> \newcommand{\separatorcolumn}{\begin{column}{\sepwidth}\end{column}}
-> \logoright{\includegraphics[height=7cm]{logo1.pdf}}
-> \logoleft{\includegraphics[height=7cm]{logo2.pdf}}
-> \usetheme{default}
-> \author{Overleaf (Andi Zhang)}
-36,37c34,35
-<  pdfauthor={David Conner},
-<  pdftitle={Lab 6: The Ballistic Pendulum},
----
->  pdfauthor={Overleaf (Andi Zhang)},
->  pdftitle={Example Beamer Graphic},
-#+end_example
-
-** xelatex
+*** xelatex
 
 AFAIK, it seems that =xelatex= will suffice for =luatex=. I'm not 100% sure on
 this, but that's my assumption for now.
 
-*** By Default, No Log Buffers
+**** By Default, No Log Buffers
 
 When I change the =TeX-engine= I'm just running into some issues getting
 feedback from the subprocess emacs spawns.
 
-** LuaTeX
+To troubleshoot, find a =xelatex= command to run, like from the gemini
+template's [[https://github.com/anishathalye/gemini/blob/master/Makefile][Makefile]]:
 
-*** Gemini Themes
+#+begin_example sh
+#latexmk -pdflatex='lualatex -interaction nonstopmode' -pdf poster.tex
+latexmk -pdflatex='xelatex -interaction nonstopmode' -pdf poster.tex
+#+end_example
+
+Which shows:
+
+#+begin_quote
+-
+------------
+Running 'xelatex -interaction nonstopmode  -recorder  "beamer-graphic.tex"'
+------------
+This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023/GNU Guix) (preloaded format=xelatex)
+restricted \write18 enabled.
+
+kpathsea: Running mktexfmt xelatex.fmt
+Can't locate mktexlsr.pl in @INC (@INC entries checked: {$HOME/.guix-extra-profiles/academic/academic/share/texmf-dist}/../tlpkg {/home/dc/.guix-extra-profiles/academic/academic/share/texmf-dist}/../texmf-dist/scripts/texlive /usr/lib/perl5/5.38/site_perl /usr/share/perl5/site_perl /usr/lib/perl5/5.38/vendor_perl /usr/share/perl5/vendor_perl /usr/lib/perl5/5.38/core_perl /usr/share/perl5/core_perl) at /usr/bin/mktexfmt line 23.
+BEGIN failed--compilation aborted at /usr/bin/mktexfmt line 25.
+I can't find the format file `xelatex.fmt'!
+Latexmk: fls file doesn't appear to have been made.
+Latexmk: Getting log file 'beamer-graphic.log'
+Latexmk: Examining 'beamer-graphic.log'
+Latexmk: Errors, so I did not complete making targets
+Collected error summary (may duplicate other messages):
+pdflatex: Run of rule 'pdflatex' gave a non-zero error code
+----------------------
+This message may duplicate earlier message.
+Latexmk: Failure in processing file 'beamer-graphic.tex':
+*LaTeX didn't generate the expected log file 'beamer-graphic.log'
+----------------------
+
+Latexmk: If appropriate, the -f option can be used to get latexmk
+to try to force complete processing.
+#+end_quote
+
+.......... okay then
+
+I needed the guix package =texlive-xetex= or the more extensive
+=texlive-collection-xetex=. The log buffer would otherwise be provided, but
+emacs-spawned =xelatex= process was failing before it produced the output
+=auctex= was looking for ... at some point or another.
+
+*** LuaTeX
+
+At this point, I'm mostly trying to get the PDF to build from the TeX buffer. If
+I can get to that point, I think I can get the `org-beamer` stuff to work. but
+I'm just now learning what things like `dvipng` and `LuaTeX` mean.
+
+**** Gemini Themes
 
 Can't use =latex= or =pdflatex= for beamerposter's gemini themes.
 
 + [[https://stackoverflow.com/a/70088405][Add a lualatex entry to your org-preview-latex-process-alist]]
 + [[https://www.reddit.com/r/emacs/comments/ujk5qx/help_using_lualatex_to_preview_latex_in_orgmode/][Help using lualatex to preview latex in org-mode]]
 
-*** Configuring TeX-engine
+**** Configuring TeX-engine
 
 When changing =TeX-engine= to =luatex=, I get a similar response to the one above
 from =xelatex= ... which I guess means I need to append to =TeX-command-list=
@@ -219,22 +204,23 @@ Unfortunately, I can't find much information on calling =luatex= from emacs,
 including the =TeX-command=. However, according to tecosaur's config, these all
 have fairly compatible CLI options.
 
-*** Creates a bunch of files under subdirectory ={=
+**** Issues
 
-along with a latex process that never ends and a bunch of files under a subdirectory named `{`
+***** Creates a bunch of files under subdirectory ={=
 
-if i'm trying to get org-beamer to compile this poster template (where the styling requires LuaTeX) ... like where should I start?
+#+begin_quote
+This may have something to do with the =texlive-luatex= package from Guix. It's
+writing to a directory structure under ={= that otherwise mirrors the paths in
+the Guix profile (which is immutable)
+#+end_quote
 
-- The beamer poster template: https://www.overleaf.com/project/64d3e5ace8637206b7f5cec1
-- The beamer style: https://github.com/andiac/gemini-cam
-- An older example of `#+SETUPFILE` for a beamerposter: https://github.com/dangom/org-beamerposter
+Along with a latex process that never ends
 
-At this point, I'm mostly trying to get the PDF to build from the TeX buffer. If I can get to that point, I think I can get the `org-beamer` stuff to work. but I'm just now learning what things like `dvipng` and `LuaTeX` mean.
+#+begin_quote
+Unfortunately, however =org-beamer= is spawning the luatex process for its
+=TeX-engine= just causes emacs to hang for awhile using the thread.
+#+end_quote
 
-- My emacs config can build simple `org-beamer` presentations, provided that the LaTeX dependencies exist and everything is set up correctly.
-- i can normally preview latex fragments and run ox-latex. when i add `#+STARTUP: beamer` or `#+SETUPFILE: setup.org`, it changes how `org-preview-latex-fragments` works. So i just figured that one out (I thought it was the TeX-engine)
-- I've started familiarizing myself with the `TeX-` commands, so if i'm having problems with the export, there's usually a \*.tex file that I can build with `C-c C-c`. usually this leads to logs, which are also useful for basic stuff. however, when i use `M-x TeX-engine-set` and change to `xetex`, I no longer get log buffers.
-- When I change the engine to `luatex`, I get a similar response,
 
 * TeX-mode
 
@@ -308,9 +294,7 @@ without committing them.
 
 ** Tecosaur Config
 
-Tecosaur has a huge configuration for latex.
-
-ith a ton of ideas
+Tecosaur has a huge configuration for latex with a ton of ideas
 
 + This includes light dependency management and ordering of statements in your
   latex header, the implementation for which is in newer versions of =ox-latex=
@@ -582,11 +566,142 @@ The tag may also prevent these from exporting to HTML.
 | 17.82 |     4 |
 
 
-* Presentations
-
-** Beamer
+* Beamer
 
 See the [[https://orgmode.org/worg/exporters/beamer/tutorial.html][worg guide]]
+
+** Presentations
+
+** Beamer Poster
+
+*** Issues
+
+**** Misc
+
+***** Title Page
+
+The title page uses very small fonts. It's unncessary for
+posters/infographics. By default, org-beamer exports it anyways.
+
+****** TODO prevent title page from showing
+
+**** Fonts
+
+***** OTF fonts are needed for large prints
+
+For giant 120x72cm posters, maybe there's a really good reason to use OTF over
+TTF.....
+
+#+begin_quote
+yeh OTF is definitely better for print, esp. large print. this seems to be the
+main reason for using LuaTeX in the beamer-poster template.
+#+end_quote
+
+Otherwise using LuaTex seems unnecessary. However, according to Overleaf's docs,
+[[https://www.overleaf.com/learn/latex/XeLaTeX][XeLaTeX does support OTF fonts]].
+
+Running the org-beamer with =xelatex= I get:
+
+#+begin_quote
+------------
+Run number 1 of rule 'xdvipdfmx'
+------------
+------------
+Running 'xdvipdfmx -E -o "beamer-graphic.pdf"  "beamer-graphic.xdv"'
+------------
+beamer-graphic.xdv -> beamer-graphic.pdf
+[1
+xdvipdfmx:warning: Invalid TTC index (not TTC font): /usr/share/fonts/raleway/Raleway[wght].ttf
+xdvipdfmx:fatal: Invalid font: -1 (0)
+
+No output PDF file written.
+Latexmk: Errors, in force_mode: so I tried finishing targets
+Collected error summary (may duplicate other messages):
+  xdvipdfmx: Command for 'xdvipdfmx' gave return code 256
+#+end_quote
+
+**** Remove =org-beamer= references to incompatible packages
+
+#+begin_quote
+I was apparently wrong with the assumption that there are simply incompatibility
+issues for different latex backends. That may be true, but it's not preventing
+=xelatex= output here. It may be that the =unicode-math= packages are preferred
+over the =fontenc= packages when using xelatex and luatex.
+
+See the einvogel template above for context
+#+end_quote
+
+The =org-beamer= package is inserting =\usepackage[T1]{fontenc}= which is
+apparently incompatible with =xelatex=. So it looks like the problem is mainly
+that trying to mix =org-beamer= with =xelatex= is ... not easy for a noob.
+
+So I need to find where this preamble is defined.
+
+***** Fix =org-beamer= preamble
+
+Comparing the preambles/headers inserted into the =*.tex= documents by
+=ox-latex= and =ox-beamer=, they're quite different.
+
+#+begin_example diff
+1,5c1,3
+< % Created 2023-08-09 Wed 20:30
+< % Intended LaTeX compiler: pdflatex
+< \documentclass[a4paper]{article}
+< \usepackage[utf8]{inputenc}
+< \usepackage[T1]{fontenc}
+---
+> % Created 2023-08-09 Wed 21:59
+> % Intended LaTeX compiler: xelatex
+> \documentclass[final]{beamer}
+15,18c13
+< \hypersetup{colorlinks=true, linkcolor=blue}
+< \setlength{\parskip}{0.1em}
+< \setlength{\parindent}{0em}
+< \setcounter{secnumdepth}{0}
+---
+> \usepackage[T1]{fontenc}
+20,24c15,18
+< \usepackage[margin=in]{geometry}
+< \usepackage{units}
+< \usepackage{comment}
+< \usepackage{tabularx}
+< \usepackage{tabu,longtable}
+---
+> \usepackage[size=custom,width=120,height=72,scale=1.0]{beamerposter}
+> \usetheme{gemini}
+> \usecolortheme{gemini}
+> \usepackage{graphicx}
+26,34c20,32
+< \usepackage{makeidx}
+< \makeindex
+< \usepackage{epstopdf}
+< \epstopdfDeclareGraphicsRule{.gif}{png}{.png}{convert #1 \OutputFile}
+< \AppendGraphicsExtensions{.gif}
+< \usepackage[table]{xcolor}
+< \definecolor{lightgray}{gray}{0.92}
+< \date{}
+< \title{Lab 6: The Ballistic Pendulum}
+---
+> \usepackage{tikz}
+> \usepackage{pgfplots}
+> \pgfplotsset{compat=1.14}
+> \usepackage{anyfontsize}
+> \newlength{\sepwidth}
+> \newlength{\colwidth}
+> \setlength{\sepwidth}{0.025\paperwidth}
+> \setlength{\colwidth}{0.3\paperwidth}
+> \newcommand{\separatorcolumn}{\begin{column}{\sepwidth}\end{column}}
+> \logoright{\includegraphics[height=7cm]{logo1.pdf}}
+> \logoleft{\includegraphics[height=7cm]{logo2.pdf}}
+> \usetheme{default}
+> \author{Overleaf (Andi Zhang)}
+36,37c34,35
+<  pdfauthor={David Conner},
+<  pdftitle={Lab 6: The Ballistic Pendulum},
+---
+>  pdfauthor={Overleaf (Andi Zhang)},
+>  pdftitle={Example Beamer Graphic},
+#+end_example
 
 * Roam
 + [[id:0bef6f3e-3007-4685-8679-e5edbcbb082c][Latex]]
