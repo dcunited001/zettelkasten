@@ -221,6 +221,58 @@ Unfortunately, however =org-beamer= is spawning the luatex process for its
 =TeX-engine= just causes emacs to hang for awhile using the thread.
 #+end_quote
 
+***** Creates long running process
+
++ Makefile [[https://www.gnu.org/software/make/manual/html_node/Force-Targets.html][FORCE]] and [[https://stackoverflow.com/questions/2145590/what-is-the-purpose-of-phony-in-a-makefile][.PHONY]] ... ahh the phony joke
++ [[https://earthly.dev/blog/makefile-variables/][Understanding and using makefile variables]]
+
+LuaTeX can be run from make:
+
+#+begin_src makefile
+# I thought I was having locale issues, but
+#LC_ALL=en_US.utf8
+#LC_ALL=en_US.utf8 latexmk -pdflatex='lualatex -interaction nonstopmode' -pdf beamer-graphic.tex
+
+.PHONY: main clean FORCE
+
+main: poster.pdf
+
+# this will never produce a file named poster.pdf, but it's declared
+poster.pdf: FORCE
+	latexmk -pdflatex='lualatex -interaction nonstopmode' -pdf beamer-graphic.tex
+
+clean:
+	latexmk -pdf -C
+#+end_src
+
+Running ==make clean= may be necessary, as i believe AucTeX automates this. When
+make targets exist, make & luatex don't do anything for those tasks.
+
+Running the process directly and it complains about locale then mysteriously
+fails (unsure of whether it's actually the locale). However, spawning from
+within the guix profile seems to work.
+
+#+begin_src
+guix shell -m ~/.dotfiles/.config/guix/manifests/academic.scm
+
+make clean
+make
+#+end_src
+
+
+****** Why Shell Out?
+
+LuaTeX takes about 10 minutes... that sucks but I'm probably doing something
+wrong. The thread it's spawning is contained within emacs's single thread ... so
+it's blocking. Usually processes can be launched async or as external
+subporcess.
+
+But when it crashes my emacs, that is just a no-go zone. Running it from make
+should work, but I need to figure out how =ox-beamer= and =auctex= are making
+calls to launch external processes. Considering the mysterious ={= subdirectory
+above, it's possible that, however emacs is going about this, it's being further
+slowed down with too many unexpected permissions checks and/or system
+calls.
 
 * TeX-mode
 
