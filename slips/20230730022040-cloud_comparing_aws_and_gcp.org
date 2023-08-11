@@ -56,6 +56,7 @@ SSM ([[https://docs.aws.amazon.com/systems-manager/latest/userguide/what-is-syst
 + [[https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-regions-availability-zones.html][AWS Regions and Zones]]
 + [[https://docs.aws.amazon.com/vpc/latest/userguide/configure-subnets.html][Subnets for your VPC]]
 + [[https://docs.aws.amazon.com/vpc/latest/userguide/vpc-ip-addressing.html][VPCs and subnets: IP Adressing]]
++ VPC: [[https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Route_Tables.html][Configure route tables]]
 + [[https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/Welcome.html][Route 53]]
 
 *** Security
@@ -113,6 +114,7 @@ Authentication
 + [[https://cloud.google.com/vpc/docs/vpc][VPC Networks]]
   - [[https://cloud.google.com/compute/docs/regions-zones][Regions and Zones]]
   - [[https://cloud.google.com/compute/docs/regions-zones/zone-virtualization][Zone Virtualization]]
+  - [[https://cloud.google.com/vpc/docs/routes][Routes]]
 + [[https://cloud.google.com/vpc/network-pricing#ipaddress][IP Pricing]]
 + [[https://cloud.google.com/compute/docs/internal-dns][Internal DNS]]
 + [[https://cloud.google.com/dns/docs/][Cloud DNS]]
@@ -367,12 +369,11 @@ DNS
 
 Routing Tables
 
-|                        | AWS | GCP                  |
-|------------------------+-----+----------------------|
-| Routing Table Assoc To | VPC | +Global+ VPC Network |
-|                        |     |                      |
-| Rout                   |     |                      |
-
+|                             | AWS                  | GCP                  |
+|-----------------------------+----------------------+----------------------|
+| Main Routing Table Assoc To | VPC                  | +Global+ VPC Network |
+| Subnet Routes               | Subnet Routing Table | Main Routing Table   |
+| Rout                        |                      |                      |
 
 *** AWS
 
@@ -445,6 +446,33 @@ advertises it on the internet by default.
 #+end_quote
 
 ***** Route 53 DNS
+
+**** Routing
+
+Subnet to Routing Table associations:
+
++ custom subnet route table
++ implicit association (to main route table)
++ explict associate (to main route table)
+
+***** Configure Route Tables
+
+Concepts (from [[https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Route_Tables.html][AWS Docs: Configure Route Tables]], many more details omitted)
+
+| Concept                     |                                                                                                                    |
+|-----------------------------+--------------------------------------------------------------------------------------------------------------------|
+| Main Route Table            | Automatically created per-VPC. Controls routing for subnets lacking explicit route table assoc                     |
+| Custom Route Table          | Custom routes for your VPC.                                                                                        |
+| Destination                 | It is what it is (a CIDR range)                                                                                    |
+| Target                      | The via that traffic is forwarded: GW, net interface or connection.                                                |
+| Route Table Association     | Mapping/assoc between a route table and a subnet, internet GW or VP GW                                             |
+| Subnet Route Table          | Table assoc to a subnet                                                                                            |
+| Local Route                 | Default route for comm. within a VPC                                                                               |
+| Propagation                 | VPN routes are auto-managed when propagation enabled on VPC's VP GW (see [[https://docs.aws.amazon.com/vpn/latest/s2svpn/VPNRoutingTypes.html][Site-to-site VPN Routing]])                 |
+| Gateway Route Table         | Table assoc to a Internet GW or VP GW                                                                              |
+| Edge Association            | Table routing inbound VPC traffic to an appliance (assoc to Inet GW or VP GW, specify target net ifx of appliance) |
+| Transit Gateway Route Table | Table Assoc to a Transit GW (see [[https://docs.aws.amazon.com/vpc/latest/tgw/tgw-route-tables.html][Transit GW Route Tables]])                                                          |
+| Local Gateway Route Table   | Table assoc to an Outposts Local GW (see [[https://docs.aws.amazon.com/outposts/latest/userguide/outposts-local-gateways.html][Local GW in Outposts User Guide]])                                          |
 
 *** GCP
 
@@ -530,6 +558,73 @@ Public DNS records are not published automatically.
 + How do you control the order of firewall rules?
 + How are the firewall policy GOTO statements working out?
 
+**** Routing
+
+Routes are defined at the VPC Network level. Routes:
+
++ apply to VM-egress traffic
++ forward traffic to the most specific route
++ define destination in CIDR
++ Match packets by dest. IP address in matching firewall rules.
+
+Routes are created when:
+
++ A network is created (enabling traffic delivery from anywhere)
++ A subnet is created (enabling traffic to VM's in the same VPC)
+
+| Type    | Route         | Next Hop                                     | Notes                                                      |
+|---------+---------------+----------------------------------------------+------------------------------------------------------------|
+| Sysgen  | Default Route | Default internet GW                          | Applies to whole VPC network. Can be removed/replaced      |
+| Sysgen  | Subnet Route  | VPC Network (fwd pax to VMs & Int. LBs)      | Applies to whole VPC network. Managed automatically by GCP |
+| Custom  | Static Route  | Static route next hop                        |                                                            |
+| Custom  | Dynamic Route | Peer of a BGP session on a Cloud Router      | Auto. managed based on  learned routes from Cloud Routers  |
+| Peering | Subnet Route  | Peer VPC Network (fwd pax to VMs & Int. LBs) | Applies to whole VPC net                                   |
+| Peering | Custom Route  | Next hop in the peer VPC network             |                                                            |
+| Policy  | PBR           | Internal passthrough Network LB              | Evaluated before other routes are evaluated                |
+
+The table is from [[https://cloud.google.com/vpc/docs/routes][VPC Docs on Routes]], where there's quite a bit more information on use cases
+and esp. on each type of route.
+
++ See [[https://cloud.google.com/vpc/docs/routes#instancerouting][Applicability and order]]
+
+***** System-generated routes
+
+These apply to all the VM's in a VM network. Two system-generated route types
+are created on VPC network creation:
+
++ Default Route
++ Subnet Route that defines paths to each subnet in the VPC network
+
+***** Custom Routes
+
+For details about [[https://cloud.google.com/vpc/docs/routes#static-route-next-hops][static route next hop]], see the original table's linked
+considerations for:
+
++ Instances and internal passthrough Net LB
++ Next hop instances
++ Internal passthrough Net LB next hops
++ Class VPN tunnel next hops
+
+See the VPC [[https://cloud.google.com/vpc/docs/vpc#routing_for_hybrid_networks][dynamic routing mode]], which determines how routes apply to VMs.
+
+***** Peering Routes
+
+Peering custom routes can be static/dynamic. For the latter, see the dynamic
+routing mode (of the VPC importing the routes)
+
+***** Policy-based Routes
+
+These routes are not exchanged through VPC Network Peering.
+
+****** TODO can you delegate to PBR to preemtively handle layer-4 DDoS?
+
+Or would the specificity of necessary rules place too much load on the GCP
+routing/fw components?
+
+***** Instance routing tables
+
+These are not really covered in the GCP doc on VPC Routing, but are in the
+Coursera class.
 
 **** Misc Topics
 
