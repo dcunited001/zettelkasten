@@ -19,6 +19,15 @@
 
 ** Resources
 
+*** NSRL
+
+Hash sets for well-known files
+
++ [[https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl][National Software Reference Library]]
++ [[https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl/technical-information/nsrl][NSRL Presentations]]
++ [[https://www.nist.gov/itl/ssd/software-quality-group/national-software-reference-library-nsrl/nsrl-download/current-rds][NSRL Downloads]]
+
+
 ** Topics
 
 *** Audio Forensics
@@ -32,17 +41,185 @@
 + [[http://acousticstoday.org/wp-content/uploads/2015/08/Lending-an-Ear-in-the-Courtroom-Forensic-Acoustics-Forensic-acoustics-deals-with-acquisition-analysis-and-evaluation-of-audio-recordings-to-be-used-as-evidence-in-an-official-legal-inquiry..pdf][Lending an ear in the courtroom: forensic acoustics]]
 
 
-** Tools/Distros
+* Digital Forensics Distros
 
-*** Remnux
+** Remnux
 
 + [[https://docs.remnux.org/run-tools-in-containers/remnux-containers][Remnux Containers]]
 
-*** Paladin
+** Paladin
 
-*** SIFT
+** SIFT
 
-*** Tsurugi
+** Tsurugi
+
+
+* Digital Forensics Software
+
+** SleuthKit (TSK)
+
+*** Docs
++ [[https://sleuthkit.org/sleuthkit][Main]]
++ [[PSA: upgrade your LUKS key derivation function][TSK Books/Courses]]
++ [[https://sleuthkit.org/sleuthkit/desc.php][Volumes/FS Analysis]]
++ [[https://wiki.sleuthkit.org/index.php?title=TSK_Tool_Overview][TSK Tools]] overview of CLI tools
+
+*** Resources
++ [[https://wiki.sleuthkit.org/index.php?title=FS_Analysis][FS Analysis]] (raw block devices)
+
+*** Topics
+
+*** Issues
+
+** Autopsy
+
+Autopsy is a graphical interface to TSK.
+
+#+begin_quote
+Autopsy is probably overkill for deduplicating files... which is what I need it
+for. Might as well see what else it can do.
+
+[[https://www.tecmint.com/find-and-delete-duplicate-files-in-linux/][Other file deduplication tools]]: rdfind, fdupes, rmlint, dupeguru, fslint
+#+end_quote
+
+*** Docs
+
++ [[https://sleuthkit.org/autopsy/][Main]]
++ [[https://sleuthkit.org/autopsy/docs/user-docs/4.21.0/][User Docs]]
++ [[https://sleuthkit.org/autopsy/docs/api-docs/4.21.0//][Developer's Guide]]
++ [[https://sleuthkit.org/autopsy/features.php][Features]]
++ [[https://sleuthkit.org/autopsy/docs/user-docs/3.1/hash_db_page.html][Hash Database]]
+
+Note: some of the links here are for =4.15.0= not =4.20.0=
+
+**** Features
+
++ EXIF extraction
++ Case Tracking (collaboration, timelines, reports, chain of custody, etc)
++ Unicode strings extraction :: Extract strings from unallocated space
++ File Type Detection :: analyze disk images for metadata and magic numbers
++ Email Analysis :: Parse emails in MBOX format
+  - Apparently Thunderbird uses the same same format that some Emacs email
+    packages use ... which is very nice to know, since setting all the
+    automation for that can be a lot of work ([[https://stackoverflow.com/questions/42618010/moving-from-thunderbird-to-emacs-mu4e][nevermind ...]] thunderbird
+    introduces some customizations to its mbox format)
+
+**** Usage
+
++ [[https://sleuthkit.org/autopsy/docs/user-docs/4.15.0/auto_ingest_setup_page.html][Auto Ingest Configuration]]
++ [[https://sleuthkit.org/autopsy/docs/user-docs/4.15.0/ds_page.html][Data Sources]] adding disks/images and configuring the tasks to run on them
++ [[https://sleuthkit.org/autopsy/docs/user-docs/4.15.0/file_discovery_page.html][File Discovery]] filter on files (including hashes for dedupe)
++ [[https://sleuthkit.org/autopsy/docs/user-docs/4.15.0/communications_page.html][Communications Visualization]]
++ [[https://sleuthkit.org/autopsy/docs/user-docs/4.15.0/interesting_files_identifier_page.html][Interesting Files Identification]]
+
+*** Resources
+
+*** Topics
+
+**** Modules
+
+The autopsy modules are now here [[https://github.com/sleuthkit/autopsy_addon_modules][sleuthkit/autopsy_addon_modules]] which contains
+many more than the wiki page.
+
+***** [[https://github.com/sleuthkit/autopsy_addon_modules/tree/master/IngestModules/Create_Datasource_Hashset][IngestModules/Create_Datasource_Hashset]]
+
+#+begin_quote
+Create a hashset of a data source, the hashset is stored in the case export
+directory. The datasource must be hashed prior to running this plugin. The
+hashset can then be brought back into Autopsy.
+#+end_quote
+
+***** Kafka Viewer
+
+[[github:tomwayne1984/autopsy_kafka_forensics][tomwayne1984/autopsy_kafka_forensics]]
+
+#+begin_quote
+Kafka Log Forensic is a Data Content Viewer for the big data streaming software
+Apache Kafka. It allows the user to view records stored cluster-side in Apache
+Kafka log files.
+#+end_quote
+
+hmmmm... that's interesting. I wonder if Elon ran that on Twitter? ...
+
+**** Hash Database
+
+***** [[https://sleuthkit.org/autopsy/docs/user-docs/4.15.0/hash_db_page.html][Hash Lookup]] module
+
++ [[https://sleuthkit.discourse.group/t/autopsy-4-19-3-hash-not-calculeted/3339][Running Ingest Module to Create Hash Set]] screenshots for walking through the
+  hash lookup tool.
+
+***** Hash Set Formats
+
+
+| *.txt  | Text        | One hash starting each line.                                    |
+| *.idx  | Index only  | Generated by Sleuth Kit/Autopsy (NSRL available in this format) |
+| *.kdb  | TSK/Autopsy | SQLite hash sets created by Autopsy                             |
+| *.hash | EnCase      | An EnCase hash set file                                         |
+| *.hsh  | HashKeeper  | Hash set file conforming to the HashKeeper standard             |
+
++ Text Format: the output from running the md5, md5sum, or md5deep program on a
+  set of files. The hash begins the line.
+
+***** [[https://sleuthkit.org/autopsy/docs/user-docs/4.20.0/discovery_page.html#file_disc_dedupe][Deduplication]]
+
+Use the hash lookup. Autopsy can be configured to use a Postgres database, so:
+
++ Ingest data sources and generate hash database
++ Build sets of useful filters
++ Analyze the Postgres table metadata to determine schema
++ identify the queries that correspond to the filters
++ Query postgres to eliminate duplicates that also exist on the new disk
++ Extract a list of paths
+
+**** Old Modules List
+
++ [[https://wiki.sleuthkit.org/index.php?title=Autopsy_3rd_Party_Modules][Autopsy 3rd party plugins]]
++ [[https://github.com/williballenthin/Autopsy-WindowsRegistryContentViewer][williballenthin/Autopsy-WindowsRegistryContentViewer]]
++ [[http://www.cybertriage.com/][Cyber Triage]] automates collection and analysis to determine whether host (live
+  or dead) is compromised
+
+***** [[https://github.com/markmckinnon/Autopsy-Plugins][markmckinnon/Autopsy-Plugins]]
+
+Python Plugins
+
+| Amazon Echosystem Parser | SAM Parse                    | Process Extract VSS    |
+| CCM RecentlyUsedApps     | Parse Shellbags              | Process SRUDB          |
+| Cuckoo                   | Parse SQLite Databases       | Shimcache Parser       |
+| File History             | Parse SQLite Deleted Records | Thumbcache Parser      |
+| Jump_List_AD             | Parse USNJ                   | Thumbs.db Parser       |
+| MacFSEvents              | Plaso                        | Volatility             |
+| MacOSX Recent            | Process Amcache              | Webcache               |
+| MacOSX Safari            | Process EVTX                 | Windows Internals      |
+| Plist Parser             | Process EVTX By EventID      | Process Prefetch Files |
+
+***** [[https://github.com/pcbje/autopsy-ahbm][pcbje/autopsy-ahbm]]
+
+Use sdhash to perform fuzzy hash matching
+
+#+begin_quote
+The investigator can match files against other files or sdhash reference sets
+during ingest, or search for similar files from the directory viewer or search
+results after ingest
+#+end_quote
+
+***** [[https://github.com/tomvandermussele/autopsy-plugins][tomvandermussele/autopsy-plugins]]
+
+Other python plugins
+
++ Connected iPhones (Connected iPhone Analyzer)
++ Skype (Skype Analyzer)
++ IE Tiles
++ Google Drive
++ Google Chrome Saved Passwords Identifier
++ Windows Communication App Contact Extractor
+
+***** [[https://github.com/LoWang123/ImageFingerprintModulePackage][LoWang123/ImageFingerprintModulePackage]]
+
+Generate a database of perceptual hashes from images, so images can be searched
+for similarity (under some conditions)
+
+*** Issues
+
 
 
 * Philosophy of Forensics
