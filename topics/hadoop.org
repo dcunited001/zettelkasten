@@ -192,3 +192,39 @@ It could run simple datalake queries with:
 + 9-12 cores, executors running scala/python
 + 4+ cores for the scheduler/driver
 
+
+* Zookeeper
+
+** Docs
++ [[https://zookeeper.apache.org/doc/current/zookeeperStarted.html][Getting Started ...]]
+
+** Resources
+
+** Topics
+
+*** Migrating ZK/Spark to K8S Cluster
+
+[[https://product.hubspot.com/blog/zookeeper-to-kubernetes-migration][This post]] describes a gradual migration to bundle ZK and Spark (as ZK clients)
+into a K8S cluster. They describe one migration path that's prone to forcing the
+ZK cluster to continually re-elect while nodes are going down/up, then provide
+an alternative:
+
++ They wrap the ZK cluster behind a K8S endpoint/service
++ Then, if using CNAME's, change the DNS to point to the K8S Services.
++ After checking on client connectivity & ZK clusters, begin swapping out the ZK
+  nodes and reregistering them.
+
+There's a one-to-one relationship between ZK the pods and the servers they
+replace. They try to preserve the ZK server ID's in the new pods.
+
+I wasn't sure whether it was possible/practical to run the ZK off the K8S
+cluster, but it looks like it is. Depending on which arch/implementation details
+pop up, I may just run the ZK cluster on-K8S, while running the Spark clients
+off-K8S.
+
+**** K8S, ZK for Kafka on GCP
+
+The Kafka/K8S architecture seems to mix too many clusters, so that's what I was
+considering on GCP until I kinda realized ... Kafka's not exactly a one-man
+band.  Just way too much overhead no matter what you do whereas the pub/sub
+would probably cover whatever I need.
