@@ -104,6 +104,16 @@ val result = fibonacci(10) // Returns 55
 
 ** Scala in Emacs
 
+#+begin_quote
+I don't know anything about SBT or Scala's tooling, so ... most of my problems
+are largely a result of that. And ultimately I'm just pessimistic unless details
+are clear.
+
+I know about 1,000,000 ways that things can go wrong with tooling like this, so
+when interpolating between "automagic" features, I want to see from end to
+end. Otherwise, I'm pretty sure something's not connected.
+#+end_quote
+
 *** Metals
 
 **** With eglot (without the lsp-mode installer)
@@ -122,6 +132,36 @@ Interpolate between:
 *** [[github:hvesalai/emacs-sbt-mode][hvesalai/emacs-sbt-mode]]
 
 This is a major-mode that derives from comint
+
+*** Notes on Tooling
+
+Given that the scala tooling is so automagical for VSCode, there's basically no
+discussion on how to use it outside of that setting, so details like "tmp
+access" are rather left to the JVM Greybeards ...
+
+Getting this to work natively on Arch /should/ be as simple as =yay -Syu scala
+sbt metals=. Not only does that approach not work for Guix, but it also leaves
+=randomlang= tooling around my environment. Doing things "the hard way" --
+i.e. the "correct" way -- works much better for me, since I actually learn what
+the fuck my computer is doing. Generally, if you're dependent on the "automagic"
+tooling, then when you're actually employed to work with the language, one of
+these will happen:
+
++ you'll look inexperienced (but you'll have time to adjust) and you may lack
+  essential tools like "LSP" and "reproducibility" while you spend the first
+  weeks of your job fumbling around with the tools you said you had experience
+  with.
++ you'll depend on other people being nice enough to teach you (which they may
+  mysteriously decide not to, while appending it to the list of 20 reasons to
+  fire you)
++ you'll either learn to configure your language/project using the 12-Factor
+  approach or you'll be unable to anticipate problems related to
+  deployment/infrastructure
+
+TL;DR: it basically comes down to how nice people are and whether anyone will
+get you mobbed on the basis that "You vote wrong" -- i.e. you're a
+conservative. So you can either deal with that or you can spend time in the
+wrong hyperbolic chamber trying to upskill yourself the slow way.
 
 ** [[https://github.com/sbt/docker-sbt][sbt/docker-sbt]]
 
@@ -225,8 +265,6 @@ but =/tmp= already has the permissions it needs. There may be a problem with how
 =M-x sbt-start= initiates the =sbt= session that's a combination of =sbt-mode=
 and the user's =sbt= config files.
 
-The shell prompt is also a bit wonky which i can't quite figure out.
-
 #+begin_quote
 ]0;root@658f89b46bbd: ~root@658f89b46bbd:~# ls -al /tmp
 ls -al /tmp
@@ -245,9 +283,118 @@ drwxrwxr-x 3 sbtuser sbtuser 4096 Aug 18 03:50 project
 drwxrwxr-x 4 sbtuser sbtuser 4096 Aug 18 03:50 target
 #+end_quote
 
+The shell prompt is also a bit wonky which i can't quite figure out.
+
+After running the container as root once for a project, sbt creates a bunch of
+files in the project directory. Then, after =chown -R= on that directory, I can
+start the =sbt= as non-root with no problems.......
+
+#+begin_src yaml
+    volumes:
+      - type: bind
+        source: myproject
+        target: /home/sbtuser/project
+#+end_src
+
+
+..... nevermind, I guess the command was run from the wrong docker buffer.
+=find . -user root -exec ls -al \{\} += finds all the files the root user
+created ... but these are all under the project which should be fine.
+
+Looking at =/tmp= shows a socket created under =/tmp/.sbt=, but unless it's
+trying to write to the root-owned directory, then it should be okay.
+
+#+begin_quote
+drwxrwxrwt 1 root    root    4096 Aug 18 04:49 .
+drwxr-xr-x 1 root    root    4096 Aug 18 04:49 ..
+drwxr-xr-x 1 root    root    4096 Aug 18 02:15 hsperfdata_root
+drwxr-xr-x 1 sbtuser sbtuser 4096 Aug 18 04:49 hsperfdata_sbtuser
+drwxr-xr-x 3 sbtuser sbtuser 4096 Aug 18 04:49 .sbt
+#+end_quote
+
+My guess is that the =docker-sbt= project hasn't updated for some change in how
+this version of SBT/etc access temporary files, whether they're in
+=/root/.cache= or =~/.cache= or =/tmp= ... who knows?
+
+
 ***** Running metal
 
+Assuming that =metal-emacs= and your Scala tooling is installed locally, then
+this should be as simple as =M-x eglot= followed by =metal-emacs=
+
 This is probably going to require modifying the =tramp-remote-path=
+
+See [[https://scalameta.org/metals/docs/editors/emacs#eglot][Metals config for eglot]]. For me (and for now anyways) this takes care of
+=init.el=:
+
+#+begin_src emacs-lisp
+(setup (:pkg scala-mode))
+
+(setup (:pkg sbt-mode)
+  (:option sbt:program-options '("-Djline.terminal=none"
+                                 "-Dsbt.supershell=false")))
+#+end_src
+
+For some reason, =tramp-own-remote-path= is undefined in the containers buffers
+so =(add-to-list 'tramp-remote-path 'tramp-own-remote-path)= isn't working.
+
+To shim it, then in =.dir-locals= to add =metals-emacs= to the
+=tramp-remote-path=:
+
+#+begin_src lisp-data
+((nil
+  . ((eval . (add-to-list 'tramp-remote-path "/home/sbtuser/bin")))))
+#+end_src
+
+Until I can figure out why =sbt-start= expects a project only in
+=/home/sbtuser/project=, then the =.dir-locals.el= needs to be in docker volume,
+so =tramp-remote-path= is respected when running commands on the container.
+
+This still results in the following errors:
+
+#+begin_quote
+# from *Messages*
+Tramp: Opening connection *EGLOT (project/(scala-mode)) stderr* for sbtuser@courserascala1 using docker...done
+Tramp: Opening connection EGLOT (project/(scala-mode)) for sbtuser@courserascala1 using docker...done
+Scan error: "Scan error", "Containing expression ends prematurely 81 82"
+[jsonrpc] Server exited with status 127
+Process EGLOT (project/(scala-mode)) not running: exited abnormally with code 127
+
+# from *EGLOT (project...*
+[internal] Fri Aug 18 00:26:14 2023:
+(:message "Running language server: /bin/sh -c stty raw > /dev/null; metals-emacs")
+[internal] Fri Aug 18 00:26:14 2023:
+(:message "Connection state changed" :change "exited abnormally with code 127\n")
+#+end_quote
+
+So, in other words, =/bin/sh -c stty raw > /dev/null; metals-emacs= is running
+with =/bin/sh= which doesn't take the =.bashrc= into account. Even though
+=tramp-remote-path= has been set, for some reason, it doesn't work. So, trying
+=/home/sbtuser/bin/metal-emacs= directly leads to the content being encoded and
+shipped over the to =/tmp/= ... hmmmm
+
+#+begin_quote
+# from *Messages*
+Tramp: Encoding local file ‘/tmp/tramp.1V6pgv.scala’ using ‘base64-encode-region’...done
+Tramp: Decoding remote file ‘/docker:sbtuser@courserascala1:/home/sbtuser/project/src/main/scala/recfun/RecFun.scala’ using ‘base64 -d -i >%s’...done
+Wrote /docker:sbtuser@courserascala1:/home/sbtuser/project/src/main/scala/recfun/RecFun.scala
+Mark set [2 times]
+Tramp: Opening connection *EGLOT (project/(scala-mode)) stderr* for sbtuser@courserascala1 using docker...done
+Tramp: Opening connection EGLOT (project/(scala-mode)) for sbtuser@courserascala1 using docker...done
+Scan error: "Scan error", "Containing expression ends prematurely 81 82"
+[jsonrpc] Server exited with status 127
+Process EGLOT (project/(scala-mode)) not running: exited abnormally with code 127
+
+# from *EGLOT (project...*
+[internal] Fri Aug 18 00:31:01 2023:
+(:message "Running language server: /bin/sh -c stty raw > /dev/null; /home/sbtuser/bin/metals-emacs")
+[internal] Fri Aug 18 00:31:01 2023:
+(:message "Connection state changed" :change "exited abnormally with code 127\n")
+#+end_quote
+
+And it turns out that I'm referencing the old =dc/sbtscala= image in my
+=compose.yml= .... so no, that binary doesn't exist in docker.
+
 
 * Issues
 
