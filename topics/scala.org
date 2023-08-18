@@ -16,7 +16,37 @@
 + codecentric scala cheatsheet
 + [[https://warisradji.com/Scala-CheatSheet/][WarisRadij Scala Cheatsheet]]
 
+** Tools
+
+*** SBT
+
+*** [[https://get-coursier.io/docs/overview][Coursier]]
+
+#+begin_quote
+Coursier is the Scala application and artifact manager. It can install Scala
+applications and setup your Scala development environment. It can also download
+and cache artifacts from the web.
+#+end_quote
+
+[[https://github.com/coursier/launchers/][coursier/launchers]] blobs for launchers
+
+*** Metals (LSP)
+
+**** Build Tool Integration
+
+Metal gets your IDE talking to either SBT, Maven, Gradle or Bloop with SBT being
+the most popular.
+
+Just [[https://scalameta.org/metals/docs/build-tools/sbt#sbt-build-server][use SBT's BSP]]:
+
+#+begin_quote
+As of sbt 1.4.1, Metals has integrated support for the sbt BSP server.
+#+end_quote
+
+
+
 * Topics
+
 
 ** Class Hierarchy
 
@@ -72,10 +102,338 @@ def fibonacci(n: Int): Int = {
 val result = fibonacci(10) // Returns 55
 #+end_src
 
+** Scala in Emacs
 
+*** Metals
+
+**** With eglot (without the lsp-mode installer)
+
+**** In a Docker Container
+
+The Coursier =cs= build tool simplifies the build.
+
+Interpolate between:
+
++ [[https://steemit.com/scala/@josiah-b/integrating-scala-metals-with-doom-emacs-using-lsp-on-ubuntu][this guide for Doom Emacs]]
++ the AUR package sources for [[https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=metals][metals]] and [[https://aur.archlinux.org/cgit/aur.git/tree/PKGBUILD?h=coursier][coursier]].
+
+*** [[github:hvesalai/emacs-scala-mode][hvesalai/emacs-scala-mode]]
+
+*** [[github:hvesalai/emacs-sbt-mode][hvesalai/emacs-sbt-mode]]
+
+This is a major-mode that derives from comint
+
+** [[https://github.com/sbt/docker-sbt][sbt/docker-sbt]]
+
+#+begin_quote
+Yeh, i should just use Coursera's environment, but it doesn't have Emacs keys
+and also i realllly need to figure out this LSP stuff. If I can just get it
+working with a docker image, than I can quickly have autocomplete on anylang.
+
+Having SBT on docker really helps, since I can attach to the container and run
+the tasks.
+#+end_quote
+
+*** Coursier and Metals
+
+I added the following to enable coursier/metals in the Dockerfile.
+
+#+begin_src diff
+15a16,17
+> ARG COURSIER_VERSION
+> ENV COURSIER_VERSION ${COURSIER_VERSION:-2.1.5}
+59d60
+< # Switch working directory
+61a63,85
+>
+> # NONE OF THESE BINARIES ARE SIGNED
+> # linux-container doesn't contain support for graal-vm
+> RUN \
+>   COURSIER_GZ=https://github.com/coursier/coursier/releases/download/v$COURSIER_VERSION/cs-x86_64-pc-linux-container.gz && \
+>   curl -fsL $COURSIER_GZ | gzip -d > cs && \
+>   chmod +x cs && ./cs install --dir /home/sbtuser/bin cs && \
+>   rm cs && \
+>   echo "export PATH=/home/sbtuser/bin:$PATH" >> ~/.bashrc
+>
+> RUN \
+>   /home/sbtuser/bin/cs bootstrap \
+>   --java-opt -Xss4m \
+>   --java-opt -Xms100m \
+>   --java-opt -Dmetals.client=emacs \
+>   org.scalameta:metals_2.12:0.10.1 \
+>   -r bintray:scalacenter/releases \
+>   -r sonatype:snapshots \
+>   -o /home/sbtuser/bin/metals-emacs -f -v -v -v
+>
+> # Switch working directory
+> WORKDIR /home/sbtuser/project
+>
+80c104,109
+<   if [ -d "/home/sbtuser/.ivy2" ]; then ln -s /home/sbtuser/.ivy2 /root/.ivy2; fi
+---
+>   if [ -d "/home/sbtuser/.ivy2" ]; then ln -s /home/sbtuser/.ivy2 /root/.ivy2; fi && \
+>   echo "export PATH=/home/sbtuser/bin:$PATH" >> /root/.bashrc
+>
+> # HACK: not even sure if eglot's going to connect to metal-emacs or not
+> #RUN ln -s /home/sbtuser/bin/cs /usr/local/bin/cs && \
+> #  ln -s /home/sbtuser/bin/metal-emacs /usr/local/bin/metal-emacs
+#+end_src
+
+Warm Cache and Links
+
+#+begin_src dockerfile
+# Prepare sbt (warm cache)
+RUN \
+  sbt sbtVersion && \
+  mkdir -p project && \
+  echo "scalaVersion := \"${SCALA_VERSION}\"" > build.sbt && \
+  echo "sbt.version=${SBT_VERSION}" > project/build.properties && \
+  echo "// force sbt compiler-bridge download" > project/Dependencies.scala && \
+  echo "case object Temp" > Temp.scala && \
+  sbt compile && \
+  rm -r project && rm build.sbt && rm Temp.scala && rm -r target
+
+# Link everything into root as well
+# This allows users of this container to choose, whether they want to run the container as sbtuser (non-root) or as root
+USER root
+RUN \
+  rm -rf /tmp/..?* /tmp/.[!.]* * && \
+  ln -s /home/sbtuser/.cache /root/.cache && \
+  ln -s /home/sbtuser/.sbt /root/.sbt && \
+  if [ -d "/home/sbtuser/.ivy2" ]; then ln -s /home/sbtuser/.ivy2 /root/.ivy2; fi && \
+  echo "export PATH=/home/sbtuser/bin:$PATH" >> /root/.bashrc
+#+end_src
+
+
+**** Quirks
+
+It's a bit hacky.
+
++ There's an expectation that =/root/.cache= is going to be absent, so that the
+  cache can be linked, so you can't install =metals= or =cs= before then (not
+  without =rm -rf= on the cache).
++ To allow either =root= or =sbtuser= to access the binaries, I installed them
+  in =/home/sbtuser/bin=, rather than installing them elsewhere -- doing so
+  requires =chmod= if changing the =cs --dir= option or =mv=. The latter may not
+  work if the =--dir= prefix is in the build and the former may have other
+  issues, depending on whether the =--cache= is in the built binaries.
+
+***** /tmp issues
+
+I thought I might circumvent the issues that =sbt= has with =/tmp= with =chmod=,
+but =/tmp= already has the permissions it needs. There may be a problem with how
+=M-x sbt-start= initiates the =sbt= session that's a combination of =sbt-mode=
+and the user's =sbt= config files.
+
+The shell prompt is also a bit wonky which i can't quite figure out.
+
+#+begin_quote
+]0;root@658f89b46bbd: ~root@658f89b46bbd:~# ls -al /tmp
+ls -al /tmp
+total 20
+drwxrwxrwt 1 root    root    4096 Aug 17 21:56 .
+drwxr-xr-x 1 root    root    4096 Aug 18 03:49 ..
+drwxr-xr-x 1 root    root    4096 Aug 17 21:56 hsperfdata_root
+drwxr-xr-x 1 sbtuser sbtuser 4096 Aug 18 03:50 hsperfdata_sbtuser
+]0;root@658f89b46bbd: ~root@658f89b46bbd:~# ls -al /tmp/hsperfdata_sbtuser
+ls -al /tmp/hsperfdata_sbtuser
+total 24
+drwxr-xr-x 1 sbtuser sbtuser 4096 Aug 18 03:50 .
+drwxrwxrwt 1 root    root    4096 Aug 17 21:56 ..
+drwxrwxr-x 2 sbtuser sbtuser 4096 Aug 18 03:50 .bsp
+drwxrwxr-x 3 sbtuser sbtuser 4096 Aug 18 03:50 project
+drwxrwxr-x 4 sbtuser sbtuser 4096 Aug 18 03:50 target
+#+end_quote
+
+***** Running metal
+
+This is probably going to require modifying the =tramp-remote-path=
 
 * Issues
 
+** Running SBT In A Container
 
+#+begin_quote
+yeh, i'm really outing my own Docker Compose power level here ... Hint: it's not
+exactly 9,000. I missed out on a lot of container workflows. It's just much
+easier to learn when you work beside other people.
+#+end_quote
+
+*** Permissions Issues
+
++ [[https://github.com/sbt/docker-sbt/pull/99][pull#99 on docker-sbt]] exposes =USER_ID= and =GROUP_ID= as build args
+
+*** Using Docker Compose
+
+Potential problems:
+
++ The container's been created with user =sbtuser= with id =1001=
++ Not sure how docker compose supports [[github:][uid/gid remapping]] (i.e. link suggests
+  that it doesn't seem to very well).
++ The image can be rebuilt, avoiding the need to recursively =chown=. see
+  pull#99, [[https://jtreminio.com/blog/running-docker-containers-as-current-host-user/][this blog]] and particularly this section on [[and][using .env within
+  docker-compose.yml]]
+
+#+begin_export yaml
+services:
+  scala:
+    container_name: courserascala1
+    hostname: courserascala1
+    image: sbtscala/scala-sbt:eclipse-temurin-focal-17.0.5_8_1.9.3_2.13.11
+    # user: sbtuser
+    working_dir: /home/sbtuser/scala1
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    volumes:
+      - type: bind
+        source: .
+        target: /home/sbtuser/scala1
+#+end_export
+
+So to fix this, you need to create a new image that changes the user's ID, then
+recursively changes the files it owns. Otherwise, your projects will be littered
+with root-owned
+
+*** Using Podman
+
+The app is a single container, so skipping the "nice to haves" of emacs
+docker.el in favor of a directory littered with root permissions.
+
+** Running SBT in Emacs without environment dependencies
+
+There are a few options here.
+
+The following process should work and, assuming that the =sbt-mode= codebases
+are pretty easy to modify, then getting it to work should require just a few
+changed lines.
+
+Open directory with tramp:
+
+=C-x d /docker:sbtuser@courserascala1:/home/sbtuser/scala1=
+
+Then descend into the scala project directory that contains your =*.sbt= files
+(fingers crossed) ... running =M-x start-sbt= here should work transparently.
+
+*** Bailing out
+
+When things get too complicated, it's important to have a plan to bail
+out... Here that is to just get the =docker-compose.yml= or =podman= running
+sbt, scala and any other dependencies I need. Both =podman= and =docker= are
+available on Guix.
+
+If I can just get an SBT prompt or run the scala code.
+
+*** SBT over Tramp with Docker
+
+The hvesalai/emacs-sbt-mode package doesn't use =remote...= when running
+=(executable-find sbt:program-name)=, so it can't easily run Tramp. It should be
+pretty simple to get this to work.
+
+Before I explain that, there is a better hack ... which is simply to ensure that
+a dangling alias exists inside the bind mount directory.
+
+Since it also checks this =(file-executable-p (concat project-root
+sbt:program-name))=, then it may attempt to run it.
+
+**** SBT Mode changes required to implement Tramp paths/bins
+
+#+begin_example emacs-lisp
+(defun sbt:run-sbt (&optional kill-existing-p pop-p)
+  "Start or re-strats (if kill-existing-p is non-NIL) sbt in a
+buffer called *sbt*projectdir."
+  (let* ((project-root (or (sbt:find-root)
+			   (error "Could not find project root, type `C-h f sbt:find-root` for help.")))
+         (buffer-name (sbt:buffer-name))
+         (inhibit-read-only 1))
+    ;; (when (null project-root)
+    ;;   (error "Could not find project root, type `C-h f sbt:find-root` for help."))
+#+end_example
+
+Particularly, by changing these lines
+
+#+begin_example emacs-lisp
+    (when (not (or (executable-find sbt:program-name)
+                   (file-executable-p (concat project-root sbt:program-name))))
+      (error "Could not find %s in %s or on PATH. Please customize the sbt:program-name variable." sbt:program-name project-root))
+#+end_example
+
+To use =(executable-find sbt:program-name (file-remote-p default-directory))=
+then everything should /just work/ ... depending on how extensively =sbt-mode=
+should use the optional booleanparameter of =(executable-find command &optional
+remote)=
+
+***** permissions issues
+
+If you don't rebuild the container with =USER_ID/GROUP_ID= build args then =sbt=
+still runs into permissions issues when running remotely via docker/tramp.
+
+It first encounters issues on initialization when creating directories, but even
+after that, it will encounter things like this when running =M-x sbt-start=
+
+It may seem it's not running as root ... if you don't close out all the other
+buffers, ensuring dired's path looks -- like
+=/docker:root@courserascala1:/path/to/proj= versus =/docker:sbtuser@ctr= -- then
+no, it's not running as root.
+
+After changing that, i'm no longer getting the errors.
+
+#+begin_quote
+Running sbt
+java.io.IOException: Permission denied
+	at java.base/java.io.UnixFileSystem.createFileExclusively(Native Method)
+	at java.base/java.io.File.createTempFile(File.java:2170)
+	at sbt.StandardMain$.$anonfun$initialGlobalLogging$1(Main.scala:242)
+	at sbt.internal.io.Retry$.apply(Retry.scala:46)
+	at sbt.internal.io.Retry$.apply(Retry.scala:28)
+	at sbt.internal.io.Retry$.apply(Retry.scala:23)
+	at sbt.StandardMain$.createTemp$1(Main.scala:240)
+	at sbt.StandardMain$.$anonfun$initialGlobalLogging$3(Main.scala:246)
+	at sbt.internal.util.GlobalLogBacking$.apply(GlobalLogging.scala:61)
+	at sbt.internal.util.GlobalLogging$.initial(GlobalLogging.scala:88)
+	at sbt.StandardMain$.initialGlobalLogging(Main.scala:247)
+	at sbt.StandardMain$.initialGlobalLogging(Main.scala:250)
+	at sbt.StandardMain$.initialState(Main.scala:280)
+	at sbt.xMain$.$anonfun$run$11(Main.scala:126)
+	at scala.util.DynamicVariable.withValue(DynamicVariable.scala:62)
+	at scala.Console$.withIn(Console.scala:230)
+	at sbt.internal.util.Terminal$.withIn(Terminal.scala:578)
+	at sbt.internal.util.Terminal$.$anonfun$withStreams$1(Terminal.scala:358)
+	at scala.util.DynamicVariable.withValue(DynamicVariable.scala:62)
+	at scala.Console$.withOut(Console.scala:167)
+	at sbt.internal.util.Terminal$.$anonfun$withOut$2(Terminal.scala:568)
+	at scala.util.DynamicVariable.withValue(DynamicVariable.scala:62)
+	at scala.Console$.withErr(Console.scala:196)
+	at sbt.internal.util.Terminal$.withOut(Terminal.scala:568)
+	at sbt.internal.util.Terminal$.withStreams(Terminal.scala:358)
+	at sbt.xMain$.withStreams$1(Main.scala:87)
+	at sbt.xMain$.run(Main.scala:121)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at sbt.internal.XMainConfiguration.run(XMainConfiguration.java:57)
+	at sbt.xMain.run(Main.scala:46)
+	at xsbt.boot.Launch$.$anonfun$run$1(Launch.scala:149)
+	at xsbt.boot.Launch$.withContextLoader(Launch.scala:176)
+	at xsbt.boot.Launch$.run(Launch.scala:149)
+	at xsbt.boot.Launch$.$anonfun$apply$1(Launch.scala:44)
+	at xsbt.boot.Launch$.launch(Launch.scala:159)
+	at xsbt.boot.Launch$.apply(Launch.scala:44)
+	at xsbt.boot.Launch$.apply(Launch.scala:21)
+	at xsbt.boot.Boot$.runImpl(Boot.scala:78)
+	at xsbt.boot.Boot$.run(Boot.scala:73)
+	at xsbt.boot.Boot$.main(Boot.scala:21)
+	at xsbt.boot.Boot.main(Boot.scala)
+[error] [launcher] error during sbt launcher: java.io.IOException: Permission denied
+#+end_quote
+
+*** Hacking Comint
+
+It may be possible to start the remote =sbt= process as comint and then changing
+over the major mode.  From that point, commands using =(sbt:buffer-name)= will
+adopt the buffer and ... it should work (in theory). However, there is
+project-local and buffer-loca state that needs to be set up as sbt-mode expects,
+which would require a deep dive into the codebase. Ultimately, it's just a hack.
 
 * Roam
