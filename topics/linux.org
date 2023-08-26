@@ -78,6 +78,78 @@
 
 *** Zen Kernel
 
+* Logging
+
+Systemd stuff elsewhere
+
+** RAS Daemon
+
+RAS daemon watches for RAS events reported via trace to show up in SysFS (via
+some interface, this wording is likely imprecise). As it sees events, it logs
+them into a SQLite database.
+
+*** Docs
++ ftrace (contains info to help understand what rasdaemon output shows)
+
+*** Resources
+
++ [[https://unix.stackexchange.com/a/751301][Interactions between SysFS (tracing) and RAS Daemon]]
+
+**** Translate Device ID
+
+Apparently, take the major/minor device ID from the =lsblk= output and it's
+=Major * 256 + Minor=.
+
+*** On Guix
+
+Ensure the rasdaemon service has been running with the =-r= flag.
+
++ Install the =rasdaemon= package
++ SQLite db is in =/var/lib/ras-mc_event.db= ... but if the service is running
+  probably don't connect to it (max clients)
++ Query the rasdaemon with =ras-mc-ctl= using =--errors= or =--summary=
+
+However, for me, I'm just seeing some disk issues that, according to the "device
+ID" are likely a USB or something. There are no other types of errors.
+
+#+begin_example shell
+ras-mc-ctl --status
+
+# .ras-mc-ctl-real: drivers not loaded
+#+end_example
+
+Using some of the other commands indicates that not all of the functionality is
+active:
+
++ missing DIMM labels for HP laptop)
++ May require generating a config file so RAS Daemon can understand what
+  hardware components the trace events correspond to...
+
+Maybe I can just extract the Trace events from SysFS, but I don't know.
+
+**** Why RAS Daemon?
+
+My computer keeps spinning its fans on suddenly with a task that escalates in
+its compute load. I can still ping, but can't connect to it. If I get in quickly
+and kill the process (tough I got like 15 seconds, but it's usually firefox),
+then I win and it doesn't crash for awhile -- usually +24-48hrs.
+
++ I think it may be TLP (power mgmt), but not confident. I may just remove the
+  configuration. It's not happening at a suspend or power event. It almost
+  always happens when I'm not looking.
++ I've turned NMI watchdog, to stop the kernel from locking into a task.
+
+I'm not exactly an expert at using SystemD or at "not using SystemD'" ... either
+way, I just don't really know anyone to ask for help who would know either. I've
+looked at the logs I'm getting and there's nothing obvious.
+
+One of the reasons for using Guix is so I can capture kernel configurations in a
+git repository. This should allow for a workflow that allows for swapping out
+kernels between builds (mostly in VM's), but this requires quite a bit of
+infrastructure on the network and yeh I still can't turn on the Dell R620
+without risking power going out (or noise issues). Still, testing kernels on my
+dev machine isn't tenable when they can't boot up. I was thinking more like IoT,
+VM and Raspberry PI.
 
 * Console
 
