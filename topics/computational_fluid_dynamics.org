@@ -1,0 +1,143 @@
+:PROPERTIES:
+:ID:       36ad3182-fce9-4304-89b7-9cfdbb375ae1
+:END:
+#+TITLE: Computational Fluid Dynamics
+#+DESCRIPTION:
+#+TAGS:
+
+* Docs
+* Resources
+* Topics
+* Issues
+
+* OpenFOAM
+
+** Docs
++ [[https://openfoam.org/guides/][OpenFOAM]]
++ [[https://doc.cfd.direct/openfoam/user-guide-v11/index][v11 User Guide]]
++ [[https://cpp.openfoam.org/v11/][doxygen]]
++ [[https://doc.cfd.direct/openfoam/tensor-mathematics/][Tensors for CFD]]
+
+** Resources
+
+*** Free Books
+
+There are several free PDF books available with examples, like [[https://doc.cfd.direct/notes/cfd-general-principles/][Notes on
+Computational Fluid Dynamics]]. These are useful even if you aren't going to
+write CFD code or the framework, since this translates the math into compute and
+programming patterns.
+
+** Topics
+
+*** Creative CFD Techniques
+
+There are other CFD techniques which are largely unexplored I believe, but these
+would be very complicated. There are statistical relationships between 3-D
+voronoi and turbulence, for example, since when you approximate the points used
+for voronoi, points that connect many other points are unlikely.
+
+Like this [[https://arc.aiaa.org/doi/abs/10.2514/6.2018-3302][Large-eddy simulations of co-annular turbulent jet using a
+Voronoi-based mesh generation framework]]
+
+Whether voronoi techniques are helpful for computations is probably
+disappointing, but the advantage is that you really don't need a rigid lattice
+(and your mesh composed of polyhedra implicitly lies within one)
+
+From [[https://arxiv.org/abs/2005.00525][Divergence and Convergence of Inertial Particles in High Reynolds Number Turbulence]]
+
+#+begin_quote
+Joint PDF of the volume of Voronoi cells in log scale and divergence in linear scale for
+St = 0.5, 1.0, 2.0 and 5.0.
+#+end_quote
+
+[[file:img/Joint_PDF_Volume_Divergence.png]]
+
+*** Lattices for Compute
+
+**** Ocean Simulations
+
+This generally outlines an idea for ocean simulations that may increase accuracy
+while keeping computational requirements in check.
+
++ Set the H3 resolutions to focus on: likely just two.
++ Take the largest H3 hexagons and imagine vertical columns of water extending
+  from the ocean surface to its floor.
++ Divide each hexagonal prism into three sections: surface, middle, floor.
++ For each section pick a unit height for elements of the lattice.
+
+In the simulation, when calculating values for exterior algebra (like
+derivatives/integrations within a unit volume or along a unit surface), use the
+overlapping nature of the mesh to give you more confidence in values. At each
+time step, after calculating the flux and $\Delta E$ w.r.t. the mesh unit's
+faces and volumes, compare it to the same for each neighbor, but also use
+information from overlapping lattices to form more confidence in changes at each
+time step.
+
+Most CFD sims will already do this to a sufficient degree. They will subdivide a
+cubic lattice, but when you read into different systems, many of the same
+problems emerge.
+
+***** The Lattice for a CFD Mesh
+
+It's likely the people have already used this idea somewhere in CFD. It's much
+easier if the ocean floor is left out. Since everything is divided into
+overlapping 3D lattices, things are difficult around the boundaries, especially
+if you try to carve the volume into 3+ discrete sections where the unit height
+varies at different depths of water.
+
+See [[https://www.princeton.edu/news/2011/06/27/princeton-researchers-solve-problem-filling-space-without-cubes][Princeton Researchers Solve Problem Filling Space -- Without Cubes]] to see an
+example of the 3D lattice:
+
++ Starting from the 2D hexagons, fill in their area by stacking 6 tetrahedronson
+  them. Mirror everything above/below.
++ Tile the new 3D hexagonal shapes. If done correctly, there are octohedral
+  voids, but this is a feature not a bug.
+
+The shape is similar to that of the Yoshimoto Cube, but I can't tell whether
+they're essentially equivalent. Being a bit rusty, the shape is fairly difficult
+to check in my head without 3D graphics or something.
+
+[[file:img/Yoshimoto_cube.jpg]]
+
+This 3D tiling has several orientations:
+
++ Two rotational symmetries $\frac{\pi}{2}$ and $\pi$, i believe.
++ There are 3 different translational symmetries, like a cubic latice.
+
+2D Hexagonal lattices can be converted to square lattices, but there are several
+combinations that will do this tranformation.
+
+Here in 3D, this lattice can pull similar tricks, but using the =H3= framework
+allows you to generate a 2D hexagonal lattice scaled =1:7= (see links below).
+
+The different sizes of lattice units (including both octahedron/etc) along with
+overlapping orientations should provide enough checks for accuracy, while still
+scaling linearly with the mesh unit size.
+
+***** H3 Lattice Projection for the Earth's surface.
+
+Uber created a framework called H3 that sets up a lattice that wraps a 2D Sphere
+using all hexagons except 10 pentagons.
+
++ There are 7 hexagons in every hexagon. Here are [[https://h3geo.org/docs/core-library/restable/][complete statistics]] on the
+  lattice layers.
++ There are 10 annoying pentagons that stick out. The lattice was rotated so
+  these are conveniently in the ocean. However, the library could probably be
+  rebuilt so this isn't the case, but the ID's for hexagons couldn't connect
+  easily to other data sets that use the normal H3.
+
+[[file:img/pentagon_hexagon_children.png]]
+
+
+*** Other open source CFD libraries?
+
+I saw a post on upwork that mentioned a CFD framework. I know I encountered
+OpenFOAM because I remember the free PDF's... but I found an open CFD with docs
+that uses a dialect of C/C++ or preprocessors as an opinionated, equations first
+approach to specifying computations. By using their system, then you can
+reference relations/equations that get compiled into efficient C/C++ so that
+classes/interfaces are also respected.
+
+
+* Roam
++ [[id:1e9132fa-33ec-4306-8a5c-47dd972293a7][Physics]]
