@@ -1,0 +1,114 @@
+:PROPERTIES:
+:ID:       e4c9bb5c-2531-4a08-b2e1-7970a5ce2a86
+:END:
+#+TITLE: Emacs: Popper.el vs doom popups
+#+CATEGORY: slips
+#+TAGS:
+
+originally from emacs config
+
+* Mixing Popper.el with Doom's Popups
+
++ [[https://www.gnu.org/software/emacs/manual/html_node/elisp/The-Zen-of-Buffer-Display.html][Zen of the Buffer Display]]
++ [[https://www.gnu.org/software/emacs/manual/html_node/elisp/The-Zen-of-Buffer-Display.html][Displaying Buffers]]
+
+*Popper is simple and works great with almost zero config. It can:*
+
+- promote buffers to popups
+- narrow popup selection/manipulation to a context (project/etc)
+
+Extending Popper's behavior requires more understanding of emacs windows, frames
+and tabs. So, techniques like like surrounding function calls with let or using
+setf or creating functions to dispatch on context may be required.
+
+*Doom has more comprehensive configuration:*
+
+- the buffers you're likely to encounter are already spec'd out.
+- handles window/frame customizations.
+
+** How Doom's code is loaded
+
+I just imported the extant =+popup= module code with minimal tweaks.
+
+While the Doom Emacs modeline and snippets packages are simple to utilize, there
+isn't a good way to cherry-pick packages/scripts from Doom Emacs.
+
++ use-package, quelpa and straight do include features like =:files=,
+  =:includes= and =:build=, but Doom isn't a package AFAIK. Even if I could use
+  these, I don't want to risk building/running Doom's code unless I specify that
+  file/package.
++ I don't have submodules and it's likely this will end up being a submodule.
+
+** Some caveats
+
+#+begin_quote
+I really wouldn't have set out expecting to end up with a mixed config like
+this. I wouldn't try this in your init.el ... but for now, it should allow me to
+experiment with both popup systems.
+#+end_quote
+
+- As long as poppers config is at the end of display-buffer-alist (ACL?) then it
+  shouldn't affect buffer mgmt.
+- Doom's popup config should be mutually exclusive with popper's config --
+  i.e. each buffer potentially treated as a popup =default-buffer-alist=, should
+  only ever be handled by one system or the other.
+- Deactivating popper-mode will cl-remove =popper-display-control-h= from
+  display-buffer-alist. Popper won't run its dispatch, but its other
+  functionality will still be in tact.
+- Popper uses buffer-local variables to determine whether buffers are popups it
+  should manage. Using the keybinds from =popper-map= will cause it to adopt the
+  popups dispatched by doom's =+popup-display-buffer-stacked-side-window-fn=. If
+  =display-buffer-alist= ends with =popper-display-control-h=, Doom's dispatch
+  should pick it up.
+
+So (fingers crossed...) this config should work alright for now.  Besides the
+obvious overlapping regexp, there are two areas where unexpected state could
+arise:
+
+- Entries in =popper-reference-buffers= are specified by regexp or major mode.
+- Users can raise arbitrary buffers to be treated as popups.
+
+** Problems
+
++ Running =+set-popup-rules= updates =display-buffer-alist= but doesn't actually
+  change window placement. It initializes alright, but can't be changed
+  mid-session. =with-popup-rules= indicates that the state doesn't change.
++ The =*Flycheck errors*= and =*Help*= buffers are configured to occupy the same
+  side. Opening the second popup buffer causes an invalid window configuration
+  that can't be closed.
+  + see [[https://github.com/emacs-mirror/emacs/blob/5ff018524c740c77215ddb5d5983dbfcadb05599/lisp/window.el#L1327-L1348][window.el#L1327-L1348]].
+    - The error is "Window %s has same side as window %s but no common parent"
+    - Workaround 2: just use =winner-undo= and then kill one of the buffers
+    - Workaround 2: run =window-toggle-side-windows= with =C-x w s= or =<f2> w s=
+      to unpop the window.
+      - However, killing one of the buffers still only allows interacting with
+        the window configuration via toggling the side windows. The error
+        persists.
+  + The problem doesn't originate with popper.el since =popper-popup-status=
+    is nil.
+    - My Doom =+popup.el= configuration is held together with duct tape and
+      popsicle sticks.
+  + What should happen: flycheck will generally stay open, then =*xref*=
+    buffers should become co-resident with it's window =:side= while flycheck
+    stays docked to leftmost side.
+    - what happens: nothing you do will close the windows.
+
+** Notes on popups
+
+If you've never actually worked beside someone whose popups just work and you
+can't ask them about it, it's potentially a large source of friction. It makes
+sense for the kind of data or UI/UX interactions, but it's not your average
+window system. The semantics of window and frame are simple to get past.
+
+I just need the popups to work.  If my emacs session is fragile or if I can't
+depend on something being somewhere at a particular point, that's going to slow
+me down.  I need for the interface to feel familiar. With REPL-driven
+development, i need the popups/buffers under control.
+
++ CIDER has lots of modes/buffers.
++ LSP throws in another dozen or so buffer and window types.
++ It's really nice when xref popups don't clutter your space.
+
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
