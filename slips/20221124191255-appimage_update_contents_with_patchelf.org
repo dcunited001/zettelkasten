@@ -179,47 +179,105 @@ sudo mount $appmount -o offset=$appimageoffset
 **** Launch the binary using =ungoogled-chromium= as a base
 
 #+begin_src bash
-deps=libsm sqlite libgpg-error p11-kit
+deps="libsm sqlite libgpg-error p11-kit"
 otherdeps=
 devbase=ungoogled-chromium
-devdeps=libtasn1 gmp e2fsprogs glu glib:bin gobject-introspection gcc:lib
+# devbase=qutebrowser
+devdeps="libtasn1 gmp libomp e2fsprogs glu glib:bin gobject-introspection gcc-toolchain" # gcc:lib
 
 # thanks to #nonguix irc channel for the help
 guix shell -CNF $deps $otherdeps -D $devbase $devdeps --preserve='^QT_DEBUG_' --preserve="^QT_QPA_PLATFORM" \
     --preserve='^DISPLAY$' --preserve='^XAUTHORITY$' --preserve='^DBUS_' \
     --share=$XAUTHORITY --share=/sys/dev --share=/sys/devices --share=/tmp \
     --expose=/dev/dri --expose=/var/run/dbus \
-    -- ./raise3d/AppRun
+    -- ./AppRun
 #+end_src
 
-**** Launch the binary using =qutebrowser= as a base
+It may need to run from the =./raise3d= dir or I may need to call
+=./raise3d/usr/bin/ideamaker(.real)?=.
 
-#+begin_src bash
-deps=libsm sqlite libgpg-error p11-kit
-otherdeps=libxi fontconfig libxrender dbus
-devbase=qutebrowser
-devdeps=libtasn1 gmp e2fsprogs glu glib:bin gobject-introspection gcc:lib
-guix shell -CNF $deps $otherdeps -D $devbase $devdeps --preserve='^QT_DEBUG_' --preserve="^QT_QPA_PLATFORM" \
-    --preserve='^DISPLAY$' --preserve='^XAUTHORITY$' --preserve='^DBUS_' \
-    --share=$XAUTHORITY --share=/sys/dev --share=/sys/devices --share=/tmp \
-    --expose=/dev/dri --expose=/var/run/dbus \
-    -- ./raise3d/AppRun
++ Running ./Raise3d/AppRun: missing =libgomp.so.1=. the lib is in the =guix
+  shell env= but not in the =AppImage= afaik. However, it's not linked and that
+  feels janky.
++ Running =cd raise3d && usr/bin/ideamaker.real= is not the right way to call
+  the startup script AFAIR, but it gives a =libquazip.so.1= error, which is in
+  the =AppImage= path. AFAIR, I have some of the shared lib dependencies doubled
+  up and the =AppRun= exec runs some different setup (setting r/paths or
+  something)
+
+This is for OpenMP, which I'm fairly surprised has been integrated into the
+Raise3D application build. This makes sense for cross-platform builds of fast
+code used for slicing (CUDA's memory/caching makes sense for these problems) and
+IIRC OpenMP is an open interface to write once and build/run on multiple
+heterogenous GPU's ... iirc
+
+Here we have a more complete list of deps:
+
+#+begin_src sh
+patchelf --print-needed usr/bin/ideamaker.real
+
+# libquazip.so.1
+# libdl.so.2
+# libGLU.so.1
+# libgomp.so.1
+# libz.so.1
+# libcurl.so.4
+# libcork.so.1
+# libQt5Widgets.so.5
+# libQt5Gui.so.5
+# libQt5Network.so.5
+# libQt5SerialPort.so.5
+# libQt5Core.so.5
+# libGL.so.1
+# libpthread.so.0
+# libstdc++.so.6
+# libm.so.6
+# libgcc_s.so.1
+# libc.so.6
 #+end_src
 
-****** TODO configure LD_LIBRARY_PATH to allow the app to run using its own binaries
+a few of the others are App Image's =/usr/lib= directory, which maybe needs to
+be added to LD_LIBRARY_PATH ... if allowing that to be messed with is allll good
+man.
+
+**** Finish resolving the patchelf issue
+
+I really wanted to determine whether lib64 would be a problem. Running the
+appimage using the FHS method circumvents:
+
++ the need to patch the interpreter
++ the need to recursively patch dependencies (like python/julia libs pulling
+  down blobs)
+
+Generally if it's not a programming language, then the first issue is maybe once
+per script, but fairly simple if necessary. Everything else is basically the
+same. However, I can't say that I'm correct about how deeply the FHS method
+addresses those latter issues. Using docker, VM's or remote development will
+circumvent them in most cases (another reason for a VPN to my homelab or cloud)
+
+***** TODO try these options to circumvent issues running raise3d
+
++ [ ] try to edit the =libgomp= package so it creates the other symlink
+  ... however, there are probably a few other deps missing.
++ [ ] get =fuse= installed on the system and just use the =guix shell= to
+  troubleshoot the app initialization. this /may/ require some patchelf
++ [ ] configure =LD_LIBRARY_PATH= to allow the app to run using its own binaries
++ [ ] just run a VM or maybe a docker container where X11 display is shared
+
+I can't quite write to some directories within the appimage.
 
 *** Extract the contents
 
 Run the appimage with =--extract-contents=.
 
-*** Extract and run in place
+**** Extract and run in place
 
 #+begin_src bash
 # thanks to #nonguix irc channel for the help
-deps=libsm sqlite libgpg-error p11-kit
+deps="libsm sqlite libgpg-error p11-kit"
 otherdeps=
 devbase=ungoogled-chromium
-devdeps=libtasn1 gmp e2fsprogs glu glib:bin gobject-introspection gcc:lib
+devdeps="libtasn1 gmp e2fsprogs glu glib:bin gobject-introspection gcc:lib"
 
 # thanks to #nonguix irc channel for the help
 guix shell -CNF $deps $otherdeps -D $devbase $devdeps --preserve='^QT_DEBUG_' --preserve="^QT_QPA_PLATFORM" \
