@@ -1,0 +1,140 @@
+:PROPERTIES:
+:ID:       d9ebae90-a523-4b38-90cf-9bba274a17cd
+:END:
+#+TITLE: Emacs: Using lsp-docker from eglot
+#+CATEGORY: slips
+#+TAGS:
+
+
+* Resources
++ [[https://emacs-lsp.github.io/lsp-mode/tutorials/docker-integration/][Emacs LSP: Docker Integration]]
+
+** Ansible
+
++ [[https://github.com/ansible/ansible-language-server/pull/522][ansible/ansible-language-server/pull522]]
++ [[https://ansible.readthedocs.io/projects/language-server/settings/][Ansible LSP Settings]]
+
+** GraphQL
+
++ [[https://github.com/graphql/graphiql/tree/main/packages/graphql-language-service-server#readme][graphql-language-service-server]]
+
+** Go
+
++ [[https://github.com/golang/tools/blob/master/gopls/README.md][gopls]], its [[https://cs.opensource.google/go/x/tools/+/refs/tags/gopls/v0.13.2:gopls/doc/settings.md][settings]] and the [[https://cs.opensource.google/go/x/tools/+/refs/tags/gopls/v0.13.2:gopls/doc/emacs.md][emacs instructions]]
++ [[https://github.com/golang/tools/blob/master/gopls/README.md][Integrating gopls with an editor]]
+
++ GOPATH
+  + [[https://www.jetbrains.com/help/go/configuring-goroot-and-gopath.html#gopath][configuration in a Jetbrains project]]
+  + [[https://stackoverflow.com/questions/61845013/package-xxx-is-not-in-goroot-when-building-a-go-project][long, not sure if AI]]
+  + [[https://www.freecodecamp.org/news/golang-environment-gopath-vs-go-mod/][Golang Environment: Go Path vs Go Mod]]
+
+Might as well figure this out
+
+* LSP Docker Image
+
+** Get an LSP Container
+
+Read about the [[https://github.com/emacs-lsp/lsp-docker#custom-language-server-containers][constraints on Docker LSP containers]]: it must be launched in
+=stdio= mode and have the LSP process as an entrypoint; i.e. run with =docker
+start=.
+
+The container on Docker Hub is an old build, so grab the [[https://github.com/emacs-lsp/lsp-docker/blob/master/lsp-docker-langservers/Dockerfile][Dockerfile]] and edit it
+to add =npm i -g @ansible/ansible-language-server=
+
+** Share the =pwd= as a bind mount volume
+
+**** TODO finish project setup
+
+
+* Eglot Setup
+
+** dir-locals.el
+
+TODO: start the process
+
+
+** Disable networking
+
+
+
+
+* Using in an ansible project
+
+** Ensure collections are available
+
+* GraphQL LSP
+
+Possible to disable networking?
+
+* Dockerfile
+
+**** TODO finish updating dockerfile (either build or no)
+
+#+begin_src dockerfile
+# FROM ubuntu:20.04 AS ccls
+# RUN apt-get update \
+# 	&& apt-get upgrade -y \
+# 	&& apt-get install -y build-essential cmake clang libclang-dev zlib1g-dev git wget \
+# 	&& git clone --depth=1 --recursive https://github.com/MaskRay/ccls \
+# 	&& cd ccls \
+# 	&& wget -c http://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
+# 	&& tar xf clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
+# 	&& cmake -H. -BRelease -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04 \
+# 	&& cmake --build Release
+
+# FROM ubuntu:20.04 AS go
+# RUN apt-get update \
+# 	&& apt-get upgrade -y \
+# 	&& apt-get install -y wget \
+# 	&& export LATEST_VERSION=`wget -qO- https://golang.org/dl | grep -oE go[0-9]+\.[0-9]+\.[0-9]+\.linux-amd64\.tar\.gz | head -n 1` \
+# 	&& wget -c https://dl.google.com/go/$LATEST_VERSION \
+# 	&& tar -xzf $LATEST_VERSION
+
+# General
+RUN apt-get update \
+	&& apt-get upgrade -y  \
+	&& apt-get install -y git
+#  && apt-get install -y golang-1.19-go
+
+# C-Family
+# COPY --from=ccls /ccls /ccls
+# RUN ln -s /ccls/Release/ccls /usr/bin/ccls \
+# 	&& ln -s /ccls/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/clangd /usr/bin/clangd
+
+# Go
+# COPY --from=go /go /go
+# ENV PATH "${PATH}:/go/bin:/root/go/bin"
+# RUN /go/bin/go get -u golang.org/x/tools/gopls
+
+# NPM installed language servers
+# https://github.com/nodesource/distributions/blob/master/README.md
+RUN apt-get update \
+	&& apt-get upgrade -y  \
+	&& apt-get install -y wget gnupg2 \
+  && wget --quiet -O - https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add - \
+  && VERSION="node_8.x" \
+  && DISTRO="LUNAR" \
+  && echo "deb https://deb.nodesource.com/$VERSION $DISTRO main" | tee /etc/apt/sources.list.d/nodesource.list \
+  && echo "deb-src https://deb.nodesource.com/$VERSION $DISTRO main" | tee -a /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update -y && apt-get -y install nodejs \
+	&& npm i -g \
+	bash-language-server \
+	vscode-css-languageserver-bin \
+	vscode-html-languageserver-bin \
+  @ansible/ansible-language-server \
+	dockerfile-language-server-nodejs \
+  typescript-language-server \
+	typescript
+
+# Python
+RUN apt-get install -y python3-pip \
+	&& pip3 install 'python-lsp-server[all]'
+
+#+end_src
+
+
+
+* Roam
++ [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:711d6a41-5425-4853-97ed-f7698a4a3605][LSP]]
