@@ -6,6 +6,11 @@
 #+TAGS:
 
 
+#+begin_src emacs-lisp
+;also eval (setq-local build-dir "/path/to/project")
+(setq-local org-confirm-babel-evaluate t)
+#+end_src
+
 * Resources
 + [[https://emacs-lsp.github.io/lsp-mode/tutorials/docker-integration/][Emacs LSP: Docker Integration]]
 
@@ -30,39 +35,125 @@
 
 Might as well figure this out
 
-* LSP Docker Image
 
-** Get an LSP Container
+* Ansible LSP with Eglot and Docker
 
-** Share the =pwd= as a bind mount volume
+You may want to skip to the "problems" section. This isn't exactly
+perfect. There are many moving parts and a bit too much cognitive load ... but
+when is being a polyglot with passable devops chops easy?
 
-**** TODO finish project setup
+When you hear podcaster's mention "I don't use pulumi or ansible. i just use
+python" ... the lack of completion & introspection are just a few of the
+problems.
+
+**** TODO test completion once ansible-galaxy dependencies are installed
+
+Also test with VSCode...
+
+** Ansible Setup
+
+To test, clone the [[github:geerlingguy/ansible-vagrant-examples][ansible-vagrant-examples]], [[github:geerlingguy/ansible-role-gitlab][ansible-role-gitlab]] or [[https://ansible.jeffgeerling.com/#projects][one of
+geerling's Ansible Projects]], then add YAML for docker compose. The packer &
+vagrant projects could all be run on VM's, but will expect a virtualization
+provider like virtio.
+
+*** Collections
+
+After the =ansible-language-server= starts up, it needs to know about the galaxy
+collections. You could download some of these as Ubunutu packages, but that will
+only get a handful of them.
+
+The docker image will contain a bind-mount to your project. Ensure that the
+process in the container [[https://docs.ansible.com/ansible/latest/reference_appendices/config.html#collections-paths][finds the ansible collections somehow]].
+
+*** Linting
+
+When =ansible-lint= runs, it needs to pick up configuration either as
+=.ansible-lint= or as arguments passed to the LSP server.
+
+** Setup =.dir-locals.el=
+
+See [[https://2metz.fr/blog/configuring-emacs-eglot-lsp-with-docker-containers/][configuring eglot to use docker containers.]] According to the post, [[https://github.com/joaotavora/eglot/blob/28c1c3a52e1cb7fa7260815eb53700f348d48dd5/eglot.el#L402-L404][eglot
+with docker]] requires =eglot-withhold-process-id=
+
+#+begin_src emacs-lisp :tangle (expand-file-name ".dir-locals.el" build-dir)
+((nil
+  . ((eglot-withhold-process-id . t)
+     (eglot-workspace-configuration
+      . (:ansible
+         (:validation (:enabled t :lint (:enabled t)))))
+     (eval
+      . (progn
+          ;; requires exec if run from a shell script
+          (let* ((root-dir-unexpanded (locate-dominating-file default-directory ".dir-locals.el")))
+            (let* ((root-dir (file-local-name (expand-file-name root-dir-unexpanded)))
+                   ;; Workaround for bug https://issues.guix.gnu.org/43818.
+                   (root-dir* (directory-file-name root-dir))
+                   (docker-run-cmd '("docker" "run" "--rm" "-i"))
+                   (docker-volume-args
+                    (format
+                     (string-join '("type=bind" "src=%s" "dst=/root/project") ",") root-dir*)))
+
+              (make-local-variable 'eglot-server-programs)
+              ;; (require 'a) ; if eglot treats an a-list as a list, not a dict
+
+              (require 'cl-lib)
+              (cl-pushnew
+               `(yaml-mode ,@docker-run-cmd
+                          "--volume" ,docker-volume-args
+                          "dc/lsp-docker"
+                          "ansible-language-server" "--stdio")
+               eglot-server-programs)
+    ))
+  )))))
+
+#+end_src
+
+** Server Startup
+
+You may configure a startup script per-project or in your home directory.
+
+IMO, having a template for a per-project startup script is probably the best way
+to go.
+
+#+begin_src sh
+exec docker run --rm -i --volume # ....
+#+end_src
+
+**** TODO Update the startup script
+
+The =lsp-docker= requirements state that it needs an =entrypoint=, which
+constrains passing arguments. If so, then the =Dockerfile= example in
+=lsp-docker= always needs to be modified. If not, then it may be possible to
+simply have a single =~/.emacs.d/eglot-docker.sh= startup script ... in which
+case the =.dir-locals.el= above isn't really needed. This is because:
+
++ =eglot-alternatives= is allowed to produce multiple results for a given mode
++ the result can include a function evaluated at runtime which thus can produce
+  the assumed project directory -- above, =root-dir*=
 
 
-* Eglot Setup
+**  Server Configuration
+
+LSP configuration common to all/most projects should go in the
+=$XDG_CONFIG_HOME= directory for that LSP, if it's supported.
 
 + if using Emacs LSP, it has settings that likely need to be configured within a
   =.dir-locals.el= for the project.
 + For =lsp-docker=, this settings can be found in =.lsp-docker=.
-+ For eglot, you'll need to define [[https://www.gnu.org/software/emacs/manual/html_node/eglot/Project_002dspecific-configuration.html][eglot-workspace-configuration]] for the project
-  and to customize [[https://www.gnu.org/software/emacs/manual/html_node/eglot/User_002dspecific-configuration.html][eglot-server-programs]]
 
-** dir-locals.el
+For eglot, you'll need to define [[https://www.gnu.org/software/emacs/manual/html_node/eglot/Project_002dspecific-configuration.html][eglot-workspace-configuration]] for the project
+and to customize [[https://www.gnu.org/software/emacs/manual/html_node/eglot/User_002dspecific-configuration.html][eglot-server-programs]]
 
-TODO: start the process
+So for =eglot= ensure the above =.dir-locals.el= includes the LSP config:
 
-* Using in an ansible project
+#+begin_src emacs-lisp
+;; ...
+(eglot-workspace-configuration
+ . (:ansible
+    (:validation (:enabled t :lint (:enabled t)))))
+#+end_src
 
-To test, clone the [[github:geerlingguy/ansible-vagrant-examples][geerlingguy/ansible-vagrant-examples]] or [[https://ansible.jeffgeerling.com/#projects][one of geerling's
-Ansible Projects]], then add YAML for docker compose. The packer & vagrant
-projects could all be run on VM's, but will expect a virtualization provider
-like virtio.
-
-** Ensure collections are available
-
-* GraphQL LSP
-
-Possible to disable networking?
 
 * Docker
 
@@ -109,6 +200,7 @@ RUN apt-get update \
     python3-full python3-pip python3-pylsp python3-pylsp-black \
     python3-pylsp-isort python3-pylsp-mypy python3-pylsp-jsonrpc \
     python3-pylsp-rope \
+  && apt-get install -y ansible ansible-core ansible-lint ansible-doc \
   && mkdir /root/project \
   && mkdir /home/$(id -un $USER_ID)/project \
   && chown $USER_ID:$GROUP_ID "/home/$(id -un $USER_ID)/project"
@@ -133,63 +225,6 @@ RUN npm i -g \
 ansible-language-server:
 
 + [ ] ansible CLI tools, ansible-lint, yamllint
-
-*** Dropped from container
-
-I removed the builds for =ccls= and =gopls=
-
-#+begin_src dockerfile
-
-# build ccls (with label)
-FROM ubuntu:20.04 AS ccls
-RUN apt-get update \
-  && apt-get upgrade -y \
-  && apt-get install -y build-essential cmake clang libclang-dev zlib1g-dev git wget \
-  && git clone --depth=1 --recursive https://github.com/MaskRay/ccls \
-  && cd ccls \
-  && wget -c http://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
-  && tar xf clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
-  && cmake -H. -BRelease -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04 \
-  && cmake --build Release
-
-# build gopls (with label)
-FROM ubuntu:20.04 AS go
-RUN apt-get update \
-  && apt-get upgrade -y \
-  && apt-get install -y wget \
-  && export LATEST_VERSION=`wget -qO- https://golang.org/dl | grep -oE go[0-9]+\.[0-9]+\.[0-9]+\.linux-amd64\.tar\.gz | head -n 1` \
-  && wget -c https://dl.google.com/go/$LATEST_VERSION \
-  && tar -xzf $LATEST_VERSION
-
-# C-Family (move builds)
-COPY --from=ccls /ccls /ccls
-RUN ln -s /ccls/Release/ccls /usr/bin/ccls \
-  && ln -s /ccls/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/clangd /usr/bin/clangd
-
-# Go (move builds)
-COPY --from=go /go /go
-ENV PATH "${PATH}:/go/bin:/root/go/bin"
-RUN /go/bin/go get -u golang.org/x/tools/gopls
-
-# NPM installed language servers
-# https://github.com/nodesource/distributions/blob/master/README.md
-
-# getting up to date llvm-toolchain v17
-# deb http://apt.llvm.org/unstable/ llvm-toolchain-17 main
-# deb-src http://apt.llvm.org/unstable/ llvm-toolchain-17 main
-
-# install node (needs 14+, not 8)
-RUN apt-get update \
-  && apt-get upgrade -y  \
-  && apt-get install -y \
-  && wget --quiet -O - https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add - \
-  && VERSION="node_8.x" \
-  && DISTRO="LUNAR" \
-  && echo "deb https://deb.nodesource.com/$VERSION $DISTRO main" | tee /etc/apt/sources.list.d/nodesource.list \
-  && echo "deb-src https://deb.nodesource.com/$VERSION $DISTRO main" | tee -a /etc/apt/sources.list.d/nodesource.list \
-  && apt-get update -y && apt-get -y install nodejs \
-
-#+end_src
 
 ** Docker Compose
 
@@ -280,6 +315,144 @@ This is a list, provided under the above key.
   If =ansible.validaton.enabled= is set and =ansible-lint= is disabled,
   validation falls back to =ansible-playbook --syntax-check=
 
+
+* Problems
+
+** Image Management
+
+Once an image requires project-specific dependencies, you need to maintain
+specific images per-project... luckly the =ansible-galaxy= collections /should/
+be found within the project itself.
+
+** Emacs Config
+
+Each project will need a =.dir-locals= with =eglot-workspace-configuration= and
+=eglot-withhold-process-id=. The former is where your LSP server config goes.
+
+You should be able to share =eglot-server-programs= configurations across your
+entire emacs config. This depends on how you define the LSP server -- i.e.  you
+may use a common =lsp-docker-x.sh= startup script or can get by with a common
+server for the language. If not, you should be able to =docker run= when eglot
+asks you for a server to start. The code for setting =eglot-server-programs= in
+=.dir-locals.el= is a bit nasty, so you'll definitely want to do this if you
+can.
+
+** Ship in a Bottle
+
+Placing a container boundary around the LSP server process makes it a bit opaque
+-- thought TBH LSP is already fairly opaque anyways. You'll definitely want
+another platform or editor to test against to ensure you're getting the expected
+capabilities/behavior.
+
+** Packages in Containers
+
+LSP is such a pain where you need it most -- ad hoc YAML variants where most
+tooling can't be bothered to properly support [[https://developers.redhat.com/blog/2020/11/25/how-to-configure-yaml-schema-to-make-editing-files-easier][YAML]] [[https://www.codethink.co.uk/articles/2021/yaml-schemas/][schema]] files ... and where
+it'd be a pain to configure your editor to support it anyways.
+
+At least helm-ls was written in a decent programming language ... oh but
+surprise, surprise: it's _not_ available on Ubuntu.
+
+#+begin_quote
+Why oh why would you ever want to use Arch? Oh ... that's right because you're a
+polyglot on the bleeding edge. Well then: you can't have nice things like
+"Matlab installers" or "GPU Drivers that just handle DKMS for you."
+
+Oh, in two weeks, get ready to drop everything and install Archlinux from
+scratch again. I hope you remember exactly which =/etc/random= files you
+changed. That by itself makes Nix & Guix worth it. It's too bad that corporate
+Linux distro's use inefficient/slow package management tools that will never
+evolve. Their cost structure doesn't cover it, but if it's not corporate then
+proprietary software vendors treat it like it doesn't exist.
+
+Oh and both Nix & Guix can build to docker containers.
+#+end_quote
+
+
+* Misc Notes
+
+** Getting Eglot to Attach to an External Process Directly
+
+AFAIK, the =eglot.el= code is not structured such that you can tell eglot
+"here's a process" and "here's it's output buffer in emacs." At least that's
+what =eglot--connect= implies., although the source mentions that
+=eglot-lsp-server= is really just a subclass of =jsonrpc-process-connection=
+
+This would, i think, involve launching the container as an inferior process with
+=socat= to listen for input from =eglot=, which itself would launch =socat=
+... maybe that's not quite right. I'm not sure. It would never be any simpler
+than just calling docker/compose ... I don't think.
+
+The advantage of connecting to a remote process would be that you could launch
+the container outside of the editor. If the process' stdin/stdout file
+descriptors can be passed to eglot, it could invoke a fairly basic LSP-naive
+command and it may not need socat.
+
+#+begin_quote
+In this case, then maybe LSP could truly be editor independent, esp. if the
+launching program could broker multiple client connections to the LSP
+process. Then, you could launch VS Code and also connect with Emacs/Vim ... or
+have multiple developers connected to the same project, though that doesn't
+really scale well because it requires that one/both devs are remote to the
+computer
+#+end_quote
+
+** Dropped from container
+
+I removed the builds for =ccls= and =gopls=
+
+#+begin_src dockerfile
+
+# build ccls (with label)
+FROM ubuntu:20.04 AS ccls
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y build-essential cmake clang libclang-dev zlib1g-dev git wget \
+  && git clone --depth=1 --recursive https://github.com/MaskRay/ccls \
+  && cd ccls \
+  && wget -c http://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
+  && tar xf clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
+  && cmake -H. -BRelease -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04 \
+  && cmake --build Release
+
+# build gopls (with label)
+FROM ubuntu:20.04 AS go
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y wget \
+  && export LATEST_VERSION=`wget -qO- https://golang.org/dl | grep -oE go[0-9]+\.[0-9]+\.[0-9]+\.linux-amd64\.tar\.gz | head -n 1` \
+  && wget -c https://dl.google.com/go/$LATEST_VERSION \
+  && tar -xzf $LATEST_VERSION
+
+# C-Family (move builds)
+COPY --from=ccls /ccls /ccls
+RUN ln -s /ccls/Release/ccls /usr/bin/ccls \
+  && ln -s /ccls/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/clangd /usr/bin/clangd
+
+# Go (move builds)
+COPY --from=go /go /go
+ENV PATH "${PATH}:/go/bin:/root/go/bin"
+RUN /go/bin/go get -u golang.org/x/tools/gopls
+
+# NPM installed language servers
+# https://github.com/nodesource/distributions/blob/master/README.md
+
+# getting up to date llvm-toolchain v17
+# deb http://apt.llvm.org/unstable/ llvm-toolchain-17 main
+# deb-src http://apt.llvm.org/unstable/ llvm-toolchain-17 main
+
+# install node (needs 14+, not 8)
+RUN apt-get update \
+  && apt-get upgrade -y  \
+  && apt-get install -y \
+  && wget --quiet -O - https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add - \
+  && VERSION="node_8.x" \
+  && DISTRO="LUNAR" \
+  && echo "deb https://deb.nodesource.com/$VERSION $DISTRO main" | tee /etc/apt/sources.list.d/nodesource.list \
+  && echo "deb-src https://deb.nodesource.com/$VERSION $DISTRO main" | tee -a /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update -y && apt-get -y install nodejs \
+
+#+end_src
 
 
 * Roam
