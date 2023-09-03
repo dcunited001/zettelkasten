@@ -5,6 +5,7 @@
 #+CATEGORY: slips
 #+TAGS:
 
+TLDR: just use docker-tramp, unless your host/container paths match exactly.
 
 #+begin_src emacs-lisp
 ;also eval (setq-local build-dir "/path/to/project")
@@ -50,6 +51,8 @@ problems.
 
 Also test with VSCode...
 
+
+
 ** Ansible Setup
 
 To test, clone the [[github:geerlingguy/ansible-vagrant-examples][ansible-vagrant-examples]], [[github:geerlingguy/ansible-role-gitlab][ansible-role-gitlab]] or [[https://ansible.jeffgeerling.com/#projects][one of
@@ -71,14 +74,46 @@ process in the container [[https://docs.ansible.com/ansible/latest/reference_app
 When =ansible-lint= runs, it needs to pick up configuration either as
 =.ansible-lint= or as arguments passed to the LSP server.
 
+** Completion Setup
+
+*** Corfu
+
+See [[https://github.com/minad/corfu/wiki#configuring-corfu-for-eglot][configuring corfu for eglot]]
+
+*** Cape/Capf
+
+Eglot sets =completion-at-point-functions= to =(eglot-completion-at-point t)=
+when it's active. According to [[https://github.com/minad/cape#capf-buster---cache-busting][minad/cape]] and issues [[https://github.com/minad/cape/issues/81][#81]]and [[https://github.com/minad/cape/issues/79][#79]], the completion
+cache can need to be busted.
+
+This can be accomplished in one of two ways:
+
+#+begin_src emacs-lisp
+; locally and by prepending
+(setq-local completion-at-point-functions
+            (list (cape-capf-buster #'some-caching-capf)))
+
+; or as advice any time it is called
+(advice-add 'eglot-completion-at-point :around #'cape-wrap-buster)
+#+end_src
+
+
 ** Setup =.dir-locals.el=
 
-See [[https://2metz.fr/blog/configuring-emacs-eglot-lsp-with-docker-containers/][configuring eglot to use docker containers.]] According to the post, [[https://github.com/joaotavora/eglot/blob/28c1c3a52e1cb7fa7260815eb53700f348d48dd5/eglot.el#L402-L404][eglot
+See [[https://2metz.fr/blog/configuring-emacs-eglot-lsp-with-docker-containers/][configuring eglot to use docker containers.]] According to the post,
+[[https://github.com/joaotavora/eglot/blob/28c1c3a52e1cb7fa7260815eb53700f348d48dd5/eglot.el#L402-L404][eglot
 with docker]] requires =eglot-withhold-process-id=
+
+Ensure that your buffers actually get set to ansible-mode -- which is also a
+problem in VSCode (see where it mentions "[[https://marketplace.visualstudio.com/items?itemName=redhat.ansible][modelines]]" what are those?)
 
 #+begin_src emacs-lisp :tangle (expand-file-name ".dir-locals.el" build-dir)
 ((nil
   . ((eglot-withhold-process-id . t)
+
+     ;; NOTE!! YAML-MODE won't work, it must be k1LoW/emacs-ansible
+     (eval add-hook 'yaml-mode-hook '(lambda () (ansible 1)))
+
      (eglot-workspace-configuration
       . (:ansible
          (:validation (:enabled t :lint (:enabled t)))))
@@ -154,6 +189,36 @@ So for =eglot= ensure the above =.dir-locals.el= includes the LSP config:
     (:validation (:enabled t :lint (:enabled t)))))
 #+end_src
 
+**** TODO fix issue with relative/absolute paths
+
+Relevant key strings in eglot.el
+
++ [ ] :rootUri
++ [ ] (eglot--lambda ...)
++ [ ]
+
+#+begin_example emacs-lisp
+(eglot-workspace-folders (eglot-current-server))
+
+;; returns
+
+[(:uri "file:///home/dc/src/ansible-role-gitlab"
+  :name "~/src/ansible-role-gitlab/")]
+#+end_example
+
+To get around this, it requires comparing the path translation methods:
+
++ For LSP Docker: [[https://github.com/emacs-lsp/lsp-docker/blob/master/lsp-docker.el#L56-L77][lsp-docker--uri->path and lsp-docker--path->uri]]
++ For Eglot: [[https://github.com/joaotavora/eglot/blob/master/eglot.el#L1617-L1659][eglot--uri-to-path and eglot--path-to-uri]]
+
+Specifically, wrt how LSP Docker juggles this information around. Eglot seems to
+do less with it. I would bet that LSP Docker isn't widely used -- since if the
+dependency paths aren't 100% consistent between the host/container, this
+represents some major configuration overhead. see the [[https://github.com/emacs-lsp/lsp-docker#registering-a-language-server-using-a-persistent-configuration-file][mappings]] key.
+
+Actually, nevermind, the [[https://github.com/emacs-lsp/lsp-docker/blob/master/lsp-docker.el#L376-L380][path mappings must be completely within the project
+directory]]. So it basically works for NodeJS projects where all deps
+are within the project.
 
 * Docker
 
@@ -177,7 +242,7 @@ build the image below. It's been edited a bit.
 Also =ansible-language-server= actually requires Node 14. I didn't feel like
 downloading that from the Node =deb=, so I've just installed it from mainline.
 
-#+begin_src dockerfile :tangle /tmp/lsp.Dockerfile
+#+begin_src dockerfile  :tangle (expand-file-name "lsp.Dockerfile" build-dir)
 ARG UBUNTU_VERSION
 FROM ubuntu:${UBUNTU_VERSION:-23.04}
 
@@ -200,7 +265,7 @@ RUN apt-get update \
     python3-full python3-pip python3-pylsp python3-pylsp-black \
     python3-pylsp-isort python3-pylsp-mypy python3-pylsp-jsonrpc \
     python3-pylsp-rope \
-  && apt-get install -y ansible ansible-core ansible-lint ansible-doc \
+  && apt-get install -y ansible ansible-core ansible-lint \
   && mkdir /root/project \
   && mkdir /home/$(id -un $USER_ID)/project \
   && chown $USER_ID:$GROUP_ID "/home/$(id -un $USER_ID)/project"
@@ -217,7 +282,9 @@ RUN npm i -g \
   typescript-language-server \
 	typescript
 
-# set workdir to /home/$USER_NAME/PROJECT
+# TODO: fix username (no build arg for this)
+WORKDIR /root/project
+#WORKDIR /home/ubuntu/project
 #+end_src
 
 **** TODO install other dependences for LSP
@@ -238,14 +305,16 @@ services:
     container_name: lsp-docker
     hostname: lsp-docker
     image: dc/lsp-docker
-    working_dir: /home/ubuntu/project
+    working_dir: /root/project
+    # working_dir: /home/ubuntu/project
     stdin_open: true
     tty: true
     command: # LSP Start Command
     volumes:
       - type: bind
         source: .
-        target: /home/ubuntu/project
+        target: /root/project
+        #target: /home/ubuntu/project
 #+end_src
 
 
@@ -316,7 +385,7 @@ This is a list, provided under the above key.
   validation falls back to =ansible-playbook --syntax-check=
 
 
-* Problems
+* Problems With LSP In Docker
 
 ** Image Management
 
@@ -340,9 +409,56 @@ can.
 ** Ship in a Bottle
 
 Placing a container boundary around the LSP server process makes it a bit opaque
--- thought TBH LSP is already fairly opaque anyways. You'll definitely want
+-- though TBH LSP is already fairly opaque anyways. You'll definitely want
 another platform or editor to test against to ensure you're getting the expected
 capabilities/behavior.
+
+** Navigate to Definition
+
+Whether using Emacs LSP with lsp-docker.el or eglot or VSCode, it's hard to
+reconcile paths for "navigate to definition" or other lookups that might travel
+outside your project.
+
+So LSP-in-Docker can find your dependency, but unless:
+
++ your dependency relative paths for deps match =1:1= from the host machine to
+  the container
++ or you provide specific mappings for each dependency for which you want
+  dependency resolution, which hopefully doesn't include varying version numbers
+
+Then it really doesn't matter what host platform you have, The docker LSP is
+going to return paths that don't match.
+
+If you have python =venv= that match exactly between your host/container, then
+it may work.
+
+*** Ansible LSP is an Exception
+
+Ansible-language-server is a bit of an exception, but for reflection, the VSCode
+plugin uses a combination of:
+
++ ansible-lightspeed: this uses IBM Watson.
++ ansible-doc: This is being used for the VSCode hover functionality.
++ ansible-playbook: this and the navigator references are only in =runner.ts=
++ ansible-navigator: as one method to exec playbooks, not for doc lookup AFAIK
+  -- i checked both vscode-ansible and ansible-language-server sources to try to
+  "feature-diff" VSCode and Emacs.
+
+  Some of this code is only in the VSCode plugin, not in the language
+  server. IMO, the language server should've been written in Python
+  (i.e. ansible-navigator should simply be extended to act as LSP; it's very
+  close and can control/delegate to most of the other Ansible tools).
+
+  In typical microsoft fashion, you're shielded from most details, so it's
+  actually difficult to see beyond marketing as long as everything "just works"
+  -- but it doesn't "just work." Regardless of which platform you're on, the
+  configuration surface area is about the same. If it seems easy, your
+  tasks/workflow is streamlined: if you don't notice the limitations, it's
+  because you haven't tried to color outside the lines. Maybe you don't need to.
+
+*** Sourcegraph is another exception
+
+This is a different way of navigating to code.
 
 ** Packages in Containers
 
@@ -454,6 +570,119 @@ RUN apt-get update \
 
 #+end_src
 
+** Eglot/LSP Diagnostics
+
+After server setup in =(:jsonrpc "2.0" :id 1 :method "initialize" :params ...)=
+
+#+begin_src emacs-lisp
+(
+ :processId nil
+ :clientInfo (:name "Eglot")
+ :rootPath "/home/dc/src/ansible-role-gitlab/"
+ :rootUri "file:///home/dc/src/ansible-role-gitlab"
+
+ :initializationOptions #s(hash-table size 1 test eql rehash-size 1.5 rehash-threshold 0.8125 data())
+ :capabilities
+
+ ;; ...
+
+ :workspaceFolders
+ [(
+   :uri "file:///home/dc/src/ansible-role-gitlab"
+   :name "~/src/ansible-role-gitlab/")])
+
+#+end_src
+
+And the capabilities:
+
+#+begin_src emacs-lisp
+(:workspace
+ (
+  :applyEdit t
+  :executeCommand (:dynamicRegistration :json-false)
+  :workspaceEdit (:documentChanges t)
+  :didChangeWatchedFiles (:dynamicRegistration t)
+  :symbol (:dynamicRegistration :json-false)
+  :configuration t
+  :workspaceFolders t)
+
+ :textDocument
+ (
+  :synchronization
+  (:dynamicRegistration :json-false :willSave t :willSaveWaitUntil t :didSave t)
+
+  :completion
+  (
+   :dynamicRegistration :json-false
+   :completionItem (
+                    :snippetSupport t
+                    :deprecatedSupport t
+                    :resolveSupport (:properties ["documentation" "details" "additionalTextEdits"])
+                    :tagSupport (:valueSet [1]))
+   :contextSupport t)
+
+  :hover (:dynamicRegistration :json-false :contentFormat ["markdown" "plaintext"])
+  :signatureHelp (:dynamicRegistration :json-false
+                                       :signatureInformation (:parameterInformation (:labelOffsetSupport t)
+                                                                                    :documentationFormat ["markdown" "plaintext"]
+                                                                                    :activeParameterSupport t))
+  :references (:dynamicRegistration :json-false)
+  :definition (:dynamicRegistration :json-false :linkSupport t)
+  :declaration (:dynamicRegistration :json-false :linkSupport t)
+  :implementation (:dynamicRegistration :json-false :linkSupport t)
+  :typeDefinition (:dynamicRegistration :json-false :linkSupport t)
+
+  :documentSymbol
+  (
+   :dynamicRegistration :json-false
+   :hierarchicalDocumentSymbolSupport t
+   :symbolKind (:valueSet [1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26]))
+
+  :documentHighlight (:dynamicRegistration :json-false)
+
+  :codeAction
+  (
+   :dynamicRegistration :json-false
+   :codeActionLiteralSupport
+   (:codeActionKind (:valueSet ["quickfix"
+                                "refactor"
+                                "refactor.extract"
+                                "refactor.inline"
+                                "refactor.rewrite"
+                                "source"
+                                "source.organizeImports"]))
+   :isPreferredSupport t)
+
+  :formatting (:dynamicRegistration :json-false)
+  :rangeFormatting (:dynamicRegistration :json-false)
+  :rename (:dynamicRegistration :json-false)
+  :inlayHint (:dynamicRegistration :json-false)
+
+  :publishDiagnostics
+  (
+   :relatedInformation :json-false
+   :codeDescriptionSupport :json-false
+   :tagSupport (:valueSet [1 2])))
+
+ :window (:workDoneProgress t)
+ :general (:positionEncodings ["utf-32" "utf-8" "utf-16"])
+ :experimental #s(hash-table size 1 test eql rehash-size 1.5 rehash-threshold 0.8125 data ()))
+#+end_src
+
+
+* TLDR Ansible LSP
+
+** This picture right here...
+
+[[file:img/lsp-servers.png]]
+
+** Does it look like this picture right here?
+
+[[file:img/ansible-lsp-servers.png]]
+
+** No. It doesn't, does it
+
+The easiest way around this is with =docker-tramp=
 
 * Roam
 + [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
