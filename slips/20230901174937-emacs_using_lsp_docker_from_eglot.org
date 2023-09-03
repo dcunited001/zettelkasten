@@ -34,13 +34,6 @@ Might as well figure this out
 
 ** Get an LSP Container
 
-Read about the [[https://github.com/emacs-lsp/lsp-docker#custom-language-server-containers][constraints on Docker LSP containers]]: it must be launched in
-=stdio= mode and have the LSP process as an entrypoint; i.e. run with =docker
-start=.
-
-The container on Docker Hub is an old build, so grab the [[https://github.com/emacs-lsp/lsp-docker/blob/master/lsp-docker-langservers/Dockerfile][Dockerfile]] and edit it
-to add =npm i -g @ansible/ansible-language-server=
-
 ** Share the =pwd= as a bind mount volume
 
 **** TODO finish project setup
@@ -48,17 +41,22 @@ to add =npm i -g @ansible/ansible-language-server=
 
 * Eglot Setup
 
++ if using Emacs LSP, it has settings that likely need to be configured within a
+  =.dir-locals.el= for the project.
++ For =lsp-docker=, this settings can be found in =.lsp-docker=.
++ For eglot, you'll need to define [[https://www.gnu.org/software/emacs/manual/html_node/eglot/Project_002dspecific-configuration.html][eglot-workspace-configuration]] for the project
+  and to customize [[https://www.gnu.org/software/emacs/manual/html_node/eglot/User_002dspecific-configuration.html][eglot-server-programs]]
+
 ** dir-locals.el
 
 TODO: start the process
 
-
-** Disable networking
-
-
-
-
 * Using in an ansible project
+
+To test, clone the [[github:geerlingguy/ansible-vagrant-examples][geerlingguy/ansible-vagrant-examples]] or [[https://ansible.jeffgeerling.com/#projects][one of geerling's
+Ansible Projects]], then add YAML for docker compose. The packer & vagrant
+projects could all be run on VM's, but will expect a virtualization provider
+like virtio.
 
 ** Ensure collections are available
 
@@ -66,58 +64,59 @@ TODO: start the process
 
 Possible to disable networking?
 
-* Dockerfile
+* Docker
 
-**** TODO finish updating dockerfile (either build or no)
+Read about the [[https://github.com/emacs-lsp/lsp-docker#custom-language-server-containers][constraints on Docker LSP containers]]: they must be launched in
+=stdio= mode and have the LSP process as an entrypoint; i.e. run with =docker
+start=.
 
-#+begin_src dockerfile
-# FROM ubuntu:20.04 AS ccls
-# RUN apt-get update \
-# 	&& apt-get upgrade -y \
-# 	&& apt-get install -y build-essential cmake clang libclang-dev zlib1g-dev git wget \
-# 	&& git clone --depth=1 --recursive https://github.com/MaskRay/ccls \
-# 	&& cd ccls \
-# 	&& wget -c http://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
-# 	&& tar xf clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
-# 	&& cmake -H. -BRelease -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04 \
-# 	&& cmake --build Release
+The =repology.el= emacs package is extremely useful for quickly plowing through
+this packaging business.
 
-# FROM ubuntu:20.04 AS go
-# RUN apt-get update \
-# 	&& apt-get upgrade -y \
-# 	&& apt-get install -y wget \
-# 	&& export LATEST_VERSION=`wget -qO- https://golang.org/dl | grep -oE go[0-9]+\.[0-9]+\.[0-9]+\.linux-amd64\.tar\.gz | head -n 1` \
-# 	&& wget -c https://dl.google.com/go/$LATEST_VERSION \
-# 	&& tar -xzf $LATEST_VERSION
+** Dockerfile
 
-# General
+The container on Docker Hub is an old build, you can try that [[https://github.com/emacs-lsp/lsp-docker/blob/master/lsp-docker-langservers/Dockerfile][Dockerfile]] or
+build the image below. It's been edited a bit.
+
++ I added =npm i -g @ansible/ansible-language-server= and Ansible dependencies
++ The image currently installs Node 18. See the nodejs
+  [[https://github.com/nodejs/docker-node/blob/main/Dockerfile-debian.template][Dockerfile-debian.template]] for an alternate installation.
++ It's updated to run on a Ubuntu Lunar 23.04 container.
+
+Also =ansible-language-server= actually requires Node 14. I didn't feel like
+downloading that from the Node =deb=, so I've just installed it from mainline.
+
+#+begin_src dockerfile :tangle /tmp/lsp.Dockerfile
+ARG UBUNTU_VERSION
+FROM ubuntu:${UBUNTU_VERSION:-23.04}
+
+# These build args are just placeholders.
+# Some of them may work, but I haven't checked.
+# So they don't do anything for now. Maybe later
+ENV UBUNTU_VERSION ${UBUNTU_VERSION:-23.04}
+ARG UBUNTU_NAME
+ENV UBUNTU_NAME ${UBUNTU_NAME:-lunar}
+ARG USER_ID
+ENV USER_ID ${USER_ID:-1000}
+ARG GROUP_ID
+ENV GROUP_ID ${GROUP_ID:-1000}
+
+# General deps (build-essential, git, gnupg2) + nodejs + python LSP
 RUN apt-get update \
-	&& apt-get upgrade -y  \
-	&& apt-get install -y git
-#  && apt-get install -y golang-1.19-go
+  && apt-get upgrade -y  \
+  && apt-get install -y build-essential cmake clang libclang-dev \
+    zlib1g-dev git gnupg2 golang-1.19-go nodejs npm \
+    python3-full python3-pip python3-pylsp python3-pylsp-black \
+    python3-pylsp-isort python3-pylsp-mypy python3-pylsp-jsonrpc \
+    python3-pylsp-rope \
+  && mkdir /root/project \
+  && mkdir /home/$(id -un $USER_ID)/project \
+  && chown $USER_ID:$GROUP_ID "/home/$(id -un $USER_ID)/project"
 
-# C-Family
-# COPY --from=ccls /ccls /ccls
-# RUN ln -s /ccls/Release/ccls /usr/bin/ccls \
-# 	&& ln -s /ccls/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/clangd /usr/bin/clangd
+# the PEP constraint is in place, so a venv is required
+#  && pip3 install 'python3-lsp-server[all]'
 
-# Go
-# COPY --from=go /go /go
-# ENV PATH "${PATH}:/go/bin:/root/go/bin"
-# RUN /go/bin/go get -u golang.org/x/tools/gopls
-
-# NPM installed language servers
-# https://github.com/nodesource/distributions/blob/master/README.md
-RUN apt-get update \
-	&& apt-get upgrade -y  \
-	&& apt-get install -y wget gnupg2 \
-  && wget --quiet -O - https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add - \
-  && VERSION="node_8.x" \
-  && DISTRO="LUNAR" \
-  && echo "deb https://deb.nodesource.com/$VERSION $DISTRO main" | tee /etc/apt/sources.list.d/nodesource.list \
-  && echo "deb-src https://deb.nodesource.com/$VERSION $DISTRO main" | tee -a /etc/apt/sources.list.d/nodesource.list \
-  && apt-get update -y && apt-get -y install nodejs \
-	&& npm i -g \
+RUN npm i -g \
 	bash-language-server \
 	vscode-css-languageserver-bin \
 	vscode-html-languageserver-bin \
@@ -126,11 +125,160 @@ RUN apt-get update \
   typescript-language-server \
 	typescript
 
-# Python
-RUN apt-get install -y python3-pip \
-	&& pip3 install 'python-lsp-server[all]'
+# set workdir to /home/$USER_NAME/PROJECT
+#+end_src
+
+**** TODO install other dependences for LSP
+
+ansible-language-server:
+
++ [ ] ansible CLI tools, ansible-lint, yamllint
+
+*** Dropped from container
+
+I removed the builds for =ccls= and =gopls=
+
+#+begin_src dockerfile
+
+# build ccls (with label)
+FROM ubuntu:20.04 AS ccls
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y build-essential cmake clang libclang-dev zlib1g-dev git wget \
+  && git clone --depth=1 --recursive https://github.com/MaskRay/ccls \
+  && cd ccls \
+  && wget -c http://releases.llvm.org/8.0.0/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
+  && tar xf clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04.tar.xz \
+  && cmake -H. -BRelease -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=$PWD/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04 \
+  && cmake --build Release
+
+# build gopls (with label)
+FROM ubuntu:20.04 AS go
+RUN apt-get update \
+  && apt-get upgrade -y \
+  && apt-get install -y wget \
+  && export LATEST_VERSION=`wget -qO- https://golang.org/dl | grep -oE go[0-9]+\.[0-9]+\.[0-9]+\.linux-amd64\.tar\.gz | head -n 1` \
+  && wget -c https://dl.google.com/go/$LATEST_VERSION \
+  && tar -xzf $LATEST_VERSION
+
+# C-Family (move builds)
+COPY --from=ccls /ccls /ccls
+RUN ln -s /ccls/Release/ccls /usr/bin/ccls \
+  && ln -s /ccls/clang+llvm-8.0.0-x86_64-linux-gnu-ubuntu-18.04/bin/clangd /usr/bin/clangd
+
+# Go (move builds)
+COPY --from=go /go /go
+ENV PATH "${PATH}:/go/bin:/root/go/bin"
+RUN /go/bin/go get -u golang.org/x/tools/gopls
+
+# NPM installed language servers
+# https://github.com/nodesource/distributions/blob/master/README.md
+
+# getting up to date llvm-toolchain v17
+# deb http://apt.llvm.org/unstable/ llvm-toolchain-17 main
+# deb-src http://apt.llvm.org/unstable/ llvm-toolchain-17 main
+
+# install node (needs 14+, not 8)
+RUN apt-get update \
+  && apt-get upgrade -y  \
+  && apt-get install -y \
+  && wget --quiet -O - https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add - \
+  && VERSION="node_8.x" \
+  && DISTRO="LUNAR" \
+  && echo "deb https://deb.nodesource.com/$VERSION $DISTRO main" | tee /etc/apt/sources.list.d/nodesource.list \
+  && echo "deb-src https://deb.nodesource.com/$VERSION $DISTRO main" | tee -a /etc/apt/sources.list.d/nodesource.list \
+  && apt-get update -y && apt-get -y install nodejs \
 
 #+end_src
+
+** Docker Compose
+
+#+begin_src yaml
+services:
+  lsp:
+    build:
+      context: .
+      dockerfile: lsp.Dockerfile
+      # args:
+    container_name: lsp-docker
+    hostname: lsp-docker
+    image: dc/lsp-docker
+    working_dir: /home/ubuntu/project
+    stdin_open: true
+    tty: true
+    command: # LSP Start Command
+    volumes:
+      - type: bind
+        source: .
+        target: /home/ubuntu/project
+#+end_src
+
+
+* Ansible Language Server
+
+These settings need to be configured somewhere.
+
+** ansible.ansible.
+
+| Key                              | Default | Desc                                            |
+|----------------------------------+---------+-------------------------------------------------|
+| path                             | ansible | Path to the ansible executable                  |
+| useFullyQualifiedCollectionNames | true    | Toggle (FQCN) usage when inserting module names |
+
+** ansible.python.
+
+| Key              | Default | Desc                                                                    |
+|------------------+---------+-------------------------------------------------------------------------|
+| interpreterPath  | ""      | Path to python/python3 executable. Used if ansible/lint are in a =venv= |
+| activationScript | ""      | Path to a custom activation script                                      |
+
+Use the =activationScript= to run everything from within a =venv=, whereas
+=interpreterPath= just provides the paths for CLI tools which happen to be in a
+=venv= or elsewhere on the system.
+
+** ansible.executionEnvironment.
+
+This could get confusing if launching EE from within a container ... probably
+just don't do that. If RedHat really doesn't give you some kind of completion
+from within AWX or Tower, that's just cruel.
+
+| Key              | Default                           | Desc                                                              |
+|------------------+-----------------------------------+-------------------------------------------------------------------|
+| containerEngine  | auto                              | Container engine for EE, e.g. =auto=, =podman= and =docker=       |
+| enabled          | false                             | Toggle usage of an execution environment                          |
+| image            | ghcr.io/ansible/creator-ee:latest | Name of the execution environment to be used                      |
+| pull.policy      | missing                           | Image pull policy, e.g. =always=, =missing=, =never= and =tag=    |
+| pull.arguments   | ""                                | Params for EE image pull from registry. e.g. =-–tls-verify=false= |
+| containerOptions | ""                                | Params passed to container engine command, e.g. =--net=host=      |
+
+*** ansible.executionEnvironment.volumeMounts
+
+This is a list, provided under the above key.
+
+| Key     | Default | Desc                                            |
+|---------+---------+-------------------------------------------------|
+| src     | ""      | Local volume/path mounted /within/ the EE.      |
+| dest    | ""      | EE Container path.                              |
+| options | ""      | Comma-separated list of options, such as =ro,Z= |
+
+** ansible.completion.
+
+| Key                        | Default | Desc                                                      |
+|----------------------------+---------+-----------------------------------------------------------|
+| provideRedirectModules     | true    | Toggle redirected module provider when completing modules |
+| provideModuleOptionAliases | true    | Toggle alias provider when completing module options      |
+
+** ansible.validation.
+
+| Key            | Default      | Desc                                                 |
+|----------------+--------------+------------------------------------------------------|
+| enabled        | true         | Toggle validation provider.                          |
+| lint.enabled   | true         | Toggle usage of =ansible-lint=                       |
+| lint.path      | ansible-lint | Path to the =ansible-lint= executable                |
+| lint.arguments | ""           | Optional CLI args appended =ansible-lint= invocation |
+
+  If =ansible.validaton.enabled= is set and =ansible-lint= is disabled,
+  validation falls back to =ansible-playbook --syntax-check=
 
 
 
