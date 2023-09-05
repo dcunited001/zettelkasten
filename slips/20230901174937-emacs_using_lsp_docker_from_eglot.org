@@ -37,11 +37,115 @@ TLDR: just use docker-tramp, unless your host/container paths match exactly.
 Might as well figure this out
 
 
+* Ansible LSP With Eglot and No Docker
+
+So I guess I was wrong about a lack of =npm= on Guix. I had configured it, but I
+assumed the lack of an =npm= package meant no npm ... but it just gets installed
+with the =node= package. It takes a bit of setup though, since by default =npm=
+will try to install package in the wrong place.
+
+Feature Checklist:
+
++ navigate to definition:
+  - [X] ansible-core
+  - [X] ansible-galaxy collections
+  - [ ] internally defined roles
++ format buffer
++ flycheck integration
++ eldoc integration
+  - [X] results in echo area
++ completion (corfu & cape)
+  - [X] ansible-core
+  - [X] ansible-galaxy collections
+  - [ ] internally defined roles
+
+Problems:
+
++ completion:
+  - [ ] completion returns too many results
+  - [ ]
++ look/feel
+  - [ ] wayyy too jittery (eglot needs config/hinting)
+
+** Install Ansible Deps
+
+Ensure the following packages are installed:
+
++ ansible
++ ansible-core
++ ansible-lint
+
+** Install Ansible LSP
+
+Just run =npm install -g @ansible/ansible-language-server=
+
+*** NPM Config on Guix
+
+Add the =node= package to a manifest for a Guix profile and ensure it's loaded,
+either in your =.profile= on X11/wayland init or in a project-specific =.envrc=.
+
+Ensure you're sourcing a script like this in your =.profile=, which will make
+=npm= install to a valid location.
+
+#+begin_src sh :tangle .config/sh/profile.d/node-guix.sh :shebang #!/bin/sh
+# npm install -g # bins go here
+export NPM_CONFIG_PREFIX=$HOME/.npm-global
+export PATH=$NPM_CONFIG_PREFIX/bin:$PATH
+# export NPM_CONFIG_USERCONFIG=$HOME/.npmrc # default
+# export NPM_CONFIG_GLOBALCONFIG=$NODE_PROFILE/lib/node_modules/npm/npmrc # default
+#+end_src
+
+** Setup =.dir-locals.el=
+
+If this seems complicated, keep in mind that it's equivalent to your
+project-specific =.vscode=.
+
+#+begin_src emacs-lisp
+((nil
+  ;; NOTE!! YAML-MODE won't work, it must be k1LoW/emacs-ansible
+  . ((eval add-hook 'yaml-mode-hook '(lambda () (ansible 1)))
+
+     (eglot-workspace-configuration
+      . (:ansible
+         (:validation (:enabled t :lint (:enabled t))))))))
+#+end_src
+
+** Hook the LSP Server
+
+Ensure that the above =.dir-locals.el= is setting the mode to =ansible= and note
+that as a result of Ansible's intermittent support of Emacs, the mode is named
+=ansible= and not =ansible-mode=. This is because the original =ansible-mode=
+was orphaned. The package you need is [[github:k1LoW/emacs-ansible][k1LoW/emacs-ansible]]. It is however a minor
+mode.
+
+Thus, you need to add the following to your Emacs init.el:
+
+#+begin_src emacs-lisp
+
+(with-eval-after-load 'eglot
+  (add-to-list
+   'eglot-server-programs
+   '((yaml-mode) .
+     ("ansible-language-server" "--stdio"))))
+#+end_src
+
+** Completion Setup
+
+If you're using =cape=, =consult= and =corfu=, then you may need to ensure that
+eglot's cache is busted, as noted below.
+
 * Ansible LSP with Eglot and Docker
 
-You may want to skip to the "problems" section. This isn't exactly
-perfect. There are many moving parts and a bit too much cognitive load ... but
-when is being a polyglot with passable devops chops easy?
+You may want to skip to the "problems" section or use the native method above
+... or use to =docker-tramp.el= if necessary.
+
+Also, when changing =.dir-locals.el= or similar config state, keep in mind that
+functions like =project-kill-buffers= is helpful, as you'll ensure that /ALL/
+state including the LSP server, =.dir-locals.el= has been appropriately
+refreshed when you reopen the buffers.
+
+This isn't exactly perfect. There are many moving parts and a bit too much
+cognitive load ... but when is being a polyglot with passable devops chops easy?
 
 When you hear podcaster's mention "I don't use pulumi or ansible. i just use
 python" ... the lack of completion & introspection are just a few of the
@@ -50,8 +154,6 @@ problems.
 **** TODO test completion once ansible-galaxy dependencies are installed
 
 Also test with VSCode...
-
-
 
 ** Ansible Setup
 
@@ -91,7 +193,7 @@ This can be accomplished in one of two ways:
 #+begin_src emacs-lisp
 ; locally and by prepending
 (setq-local completion-at-point-functions
-            (list (cape-capf-buster #'some-caching-capf)))
+            (list (cape-capf-buster #'eglot-completion-at-point)))
 
 ; or as advice any time it is called
 (advice-add 'eglot-completion-at-point :around #'cape-wrap-buster)
@@ -141,7 +243,6 @@ problem in VSCode (see where it mentions "[[https://marketplace.visualstudio.com
                eglot-server-programs)
     ))
   )))))
-
 #+end_src
 
 ** Server Startup

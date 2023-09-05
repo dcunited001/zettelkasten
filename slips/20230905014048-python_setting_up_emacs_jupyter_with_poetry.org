@@ -1,0 +1,215 @@
+:PROPERTIES:
+:ID:       940545e6-a194-4e91-ad96-70a3965ceb7c
+:END:
+#+TITLE: Python: Setting up Emacs-Jupyter with Poetry
+#+CATEGORY: slips
+#+TAGS:
+
+* Resources
+
+** emacs-jupyter
+
++ [[https://github.com/emacs-jupyter/jupyter/issues/353][Issue #353]] (guix + direnv + emacs-jupyter)
++ [[https://github.com/emacs-jupyter/jupyter/issues/257][Issue #270]]
+
+* Jupyter Poetry Test
+
+TLDR: Avoid poetry for =emacs-jupyter=, apparently. On my systems, using poetry
+means that a =.venv= is created in each directory. I thought this would be
+fairly straightforward, but no.
+
+Considering the other python kernels which are available (including the
+confusingly named =poet-ipykernel= which was installed using a previous
+approach), I think that setting things up with pyenv/direnv will actually work.
+
+Combining =direnv + pyenv + poetry= is hard. I'm not sure why it's difficult,
+since this should be standard for most python developers -- direnv allows you to
+enter/exit projects and have things just work, regardless of the language.
+Whether you need this depends on how quickly you want to juggle different
+environments/languages.
+
+** Poetry
+
+Ensure that there's no =.python.virtualenv= file and that =.envrc= has been
+updated.
+
+*** Issues copying environment
+
+Running =poetry env info= from =/my/python/quantecon= where I'm
+trying to duplicate the environment gives:
+
+#+begin_quote
+Virtualenv
+Python:         3.10.11
+Implementation: CPython
+Path:           /my/python/quantecon/.venv
+Executable:     /my/python/quantecon/.venv/bin/python
+Valid:          True
+
+System
+Platform:   linux
+OS:         posix
+Python:     3.10.11
+Path:       /my/.pyenv/versions/3.10.11
+Executable: /my/.pyenv/versions/3.10.11/bin/python3.10
+#+end_quote
+
+And from =/my/python/nb/poet= ... implies that poetry is caching the
+environment, but also that something within poetry has changed to make it more
+compatible with the =virtualenvs.create=true= option. hmmm.
+
+#+begin_quote
+Virtualenv
+Python:         3.10.11
+Implementation: CPython
+Path:           /home/me/.cache/pypoetry/virtualenvs/poet-8CzS8Zcf-py3.10
+Executable:     /home/me/.cache/pypoetry/virtualenvs/poet-8CzS8Zcf-py3.10/bin/python
+Valid:          True
+
+System
+Platform:   linux
+OS:         posix
+Python:     3.10.11
+Path:       /my/.pyenv/versions/3.10.11
+Executable: /my/.pyenv/versions/3.10.11/bin/python3.10
+#+end_quote
+
+Yup, that's it, moving the old =~/.cache/pypoetry/virtualenvs/...= directory and
+reentering it installs the deps under a =.venv= directory as expected.
+
+*** emacs-jupyter
+
+**** First Attempt
+
+So now, =which jupyter= gives:
+
+#+begin_quote
+/my/.pyenv/versions/3.10.11/envs/poet-ipykernel-3.10.11/bin/jupyter
+#+end_quote
+
+But more critically ... =emacs-jupyter= still doesn't include the jupyter we
+want :(
+
+#+begin_src emacs-lisp
+;; the second arg is "refresh"
+(jupyter-available-kernelspecs t)
+#+end_src
+
+#+RESULTS2:
+| nurbs-ipykernel | /home/me/.local/share/jupyter/kernels/nurbs-ipykernel            | :argv | [/my/.pyenv/versions/3.10.11/envs/nurbs-ipykernel-3.10.11/bin/python -m ipykernel_launcher -f {connection_file}] | :env | nil | :display_name | nurbs-ipykernel      | :language | python | :interrupt_mode | signal | :metadata | (:debugger t) |
+| poet-ipykernel  | /home/me/.local/share/jupyter/kernels/poet-ipykernel             | :argv | [/my/.pyenv/versions/3.10.11/envs/poet-ipykernel-3.10.11/bin/python -m ipykernel_launcher -f {connection_file}] | :env | nil | :display_name | poet-ipykernel       | :language | python | :interrupt_mode | signal | :metadata | (:debugger t) |
+| python3         | /my/.pyenv/versions/3.10.11/share/jupyter/kernels/python3 | :argv | [python -m ipykernel_launcher -f {connection_file}]                                       | :env | nil | :display_name | Python 3 (ipykernel) | :language | python | :interrupt_mode | signal | :metadata | (:debugger t) |
+
+It runs this command, but not within the =.envrc= profile as expected
+
+#+begin_src sh
+jupyter kernelspec list --json | jq '.kernelspecs[].resource_dir'
+#+end_src
+
+#+RESULTS:
+| /my/python/nb/poet/.venv/share/jupyter/kernels/python3 |
+| /home/me/.local/share/jupyter/kernels/poet-ipykernel          |
+| /home/me/.local/share/jupyter/kernels/nurbs-ipykernel         |
+
+Opening the project directory in a new instance of emacs works fine.
+
+It appears that something has cached in emacs that isn't cleared by =envrc.el=
+when all the buffers/files are cleared. It seems important to ensure the
+pyenv/poetry environments are set up before opening the project in emacs.
+
+**** After Restart
+
+Now, =which jupyter= gives: =/my/python/nb/poet/.venv/bin/jupyter=
+
+So direnv is definitely being loaded properly. However,
+=(jupyter-available-kernelspecs t)= still doesn't report the proper
+kernelspec.
+
++ So =(jupyter-command ...)=
++ calls =(process-file ..)= with some setup
++ which itself basically wraps =(call-process ...)= with some setup.
+
+However, the following gives the expected results:
+
+#+begin_src emacs-lisp
+(call-process "jupyter" nil t t "kernelspec" "list" )
+#+end_src
+
+#+RESULTS:
+: 0
+
+Though it inserts its results in =current-buffer= without specifying:
+
+#+begin_quote
+Available kernels:
+  python3            /my/python/nb/poet/.venv/share/jupyter/kernels/python3
+  nurbs-ipykernel    /home/me/.local/share/jupyter/kernels/nurbs-ipykernel
+  poet-ipykernel     /home/me/.local/share/jupyter/kernels/poet-ipykernel
+#+end_quote
+
+The issue is that, the call to =jupyter-command= has
+=/my/python/nb/.venv/bin= as the first entry in =exec-path=. Then the
+call to =process-file= has a completely different =exec-path=
+
+#+begin_src emacs-lisp
+(jupyter-command "--paths")
+#+end_src
+
+#+RESULTS:
+#+begin_example
+config:
+    /home/me/.jupyter
+    /home/me/.local/etc/jupyter
+    /my/.pyenv/versions/3.10.11/etc/jupyter
+    /usr/local/etc/jupyter
+    /etc/jupyter
+data:
+    /home/me/.local/share/jupyter
+    /my/.pyenv/versions/3.10.11/share/jupyter
+    /usr/local/share/jupyter
+    /usr/share/jupyter
+runtime:
+    /home/me/.local/share/jupyter/runtime
+#+end_example
+
+*** Poetry
+
+**** Confusion
+
+To make matters worse ... starting =jupyter= under a poetry environment with
+direnv causes the kernel to inject different paths on top of =$PATH=
+
+#+begin_example
+/my/python/nb/poet$ ipython
+
+Python 3.10.11 (main, May 10 2023, 16:54:03) [GCC 13.1.1 20230429]
+Type 'copyright', 'credits' or 'license' for more information
+IPython 8.15.0 -- An enhanced Interactive Python. Type '?' for help.
+
+In [1]: import os
+
+In [2]: os.environ['PATH']
+Out[2]: '/my/python/nb/poet/.venv/bin:....
+#+end_example
+
+Using =jupyter notebook=
+
+#+begin_example
+'/my/.pyenv/versions/3.10.11/bin
+:/my/.pyenv/libexec
+:/my/.pyenv/plugins/python-build/bin
+:/my/.pyenv/plugins/pyenv-virtualenv/bin
+:/my/python/nb/poet/.venv/bin
+:...
+#+end_example
+
+**** Less Confusion
+
+OK ... that's apparently because I ran =poetry add ipykernel= which adds
+=ipykernel= as a devdependency... which then affects how =poetry add jupyter=
+would be installed.
+
+I then get the correct path at least inside =jupyter= ... but this /should/ be a
+devdependency, right?
+
+* Roam
