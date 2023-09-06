@@ -11,13 +11,44 @@ Spoiler: random ints for a uniform distribution.
 
 Also, skew doesn't make sense here.
 
+* Plots
+
+N-D Uniform Distributions
+
+$x_i = \sum{u_i}$
+
+$y_i = \prod{u_i}$
+
+**** 2D
+
+[[file:.ob-jupyter/c1a8680c8b4dbaaf47713f3aa2ca6193229f21be.png]]
+
+**** 3D
+
+[[file:.ob-jupyter/d3738bf42f8f9023819b8bfea85147aef9b5c0d2.png]]
+
+**** 4D
+
+[[file:./.ob-jupyter/ed52bc33c9972e3e90bf832195272900c1ec1ab8.png]]
+
+**** 5D
+
+[[file:.ob-jupyter/34b378929adf62b303d68b5e239ca834c935ecad.png]]
+
+**** 7D
+
+[[file:./.ob-jupyter/db683b9cc5598d07a8d2f69291d6a8c5a9d79f18.png]]
+
+
 * Python Random Numbers
 
+I think the numbers are correct, but after focusing on getting it to generate
+n-dimensions I'm not sure.
 
 #+BEGIN_SRC jupyter-python
 import numpy as np
 
-nmax, ncount, ndist = (500,10000,2)
+nmax, ncount, ndist = (500,10000,7)
 rsum = np.zeros(ndist)
 rdist = np.zeros((ncount,ndist))
 for idx in range(ncount):
@@ -35,12 +66,13 @@ Centered distribution:
 
 #+BEGIN_SRC jupyter-python
 rscaled = (rdist[:]/nmax) - 0.5
-m1 = np.sum(rscaled,0)
+m1 = np.sum(rscaled,0)/ncount
 m1
 #+END_SRC
 
 #+RESULTS:
-: array([-33.78, -29.63])
+: array([-0.005509 , -0.0011272, -0.0028238,  0.000555 , -0.0046548,
+:         0.0005274, -0.0016154])
 
 Variance: $m_2 \propto \frac{1}{12}$
 
@@ -50,7 +82,8 @@ m2
 #+END_SRC
 
 #+RESULTS:
-: array([0.08271349, 0.08302071])
+: array([0.08252301, 0.08210095, 0.08459984, 0.08215285, 0.08303007,
+:        0.08319047, 0.08425622])
 
 Skew:
 
@@ -60,41 +93,42 @@ m3
 #+END_SRC
 
 #+RESULTS:
-: array([-8.4046756e-05,  6.9190417e-04])
+: array([-8.47700697e-04,  7.57599920e-05, -3.81402841e-04,  1.37626860e-04,
+:        -5.93807678e-04,  9.76120440e-05, -2.43402466e-04])
 
-Pseudo Guassian ... There's a connection to the distance formula that I'm
-missing here. I could probably cheat and make it work... but I did manage to get
-an arch linux logo out of it.
+I'm not sure if it's what I was going for.
 
 #+BEGIN_SRC jupyter-python
 import matplotlib.pyplot as plt
 
-# add it back, renormalize
-# recentered = rscaled # + 0.5
-# pgdomain = np.prod(recentered,1)
-# pgrange = np.sum(recentered,1)
-pgdomain = np.sum(rscaled,1)
-pgrange = 1 - (pgdomain**2 - np.prod(rscaled,1))
+pgvariance = np.mean(m2)
 
+# add it back, renormalize
+pgdomain = np.sum(rscaled,1)
+#pgrange = 1 - (pgdomain + np.prod(rscaled,1))**2
+
+# 2D
+#pgrange = (np.prod(rscaled,1)) - np.abs(pgdomain)/2 #* *4
+pgrange = (np.prod(rscaled,1))
+
+# shift into positive domains
+pgred = rscaled[:,0]+0.5
+pggreen = rscaled[:,1]+0.5
+#pgblue = (np.log(1+pgrange)/pgvariance) #(np.power(pgrange,2))
+#pgcolor = 1-np.column_stack([pgred,1-pggreen,np.abs(pgblue)])
+
+pgblue = (pgrange**2/pgvariance) #(np.power(pgrange,2))
+#pgcolor = np.column_stack([pgred,pggreen,pgblue])
+pgcolor = 1- np.column_stack([pgred,1-pggreen,np.abs(pgblue)])
 #pgmin,pgmax = [np.min(pseudogaussian), np.max(pseudogaussian)]
-fig = plt.scatter(pgdomain,pgrange)
+fig = plt.scatter(pgdomain,pgrange,s=0.1,c=pgcolor)
 plt.show()
 
 #+END_SRC
 
 #+RESULTS:
-[[file:./.ob-jupyter/6269531a733a6472193ac4ee22cddc992aef2794.png]]
+[[file:./.ob-jupyter/db683b9cc5598d07a8d2f69291d6a8c5a9d79f18.png]]
 
-also interesting and also wrong...
-
-#+BEGIN_SRC jupyter-python
-pgdomain = np.sum(rscaled + 0.5,1)
-pgrange = np.prod(rscaled ,1)
-
-#pgmin,pgmax = [np.min(pseudogaussian), np.max(pseudogaussian)]
-fig = plt.scatter(pgdomain,pgrange)
-plt.show()
-#+END_SRC
 
 
 * Roam
