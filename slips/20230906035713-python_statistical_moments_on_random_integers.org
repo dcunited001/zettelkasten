@@ -1,0 +1,102 @@
+:PROPERTIES:
+:ID:       869dee8f-3378-490a-940d-41d6a28fff50
+:END:
+#+TITLE: Python: Statistical Moments on Random Integers
+#+CATEGORY: slips
+#+TAGS:
+
+Using matrix methods. Probably easier with tensors.
+
+Spoiler: random ints for a uniform distribution.
+
+Also, skew doesn't make sense here.
+
+* Python Random Numbers
+
+
+#+BEGIN_SRC jupyter-python
+import numpy as np
+
+nmax, ncount, ndist = (500,10000,2)
+rsum = np.zeros(ndist)
+rdist = np.zeros((ncount,ndist))
+for idx in range(ncount):
+    for jdx in range(ndist):
+        rdist[idx,jdx] = rnd(0,nmax-1)
+        rsum[jdx] += rdist[idx,jdx]
+
+# m3 = np.sum(np.power(rscaled[:],3),0)/ncount
+# rvar = np.sum(np.power(rscaled[:],2),0)/ncount
+#+END_SRC
+
+#+RESULTS:
+
+Centered distribution:
+
+#+BEGIN_SRC jupyter-python
+rscaled = (rdist[:]/nmax) - 0.5
+m1 = np.sum(rscaled,0)
+m1
+#+END_SRC
+
+#+RESULTS:
+: array([-33.78, -29.63])
+
+Variance: $m_2 \propto \frac{1}{12}$
+
+#+BEGIN_SRC jupyter-python
+m2 = np.sum(np.power(rscaled[:],2),0)/ncount
+m2
+#+END_SRC
+
+#+RESULTS:
+: array([0.08271349, 0.08302071])
+
+Skew:
+
+#+BEGIN_SRC jupyter-python
+m3 = np.sum(np.power(rscaled[:],3),0)/ncount
+m3
+#+END_SRC
+
+#+RESULTS:
+: array([-8.4046756e-05,  6.9190417e-04])
+
+Pseudo Guassian ... There's a connection to the distance formula that I'm
+missing here. I could probably cheat and make it work... but I did manage to get
+an arch linux logo out of it.
+
+#+BEGIN_SRC jupyter-python
+import matplotlib.pyplot as plt
+
+# add it back, renormalize
+# recentered = rscaled # + 0.5
+# pgdomain = np.prod(recentered,1)
+# pgrange = np.sum(recentered,1)
+pgdomain = np.sum(rscaled,1)
+pgrange = 1 - (pgdomain**2 - np.prod(rscaled,1))
+
+#pgmin,pgmax = [np.min(pseudogaussian), np.max(pseudogaussian)]
+fig = plt.scatter(pgdomain,pgrange)
+plt.show()
+
+#+END_SRC
+
+#+RESULTS:
+[[file:./.ob-jupyter/6269531a733a6472193ac4ee22cddc992aef2794.png]]
+
+also interesting and also wrong...
+
+#+BEGIN_SRC jupyter-python
+pgdomain = np.sum(rscaled + 0.5,1)
+pgrange = np.prod(rscaled ,1)
+
+#pgmin,pgmax = [np.min(pseudogaussian), np.max(pseudogaussian)]
+fig = plt.scatter(pgdomain,pgrange)
+plt.show()
+#+END_SRC
+
+
+* Roam
+
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
