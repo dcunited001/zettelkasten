@@ -225,6 +225,124 @@ See [[https://magit.vc/manual/transient/Saving-Values.html#Saving-Values][enabli
 + [[https://lonely.town/@wasamasa/110295744723507841][alarmclock zone program]] using bytes/chars to emulate digital LCD
 
 * Topics
+** Common Lisp
+
+*** Error handling
+
+[[https://quasilyte.dev/blog/post/writing-emacs-lisp-compiler-intrinsics/][Writing Emacs Lisp Compiler Intrinsics]] compares bytecode between:
+
++ emacs-lisp: =tag= and =catch=
++ cl-lib: =cl-return-from=
+
+*** cl-loop
+
+**** finally
+
+You can say =finally=, but you can't do it.
+
+#+begin_quote
+  Miscellaneous clauses:
+    with VAR = INIT
+    if/when/unless COND CLAUSE [and CLAUSE]... else CLAUSE [and CLAUSE...]
+    named NAME
+    initially/finally [do] EXPRS...
+    do EXPRS...
+    [finally] return EXPR
+#+end_quote
+
+Also, =finally= comes first, of course, in line functional programming, but
+=nreverse= and then =nconc=.
+
+**** Error Handling
+
+Side effects ...
+
+You can't have them. I didn't know that. I was just thinking that maybe I should
+look at =sblc= since it's basically the same thing as =emacs-lisp=. So it's less
+like =emacs-lisp= and more like "soft haskell." In Haskell, you need to make
+absolutely sure that invalid states don't emerge. Good code basically does the
+same thing ... overdoing error handling it is a trap.
+
+I barely understand the =cl-tagbody= but it seems that:
+
++ you define entry/exit points for higher-order functions.
++ and then control evaluation by bundling state with the =cl-return[-from]=
+  macros. This /may/ be useful with a kind of state machine.
++ you want to preempt errors and adapt the flow of the program in the block
+
+Which is what I'm trying to figure out: can =cl-block= and =cl-return[-from]=
+handle events they didn't expect -- these usually result in an error.
+
+#+begin_src emacs-lisp
+;; cl-macs.el
+
+;; it's very simple
+(cl-defmacro cl-block (name &rest body)
+  ;; if there's no side effects, yield the body up for expansion
+  (if (cl--safe-expr-p `(progn ,@body))
+      `(progn ,@body)
+
+    ;; otherwise return this error handler
+    `(cl--block-wrapper
+
+      ;; the uncontrolled error is [yet] caught -- again, the last thing comes first
+      (catch ',(intern (format "--cl-block-%s--" name))
+        ,@body))))
+
+;; cl-lib.el
+
+;; the identity ... or is it?
+(defalias 'cl--block-wrapper 'identity)
+(defalias 'cl--block-throw 'throw)
+
+;; if I had to guess, the identity is being used for 1+ layer(s) of "λ-wrapping"
+;; like in the y-combinator, which I never really get on my own.
+#+end_src
+
+The rules here are important. After digging into the Emacs Doom source, I
+realized of course that "one does not simply copy and paste the cl-functions"
+... which is probably where I should be looking.
+
+#+begin_src emacs-lisp
+(defun cl--safe-expr-p (x)
+  "Check if no side effects."
+  (or (not (and (consp x) (not (memq (car x) '(quote function cl-function)))))
+      (and (symbolp (car x))
+	   (or (memq (car x) cl--simple-funcs)
+	       (memq (car x) cl--safe-funcs)
+	       (get (car x) 'side-effect-free))
+	   (progn
+	     (while (and (setq x (cdr x)) (cl--safe-expr-p (car x))))
+	     (null x)))))
+#+end_src
+
+I'm not sure what all these turtles do here, but I'm a bit scared to find out.
+
+#+begin_src emacs-lisp
+;; Here is more or less how those dynbind vars are used after looping
+;; over cl--parse-loop-clause:
+
+(cl-block ,cl--loop-name
+  (cl-symbol-macrolet ,cl--loop-symbol-macs
+    (foldl #'cl--loop-let
+           `((,cl--loop-result-var)
+             ((,cl--loop-first-flag t))
+             ((,cl--loop-finish-flag t))
+             ,@cl--loop-bindings)
+           ,@(nreverse cl--loop-initially)
+           (while                   ;(well: cl--loop-iterator-function)
+               ,(car (cl--loop-build-ands (nreverse cl--loop-body)))
+             ,@(cadr (cl--loop-build-ands (nreverse cl--loop-body)))
+             ,@(nreverse cl--loop-steps)
+             (setq ,cl--loop-first-flag nil))
+           (if (not ,cl--loop-finish-flag) ;FIXME: Why `if' vs `progn'?
+               ,cl--loop-result-var
+             ,@(nreverse cl--loop-finally)
+             ,(or cl--loop-result-explicit
+                  cl--loop-result)))))
+#+end_src
+
+
 ** Security
 
 *** Seccomp
@@ -240,7 +358,6 @@ untrusted code would have access to.
 + See =./tests/src/emacs-tests.el= for interface usage and expected behavior.
 
 It appears that processes
-
 * Issues
 
 ** Buffer Local Variables
