@@ -1,0 +1,216 @@
+:PROPERTIES:
+:ID:       f246a4d0-f014-4f79-80ff-6221a7bfbdae
+:END:
+#+TITLE: Ansible: Linux Server Roles
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+** LSR
+
+[[https://linux-system-roles.github.io/][LSR website]]
+
++ [[https://galaxy.ansible.com/linux-system-roles][LSR on Galaxy]]
++ [[https://linux-system-roles.github.io/documentation/howto/working-with-ansible-jinja-code-and-filters.html][Working with Ansible Jinja2 code and filters]]
++ [[https://linux-system-roles.github.io/documentation/tls_crypto_parameter_and_key_names.html][TLS/Crypto Parameter and Key Names]]
+
+* Resources
+
+** network.toolkit
+
+These [[https://github.com/network-automation/toolkit/tree/master][network.toolkit roles/collections]] are intended for networking devices, but
+contain examples of general data structures (yaml formats) that would be useful
+to fetch from devices and merge inside a playbook:
+
++ key on vlan names in route/switch device descriptions and assume the =vlan_id=
+  is shared on connected devices.
+
+Other useful things:
+
++ [[https://github.com/network-automation/toolkit/blob/master/roles/facts/tasks/main.yml]["with_first_found" pattern]]
++ [[https://github.com/network-automation/toolkit/tree/master/roles][network.toolkit roles]] serve as an abstraction that is supposed to fit many
+  different vendors -- i.e. the words used to describe tasks/roles here
+  generally describe the processes ... other networking related tasks should
+  probably be described/named using similar semantics and structured with
+  similar logic
+
+* LSR Network
+
+** Config
+
+AFAIK, the functions of =network_connections= and =network_state= field should
+be split out so that a separate role/playbook can update the state without
+changing configuration.
+
++ network_provider :: this can't be changed for a connection profile once
+  set. defaults to =nm=
++ network_allow_restart
+
+*** network_state
+
+Specify the current state for connections defined.
+
+Some config data needs to be duplicated between the data structures in order for
+everything to match. This isn't so much a problem of verbosity as it is one of
+state coherency. AFAIK, using =set_fact=, DNS resolution and other features help
+quite a bit. This could be also be persisted outside of a playbook --
+i.e. extracting facts into a =vars.yml= file to be consumed by another playbook
+... though this may be brittle/risky.
+
+*** network_connections
+
+These are device profiles. Connections are identified by either the device
+=name= or the PCIE device ID with the =match.path=
+
+If a connection is missing, it won't be configured.
+
++ The only exception is if there's an entry missing a =name:= that also has
+  =persistent_state: absent=. In this case, the role will attempt to drop any
+  connection profile not in =network_connections=.
+
+**** primary
+
+***** Control Plane & Management Plane
+
+You never want to lose connectivity to devices. IPv6 solves a lot of these
+management problems, but also creates its own headaches. With modern IPv4,
+devices can also have multiple addresses.
+
++ You can always add an address then configure the upstream devices.
++ You should use networking/routing abstractions in upstream hops to configure
+  more advanced route/fw behavior.
+
+**** dynamic
+
+To be included when needed, these profiles may need to be split out into
+separate =vars.yml= files per-host (and potentially per-group).
+
++ VLANs and MACVLANs
++ Devices for VM's or container networks
+
+Avoiding ambiguous usage of ansible terminology ... the logic for managing the
+connections/state for specific categories of functions can be split into
+roles/groups.
+
+***** Use Cases
+
++ Network configuration for storage via =devicemapper=
++ Dynamic configuration/allocation of SR-IOV devices
++ Sharing VM Storage backend for multiple devices on a 10G switch
++ Other storage backends where network configuration is essential
++ Patterns of network device deployments for containers
+
+** Tasks
+
+*** Extracting Current Config
+
+You can dump the =network_connections= and =network_state= with
+=ansible.builtin.debug=, but simply adding the role to make this data available
+may alter the network configuration.
+
+***** TODO actually test this
+
+it's been a while since i've touched my homelab network, so i'm reacclimating
+myself with everything.
+
+*** Organizing Config
+
+TLDR: use facts wherever possible.
+
++ [[https://docs.ansible.com/ansible/latest/reference_appendices/config.html#playbook-vars-root][playbook_vars_root]]
++ [[https://docs.ansible.com/ansible/latest/reference_appendices/config.html#default-hash-behaviour][hash_behavior]] (useful mostly for the description)
++ [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_vars_facts.html#information-about-ansible-magic-variables][magic variables]], including =inventory_hostname=
+
+**** How lazy are jinja2 templates?
+
+When does ansible determine a need to resolve variables in jinja templates?
+it's not that the docs don't tell you this. I'm sure they do. But there must be
+a terminology mismatch here.
+
++ Does it always wait until the last possible second? This would be the simplest
+  to code (for ansible anyways), the simplest to understand and the least bug
+  prone (from being ... simple)
++ Does it delay evaluation for some variables in Jinja2 templates, but not all
+  variables?  i.e. ={{ ansible_facts['asdf'] }}= can't properly be known until
+  evaluation time (without complicated reference tracking, see notes on "simple"
+  above)
+
+Here are some clues, though some graphviz would be nice.
+
++ The section on [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html#scoping-variables][scooping variables]] says there are three main scopes: global,
+  play and host.
++ Obviously, jinja2 templates containing references to registered vars or facts
+  need to delay the evaluation.
++ Ansible does mark variables with metadata, e.g. variables marked unsafe can't
+  be {{ parsed in jinja templates ... (so it does some reference tracking, or at
+  least the instance of a variable is separate from its reference)
++ Jinja2 can call methods on [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_filters.html#providing-default-values][undefined]]. This is nice to know, since tou don't
+  need to constantly check for "null pointer exceptions" -- I'm looking at you
+  Java.
+
+unavailable by defining symbols when available and lazily loading things
+later... It definitely does /some/ of this.
+
+
+**** host_vars
+
+**** group_vars
+
+Some config can go here, but according to [[https://docs.ansible.com/ansible/latest/playbook_guide/playbooks_variables.html#understanding-variable-precedence][variable precedence]], group_vars are
+parsed before host_vars, so AFAIK, they're not available for jinja templates
+
+**** role-based variables
+
+A similar approach to [[https://docs.ansible.com/ansible/latest/tips_tricks/ansible_tips_tricks.html#handling-os-and-distro-differences][Handling OS and Distro Differences]] could be taken, which
+is used throughout LSR's code.
+
+#+begin_src yaml
+- name: Use include_vars to include OS-specific variables and print them
+  hosts: all
+  tasks:
+
+    - name: Set OS distribution dependent variables
+      ansible.builtin.include_vars: "os_{{ ansible_facts['distribution'] }}.yml"
+
+    - name: Print the variable
+      ansible.builtin.debug:
+        var: asdf
+#+end_src
+
+For a specific network configuration role (e.g. network_k3s), the =include_vars=
+task could be set to load from a project path that's not necessarily in the
+role's source (AFAIK)
+
+**** connections
+
++ [[https://docs.ansible.com/ansible/latest/plugins/connection.html][Connection Plugins]]
++ [[https://docs.ansible.com/ansible/latest/reference_appendices/special_variables.html#connection-variables][Common connection variables]]
++ [[https://docs.ansible.com/ansible/latest/collections/ansible/builtin/ssh_connection.html#parameter-host][SSH]] and [[https://docs.ansible.com/ansible/latest/collections/ansible/builtin/paramiko_ssh_connection.html#paramiko-connection][paramiko]] plugin: =host= is the most useful param, but these should
+  have a DNS address.
++ [[https://docs.ansible.com/ansible/latest/network/getting_started/network_differences.html#multiple-communication-protocols][netconf]] for "connections" is another option, but yeh...
+
+***** TODO ideas on using connections to pivot or ensure connectivity
+
+similar to keeping a second ssh session open when changing ssh
+
++ e.g. in =post_tasks:= connect to the second IP address and remove the first
+
+
+
+*** IP & VLAN Migration
+
+I'm still trying to figure out how to automate ip migration end-to-end including
+VLANs. Here's my current thoughts, at least as it applies to the Linux servers:
+
++ Set the primary connections in the host's =vars.yml=
++ Use a secondary playbook to manage
++ Update the servers first, adding a secondary IP address
+
+***** TODO actually test these ideas
+
+
+* Roam
++ [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:90c681e3-7748-4039-abf1-69755e14c918][SELinux]]
