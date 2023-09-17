@@ -1,0 +1,175 @@
+:PROPERTIES:
+:ID:       da446d79-48d2-45fe-96c9-27035c92b699
+:END:
+#+TITLE: Emacs: SVGs
+#+CATEGORY: slips
+#+TAGS:
+* Docs
+
+** SVG
+
++ svg docs: [[https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g][mdn]] and [[https://www.w3schools.com/graphics/svg_intro.asp][w3]]
+
+** Emacs
+
++ [[https://www.gnu.org/software/emacs/manual/html_node/elisp/SVG-Images.html][svg.el]]
++ [[https://github.com/rougier/svg-lib][svg-lib.el]]
++ [[https://github.com/RaminHAL9001/emacs-svg-clock/blob/master/svg-analog-clock.el][SVG Clock]]: render an animated clock from emacs
++ [[https://depp.brause.cc/svg-2048/][svg-2048]]: a port of the 2048 game in emacs using SVG animation
+
+*** DOM and XML
+
+[[https://github.com/tali713/esxml][esxml.el]]: used for DSL in svg-2048, [[https://gitlab.com/fvdbeek/emacs-pubmed][emacs-pubmed]] and [[https://depp.brause.cc/nov.el/][nov.el]].
+
++ [[https://www.w3.org/XML/EXI/eval/esxml-evaluation.html][EsXML Evaluation]] (w.r.t the [[https://www.w3.org/TR/xbc-properties/][w3 XML Binary Characterization Properties]])
++ Can be used to support queries for tasks like [[https://ag91.github.io/blog/2022/06/28/org-feed-+-esxml-make-an-rss-feed-out-of-any-website/][Org Feed + esxml: make an RSS
+  feed out of any website!]]
+
+* Babel
+
+** Defaults
+
+#+begin_src emacs-lisp
+(setq-local org-confirm-babel-evaluate nil
+            org-image-actual-width nil)
+#+end_src
+
+
+** Templates
+
+JSON is less able to support symbolic references without external code
+
+#+name: svgheader
+#+begin_example xml
+<svg viewBox="0 0 360 360" fill="white" xmlns="http://www.w3.org/2000/svg">
+#+end_example
+
+#+name: dumpsvg
+#+headers: :var svgheader=svgheader
+#+begin_src sh :var xmlissuperior=""
+echo "$svgheader \n$xmlissuperior</svg>"
+# i don't want to escape those strings, what do i use?
+#+end_src
+
+#+name: svganimate
+#+begin_example nxml
+<rect width="144" height="144" x="108" y="108"
+  stroke="black" stroke-width="3"/>
+<circle r="72" cx="108" cy="108"
+  stroke="black" stroke-width="3"/>
+#+end_example
+
+#+attr_html: :width 300px
+#+call: dumpsvg(xmlissuperior=svganimate) :results output file :file img/itdumps.svg
+
+#+RESULTS:
+[[file:img/itdumps.svg]]
+
+*** Render in DOM
+
+#+begin_src html :tangle /tmp/test-svg.html
+<html>
+  <head></head>
+  <body>
+    <svg viewBox="0 0 360 360" xlmns="http://www.w3.org/2000/svg">
+
+    </svg>
+  </body>
+</html>
+#+end_src
+
+
+
+
+** Quick note on babel
+
+#+begin_quote
+apparently these =#+begin_example= blocks get loaded in =fundamental-mode= and
+the afaik, the =org-edit-source= does not allow you to do much about
+that. eventually, there could be features to return unevaluated data from
+=#+begin_src= markup.
+
+this still works for now, which I would actually prefer rather than treating
+=#+begin_header=, where you may assume that json/yaml/graphql is static when it
+is evaluated in some subtle way.
+
+still, changing the major mode in the =Org Src= buffer will prevent the rest of
+the =C-c '= flow.
+#+end_quote
+
+
+* Notes
+
+It would be nice to have support for margins/placement like HTML/CSS dom or
+latex figures. Neither EWW nor emacs' dom.el handle placement other than by
+acknowledging attributes on tags.
+
+** Other SVG features
+
+The SVG lib doesn't support all features of SVG, per se, as it's a DSL for SVG
+DOM. However...
+
++ it's fairly trivial to add other functionality by managing node attributes
+  using =dom.el= directly.
++ In some situations, mixing both would be dicey, but you should always be able
+  to return an SVG dom tree from a function to modify using dom.el.
++ Here, it would crucial to be smart about how you =id=identify= nodes, so you
+  can extract and replace parts of the tree. In this case, you'd want
+
+SVG documents allow you to extend functionality with definitions within the
+document itself. If you're smart, then you'll reuse what you have -- while
+keeping whatever you want to do simple! ... since you don't want to try to build
+a rocketship with this.
+
+
+*** Share properties with =<g>= nodes
+
+[[https://github.com/emacsmirror/svg-clock/blob/master/svg-clock.el#L297-L299][svg-clock.el#L297]] uses =dom-node= directly
+
+#+begin_example emacs-lisp
+(defun svg-clock-group (id &rest children)
+  "Create an SVG group element with given ID and CHILDREN."
+  (apply 'dom-node 'g `((id . ,id)) children))
+#+end_example
+
+*** Template with =<use>= nodes
+
+svg-clock links to other nodes by =#dom-id=. The =href= links to an [[https://developer.mozilla.org/en-US/docs/Web/SVG/Content_type#iri][IRI]] -- this
+similar to "universal" resource indicator, but it's more "international."
+
+*** Relative Coordinate Systems with =<view>= nodes
+
+The =<view>= nodes and =viewbox= attributes allow you to create local coordinate
+systems. See the [[https://developer.mozilla.org/en-US/docs/Web/SVG/Element/view][<view>]] example.
+
+*** Animations
+
+The Cairo lib provides Emacs with it's image support. Does it support
+animations?
+
+#+begin_src sh :results output file :file img/svg/test-animation.svg
+cat <<EOF
+<svg viewBox="0 0 200 100" xmlns="http://www.w3.org/2000/svg">
+  <path
+    fill="none"
+    stroke="lightgrey"
+    d="M20,50 C20,-50 180,150 180,50 C180-50 20,150 20,50 z" />
+
+  <circle r="5" fill="red">
+    <animateMotion
+      dur="10s"
+      repeatCount="indefinite"
+      path="M20,50 C20,-50 180,150 180,50 C180-50 20,150 20,50 z" />
+  </circle>
+</svg>
+EOF
+#+end_src
+
+
+#+RESULTS:
+[[file:img/svg/test-animation.svg]]
+
+
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
