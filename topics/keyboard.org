@@ -278,6 +278,47 @@ xkbcli list --skip-default-paths $XKB
 
 Use =yq= to process the output.
 
+#+name: xkbcli_all
+#+begin_src sh :results output code silent
+xkbcli list --skip-default-paths | yq '.'
+#+end_src
+
+to_entries is very annoying. I'm [[bad][not the only one]] that can't figure this out
+... I got close. There are also no mentions of zip, though it's probably not
+that hard.
+
+#+begin_src jq :results output code :stdin xkbcli_all :compact yes
+. | to_entries | map({(.key): (.value | length)})
+#+end_src
+
+#+RESULTS:
+#+begin_src jq
+[{"models":191},{"layouts":592},{"option_groups":21}]
+#+end_src
+
+**** Babel Setup
+
++ setq-local doesn't work.
++ regardless of whether it's local, it's only calling yq (only jq)
++ in any case, you can just pipe to =yq '.' -y= and now it's json
+
+#+begin_src emacs-lisp
+;;
+(setq jq-interactive-command "jq"
+      jq-interactive-font-lock-mode #'json-mode
+      jq-interactive-default-options "")
+;; (setq jq-interactive-command "yq"
+;;       jq-interactive-font-lock-mode #'yaml-mode
+;;       jq-interactive-default-options "--yaml-roundtrip")
+#+end_src
+
+error
+
+#+begin_quote
+jq: Unknown option -y
+Use jq --help for help with command-line options,
+or see the jq manpage, or online docs  at https://jqlang.github.io/jq
+#+end_quote
 
 *** Compiling a keymap
 
