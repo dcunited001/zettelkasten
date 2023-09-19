@@ -139,7 +139,7 @@ that usefuland hard to configure with modifiers.
 
 *** Issues
 
-* XKB/X11
+* XKB (X11)
 :PROPERTIES:
 :ID:       ee958185-81f4-42bd-abd0-5ad1801deeca
 :END:
@@ -187,6 +187,279 @@ partial modifier_keys.xkb_symbols "swapcaps_hyper" {
   - =xkeyboard-config= provides the configs
 + libxkbcommon depends on =xkeyboard-config= for keymap data
 
+
+
+
+* XKB Common
+** Docs
++ [[https://github.com/xkbcommon/libxkbcommon][xkbcommon/libxkbcommon]] see the [[https://github.com/xkbcommon/libxkbcommon/blob/master/doc/][doc]] directory
+
+** Resources
+
++ [[https://wayland-book.com/seat/xkb.html][A wayland-book section on XKB Common]]
+
+*** X11/Wayland Integration
+
++ This [[https://unix.stackexchange.com/a/355428][s/o answer]] describes how different compositors handle keymaps in wayland.
+
+*** Python
+
++ [[github:sde1000/python-xkbcommon][sde1000/python-xkbcommon]]
++ [[github:sde1000/python-xkbregistry][sde1000/python-xkbregistry]]
++ [[https://github.com/abo-abo/xkb-indicator][abo-abo/xkb-indicator]] a utility to provide xkb status for a GTK panel
+
+*** Registry and evdev
+
++ Debian [[https://packages.debian.org/sid/main/libxkbregistry-dev][libxkbregistry-dev]]
++ [[https://github.com/xkbcommon/libxkbcommon/issues/123][xkbcommon/libxkbcommon#123]] this discusses adding an API for the evdev.xml
+  registry
++ See [[https://github.com/xkbcommon/libxkbcommon/blob/eafd3aceca97d4984070115ec67f639b045b0d65/doc/user-configuration.md#discoverable-layouts][discoverable layouts]] in user-configuration.md
+
+** Config
+
+*** General
+
+The bad news is that each program that handles keyboard input in a different way
+needs to be configured in its own way.
+
++ So.... KDE, xwayland, etc must necessarily handle input differently. KDE may
+  propagate changes to XWayland.
++ This makes keyboard config changes kinda delicate: when updating the keyboard,
+  you need to ensure that all consumers of the keyboard configuration are
+  updated. This further complicates configuration of programs like =fcitx= and
+  =moz=.
+
+
+*** XWayland
+
+Use =setxkbmap=
+
+*** evdev.xml
+
+The =evdev.lst= and =evdev.xml= files historically provided a registry for
+X11. They are a PITA to deal with:
+
++ Most X11 GUI tools hide much of the details from you -- like providing the
+  =evdev.xml= descriptions instead of the actual X11/XKB =option= ID's, which
+  makes it a nuissance to figure out what keyboard options you need when you
+  invoke =setxkbmap=.
++ They also don't expect to find anything in =XDG= paths, nor do they give you
+  any options for adding to paths they search. As issue #123 mentions,
+  =evdev.xml= is hardcoded.
++ Editing =evdev.xml= requires =sudo=, is prone to typos and quite often your
+  changes get erased by package updates.
++ From what I infer from years of using XKB, there just haven't been many tools
+  available for generating the XML. It's always been something I did by hand.
+
+*** XDG
+
+See [[https://github.com/xkbcommon/libxkbcommon/blob/master/doc/user-configuration.md][user_configuration.md]] for main overview. The main configuration location is
+=~/.config/xkb=, but other paths are fine.
+
+
+**** Include Paths
+
+*** KDE (Garuda)
+
+*** Sway
+
+
+** xkbcli
+
+The main bin shipped with packages is =xkbcli=
+
+*** Search the xkbregistry =xkbcli list=
+
+List user customizations. It tells you if it can't parse your config.
+
+#+begin_src sh
+xkbcli list --skip-default-paths $XKB
+#+end_src
+
+Use =yq= to process the output.
+
+
+*** Compiling a keymap
+
+Specify the XKB-specific options until you get output that looks right. With
+=--rvmlo= it won't check the keymap.
+
+#+begin_src sh
+xkbcli compile-keymap \
+       --model=$xmodel \
+       --rules=$xrules \
+       --layout=$xlayout \
+       --variant=$xvariant \
+       --options=$xoptions \
+       --rvmlo --verbose
+#+end_src
+
+**** Where to place the keymap
+
+ it might be that xkbcommon doesn't make any assumptions about where you put the
+ compiled output. In wayland, the client applications deal with far more
+ keyboard handling ... (which means i'm not looking forward to getting moz/fcitx
+ to work on 7 different window managers)
+
+Some of the tests provide more information, but they don't indicate what
+consumes the =xkbcli= output.
+
++ filecomp.c this references a bunch of test data to catch parse errors, etc.
++ there are a few python tests that act as higher level integration tests
+
+
+*** Determining whether changes are effective
+
+Options that aren't recognized will result in errors (warnings basically)
+telling you which ones are ignored.
+
+If the keymap is compiling, then you can diff it. Remove the variants in one
+invocation and diff the files.
+
+#+begin_src sh
+
+files=(novariants variants)
+xoptions=("''" "lv3:menu_switch,ctrl:hyper_capscontrol,lv3:ralt_alt")
+xmodel="pc(pc105)"
+xrules=evdev
+xlayout=us
+
+indices=(0 1)
+# imax=$((${#xoptions[@]} - 1)) ... jesus christ
+iseq=$(seq 0 $((${#xoptions[@]} - 1))) # godamit
+for i in  $indices ; do
+    xkbcli compile-keymap \
+           --model=$xmodel \
+           --rules=$xrules \
+           --layout=$xlayout \
+           --variant=$xvariant \
+           --options=${xoptions[$i]} \
+        | grep -i mod > "/tmp/xkb/${files[$i]}"
+done
+#+end_src
+
+Then =diff /tmp/xkb/*variants=
+
+*** xkbcommon config explainer
+
+#+begin_src sh :results output file :file img/xkb-configuration.svg
+dot -Tsvg /data/ecto/sway/keyboard/libxkbcommon/doc/diagrams/xkb-configuration.dot
+#+end_src
+
+#+RESULTS:
+[[file:img/xkb-configuration.svg]]
+
+
+** Issues
+
+*** Include Paths
+
+**** Load Order
+
+I misinterpreted a thing.
+
+#+begin_quote
+This one has the highest priority for user config, so if you distro-hop
+and this path is used, no keyboards for you. Assume =$XKB= is this directory.
+#+end_quote
+
+... nevermind this is totally not correct. The =--include=~/.xkb= is redundant
+And it also doesn't expand tildas.
+
+#+begin_src sh
+xkbcli compile-keymap --include-defaults --include="~/.xkb" \
+       --model="pc(pc105fdsa)" \
+       --rmlvo --verbose
+#+end_src
+
+Testing with the above script gives this output:
+
+#+begin_quote
+xkbcommon: DEBUG: Include path added: /home/dc/.config/xkb
+xkbcommon: DEBUG: Include path added: /home/dc/.xkb
+xkbcommon: DEBUG: Include path failed: /etc/xkb (No such file or directory)
+xkbcommon: DEBUG: Include path added: /usr/share/X11/xkb
+xkbcommon: DEBUG: Include path failed: ~/.xkb (No such file or directory)
+rules: "evdev"
+model: "pc(pc105fdsa)"
+layout: "us"
+variant: ""
+options: ""
+#+end_quote
+
+
+*** Changes to variant names
+
+Prefer colons instead of parens. The parens are deprecated.
+
++ =level3(ralt_alt)= should be =lv3:ralt_alt=
++ =ctrl:swapcaps_hyper= should be =ctrl:hyper_capscontrl=
+
+** Development
+
+The repo docs are setup around building/developing xkb.
+
+You'll need tools like:
+
++ meson
++ doxygen
++ afl afl-utils :: this is built on top of other compilers like clang/gcc and
+  instruments a built program with debugging symbols that facilitate fuzzing
++ clang14 llvm14 :: these are required by the =fuzz= meson build for
+  =afl-clang-fast=. On arch, the package for AFL tool is built to require
+  clang14 and llvm14
+
+*** Fuzzing keyboard format
+
+=libxkbcommon= includes utilitize to fuzz the imput format.
+
+#+begin_quote
+The xkb geometry files aren't supported in wayland by xkbcommon,
+but they do still ship with X11. I would like to take those definitions and
+include metadata to build SVG's for keymaps ... eventually.
+
+Thus, I'm interested in finally cracking the XKB code... so I guess i'll be
+taking this detour.
+#+end_quote
+
+To run the fuzzer, you need to setup the project build. When you run it for the
+first time, it generates =fuzz/build= which is a Meson build dependent on the
+root project's build definitions. You'll have to blow =fuzz/build= away and
+restart after running =meson setup build=.
+
+The first failure is at =Checking core_pattern...=
+
+The tool may fail if =/proc/sys/kernel/core_pattern= is set to dump to an
+external tool. Save the current value of the file, then follow AFL's
+instructions to set it to =core=.
+
+The next failure is at =Validating target binary...= and =afl-fuzz= reports the
+binary is not instrumented. I looked at the symbols in =fuzz/build/fuzz-keymap=
+using =elf-mode=, but didn't see anything obvious. For this task, the
+dynamically linked libraries should need to be instrumented for fuzzing. The
+fuzzing target only includes =config.h= or =xkbcommon/xkbcommon.h=.
+
+I probably need to rebuild the =fuzz/build= target, but there could still be a
+few issues:
+
++ =clang14= and =llvm14= weren't installed when the =afl= package was built. the
+  absence may change the build for =afl= ... maybe
++ Cleaning out the build artifacts and restarting from scratch may do the
+  trick. its not clear how meson/ninja would invalidate older build artifacts
+  for differential builds, esp if it's clang14 that's changed and some build
+  config artifacts were dynamically generated with the wrong values.
++ I don't know anything about meson/ninja, so if it's only generating /some/ of
+  the req. references to llvm14 in places, then it would be hard for me to
+  tell. There doesn't seem to be a =meson clean= task, so ... I donno.
+
+xkbcommon's fuzzer isn't intended to be widely used, so it may be intended to
+build on a system where only llvm14 is present. I checked and the yay package
+doesn't relink =clang= to =clang14=, but it's hard to know ... so this is where
+I stop lol.
+
+... ahhh and meson includes =.gitignore= in the =build= directory it generates,
+which is why I couldn't determine the projects' file delta. my
+=project-find-file= must take these into account.
 
 * Loadkeys
 :PROPERTIES:
