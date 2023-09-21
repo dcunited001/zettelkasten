@@ -42,6 +42,111 @@ to add some flags for the server, which is a bad idea. Otherwise, you'll need to
 export the coredump and unpack it.
 
 
+*** TODO dump from systemd unit on failure
+
+
+*** Process coredump
+
+Get info about last coredump
+
+#+begin_src sh :results output table
+emacspid="$(lastcore | tr -d '\"')"
+
+# ok this is crazy
+nlines="$(coredumpctl info $emacspid --no-pager | cut -d':' -f1 | grep -ne "Message" | cut -d':' -f1)"
+
+coredumpctl info $emacspid --no-pager | head -n$nlines
+
+#+end_src
+
+#+RESULTS:
+| PID:        | 4052937                                                                                   | (.emacs-29.0.92-)                                                          |                   |     |      |       |        |       |
+| UID:        | 1000                                                                                      | (dc)                                                                       |                   |     |      |       |        |       |
+| GID:        | 1000                                                                                      | (dc)                                                                       |                   |     |      |       |        |       |
+| Signal:     | 11                                                                                        | (SEGV)                                                                     |                   |     |      |       |        |       |
+| Timestamp:  | Thu                                                                                       | 2023-09-21                                                                 | 13:18:05          | EDT | (4h  | 41min | ago)   |       |
+| Command     | Line:                                                                                     | /gnu/store/lcf4xm3jaj7pkfg0h23h5y8946syrwfc-profile/bin/emacs              | --fg-daemon       |     |      |       |        |       |
+| Executable: | /gnu/store/ip70sppv1xkgvf2ssms5arkaa40r5zba-emacs-next-pgtk-29.0.92/bin/.emacs-29.0.92-real |                                                                            |                   |     |      |       |        |       |
+| Control     | Group:                                                                                    | /user.slice/user-1000.slice/user@1000.service/app.slice/gmacs-arch.service |                   |     |      |       |        |       |
+| Unit:       | user@1000.service                                                                         |                                                                            |                   |     |      |       |        |       |
+| User        | Unit:                                                                                     | gmacs-arch.service                                                         |                   |     |      |       |        |       |
+| Slice:      | user-1000.slice                                                                           |                                                                            |                   |     |      |       |        |       |
+| Owner       | UID:                                                                                      | 1000                                                                       | (dc)              |     |      |       |        |       |
+| Boot        | ID:                                                                                       | cb39ebcaa6434eaab0464cc11b587496                                           |                   |     |      |       |        |       |
+| Machine     | ID:                                                                                       | bb2e37c388884959b04f1d829e8de787                                           |                   |     |      |       |        |       |
+| Hostname:   | kratos                                                                                    |                                                                            |                   |     |      |       |        |       |
+| Storage:    | /var/lib/systemd/coredump/core.\x2eemacs-29\x2e0\x2e92-.1000.cb39ebcaa6434eaab0464cc11b587496.4052937.1695316685000000.zst | (present)                                                                  |                   |     |      |       |        |       |
+| Size        | on                                                                                        | Disk:                                                                      | 70.5M             |     |      |       |        |       |
+| Message:    | Process                                                                                   | 4052937                                                                    | (.emacs-29.0.92-) | of  | user |  1000 | dumped | core. |
+
+Extract coredump. The =emacs_desktop= variable will be incorrect once you
+restore.
+
+#+begin_src sh :results output :var desktop_lock=(desktop-full-lock-name)
+emacspid="$(lastcore | tr -d '\"')"
+emacscoredumps=/data/dev/emacsdumps
+
+# lastcore output is still quoted
+[ -f "$desktop_lock" ] \
+    && [ $emacspid -eq "$(cat $desktop_lock)" ] \
+           || echo coredumpctl dump "$emacspid" --output "$emacscoredumps/emacs-$(date +%Y-%m_%d-%H-%M).core"
+
+# TODO: change to set to the coredump timestamp
+#+end_src
+
+#+RESULTS:
+: coredump dump 4052937 --output /data/dev/emacsdumps/emacs-2023-09_21-17-44.core
+
+Check binary for debugging symbols.
+
+#+begin_src sh
+objdump --syms $GUIX_EXTRA/emacs-g/emacs-g/bin/.emacs-29.0.92-real
+#+end_src
+
+**** coredumpctl offers json output
+
+Run =lastcore= to fetch the last =pid= or =lastcore .pid .uid ...= to fetch more
+json fields. Maybe not something to leave around (I donno if it's injection
+safe)
+
+#+begin_src sh
+#!/bin/sh
+dlmtr=' '
+while getopts :d: OPT; do
+    case $OPT in
+        d|+d)
+            if [ 1 -lt ${#OPT} ]; then echo "Must be a single character -d"; exit 1; fi
+            dlmtr="$OPTARG"
+            ;;
+        *)
+            echo "usage: `basename $0` [+-d ARG} [--] ARGS..."
+            exit 2
+    esac
+done
+shift `expr $OPTIND - 1`
+OPTIND=1
+
+args=()
+until [ 0 -eq $# ]; do args+=($1); shift; done
+n_args=${#args[@]}
+if [ 0 -eq $n_args ]; then
+    #echo "Required: at least one argument"; exit 1; fi
+    args=(.pid)
+fi
+
+joinargs='"'
+joinargs+="\\(${args[0]})"
+for ((i=1;i<n_args;i++)); do joinargs+="$dlmtr\\(${args[$i]})"; done
+joinargs+='"'
+
+coredumpctl list --json=short | jq '. | last | @text '"$joinargs"
+
+# who knows?
+# "\(.pid) \(.gid) \(.uid) \('.fdsa)|fdsa) \(|) \(fdsa) \(|) \(@test) \("\(.evil?')"
+#+end_src
+
+
+
 * Guix
 
 ** Guix Shell
@@ -96,6 +201,19 @@ fi
 
 * GDB
 
+#+begin_src emacs-lisp
+(defun dc/gud-gdb-cmd (cmd dump)
+  "form the gdb command to call"
+  (format "gdb --fullname %s %s" cmd dump))
+#+end_src
+
+Then invoke with:
+
+#+begin_src emacs-lisp
+(let ((gdb-many-windows t))
+  (gud-gdb (dc/gud-gdb-cmd dc-gdb/corebin-real dc-gdb/coredump)))
+#+end_src
+
 The filenames are gnarly, and for some reason there are escaped characters in
 the coredump file name. GDB refuses to continue on reading these characters --
 it's =zst= compression, not an =coredump=. +I hope the coredump doesn't have
@@ -111,16 +229,6 @@ files to a new location.+
       (file-chase-links "/home/dc/.guix-extra-profiles/emacs-g/emacs-g/bin/emacs")
       dc-gdb/corebin-real
       (file-chase-links "/home/dc/.guix-extra-profiles/emacs-g/emacs-g/bin/.emacs-29.0.92-real"))
-
-(defun dc/gud-gdb-cmd (cmd dump)
-  "form the gdb command to call"
-  (format "gdb --fullname %s %s" cmd dump))
-#+end_src
-
-Then invoke with:
-
-#+begin_src emacs-lisp
-(gud-gdb (dc/gud-gdb-cmd dc-gdb/corebin-real dc-gdb/coredump))
 #+end_src
 
 That won't work bc it's =zst= compression ... which i thought might be a
@@ -128,6 +236,14 @@ problem. I thought there was a chance =gdb= might know what to do with it
 though.
 
 This is before I read the bit(s) about =coredumpctl= ...
+
+* Emacs
+
+** Packaging
+
+I'm using =emacs-guix= packages as well as =straight.el=. Using =M-x
+locate-library= along with =embark-collect= or =embark-export= provides the
+package locations with information about where emacs has loaded them from.
 
 
 
