@@ -256,12 +256,100 @@ X11. They are a PITA to deal with:
 See [[https://github.com/xkbcommon/libxkbcommon/blob/master/doc/user-configuration.md][user_configuration.md]] for main overview. The main configuration location is
 =~/.config/xkb=, but other paths are fine.
 
-
 **** Include Paths
+
 
 *** KDE (Garuda)
 
+**** FCITX
+
+The doc has fairly comprehensive information about how xkbcommon works with
+other tools.
+
++ Their docs indicate to select a single keyboard layout under "virtual
+  keyboards" but imply that this is one method that works (I think for setting
+  the input method for all KWin Wayland apps and all apps managed under KWin's
+  managed XWayland server)
+
+***** Misc Info
+
+XWayland apps will already need some shared launch scripts that set the
+environment for them. the following variables need to be set:
+
++ XMODIFIERS :: @im=fcitx
++ GTK_IM_MODULE :: not set
++ QT_IM_MODULE :: not set
++ SDL_IM_MODULE :: not set
+
+#+begin_quote
+Unlike X11, there is no generic way to set XKB layout to compositor, which means
+it can only be implemented for every individual desktop. Right now, Fcitx
+managed layout only works for KDE Plasma.
+
+As for non-KDE desktop, in order to make this "semi" work you'll need to ensure
+following:
+
+    The system layout in the group should be the same as the actual xkb layout
+    you configured for the compositor.  Configure only one layout.  If you need
+    other layout for text typing (e.g. Arabic), just add them to the Fcitx. As
+    long as the key is forwarded to fcitx, it should work.
+#+end_quote
+
++ In KDE Input Method, it will say "Not Available" if you can't load the keyboard
+
+#+begin_quote
+Use "Virtual keyboard" KCM to launch fcitx5. This is required to use text-input
+protocol. If you launch fcitx this way, make sure you do not use "restart" in
+the tray menu, since the socket passed from KWin can not be reused with the
+newly restarted fcitx.
+#+end_quote
+
+***** fcitx5-config-qt
+
+The logic in this app depends on:
+
+Region/language configured in KDE
+
++ for example, I'm only seeing =io= keyboards, even though i've set them up to
+  be registered as a separate =io= language/region. I'm still trying to figure
+  this one out.
+
+The system and user =evdev.xml=. If your =~/.config/xkb/rules/evdev.xml= is
+invalid -- and apparently if any =evdev.xml= in =~/.config/xkb= is invaid --
+then you'll see this output when starting =/usr/bin/fcitx5/=. changing the name
+of =evdev.xml= will prevent only the second output: it still recognizes
+/something/ in this directory.
+
+#+begin_quote
+I2023-09-20 20:24:02.097978 inputmethodmanager.cpp:198] Found 4 input method(s) in addon keyboard
+*I2023-09-20 20:24:02.098026 inputmethodmanager.cpp:117] No valid input method group in configuration. Buildinga default one*
+I2023-09-20 20:24:02.105048 instance.cpp:366] Items in Default: [InputMethodGroupItem(keyboard-us,layout=)]
+I2023-09-20 20:24:02.105084 instance.cpp:371] Generated groups: [Default]*
+I2023-09-20 20:24:02.115670 addonmanager.cpp:193] Loaded addon kimpanel
+I2023-09-20 20:24:02.115866 addonmanager.cpp:193] Loaded addon virtualkeyboard
+#+end_quote
+
 *** Sway
+
+
+** xkbcommon
+
+Notes on the code
+
+*** xkbregistry
+
+**** Contexts
+
+According to the =xkbregistry= docs & code, when a client application loads the
+registry it constructs a context that organizes the include paths. See comments
+in =xkbregistry.h= about context and the implementation/
+
+There are two other relevant contexts outside of xkbcommon, which are unrelated
+... but maybe relevant, as I still need to read the source
+
++ The [[https://wayland.app/protocols/][wayland-protocols]] input context: [[https://wayland.app/protocols/input-method-unstable-v1][zwp_input_method_context_v1]]
++ The fcitx5: [[https://fcitx-im.org/wiki/Basic_concept#Input_Context][Input Context]]
+
 
 
 ** xkbcli
@@ -283,9 +371,9 @@ Use =yq= to process the output.
 xkbcli list --skip-default-paths | yq '.'
 #+end_src
 
-to_entries is very annoying. I'm [[bad][not the only one]] that can't figure this out
-... I got close. There are also no mentions of zip, though it's probably not
-that hard.
+=to_entries= doesn't mix well with the syntax. I'm [[bad][not the only one]] that can't
+figure this out ... I got close. There are also no mentions of zip, though it's
+probably not that hard.
 
 #+begin_src jq :results output code :stdin xkbcli_all :compact yes
 . | to_entries | map({(.key): (.value | length)})
@@ -312,7 +400,7 @@ that hard.
 ;;       jq-interactive-default-options "--yaml-roundtrip")
 #+end_src
 
-error
+Error
 
 #+begin_quote
 jq: Unknown option -y
@@ -389,7 +477,6 @@ dot -Tsvg /data/ecto/sway/keyboard/libxkbcommon/doc/diagrams/xkb-configuration.d
 
 #+RESULTS:
 [[file:img/xkb-configuration.svg]]
-
 
 ** Issues
 

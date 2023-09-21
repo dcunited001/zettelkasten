@@ -1,0 +1,79 @@
+:PROPERTIES:
+:ID:       9ede60e6-979d-48c6-a79c-da16b2861ff2
+:END:
+#+TITLE: Orgmode: Org-element cache bug with Smartparens
+#+CATEGORY: slips
+#+TAGS:
+
+* Solution:
+
+Call =(org-element-cache-reset 'all)=
+
+* Description
+
+Example input (which is in a quote block in the org file):
+
+#+begin_quote
+I2023-09-20 20:24:02.097978 inputmethodmanager.cpp:198] Found 4 input method(s) in addon keyboard
+*I2023-09-20 20:24:02.098026 inputmethodmanager.cpp:117] No valid input method group in configuration. Buildinga default one*
+I2023-09-20 20:24:02.105048 instance.cpp:366] Items in Default: [InputMethodGroupItem(keyboard-us,layout=)]
+I2023-09-20 20:24:02.105084 instance.cpp:371] Generated groups: [Default]
+I2023-09-20 20:24:02.115670 addonmanager.cpp:193] Loaded addon kimpanel
+#+end_quote
+
+So, /after highlighting any one of those lines/ using =*=, I get these
+warnings. As soon as I touch the buffer's window, new warnings emerge, stealing
+focus.
+
+#+begin_quote
+⛔ Error (frameset): Wrong type argument: number-or-marker-p, nil
+⛔ Warning (org-element-cache): org-element--cache: Unregistered buffer modifications detected (24755 != 24754). Resetting.
+If this warning appears regularly, please report the warning text to Org mode mailing list (M-x org-submit-bug-report).
+The buffer is: keyboard.org
+ Current command: org-self-insert-command
+ Backtrace:
+"  backtrace-to-string(nil)
+  org-element--cache-sync(#<buffer keyboard.org> 14183)
+  org-element-at-point()
+  org-element-context()
+  org-appear--current-elem()
+  org-appear--post-cmd()
+"
+⛔ Warning (org-element-cache): org-element--cache: Unregistered buffer modifications detected (24755 != 24754). Resetting.
+If this warning appears regularly, please report the warning text to Org mode mailing list (M-x org-submit-bug-report).
+The buffer is: keyboard.org
+ Current command: nil
+ Backtrace:
+"  backtrace-to-string(nil)
+  org-element--cache-sync(#<buffer keyboard.org>)
+  apply(org-element--cache-sync #<buffer keyboard.org>)
+  timer-event-handler([t 0 0 599999 nil org-element--cache-sync (#<buffer keyboard.org>) idle 999999 nil])
+"
+#+end_quote
+
+If I just add asterisks one at a time, then its fine. It's also happened on
+other text with other emphasis marks.
+
+* Config
+
+Smartparens is loaded after my org config
+
+#+begin_src emacs-lisp
+(setup (:pkg smartparens)
+  (:hook-into prog-mode text-mode))
+
+(with-eval-after-load 'smartparens
+  ;; this would load smartparens for all the langs
+  ;; essentially (require 'smartparens-lang)
+  ;; (require 'smartparens-config)
+  (require 'smartparens-python)
+  (require 'smartparens-org)
+  (require 'smartparens-latex)
+  (require 'smartparens-markdown))
+
+(with-eval-after-load 'yasnippet
+  (advice-add #'yas-expand :before #'sp-remove-active-pair-overlay))
+#+end_src
+
+* Roam
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Org Mode]]
