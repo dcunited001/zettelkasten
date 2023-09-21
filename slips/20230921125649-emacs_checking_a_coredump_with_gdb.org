@@ -1,0 +1,137 @@
+:PROPERTIES:
+:ID:       ecfa4e3b-2190-4be9-b8af-2e7407d7e26c
+:END:
+#+TITLE: Emacs: checking a coredump with gdb
+#+CATEGORY: slips
+#+TAGS:
+
+* Resources
++ [[https://nixos.mayflower.consulting/blog/2021/09/06/coredumpctl/][Inspecting coredumps like it's 2021]]
+
+** Emacs
+
++ [[https://emacs.stackexchange.com/questions/14354/how-do-i-debug-an-emacs-crash][How do I debug an emacs crash]] (2015)
++ [[https://www.logikalsolutions.com/wordpress/information-technology/core-dumps-2/][Using your core dumps]] (in Emacs, part two, 2022)
++ [[https://www.reddit.com/r/emacs/comments/rxg6z8/comment/hri3mrs/?utm_source=share&utm_medium=web2x&context=3][What to do when emacs dump core]]
+
+*** Gud
+
++ [[https://www.gnu.org/software/emacs/manual/html_node/emacs/Starting-GUD.html][Starting GUD]] how to start debuggers for multiple languages
++ [[https://www.gnu.org/software/emacs/manual/html_node/emacs/GDB-User-Interface-Layout.html][GDB User Interface Layout]] =(let ...)= some variables before your gdb call to
+  change the interface on startup.
++ [[https://www.gnu.org/software/emacs/manual/html_node/tramp/Remote-processes.html#Running-a-debugger-on-a-remote-host][Tramp can start gdb on a remote server]] (but it has limited
+  capabilities and/or its difficult)
+
+** Systemd
+
++ [[https://wiki.archlinux.org/title/Core_dump#Using_systemd][Finding systemd core dumps]] (archwiki)
+
+* Arch
+
+On arch, =systemd-coredump= should be found in =/var/lib/systemd/coredump= and,
+as I was typing in the command to start gdb, it crashed again. So, this will be
+a thinner memory image and I don't need to worry about the =guix shell= profile.
+
+** Coredumpctl
+
+*** Start Quickly
+
+You can inspect the last (or queried) coredump quickly via =sudo coredumpctl
+gdb= and then .... just connect to the root process with emacs lol. You'd need
+to add some flags for the server, which is a bad idea. Otherwise, you'll need to
+export the coredump and unpack it.
+
+
+* Guix
+
+** Guix Shell
+
+It's still unclear to me whether starting GDB under Emacs to analyze an Emacs
+Core Dump will need to be started with the full search path of the =guix
+shell=. In any case, I adapted my =gmacs= startup script to do accept a few options
+
+This way, previous generations of the binary can be run exactly as they were
+with the rest of the startup scripts on the system.
+
+#+begin_src bash
+#!/bin/sh
+export GUIX_SOURCE=$_ECTO/guix/guix
+export EMACS_SOURCE=$_ECTO/emacs/emacs/src
+
+emacs_profile=$GUIX_EXTRA/emacs-g/emacs-g
+search_paths=0
+
+while getopts :Zp: OPT; do
+    case $OPT in
+        Z|+Z)
+            search_paths=1
+            ;;
+        p|+p)
+            emacs_profile="$OPTARG"
+            ;;
+        *)
+            echo "usage: `basename $0` [+-p ARG} [--] ARGS..."
+            echo "-p profile/link"
+            exit 2
+    esac
+done
+shift `expr $OPTIND - 1`
+OPTIND=1
+
+if [ 0 -lt "$search_paths" ]; then
+    echo $emacs_profile
+    guix shell -E "^EMAIL$" \
+         -E 'EMACS_SOURCE' \
+         -E 'GUIX_SOURCE' \
+         -p $emacs_profile \
+         --search-paths
+else
+    echo guix shell -E "^EMAIL$" \
+         -E 'EMACS_SOURCE' \
+         -E 'GUIX_SOURCE' \
+         -p $emacs_profile -- \
+         emacs "$@"
+fi
+#+end_src
+
+* GDB
+
+The filenames are gnarly, and for some reason there are escaped characters in
+the coredump file name. GDB refuses to continue on reading these characters --
+it's =zst= compression, not an =coredump=. +I hope the coredump doesn't have
+metadata correlated with the filename, though you should be able to send these
+files to a new location.+
+
+#+begin_src emacs-lisp
+(setq dc-gdb/coredump-hex
+      "/var/lib/systemd/coredump/core.\\x2eemacs-29\\x2e0\\x2e92-.1000.cb39ebcaa6434eaab0464cc11b587496.4052937.1695316685000000.zst"
+      dc-gdb/coredump
+      "/data/dev/emacsdump/core.emacs-29.0.92-1000.cb39ebcaa6434eaab0464cc11b587496.4052937.1695316685000000.zst"
+      dc-gdb/corebin
+      (file-chase-links "/home/dc/.guix-extra-profiles/emacs-g/emacs-g/bin/emacs")
+      dc-gdb/corebin-real
+      (file-chase-links "/home/dc/.guix-extra-profiles/emacs-g/emacs-g/bin/.emacs-29.0.92-real"))
+
+(defun dc/gud-gdb-cmd (cmd dump)
+  "form the gdb command to call"
+  (format "gdb --fullname %s %s" cmd dump))
+#+end_src
+
+Then invoke with:
+
+#+begin_src emacs-lisp
+(gud-gdb (dc/gud-gdb-cmd dc-gdb/corebin-real dc-gdb/coredump))
+#+end_src
+
+That won't work bc it's =zst= compression ... which i thought might be a
+problem. I thought there was a chance =gdb= might know what to do with it
+though.
+
+This is before I read the bit(s) about =coredumpctl= ...
+
+
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:3daa7903-2e07-4664-8a20-04df51b715de][C/C++ (cpp)]]
++ [[id:a6c90236-e3a9-4223-8afa-d02da892c676][Debug]]
