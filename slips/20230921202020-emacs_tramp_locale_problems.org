@@ -1,0 +1,113 @@
+:PROPERTIES:
+:ID:       ab7b2d63-95b5-4df1-9ce6-9d26f955c250
+:END:
+#+TITLE: Emacs: Tramp Locale Problems
+#+CATEGORY: slips
+#+TAGS:
+
+Tramp Locale Problems
+
++ tramp can't run commands in org-babel because the variables on the right are
+  their defaults in =/etc/locale.conf=
+
+
+| guix              |   | guix          | arch          | override | arch              |
+|-------------------+---+---------------+---------------+----------+-------------------|
+| LANG              | x | en_US.UTF-8   | en_US.UTF-8   | x        | LANG              |
+| LC_CTYPE          |   | "en_US.UTF-8" | "en_US.UTF-8" |          | LC_CTYPE          |
+| LC_NUMERIC        |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_NUMERIC        |
+| LC_TIME           |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_TIME           |
+| LC_COLLATE        |   | "en_US.UTF-8" | "en_US.UTF-8" |          | LC_COLLATE        |
+| LC_MONETARY       |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_MONETARY       |
+| LC_MESSAGES       |   | "en_US.UTF-8" | "en_US.UTF-8" |          | LC_MESSAGES       |
+| LC_PAPER          |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_PAPER          |
+| LC_NAME           |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_NAME           |
+| LC_ADDRESS        |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_ADDRESS        |
+| LC_TELEPHONE      |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_TELEPHONE      |
+| LC_MEASUREMENT    |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_MEASUREMENT    |
+| LC_IDENTIFICATION |   | "en_US.UTF-8" | en_US.UTF-8   | x        | LC_IDENTIFICATION |
+| LC_ALL            |   |               |               |          | LC_ALL            |
+
+This could be several things.
+
++ It wasn't changed on Arch recently (maybe Aug 17, notes from
+  =/etc/locale.gen.pacman.conf=)
++ It could be a guix or glib thing (problems running ansible)
++ mismatch between guix profiles (when tramp connects it adds profiles to path,
+  is there a problem between the two systems?)
++ the guix system definition is set to =en_US.UTF-8= with =glib 2.33= and =glib
+  2.35= in =/run/current-system/locale=. I'm not sure what the inconsistency is
+  ... but this is why english is best. j/k it's interesting how little you hear
+  anyone complain though. I feel like you'd hear half the world about as miffed
+  as I am with my capslock key right now (lol). someone somewhere must have
+  gotten something right.
+
+** Trigger problems
+
++ try to run anything in remote bash with tramp.
++ running on ssh or with =async-shell-command= works fine.
+
+#+begin_src emacs-lisp
+;; This is already set
+;; (add-to-list 'tramp-remote-path 'tramp-own-remote-path)
+#+end_src
+
+#+begin_src bash
+echo fdsa
+#+end_src
+
+#+RESULTS:
+| /gnu/store/m6c5hgqg569mbcjjbp8l8m7q82ascpdl-bash-5.1.16/bin/bash: | warning: | setlocale: | LC_ALL: | cannot | change | locale | (en_US.utf8) |
+| [                                                                 | Babel    | evaluation | exited  | with   | code   |      0 | ]            |
+
+** Capture problems
+
+
+*** Log
+
+#+begin_example prolog
+Executing Bash code block at position 2264...
+Tramp: Encoding local file ‘/tmp/tramp.uhlJXY’ using ‘base64-encode-region’...done
+Tramp: Decoding remote file ‘/ssh:dc@kratos:/tmp/ob-input-vESQt4’ using ‘base64 -d -i >%s’...done
+Wrote /ssh:dc@kratos:/tmp/ob-input-vESQt4
+Tramp: Inserting ‘/ssh:dc@kratos:/tmp/ob-error-iVPhS7’...done
+Babel evaluation exited with code 0
+Tramp: Encoding local file ‘/tmp/tramp.UifDJ2’ using ‘base64-encode-region’...done
+Tramp: Decoding remote file ‘/ssh:dc@kratos:/tmp/sh-ejnPhl’ using ‘base64 -d -i >%s’...done
+Tramp: Inserting ‘/ssh:dc@kratos:/tmp/sh-ejnPhl’...done
+org-make-toc-mode enabled.
+Code block evaluation complete (took 0.3s).
+#+end_example
+
+in other words...
+
+#+begin_quote
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                     <--06-->                     ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                        ||
+           ||                        ||                       <00>
+           ||                        ||                       <01>
+           ||                        ||                       <02>
+           ||                        ||                      <-03->
+           ||                        ||                      <-04->
+           ||                        ||                      <-05->
+      <----13---->                   ||                  <-----16----->
+      <----14---->                   ||                  <-----17----->
+     <-----15----->               <--07-->              <------20------>
+    <------18------>              <--08-->             <-------21------->
+    <------19------>             <---09--->            <-------22------->
+  <--------24-------->           <---10--->            <-------23------->
+ <---------27--------->          <---11--->           <--------26-------->
+ <---------28--------->         <----12---->         <---------29--------->
+<----------31---------->    <--------25-------->    <----------30---------->
+============================================================================
+#+end_quote
