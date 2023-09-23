@@ -1,0 +1,131 @@
+:PROPERTIES:
+:ID:       3db1bcdb-e9ac-4d31-beeb-1f59b513f5cf
+:END:
+#+TITLE: Emacs, Guile, Guix and Geiser
+#+CATEGORY: slips
+#+TAGS:
+* Docs
+
+* Resources
+
+* Geiser  and Guix Setup in Emacs
+
+** Don't touch the prompt
+
+To make some path issues easier to deal with you can manage =GUILE_LOAD_PATH=
+and other variables manually, then run =guix repl= and then connect to that from
+geiser. This was always an easy-out with Clojure's CIDER and NREPL ... but
+that's never workd for me in Guile, regardless of whether it's a TCP connection
+or socket or however. I think this is because (like I always do) I tried to
+learn more about the language environment (_to avoid these problems_) and so I
+customized the =.guile= file. If you change this file, it makes it so Geiser
+can't easily recognize the prompt.
+
+I'm not sure if this is what was wrong.
+
+** Load Path
+
+This has always thrown me off, since Guile is setup differently in Arch. Also,
+any emacs package that contains Guile Scheme -- like =guix.el= and =geiser.el=
+-- will need to have its code compiled and its load path made available in
+whatever Guile REPL is running. The =guix.el= code runs its own Geiser
+repl. Most of this is managed for you and turns out much simpler when using the
+Guix packages.
+
+guile-load-path
+
+#+begin_example emacs-lisp
+;; guile-load-path in emacs-lisp, after reading $HOME/.dotfiles/.dir-locals.el
+'("/home/dc/.dotfiles"
+
+  ;; your direct checkout would (maybe) go here
+
+  ;; This makes the channels like nonguix available. they contain all your
+  ;; channel code from when you run `guix pull`
+  "/home/dc/.config/guix/current/lib/guile/3.0/site-ccache"
+  "/home/dc/.config/guix/current/lib/guile/3.0/site")
+#+end_example
+
+*** Guix Direct Checkout
+
+If you're working from a direct checkout -- see [[https://guix.gnu.org/en/manual/en/guix.html#The-Perfect-Setup][The Perfect Setup]] -- you set the
+load path for that, or it gets set for you in the Guix =.dir-locals.el=. You may
+manage the Guile builds your self (in which case their all done at once and the
+=.go= files are compiled as needed, I believe) or you build it all at once. If
+your load path resembles the above,
+
+*** Patch Path
+
+Guix also creates a =(%patch-path)= function, which for me looks like this:
+
+#+begin_example scheme
+'("/gnu/store/n7mxf3nxckwr9kjzjzsf7za07hbp17gv-emacs-geiser-guile-0.28.1/share/emacs/site-lisp/geiser-guile-0.28.1/src"
+  "/home/dc/.dotfiles"
+  "/home/dc/.config/guix/current/lib/guile/3.0/site-ccache"
+  "/home/dc/.config/guix/current/lib/guile/3.0/site"
+
+  ;; this didn't contain a ghostscript-CVE-2023-36664.patch
+  "/home/dc/.guix-profile/share/guile/site/3.0/gnu/packages/patches"
+  "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile/3.0"
+  "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile/site/3.0"
+  "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile/site"
+  "/gnu/store/4gvgcfdiz67wv04ihqfa8pqwzsb0qpv5-guile-3.0.9/share/guile")
+#+end_example
+
+Other channels have code to manage the patch path, like [[https://github.com/flatwhatson/guix-channel/blob/master/flat/packages.scm][flatwatson/guix-channel]]
+
+I needed to pull my =~/.guix-profile= and then restart emacs.
+
+Before fixing =geiser-guile-load-path= -- I was getting autocomplete for symbols
+inside =~/.dotfiles/ellipsis=, but it wasn't loading other content like nongnu
+stuff. After fixing it, pressing =C-c C-a= to start a Guile REPL and to
+compile/switch to the current module did fix somethings, but autocompleted
+almost nothing. Confusing.
+
+After pulling the profile, everything just worked -- this is how a REPL is
+supposed to feel.
+
+* Notes on Scheme/Geiser
+
+CIDER just works, mostly. When CIDER needs to change, it just changes. I don't
+really know why things are like this, but getting Guile to do what I need to has
+been incredibly arduous... It would probably be like that for any normal Linux
+user that's doesn't have many people to ask for help.
+
+Scheme is both good and bad. Scheme is like a grand unified theory of
+programming languages. Trying to get Geiser to work with every Scheme dialect
+means that the same tool needs to be shared across everything ... this is good
+and it's bad (for noobs like me). One of scheme's strengths is in it's design:
+that it's even really possible for Geiser to handle so much in once place is
+impressive. However, /I'm just guessing/ that it's hard to change.
+
+One of the biggest strengths of Guix is writing packages and debugging your
+builds in the REPL ... It's like Clojure but for packages and system
+images. However, I haven't been able to tap into that. Without someone to help
+triage issues like this for noobs, it may be very frustrating to use Guix when
+it should be very simple and very conducive to learning. When I write packages
+or change my system definition, i just kinda have to cross my fingers and hope
+they build. I can't run problematic blocks of code in the REPL.
+
+** On Guix Home
+
+So this slowdown means I'm still not using Guix Home, but now that I've
+accumulated more automation/complexity without it, it's hard to figure out how
+to move to it. I'm close to doing it. Basically, I just need to extract some
+parts of =.profile= and pull them into Guix Home, then getting the
+Home-generated =.profile= to source static scripts. One issue (at least for
+desktop linux users) is that you have to choose between pulling everything into
+one system where there are many interdependencies and scripting separate
+systems/profiles that share logic in different ways. For noobs, the latter is
+much better because you don't have the experience and mistakes are cheap.
+
+So I'm halfway between i3 and sway and stuck in the middle of Arch and Guix. If
+writing modules that depend on the =nonguix= channel proves simple enough, then
+maybe I can get rid of Arch altogether, but it's not likely. The Arch, Debian
+and RPM package managing systems are basically stuck in the stone age, but the
+corpos at least support the latter two.
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:b4480564-c80f-4993-aefd-89cbec904111][Hack In Guix REPL With Geiser]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]

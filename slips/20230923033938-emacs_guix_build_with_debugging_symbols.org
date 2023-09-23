@@ -1,0 +1,308 @@
+:PROPERTIES:
+:ID:       5fbd3211-1811-4fd3-8fbe-9b179d726d14
+:END:
+#+TITLE: Emacs: Guix Build With Debugging Symbols
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+* Resources
+
+* On Guix
+
+One thing that makes Guix and Nix amazing: that you can even search a singular
+repository with so much build logic (and excellent reuse of code: thanks
+Guile). To some extent, you can get this with Arch, Debian or RPM's, but not
+really.
+
+While learning, configuring Guix and Guile are a bit of a challenge, it's
+accelerated my understanding of Linux and Build Systems. Not only does that
+learning come quickly, but it's also very easy to write packages (or even to
+import them). This is because package inherit more than just what's specified by
+the names/structure in the dependency tree.
+
+Even better: what defines the structure of systems uses the same
+logic/interfaces as what defines packages -- so now linux systems & home
+profiles are just package profiles. So you can find the logic for bootloaders or
+file systems -- even if you were targeting an embedded device. Here, you would
+build a system profile (more likely just a package profile) whose main artifact
+is what you'd load onto the device. If you're virtualizing the device hardware,
+then an alternate package/system can produce a slightly different binary. Using
+system profiles for embedded devices seems to not make much sense, initially,
+since these don't have file systems.
+
+* Emacs Package Structure
+
+Just experimenting with mermaid here.
+
+#+begin_src mermaid :file img/guix-emacs-req.svg
+stateDiagram-v2
+   [*] --> emacs
+   emacs --> emacs_next: adds 3 patches<br/>inputs "sqlite"<br/>native inputs "autoconf"
+   emacs --> emacs_xwidgets: "--with-xwidgets"
+   emacs --> emacs_no_x: removes "--with-cairo"
+   emacs_minimal
+   emacs_next --> emacs_next_tree_sitter: inputs "sqlite", "tree-sitter"
+   emacs_next_tree_sitter --> emacs_next_pgtk: "--with-pgtk"<br/>patches "emacs-pgtk-super-key-fix.patch"
+   emacs_next_pgtk --> emacs_next_pgtk_widgets: "--with-xwidgets"<br/>inputs<br/>"gsettings-desktop-schemas"<br/>"webkitgtk-with-libsoup2"
+#+end_src
+
+#+RESULTS:
+[[file:img/guix-emacs-req.svg]]
+
+Emacs Direct Dependencies
+
+#+begin_src sh :results silent
+guix graph --type=package --max-depth=1 emacs-next-pgtk \
+    | grep -e "@" \
+    | cut -d'"' -f4
+#+end_src
+
+| emacs-next-pgtk@29.0.92 | gnutls@3.7.7         | coreutils@9.1  | cairo@1.16.0   | lcms@2.13.1         | ghostscript@9.56.1 | libxpm@3.5.13  | libotf@0.9.16  |
+| autoconf@2.69           | ncurses@6.2.20210619 | gzip@1.12      | pango@1.50.10  | libjpeg-turbo@2.1.4 | poppler@22.09.0    | libxml2@2.9.14 | m17n-lib@1.8.0 |
+| pkg-config@0.29.2       | ld-wrapper@0         | mailutils@3.16 | harfbuzz@5.3.1 | libselinux@3.4      | elogind@252.9      | libice@1.0.10  |                |
+| texinfo@6.8             | binutils@2.38        | gpm@1.20.7     | libxft@2.3.4   | acl@2.3.1           | libpng@1.6.37      | libsm@1.2.3    |                |
+| sqlite@3.39.3           | glibc@2.35           | libx11@1.8.1   | libtiff@4.4.0  | jansson@2.14        | zlib@1.2.13        | alsa-lib@1.2.4 |                |
+| tree-sitter@0.20.8      | libgccjit@10.4.0     | gtk+@3.24.37   | giflib@5.2.1   | gmp@6.2.1           | librsvg@2.54.5     | dbus@1.14.0    |                |
+
+Emacs Reverse Dependency Graph ... hmm it's missing a few entries
+
+#+begin_src sh :results file :file img/emacs-revdeps.svg
+guix graph --type=reverse-package emacs | dot -Tsvg
+#+end_src
+
+#+RESULTS:
+[[file:img/emacs-revdeps.svg]]
+
+* Building
+
+Instructions for compiling a debuggable version of emacs can be found in
+=etc/DEBUG= in the emacs repository.
+
+** Emacs Source Setup
+
+Even though I'll be building with Guix, the emacs repository will provide some
+information about build options.
+
+Clone the emacs repository, then run =./autogen.sh= from the root. Then run
+=./configure --help=
+
+** Guix Emacs Package structure
+
+The inheritance for =emacs-next-*= packages are fairly easy to follow and
+descend from =emacs=. They explicitly add these configure flags:
+
++ --with-modules
++ --with-cairo
++ --with-native-compilation
++ --disable-build-details
++ --with-pgtk :: if building emacs-next-pgtk
++ --with-xwidgets :: if building emacs-next-pgtk-xwidgets
+
+emacs-next-treesitter
+
+emacs-next-pgtk
+
+
+*** Guix Build Systems
+
+The guix packages for emacs are in =gnu/packages/emacs.scm= and are mostly built
+with the =glib-or-gtk-build-system=, which derives from the =gnu-build-system=
+to add two phases (after install):
+
++ glib-or-gtk-wrap
++ glib-or-gtk-compile-schemas
+
+It's important to determine the defaults imposed on builds via
+=gnu-build-system= and =glib-or-gtk-build-system=. You can override basically
+anything in a Guix package build and with minimal code ... but you need to know
+what it's doing. This could be obtained /a priori/ or /a postieri/; the former
+meaning you can search through the code base, the latter meaning that you just
+try to run the builds and see what shows up in the Guix derivations.
+
++ Search =gnu/packages= by grepping for things like =CFLAGS= or =' -g'=.
++ Search =guix/build= or =guix/build-system=
++ Read the docs: [[https://guix.gnu.org/manual/en/guix.html#Build-Phases][Build Systems]], [[https://guix.gnu.org/manual/en/guix.html#Build-Phases][Build Phases]] and   [[https://guix.gnu.org/manual/en/guix.html#Installing-Debugging-Files][Installing Debugging Files]]
+
+Since from what I remember, emacs builds can be slow and debug builds can be
+slow to run, I want more detail /ahead of time/ about what's going to happen
+... this means I will be "less productive" for some definition of the terms
+"less" and "productive."
+
+#+begin_quote
+Hey, as long as it looks like your busy and your boss won't understand, then if
+you get the widgets in the drop down to click a little faster, that's all that
+matters right?
+#+end_quote
+
+From the section on Build Phases:
+
+#+begin_quote
+[The strip phase will] Strip debugging symbols from ELF files (unless
+#:strip-binaries? is false) and copy them to the debugging output when
+available.
+#+end_quote
+
+Here's the bit of logic in =guix/build-systems/gnu.scm= that does that, in
+=lower=.
+
+#+begin_src scheme
+(outputs (if strip-binaries?
+             outputs
+             (delete "debug" outputs)))
+#+end_src
+
+Lower the complementary operation to lift. In the context of guix often involves
+macros or gexp's, the latter of which is a functor that preserves logic and
+delays its execution later, when the values of paths in a store location can be
+known.
+
+#+begin_quote
+In [[https://en.wikipedia.org/wiki/Lie_algebra_representation][Lie Algebra]], relations determined by an algebra are *lifted* to a
+space where things obey the relations of a Lie Group, then they are *lowered*
+again and /voila/ you've made the [[https://en.wikipedia.org/wiki/Exponential_map_(Lie_theory)][matrix exponential]] a little easier.
+
+Whether that works for a problem depends on whether your manifolds retain enough
+symmetries, I believe.
+#+end_quote
+
+Here we can see that bins are stripped, though where I was confused: will simply
+including a debug output result in unstripped binaries? No, =strip-binaries?=
+will remove the debug target altogether.
+
+#+begin_src scheme
+(glib-or-gtk-build
+ name inputs #:key guile source
+ (outputs '("out"))
+ (search-paths '())
+ (configure-flags ''())
+ ;; Disable icon theme cache generation.
+ (make-flags ''("gtk_update_icon_cache=true"))
+ (out-of-source? #f)
+ (tests? #t)
+ (test-target "check")
+ (parallel-build? #t)
+ (parallel-tests? #t)
+ (validate-runpath? #t)
+ (patch-shebangs? #t)
+ (strip-binaries? #t)
+ (strip-flags ''("--strip-debug"))
+ (strip-directories ''("lib" "lib64" "libexec" "bin" "sbin"))
+ (phases '(@ (guix build glib-or-gtk-build-system)
+             %standard-phases))
+ (glib-or-gtk-wrap-excluded-outputs ''())
+ (system (%current-system))
+ (imported-modules %glib-or-gtk-build-system-modules)
+ (modules %default-modules)
+ allowed-references
+ disallowed-references)
+#+end_src
+
+The =gnu-build-system= also the =static-package= method for building staticaly
+linked packages, but it isn't widely used. There are about 12 other references:
+bash-minimal, e2fsprogs, f2fs-tools, ntfs-3g, freetype, harfbuzz ... things
+needed in early boot where determinism is good and complexity is bad.
+
+**** guix-devel-mode
+
+The =guix-devel-mode= will accelerate your builds. By default, it has seven
+commands, accessible via =C-c .=. When the build output appears, use =C-x M-f=
+to automatically dive into the deriviation and build logs.
+
+You can use these regexps for =auto-mode-alist=, though it's different with
+=use-package=.
+
+#+begin_src emacs-lisp
+(setup (:pkg guix)
+  (:option guix-read-package-name-function #'guix-read-package-name-at-point)
+  (:with-mode guix-derivation-mode
+    (:file-match "\\/gnu\\/store\\/.*\\.drv\\'"))
+  (:with-mode guix-build-log-mode
+    (:file-match "\\/var\\/log\\/guix\\/drvs\\/.*\\.drv\\'")))
+#+end_src
+
+
+Run the builds and ensure =guix-build-log-mode= and =guix-derivation-mode= are
+turned on in the right places. When you run the builds, checking the derivations
+lets you see the order in which things are built and what it's actually
+expecting. The build logs let you check for the compilation/test outputs.
+
+You may need to force =guix.el= to refuse substitutes. The package definition
+for =emacs-next-pgtk-debug=, as specified, should build all the way down to
+emacs at least. You can force this with a file local variable (see the top of
+the package definition).
+
+** Emacs Debug Package
+
+I still haven't quite used this for gdb, but it at least runs. Some of the
+modules in the define are unnecessary.
+
+This file should be defined within a subdirectory:
+
+=$NAMESPACE_ROOT/ellipsis/packages/emacs.scm=
+
+Just ensure that =-L $NAMESPACE_ROOT= is passed to your guix commands.
+
+#+begin_src scheme
+;; -*- guix-use-substitutes: nil -*-
+
+(define-module (ellipsis packages emacs)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix packages)
+  #:use-module (guix gexp)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
+  #:use-module (guix build-system)
+  #:use-module (guix build-system gnu)
+  #:use-module (guix build-system glib-or-gtk)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages autotools)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages emacs)
+  #:use-module (gnu packages freedesktop)
+  #:use-module (gnu packages gcc)
+  #:use-module (gnu packages gettext)
+  #:use-module (gnu packages glib)
+  #:use-module (gnu packages gtk)
+  #:use-module (gnu packages guile)
+  #:use-module (gnu packages image)
+  #:use-module (gnu packages pkg-config)
+  #:use-module (gnu packages texinfo)
+  #:use-module (gnu packages tls)
+  #:use-module (gnu packages webkit)
+  #:use-module (gnu packages xml)
+  #:use-module (guix utils)
+  #:use-module (ice-9 match)
+  #:use-module (srfi srfi-1))
+
+(define-public emacs-next-pgtk-debug
+  (package
+    (inherit emacs-next-pgtk)
+    (name "emacs-next-pgtk-debug")
+    (source
+     (origin
+       (inherit (package-source emacs-next-pgtk))
+       (patches
+        (append (search-patches "emacs-pgtk-super-key-fix.patch")
+                (origin-patches (package-source emacs-next-tree-sitter))))))
+    (arguments
+     (substitute-keyword-arguments
+         `(#:strip-binaries? #f
+           ,@(package-arguments emacs-next-pgtk))
+       ((#:make-flags flags #~'())
+        #~(cons* "CFLAGS=-O0 -g -w" #$flags))
+       ((#:configure-flags flags #~'())
+        #~(cons* "--enable-checking=yes,glyphs"
+                 "--enable-check-lisp-object-type"
+                 #$flags))))
+    (synopsis "Emacs text editor with @code{pgtk} and @code{tree-sitter} support")
+    (description "This Emacs build implements graphical UI purely in terms
+of GTK and supports tree-sitter.")))
+#+end_src
+
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:a6c90236-e3a9-4223-8afa-d02da892c676][Debug]]

@@ -6,6 +6,17 @@
 #+TAGS:
 
 * Resources
+
+This is almost entirely new territory for me. I really wouldn't be able to do
+any of this without these resources and help from =#emacs= on IRC and
+elsewhere. My org-roam setup isn't geared towards using footnotes. I try to
+attribute things, but it's just too much work to doubly/triply link
+things. Footnotes are fairly simple to use, but i'm my tangent stack-frame
+already includes about four rabbit-holes right now, so it is what it is.
+
+... also, there really is no intended audience for these notes. They just happen
+to be available online.
+
 + [[https://nixos.mayflower.consulting/blog/2021/09/06/coredumpctl/][Inspecting coredumps like it's 2021]]
 
 ** Emacs
@@ -22,19 +33,52 @@
 + [[https://www.gnu.org/software/emacs/manual/html_node/tramp/Remote-processes.html#Running-a-debugger-on-a-remote-host][Tramp can start gdb on a remote server]] (but it has limited
   capabilities and/or its difficult)
 
+*** Compilation
+
++ [[https://earthly.dev/blog/make-flags/][Understanding and using makefile flags]]
++ [[https://practical.li/blog/posts/build-emacs-from-source-on-ubuntu-linux/][Building Emacs From Source on Ubuntu]] (2023)
+
+** GDB
+
++ [[https://sourceware.org/gdb/onlinedocs/gdb/Startup.html][Startup]]
++ [[https://sourceware.org/gdb/onlinedocs/gdb/Logging-Output.html#Logging-Output][Logging]]
++ [[https://sourceware.org/gdb/onlinedocs/gdb/TUI.html][TUI interface]] a little easier from the terminal ([[https://www.youtube.com/watch?v=mm0b_H0KIRw][video]])
+
+*** Tools
+
++ [[https://github.com/cyrus-and/gdb-dashboard][GDB Dashboard]] req. the Python API
+
 ** Systemd
 
 + [[https://wiki.archlinux.org/title/Core_dump#Using_systemd][Finding systemd core dumps]] (archwiki)
 
+** Tools
+
++ [[github:0xswitch/hellf][0xswitch/hellf]] elf-patching python library
+
 * Notes
-** Video: Adding coredumps to your debugging toolkit
+
+** Videos
+*** [[https://www.youtube.com/watch?v=IqH3Mh-OI-8][Cool stuf about GDB you didn't know]]
+
+***** TODO [[https://github.com/mpsq/emacs-gcc-wayland-devel-builder/blob/main/assets/PKGBUILD][mpsq/emacs-gcc-wayland-devel-builder]] and [[https://gitlab.archlinux.org/archlinux/packaging/packages/emacs/-/blob/main/PKGBUILD?ref_type=heads][emacs-wayland]]
+
+compare this and other builds with the Guix pgtk build
+
++ [ ] can the source directory remain in the guix build? ... does this req. too
+  much space?
++ [ ] add =GDK_BACKEND=pgtk= to launch flags
++ Check +flat whatson+ ... added native comp to pgtk (at 28.2.50, native default
+  in 29)
+
+*** Adding coredumps to your debugging toolkit
 
 + Panics only show one frame
 + Coredumps: triggered by faults/panics/asserts. captures registers/memory for
   later analysis. Data streamed out immediately or stored in NV-RAM (in case of
   immediate reboot.)
 
-*** Coredump components/requirements
+**** Coredump components/requirements
 
 + It saves regions in RAM to binary format.
 + To decode threads, you need the kernel structure your app is running (?). This
@@ -44,21 +88,16 @@
 + You need debugging symbols or you can't really hop from stack frames to
   source.
 
-*** Zephyr Assertion Call Graph
+**** Zephyr Assertion Call Graph
 
-#+begin_src emacs-lisp
-;; (add-to-list 'tramp-remote-path 'tramp-own-remote-path)
 
-#+end_src
+* Emacs
 
-#+begin_src bash
-echo fdsa
-#+end_src
+** Emacs Packaging
 
-#+RESULTS:
-| /gnu/store/m6c5hgqg569mbcjjbp8l8m7q82ascpdl-bash-5.1.16/bin/bash: | warning: | setlocale: | LC_ALL: | cannot | change | locale | (en_US.utf8) |
-| [                                                                 | Babel    | evaluation | exited  | with   | code   |      0 | ]            |
-
+I'm using =emacs-guix= packages as well as =straight.el=. Using =M-x
+locate-library= along with =embark-collect= or =embark-export= provides the
+package locations with information about where emacs has loaded them from.
 
 * Arch
 
@@ -77,6 +116,7 @@ export the coredump and unpack it.
 
 
 *** TODO dump from systemd unit on failure
+
 
 
 *** Process coredump
@@ -179,8 +219,6 @@ coredumpctl list --json=short | jq '. | last | @text '"$joinargs"
 # "\(.pid) \(.gid) \(.uid) \('.fdsa)|fdsa) \(|) \(fdsa) \(|) \(@test) \("\(.evil?')"
 #+end_src
 
-
-
 * Guix
 
 ** Guix Shell
@@ -188,6 +226,11 @@ coredumpctl list --json=short | jq '. | last | @text '"$joinargs"
 It's still unclear to me whether starting GDB under Emacs to analyze an Emacs
 Core Dump will need to be started with the full search path of the =guix
 shell=. In any case, I adapted my =gmacs= startup script to do accept a few options
+
+#+begin_quote
+Actually, it will, but these paths will need to be injected during a gdb init
+script.
+#+end_quote
 
 This way, previous generations of the binary can be run exactly as they were
 with the rest of the startup scripts on the system.
@@ -235,6 +278,41 @@ fi
 
 * GDB
 
+** Init Files/Commands
+
+Overview on [[https://sourceware.org/gdb/onlinedocs/gdb/Startup.html][startup]] and [[https://sourceware.org/gdb/onlinedocs/gdb/Initialization-Files.html#Initialization-Files][initialization files]] and [[https://sourceware.org/gdb/onlinedocs/gdb/Command-Files.html#Command-Files][command files]].
+
+The process for creating these files/scripts should be streamlined.
+
++ the =-*ex= options declare commands and the =-*x= options declare files.
++ for each stage, GDB loads the first file it finds.
++ Other locations are possible, but this is simpler.
+
+Files, in order.
+
+| File (XDG path)                  |                                   |
+|----------------------------------+-----------------------------------|
+| XDG_CONFIG_HOME/gdb/gdbearlyinit |                                   |
+| system.gdbinit                   | can be suppressed by =-nx= option |
+| XDG_CONFIG_HOME/gdb/gdbinit      |                                   |
+| $(pwd)/.gdbinit                  |                                   |
+
+Stages
+
++ Early Init :: Command/files specified by =-eiex= and =-eix=
+  - restricted to =set= and =source=
++ Init :: Command/files specified by =-iex= and =-ix=.
+  - These are applied "before GDB init files get executed and before inferior
+    gets loaded."
++ Local Init :: Command/files specified by =-ex= and =-x=
+
+
+
+
+
+* GDB, first attempt
+
+
 #+begin_src emacs-lisp
 (defun dc/gud-gdb-cmd (cmd dump)
   "form the gdb command to call"
@@ -271,17 +349,8 @@ though.
 
 This is before I read the bit(s) about =coredumpctl= ...
 
-* Emacs
-
-** Packaging
-
-I'm using =emacs-guix= packages as well as =straight.el=. Using =M-x
-locate-library= along with =embark-collect= or =embark-export= provides the
-package locations with information about where emacs has loaded them from.
-
-
-
 * Roam
 + [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
 + [[id:3daa7903-2e07-4664-8a20-04df51b715de][C/C++ (cpp)]]
 + [[id:a6c90236-e3a9-4223-8afa-d02da892c676][Debug]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
