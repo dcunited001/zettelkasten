@@ -5,6 +5,8 @@
 #+DESCRIPTION: Info on keyboards, whether x11/wayland or software/hardware or just docs
 #+TAGS:
 
+
+
 * Roam
 + [[id:8c6d7cdd-74af-4307-b1df-8641752a1c9f][Xorg]]
 
@@ -21,21 +23,42 @@
 + [[https://github.com/system76/launch/blob/master/pcb-lite-iso/launch-lite-iso.kicad_prl][System76/launch]]
 
 ** Software
-+ [[www.keyboard-layout-editor.com][Keyboard Layout Editor]]
++ [[https://www.keyboard-layout-editor.com][Keyboard Layout Editor]]
 + [[github:manabu/keyboard-layout-image-generator][manabu/keyboard-layout-image-generator]]
-+ [[github:alexriss/keyboard-layout-converter][alexriss/keyboard-layout-converter]]
-  - convert windows layout to xkb symbols using python
-+ [[https://github.com/xkbmon/xkbmon][xkbmon/xkbmon]] display keyboard layout in taskbar (dwm, i3, tmux, etc)
-+ [[https://github.com/divvun/kbdgen][divvun/kbdgen]] (rust) generate keyboards for many platforms from one spec
-  - example project: [[github:giellalt/keyboard-sme][giellalt/keyboard-sme]]
-+ [[github:divvun/xkb-parser][divvun/xkb-parser]] (rust) XKB format parser
-  - and it parses the geometry files ... well kinda (FIXME)
+
+*** Shortcut Doc
+
 + [[https://github.com/waldobronchart/ShortcutMapper][Waldobronchart/ShortcutMapper]]
   - Exactly what I'm looking for, except printable.
   - It should be fairly trivial to get [[https://github.com/noctuid/general.el][noctoid/general.el]] to output the last
     =X-*= modifier-key pair, for a mode/context.
   - From here, ShortcutMapper's python lib can interpret the bindings and
     generate the keyboard description metadata.
+
+*** Parsers
+
++ [[github:divvun/xkb-parser][divvun/xkb-parser]] (rust) XKB format parser
+  - and it parses the geometry files ... well kinda (FIXME)
+
+*** Desktop Tools
+
++ [[https://github.com/xkbmon/xkbmon][xkbmon/xkbmon]] display keyboard layout in taskbar (dwm, i3, tmux, etc)
+
+*** Layout Mgmt/Conversion
+
++ [[https://github.com/divvun/kbdgen][divvun/kbdgen]] (rust) generate keyboards for many platforms from one spec
+  - example project: [[github:giellalt/keyboard-sme][giellalt/keyboard-sme]]
++ [[github:alexriss/keyboard-layout-converter][alexriss/keyboard-layout-converter]]
+  - convert windows layout to xkb symbols using python
+
+**** KLFC
+
++ [[https://github.com/39aldo39/klfc][39aldo39/klfc]] Keyboard Layout Files Creator is a tool to create advanced
+  keyboard layouts in various formats. Currently, exporting to XKB, PKL, KLC,
+  keylayout, TMK and AHK is supported.
++ [[https://git.42l.fr/neil/klf2tux][git.42l.fr/neil/klf2tux]] Converts Keyboard Layout Files to TUXEDO Computers SVG
+  keyboard layout.
++ [[https://github.com/tuxedocomputers/keyboard-layouts][tuxedocomputers/keyboard-layouts]] layout SVG's for various models
 
 ** Guides
 + [[https://emacsnotes.wordpress.com/2022/10/30/use-xkb-to-setup-full-spectrum-of-modifiers-meta-alt-super-and-hyper-for-use-with-emacs/][Use XKB to setup a full spectrum of modifiers (meta, alt, super, hyper)]]
@@ -261,6 +284,27 @@ See [[https://github.com/xkbcommon/libxkbcommon/blob/master/doc/user-configurati
 
 *** KDE (Garuda)
 
++ [[https://bugs.kde.org/show_bug.cgi?id=447206][Bug #447206]]
++ [[Support XKB_CONTEXT_NO_SECURE_GETENV flag ][KWin!3402]]
++ [[https://bugs.kde.org/show_bug.cgi?id=432818][Bug #432818]] i updated with information
+
+**** Misc
+
+***** Check logs to see whether keyboard is loaded
+
+Useful logs at =.local/share/sddm/wayland-session.log=.
+
+See Bug #447206. the author places this in
+=.config/plasma-workspace/env/setkeymap.sh=
+
+#+begin_src sh
+export QT_LOGGING_RULES="kwin_*.debug=true"
+export XKB_LOG_VERBOSITY=10
+export KWIN_XKB_DEFAULT_KEYMAP=yes
+export XKB_DEFAULT_LAYOUT=mylayout
+#+end_src
+
+
 **** FCITX
 
 The doc has fairly comprehensive information about how xkbcommon works with
@@ -350,8 +394,6 @@ There are two other relevant contexts outside of xkbcommon, which are unrelated
 + The [[https://wayland.app/protocols/][wayland-protocols]] input context: [[https://wayland.app/protocols/input-method-unstable-v1][zwp_input_method_context_v1]]
 + The fcitx5: [[https://fcitx-im.org/wiki/Basic_concept#Input_Context][Input Context]]
 
-
-
 ** xkbcli
 
 The main bin shipped with packages is =xkbcli=
@@ -410,17 +452,52 @@ or see the jq manpage, or online docs  at https://jqlang.github.io/jq
 
 *** Compiling a keymap
 
-Specify the XKB-specific options until you get output that looks right. With
-=--rvmlo= it won't check the keymap.
+**** RMLVO
 
-#+begin_src sh
+Specify the XKB-specific options until you get output that looks right. With
+=--rmlvo= it won't check the keymap.
+
+RMLVO parameters
+
+#+begin_src sh :results none :noweb-ref rmlvo_us :eval never
+xmodel="pc(pc105)"
+xlayout=us
+xrules=evdev
+xvariant="altgr-intl"
+xoptions='lv3:menu_switch,ctrl:hyper_capscontrol,lv3:ralt_alt'
+#+end_src
+
+Dump RMLVO
+
+#+begin_src sh :results output code :noweb yes
+<<rmlvo_us>>
+
 xkbcli compile-keymap \
        --model=$xmodel \
        --rules=$xrules \
        --layout=$xlayout \
        --variant=$xvariant \
        --options=$xoptions \
-       --rvmlo --verbose
+       --rmlvo # --verbose
+#+end_src
+
+#+RESULTS:
+#+begin_src sh
+rules: "evdev"
+model: "pc(pc105)"
+layout: "us"
+variant: "altgr-intl"
+options: "lv3:menu_switch,ctrl:hyper_capscontrol,lv3:ralt_alt"
+#+end_src
+
+To see just the warnings:
+
+#+begin_src sh
+xkbcli compile-keymap \
+       --verbose \
+       --rules evdev \
+       --model pc105 \
+       --layout io 1>/dev/null
 #+end_src
 
 **** Where to place the keymap
@@ -496,7 +573,7 @@ And it also doesn't expand tildas.
 
 #+begin_src sh
 xkbcli compile-keymap --include-defaults --include="~/.xkb" \
-       --model="pc(pc105fdsa)" \
+       --model="pc(pc105)" \
        --rmlvo --verbose
 #+end_src
 

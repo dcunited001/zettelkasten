@@ -1,0 +1,596 @@
+:PROPERTIES:
+:ID:       b03a69ac-966c-4289-afcc-c93ed8f32578
+:END:
+#+TITLE: Emacs keys: Convert gnus keybindings to svg
+#+CATEGORY: slips
+#+TAGS:
+
+* Resources
+
+** KLF Format
+
++ [[https://github.com/39aldo39/klfc][39aldo39/klfc]] convert from XKB/etc to this format
++ [[https://git.42l.fr/neil/klf2tux/src/branch/root/klf2tux.py][git.42l.fr/neil/klf2tux]] a python script with extremely minimal dependencies to
+  generate the data.
+
+* Notes
+
+** Goal
+
+*** For KLF
+
+The goal here would be to take the emacs keymap metadata, squash the =short=
+descriptions to, ideally 7 characters and reorient the data structures around
+the =*.klf= json format.
+
+*** Generally
+
+There's enough metadata for emacs to do print keymaps like this, but most
+approaches are going to run into problems like:
+
++ flattening keybindings from multiple modes/maps, esp when they're only found
+  in a specific buffer or context.
++ finding symbols/icons to convey the meaning -- most emacs commands are a
+  subset of a cartesion product of $\left(actions\oplus contexts\right) \otimes
+  verbs$. so there is a lot of unnecessary complexity remaining if you map
+  everything.
++ keyboard geometry per country/etc. i don't think that's too big of an issue
+  here, unless it would eventually become an issue. however, when trying to fit
+  your data to a data structure based on a foreign keyboard, that could be
+  difficult.
+
+** Other approaches
+
+If there were a standard SVG file with the right metadata in it, then something
+like =esxml= queries could be used to update it. This is possible, since
+=klf2tux= provides SVG's with unique identifiers in them. However, these are in
+the text, like =%Q= and etc. whereas the XML id's are randomly generated. It's
+not ideal, but still simple to work with.
+
+** Utils
+
+#+begin_src emacs-lisp
+(setq-local dc/klf2tux-source "./kb/klf2tux")
+#+end_src
+
+
+#+begin_src emacs-lisp
+
+#+end_src
+
+*** Output Format
+
+Empty Keymap.
+
++ The characters grave, tilda, circumflex, acute and diaeresis must be
+  resubstituted in the final format.
+
+#+begin_src emacs-lisp
+{
+  "fullName": "English (US, intl., with dead keys)",
+  "name": "us-intl",
+  "singletonKeys": [
+    [ "Alt_R", "AltGr" ]
+  ],
+  "shiftlevels": [ "None", "Shift" ] },
+  "keys": [
+    { "pos": "~", "letters": [ "grave", "tilde" ] },
+    { "pos": "1", "letters": [ "1", "!" ] },
+    { "pos": "2", "letters": [ "2", "@" ] },
+    { "pos": "3", "letters": [ "3", "#" ] },
+    { "pos": "4", "letters": [ "4", "$" ] },
+    { "pos": "5", "letters": [ "5", "%" ] },
+    { "pos": "6", "letters": [ "6", "circumflex" ] },
+    { "pos": "7", "letters": [ "7", "&" ] },
+    { "pos": "8", "letters": [ "8", "*" ] },
+    { "pos": "9", "letters": [ "9", "(" ] },
+    { "pos": "0", "letters": [ "0", ")" ] },
+    { "pos": "-", "letters": [ "-", "_" ] },
+    { "pos": "+", "letters": [ "=", "+" ] },
+    { "pos": "Q", "letters": [ "q", "Q" ] },
+    { "pos": "W", "letters": [ "w", "W" ] },
+    { "pos": "E", "letters": [ "e", "E" ] },
+    { "pos": "R", "letters": [ "r", "R" ] },
+    { "pos": "T", "letters": [ "t", "T" ] },
+    { "pos": "Y", "letters": [ "y", "Y" ] },
+    { "pos": "U", "letters": [ "u", "U" ] },
+    { "pos": "I", "letters": [ "i", "I" ] },
+    { "pos": "O", "letters": [ "o", "O" ] },
+    { "pos": "P", "letters": [ "p", "P" ] },
+    { "pos": "[", "letters": [ "[", "{" ] },
+    { "pos": "]", "letters": [ "]", "}" ] },
+    { "pos": "A", "letters": [ "a", "A" ] },
+    { "pos": "S", "letters": [ "s", "S" ] },
+    { "pos": "D", "letters": [ "d", "D" ] },
+    { "pos": "F", "letters": [ "f", "F" ] },
+    { "pos": "G", "letters": [ "g", "G" ] },
+    { "pos": "H", "letters": [ "h", "H" ] },
+    { "pos": "J", "letters": [ "j", "J" ] },
+    { "pos": "K", "letters": [ "k", "K" ] },
+    { "pos": "L", "letters": [ "l", "L" ] },
+    { "pos": ";", "letters": [ ";", ":" ] },
+    { "pos": "'", "letters": [ "acute", "diaeresis" ] },
+    { "pos": "Z", "letters": [ "z", "Z" ] },
+    { "pos": "X", "letters": [ "x", "X" ] },
+    { "pos": "C", "letters": [ "c", "C" ] },
+    { "pos": "V", "letters": [ "v", "V" ] },
+    { "pos": "B", "letters": [ "b", "B" ] },
+    { "pos": "N", "letters": [ "n", "N" ] },
+    { "pos": "M", "letters": [ "m", "M" ] },
+    { "pos": ",", "letters": [ ",", "<" ] },
+    { "pos": ".", "letters": [ ".", ">" ] },
+    { "pos": "/", "letters": [ "/", "?" ] },
+    { "pos": "\\", "letters": [ "\\", "|" ] },
+    { "pos": "Iso", "letters": [ "\\", "|" ] },
+  ]
+}
+
+#+end_src
+
+* Gnus Groups
+
+Use =embark-bindings= within the main =gnus-group= buffer, run =embark-collect=
+then convert to table.
+
+#+name: ggroup-raw
+| short        | key | command                                 | desc                                                                 |
+|--------------+-----+-----------------------------------------+----------------------------------------------------------------------|
+| mark         | #   | gnus-group-mark-group                   | Mark the current group.                                              |
+| best-unread  | ,   | gnus-group-best-unread-group            | Go to the group with the highest level.                              |
+| first-unread | .   | gnus-group-first-unread-group           | Go to the first group with unread articles.                          |
+| select       | =   | gnus-group-select-group                 | Select this newsgroup.                                               |
+| desc         | ?   | gnus-group-describe-briefly             | Give a one line description of the group mode commands.              |
+| server       | ^   | gnus-group-enter-server-mode            | Jump to the server buffer.                                           |
+| post         | a   | gnus-group-post-news                    | Start composing a message (a news by default).                       |
+| browse       | B   | gnus-group-browse-foreign-server        | Browse a foreign news server.                                        |
+| bogus        | b   | gnus-group-check-bogus-groups           | Check bogus newsgroups.                                              |
+| catchup-all  | C   | gnus-group-catchup-current-all          | Mark all articles in current newsgroup as read.                      |
+| catchup      | c   | gnus-group-catchup-current              | Mark all unread articles in the current newsgroup as read.           |
+| find-new     | F   | gnus-group-find-new-groups              | Search for new groups and add them.                                  |
+| get-new      | g   | gnus-group-get-new-news                 | Get newly arrived articles.                                          |
+| news         | i   | gnus-group-news                         | Start composing a news.                                              |
+| jump         | j   | gnus-group-jump-to-group                | Jump to newsgroup GROUP.                                             |
+| list-all     | L   | gnus-group-list-all-groups              | List all newsgroups with level ARG or lower.                         |
+| list         | l   | gnus-group-list-groups                  | List newsgroups with level LEVEL or lower that have unread articles. |
+| mail         | m   | gnus-group-mail                         | Start composing a mail.                                              |
+| next         | N   | gnus-group-next-group                   | Go to next N’th newsgroup.                                           |
+| next-unread  | n   | gnus-group-next-unread-group            | Go to next N’th unread newsgroup.                                    |
+| prev         | P   | gnus-group-prev-group                   | Go to previous N’th newsgroup.                                       |
+| prev-unread  | p   | gnus-group-prev-unread-group            | Go to previous N’th unread newsgroup.                                |
+| quit         | Q   | gnus-group-quit                         | Quit reading news without updating .newsrc.eld or .newsrc.           |
+| exit         | q   | gnus-group-exit                         | Quit reading news after updating .newsrc.eld and .newsrc.            |
+| restart      | R   | gnus-group-restart                      | Force Gnus to read the .newsrc file.                                 |
+| read-init    | r   | gnus-group-read-init-file               | Read the Gnus elisp init file.                                       |
+| save-newsrc  | s   | gnus-group-save-newsrc                  | Save the Gnus startup files.                                         |
+| toggle       | U   | gnus-group-toggle-subscription          |                                                                      |
+| toggle-at-p  | u   | gnus-group-toggle-subscription-at-point | Toggle subscription of the current group.                            |
+| suspend      | z   | gnus-group-suspend                      | Suspend the current Gnus session.                                    |
+
+handles table input, but not output
+
+#+begin_src jq :results output table :stdin ggroup-raw :compact yes
+. | first | {"pos": .key }
+#+end_src
+
+#+RESULTS:
+: {"pos":"#"}
+
+#+name: ggroup-simple
+| short   | key                         | command                                 | desc |
+|---------+-----------------------------+-----------------------------------------+------|
+| C-x C-t | gnus-group-transpose-groups | Move the current newsgroup up N places. |      |
+
+#+begin_src jq :stdin ggroup-simple
+. | first |
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[
+  {
+    "short": "mark",
+    "key": "#",
+    "command": "gnus-group-mark-group",
+    "desc": "Mark the current group."
+  },
+  {
+    "short": "best-unread",
+    "key": ",",
+    "command": "gnus-group-best-unread-group",
+    "desc": "Go to the group with the highest level."
+  },
+  {
+    "short": "first-unread",
+    "key": ".",
+    "command": "gnus-group-first-unread-group",
+    "desc": "Go to the first group with unread articles."
+  },
+  {
+    "short": "select",
+    "key": "=",
+    "command": "gnus-group-select-group",
+    "desc": "Select this newsgroup."
+  },
+  {
+    "short": "desc",
+    "key": "?",
+    "command": "gnus-group-describe-briefly",
+    "desc": "Give a one line description of the group mode commands."
+  },
+  {
+    "short": "server",
+    "key": "^",
+    "command": "gnus-group-enter-server-mode",
+    "desc": "Jump to the server buffer."
+  },
+  {
+    "short": "post",
+    "key": "a",
+    "command": "gnus-group-post-news",
+    "desc": "Start composing a message (a news by default)."
+  },
+  {
+    "short": "browse",
+    "key": "B",
+    "command": "gnus-group-browse-foreign-server",
+    "desc": "Browse a foreign news server."
+  },
+  {
+    "short": "bogus",
+    "key": "b",
+    "command": "gnus-group-check-bogus-groups",
+    "desc": "Check bogus newsgroups."
+  },
+  {
+    "short": "catchup-all",
+    "key": "C",
+    "command": "gnus-group-catchup-current-all",
+    "desc": "Mark all articles in current newsgroup as read."
+  },
+  {
+    "short": "catchup",
+    "key": "c",
+    "command": "gnus-group-catchup-current",
+    "desc": "Mark all unread articles in the current newsgroup as read."
+  },
+  {
+    "short": "find-new",
+    "key": "F",
+    "command": "gnus-group-find-new-groups",
+    "desc": "Search for new groups and add them."
+  },
+  {
+    "short": "get-new",
+    "key": "g",
+    "command": "gnus-group-get-new-news",
+    "desc": "Get newly arrived articles."
+  },
+  {
+    "short": "news",
+    "key": "i",
+    "command": "gnus-group-news",
+    "desc": "Start composing a news."
+  },
+  {
+    "short": "jump",
+    "key": "j",
+    "command": "gnus-group-jump-to-group",
+    "desc": "Jump to newsgroup GROUP."
+  },
+  {
+    "short": "list-all",
+    "key": "L",
+    "command": "gnus-group-list-all-groups",
+    "desc": "List all newsgroups with level ARG or lower."
+  },
+  {
+    "short": "list",
+    "key": "l",
+    "command": "gnus-group-list-groups",
+    "desc": "List newsgroups with level LEVEL or lower that have unread articles."
+  },
+  {
+    "short": "mail",
+    "key": "m",
+    "command": "gnus-group-mail",
+    "desc": "Start composing a mail."
+  },
+  {
+    "short": "next",
+    "key": "N",
+    "command": "gnus-group-next-group",
+    "desc": "Go to next N’th newsgroup."
+  },
+  {
+    "short": "next-unread",
+    "key": "n",
+    "command": "gnus-group-next-unread-group",
+    "desc": "Go to next N’th unread newsgroup."
+  },
+  {
+    "short": "prev",
+    "key": "P",
+    "command": "gnus-group-prev-group",
+    "desc": "Go to previous N’th newsgroup."
+  },
+  {
+    "short": "prev-unread",
+    "key": "p",
+    "command": "gnus-group-prev-unread-group",
+    "desc": "Go to previous N’th unread newsgroup."
+  },
+  {
+    "short": "quit",
+    "key": "Q",
+    "command": "gnus-group-quit",
+    "desc": "Quit reading news without updating .newsrc.eld or .newsrc."
+  },
+  {
+    "short": "exit",
+    "key": "q",
+    "command": "gnus-group-exit",
+    "desc": "Quit reading news after updating .newsrc.eld and .newsrc."
+  },
+  {
+    "short": "restart",
+    "key": "R",
+    "command": "gnus-group-restart",
+    "desc": "Force Gnus to read the .newsrc file."
+  },
+  {
+    "short": "read-init",
+    "key": "r",
+    "command": "gnus-group-read-init-file",
+    "desc": "Read the Gnus elisp init file."
+  },
+  {
+    "short": "save-newsrc",
+    "key": "s",
+    "command": "gnus-group-save-newsrc",
+    "desc": "Save the Gnus startup files."
+  },
+  {
+    "short": "toggle",
+    "key": "U",
+    "command": "gnus-group-toggle-subscription",
+    "desc": ""
+  },
+  {
+    "short": "toggle-at-p",
+    "key": "u",
+    "command": "gnus-group-toggle-subscription-at-point",
+    "desc": "Toggle subscription of the current group."
+  },
+  {
+    "short": "suspend",
+    "key": "z",
+    "command": "gnus-group-suspend",
+    "desc": "Suspend the current Gnus session."
+  }
+]
+#+end_example
+
+| M-# | gnus-group-unmark-group                 | Remove the mark from the current group.                                       |
+| M-& | gnus-group-universal-argument           | Perform any command on all groups according to the process/prefix convention. |
+| M-e | gnus-group-edit-group-method            | Edit the select method of GROUP.                                              |
+| M-K | gnus-group-edit-global-kill             | Edit the global kill file.                                                    |
+| M-k | gnus-group-edit-local-kill              | Edit a local kill file.                                                       |
+| M-d | gnus-group-describe-all-groups          | Pop up a buffer with descriptions of all newsgroups.                          |
+| M-g | gnus-group-get-new-news-this-group      | Check for newly arrived news in the current group (and the N-1 next groups).  |
+| M-c | gnus-group-clear-data                   | Clear all marks and read ranges from the current group.                       |
+| M-p | gnus-group-prev-unread-group-same-level | Go to next N’th unread newsgroup on the same level.                           |
+| M-n | gnus-group-next-unread-group-same-level | Go to next N’th unread newsgroup on the same level.                           |
+
+
+| C-k       | gnus-group-kill-group        | Kill the next N groups.                                      |
+| RET       | gnus-group-select-group      | Select this newsgroup.                                       |
+| C-w       | gnus-group-kill-region       | Kill newsgroups in current region (excluding current point). |
+| C-y       | gnus-group-yank-group        | Yank the last newsgroups killed with C-k, inserting it       |
+| SPC       | gnus-group-read-group        | Read news in this newsgroup.                                 |
+| DEL       | gnus-group-prev-unread-group | Go to previous N’th unread newsgroup.                        |
+| <mouse-2> | gnus-mouse-pick-group        | Enter the group under the mouse pointer.                     |
+| <delete>  | gnus-group-prev-unread-group | Go to previous N’th unread newsgroup.                        |
+
+| M-SPC        | gnus-group-visible-select-group     | Select the current group without hiding any articles.                  |
+| M-RET        | gnus-group-quick-select-group       | Select the GROUP "quickly".                                            |
+| C-c C-s      | gnus-group-sort-groups              | Sort the group buffer according to FUNC.                               |
+| C-c C-x      | gnus-group-expire-articles          | Expire all expirable articles in the current newsgroup.                |
+| C-c C-l      | gnus-group-list-killed              | List all killed newsgroups in the group buffer.                        |
+| C-c C-a      | gnus-group-apropos                  | List all newsgroups that have names that match a regexp.               |
+| C-c C-d      | gnus-group-describe-group           | Display a description of the current newsgroup.                        |
+| C-c M-g      | gnus-activate-all-groups            | Activate absolutely all groups.                                        |
+| C-c C-M-x    | gnus-group-expire-all-groups        | Expire all expirable articles in all newsgroups.                       |
+| C-c C-M-a    | gnus-group-description-apropos      | List all newsgroups that have names or descriptions that match REGEXP. |
+| C-M-<return> | gnus-group-select-group-ephemerally | Select the current group without doing any processing whatsoever.      |
+
+* J: Agent
+
+| J o | gnus-agent-toggle-group-plugged | Toggle the status of the server of the current group.      |
+| J r | gnus-agent-remove-group         | Remove the current group from its agent category, if any.  |
+| J a | gnus-agent-add-group            | Add the current group to an agent category.                |
+| J S | gnus-group-send-queue           |                                                            |
+| J u | gnus-agent-fetch-groups         | Put all new articles in the current groups into the Agent. |
+
+* A
+
+| A d | gnus-group-description-apropos | List all newsgroups that have names or descriptions that match REGEXP. |
+| A a | gnus-group-apropos             | List all newsgroups that have names that match a regexp.               |
+
+With the exception of =A d= and =A a=, these all have the same keys as suffixes.
+
++ A :: -list
++ A p :: -list-plus
++ A f :: -list-flush
++ A / :: -list-limit
+
+| A [pf/]? ! | gnus-group-list-ticked       | List all groups with ticked articles.                                |
+| A [pf/]? ? | gnus-group-list-dormant      | List all groups with dormant articles.                               |
+| A [pf/]? c | gnus-group-list-cached       | List all groups with cached articles.                                |
+| A [pf/]? l | gnus-group-list-level        | List groups on LEVEL.                                                |
+| A [pf/]? M | gnus-group-list-all-matching | List all groups that match REGEXP.                                   |
+| A [pf/]? m | gnus-group-list-matching     | List all groups with unread articles that match REGEXP.              |
+| A [pf/]? A | gnus-group-list-active       | List all groups that are available from the server(s).               |
+| A [pf/]? u | gnus-group-list-all-groups   | List all newsgroups with level ARG or lower.                         |
+| A [pf/]? s | gnus-group-list-groups       | List newsgroups with level LEVEL or lower that have unread articles. |
+| A [pf/]? z | gnus-group-list-zombies      | List all zombie newsgroups in the group buffer.                      |
+| A [pf/]? k | gnus-group-list-killed       | List all killed newsgroups in the group buffer.                      |
+
+| G <delete> | gnus-group-delete-group                      | Delete the current group. (Only meaningful with editable groups.) |
+| G DEL      | gnus-group-delete-group                      | Delete the current group. (Only meaningful with editable groups.) |
+| G x        | gnus-group-expunge-group                     | Expunge deleted articles in current nnimap GROUP.                 |
+| G z        | gnus-group-compact-group                     | Compact the current group.                                        |
+| G c        | gnus-group-customize                         |                                                                   |
+| G R        | gnus-group-make-rss-group                    | Given a URL, discover if there is an RSS feed.                    |
+| G r        | gnus-group-rename-group                      | Rename group from GROUP to NEW-NAME.                              |
+| G M        | gnus-group-read-ephemeral-group              | Read GROUP from METHOD as an ephemeral group.                     |
+| G g        | gnus-group-make-search-group                 | Make a group based on a search.                                   |
+| G G        | gnus-group-read-ephemeral-search-group       | Read an nnselect group based on a search.                         |
+| G w        | gnus-group-make-web-group                    | Create an ephemeral nnweb group.                                  |
+| G f        | gnus-group-make-doc-group                    | Create a group that uses a single file as the source.             |
+| G D        | gnus-group-enter-directory                   | Enter an ephemeral nneething group.                               |
+| G V        | gnus-group-make-empty-virtual                | Create a new, fresh, empty virtual group.                         |
+| G v        | gnus-group-add-to-virtual                    | Add the current group to a virtual group.                         |
+| G p        | gnus-group-edit-group-parameters             | Edit the group parameters of GROUP.                               |
+| G e        | gnus-group-edit-group-method                 | Edit the select method of GROUP.                                  |
+| G E        | gnus-group-edit-group                        | Edit the group on the current line.                               |
+| G m        | gnus-group-make-group                        | Add a new newsgroup.                                              |
+| G l        | gnus-group-nnimap-edit-acl                   | Edit the Access Control List of current nnimap GROUP.             |
+| G u        | gnus-group-make-useful-group                 | Create one of the groups described in ‘gnus-useful-groups’.       |
+| G h        | gnus-group-make-help-group                   | Create the Gnus documentation group.                              |
+| G d        | gnus-group-make-directory-group              | Create an nndir group.                                            |
+
+Common suffixes
+
++ G P :: -sort-selected-groups
++ G S :: -sort-groups-
+
+| G S s | gnus-group-sort-groups                         | Sort the group buffer according to FUNC.                 |
+| G [P/S] s  | gnus-group-sort[selected-]-groups              | Sort the process/prefixed groups.                        |
+| G [P/S] n | gnus-group-sort[selected-]-groups-by-real-name | Sort the group buffer alphabetically by real group name. |
+| G [P/S] m | gnus-group-sort[selected-]-groups-by-method    | Sort the group buffer alphabetically by back end name.   |
+| G [P/S] r | gnus-group-sort[selected-]-groups-by-rank      | Sort the group buffer by group rank.                     |
+| G [P/S] v | gnus-group-sort[selected-]-groups-by-score     | Sort the group buffer by group score.                    |
+| G [P/S] l | gnus-group-sort[selected-]-groups-by-level     | Sort the group buffer by group level.                    |
+| G [P/S] u | gnus-group-sort[selected-]-groups-by-unread    | Sort the group buffer by number of unread articles.      |
+| G [P/S] a | gnus-group-sort[selected-]-groups-by-alphabet  | Sort the group buffer alphabetically by group name.      |
+
+| M U | gnus-group-unmark-all-groups | Unmark all groups.                      |
+| M r | gnus-group-mark-regexp       | Mark all groups that match some regexp. |
+| M b | gnus-group-mark-buffer       | Mark all groups in the buffer.          |
+| M w | gnus-group-mark-region       | Mark all groups between point and mark. |
+| M u | gnus-group-unmark-group      | Remove the mark from the current group. |
+| M m | gnus-group-mark-group        | Mark the current group.                 |
+
+| S z   | gnus-group-kill-all-zombies             | Kill all zombie newsgroups.                                  |
+| S C-k | gnus-group-kill-level                   | Kill all groups that is on a certain LEVEL.                  |
+| S w   | gnus-group-kill-region                  | Kill newsgroups in current region (excluding current point). |
+| S y   | gnus-group-yank-group                   | Yank the last newsgroups killed with C-k, inserting it       |
+| S k   | gnus-group-kill-group                   | Kill the next N groups.                                      |
+| S s   | gnus-group-toggle-subscription          |                                                              |
+| S t   | gnus-group-toggle-subscription-at-point | Toggle subscription of the current group.                    |
+| S l   | gnus-group-set-current-level            | Set the level of the next N groups to LEVEL.                 |
+
+| H d | gnus-group-describe-group | Display a description of the current newsgroup. |
+
+
+* Proof of concept
+
+A quick hack to see what traps lie along the way.
+
+#+begin_src json :tangle (expand-file-name "klf/gnus-group.klf" dc/klf2tux-source)
+{
+  "fullName": "Gnus Group Buffer (Main Keys)",
+  "name": "us-intl",
+  "singletonKeys": [
+    [ "Alt_R", "AltGr" ]
+  ],
+  "shiftlevels": [ "None", "Shift" ],
+  "keys": [
+    { "pos": "~", "letters": [ "grave", "tilde" ] },
+    { "pos": "1", "letters": [ "1", "!" ] },
+    { "pos": "2", "letters": [ "2", "@" ] },
+    { "pos": "3", "letters": [ "3", "mark" ] },
+    { "pos": "4", "letters": [ "4", "$" ] },
+    { "pos": "5", "letters": [ "5", "%" ] },
+    { "pos": "6", "letters": [ "6", "server" ] },
+    { "pos": "7", "letters": [ "7", "&" ] },
+    { "pos": "8", "letters": [ "8", "*" ] },
+    { "pos": "9", "letters": [ "9", "(" ] },
+    { "pos": "0", "letters": [ "0", ")" ] },
+    { "pos": "-", "letters": [ "-", "_" ] },
+    { "pos": "+", "letters": [ "select", "+" ] },
+    { "pos": "Q", "letters": [ "exit", "quit" ] },
+    { "pos": "W", "letters": [ "", "W" ] },
+    { "pos": "E", "letters": [ "", "E" ] },
+    { "pos": "R", "letters": [ "read", "restart" ] },
+    { "pos": "T", "letters": [ "", "TOPICS" ] },
+    { "pos": "Y", "letters": [ "", "Y" ] },
+    { "pos": "U", "letters": [ "toggle", "At Point" ] },
+    { "pos": "I", "letters": [ "news", "" ] },
+    { "pos": "O", "letters": [ "", "O" ] },
+    { "pos": "P", "letters": [ "prev", "unread" ] },
+    { "pos": "[", "letters": [ "[", "{" ] },
+    { "pos": "]", "letters": [ "]", "}" ] },
+    { "pos": "A", "letters": [ "post", "LIST" ] },
+    { "pos": "S", "letters": [ "save", "SORT/SUB" ] },
+    { "pos": "D", "letters": [ "", "D" ] },
+    { "pos": "F", "letters": [ "", "Find new" ] },
+    { "pos": "G", "letters": [ "get new", "MANAGE" ] },
+    { "pos": "H", "letters": [ "help", "help" ] },
+    { "pos": "J", "letters": [ "jump", "UNPLUG" ] },
+    { "pos": "K", "letters": [ "", "K" ] },
+    { "pos": "L", "letters": [ "list", "All" ] },
+    { "pos": ";", "letters": [ ";", ":" ] },
+    { "pos": "'", "letters": [ "acute", "diaeresis" ] },
+    { "pos": "Z", "letters": [ "suspend", "" ] },
+    { "pos": "X", "letters": [ "", "X" ] },
+    { "pos": "C", "letters": [ "catchup", "all" ] },
+    { "pos": "V", "letters": [ "v", "V" ] },
+    { "pos": "B", "letters": [ "bogus", "browse" ] },
+    { "pos": "N", "letters": [ "next", "unread" ] },
+    { "pos": "M", "letters": [ "mail", "MARK" ] },
+    { "pos": ",", "letters": [ "best un", "begin" ] },
+    { "pos": ".", "letters": [ "first un", "end" ] },
+    { "pos": "/", "letters": [ "/", "describe" ] },
+    { "pos": "\\", "letters": [ "\\", "|" ] },
+    { "pos": "Iso", "letters": [ "\\", "|" ] }
+  ]
+}
+#+end_src
+
+
+After changing the =esc(letter)= function to insert the string anyways:
+
+#+begin_example python
+    elif len(letter) > 1:
+        if letter in XKB_SYNONYMS:
+            new_letter = XKB_SYNONYMS[letter]
+        else:
+            eprint("WARN: Letter {} is unknown.".format(letter))
+            new_letter = letter
+            # new_letter = ''
+#+end_example
+
+Then run this
+
+#+begin_src sh :var klfsrc=(identity dc/klf2tux-source) :results silent
+cd $klfsrc
+./klf2tux.py 'svg/InfinityBook Pro 15 - Inter.svg' klf/gnus-group.klf us > gnus.svg
+#+end_src
+
+Then run a regexp on the file or edit it manually in inkscape. The regex alters
+the positioning of the characters.
+
+#+begin_src sh :var klfsrc=(identity dc/klf2tux-source) :results silent
+sed -e 's/12.933px/8.00px/g' $klfsrc/gnus.svg > $kfsrc/gnus3.svg
+#+end_src
+
+And I've just moved this to the =./cheatsheets= directory. If printing, I would
+recommend setting it to print 2 pages per page so there's not so much wasted
+space ... though the font is 8pt already.
+
+[[file:/data/org/roam/cheatsheets/gnus-groups.svg]]
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:3d2330da-5a95-408a-b940-7d2b3b0c7fb2][Keyboard]]
