@@ -1,17 +1,24 @@
 :PROPERTIES:
 :ID:       c99b63b3-e18f-4b4b-8424-dbbac937b596
 :END:
-#+TITLE: Binary Serialization
+#+TITLE: Data Serialization
 #+DESCRIPTION: Protobuf, Thrift, Avro, Parquet, SBE, Cap'n Proto, Parquet
 #+TAGS:
-* Roam
-+ [[id:4ab045b9-ea4b-489d-b49e-8431b70dd0a5][Data Science]]
-+ [[id:0b80782f-92a8-4b48-958c-a41e7ff8713e][Data Lake]]
 
-* Topics
-* Issues
+* Human
 
-* Protobuf
++ Quick comparison [[https://www.zionandzion.com/json-vs-xml-vs-toml-vs-cson-vs-yaml/][JSON vs XML vs TOML vs CSON vs YAML]]
+
+** Tools
+
++ [[https://github.com/tyleradams/json-toolkit][tyleradams/json-toolkit]] a many to many library of simple conversion tools,
+  mostly python (& standalone), req. go for two tools.
+
+
+** YAML
+
+* Binary
+** Protobuf
 
 Uses variable length integers -- like the MNIST datasets or oldschool science
 datasets. See [[https://github.com/dcunited001/handwritten-digits/blob/master/src/digits/mnist.clj#L5-L6][dcunited001/handwritten-digits]] (2013) for an example of when
@@ -29,56 +36,56 @@ machine-learning was hard.
 As it turns out, the Coursera ML class was just "Linear Algebra 2"
 #+end_quote
 
-** Docs
+*** Docs
 
-** Resources
+*** Resources
 
-** Topics
+*** Topics
 
-** Issues
+*** Issues
 
 
-* Flatbuffers
+** Flatbuffers
 
 + Native length integers
 
-** Docs
+*** Docs
 
-** Resources
+*** Resources
 
-** Topics
+*** Topics
 
-** Issues
+*** Issues
 
-* Parquet
+** Parquet
 
-** Docs
+*** Docs
 + [[https://arrow.apache.org/docs/python/parquet.html][Reading/Writing the Apache Parquet Format]]
   - [[https://arrow.apache.org/docs/python/generated/pyarrow.parquet.ParquetDataset.html][pyarrow.parquet.ParquetDataset]]
 + [[https://spark.apache.org/docs/2.4.0/sql-data-sources-parquet.html][Spark SQL: Parquet Files]]
 
-** Resources
+*** Resources
 
-** Tools
-*** pqrs
+*** Tools
+**** pqrs
 
 Inspect parquet files (rust implementation)
 
-*** dsq
+**** dsq
 
 Query JSON, CSV, Parquet.
 
 + Uses SQLite internally, so doesn't work for large datasets.
 + Does offer =ob-dsq= for emacs
 
-** Topics
+*** Topics
 
-*** Format and Optimizations
+**** Format and Optimizations
 
 + [[https://www.kaggle.com/code/aapokossi/how-to-save-parquet-data-as-ragged-tf-dataset][How to save parquet data as ragged tf.Dataset]]
 
 
-**** From [[https://www.youtube.com/watch?v=1j8SdS7s_NY][Parquet Format and Perf Optimization]]
+***** From [[https://www.youtube.com/watch?v=1j8SdS7s_NY][Parquet Format and Perf Optimization]]
 
 + File-based Partitions (or network-based)
 + Predicate Pushdown
@@ -88,7 +95,7 @@ Query JSON, CSV, Parquet.
 
   Parquet/ORC files are hybrid columnar & row-based
 
-***** Encoding Schemes
+****** Encoding Schemes
 
 *Plain*
 
@@ -105,14 +112,14 @@ Query JSON, CSV, Parquet.
 + Parquet files with sections that exceed max dictionary sizes will fallback to
   plain (they drop compression)
 
-***** Compression
+****** Compression
 
 + Compression should be CPU-minimal. Picking the wrong algorithm can induce a
   lot of I/O. The perf gains are depending on the algorithm: snappy, gzip, lzip,
   etc.
 + Snappy seems to be used alot.
 
-***** Row Groups
+****** Row Groups
 
 Row Group Size: 128MB (default)
 
@@ -123,7 +130,7 @@ Row Group Size: 128MB (default)
 + Row group 1 ... N
 + Footer
 
-***** Pages
+****** Pages
 
 Page Size: 1MB (default)
 
@@ -134,7 +141,7 @@ Page Size: 1MB (default)
     - Def levels
     - Encoded Values (dictionary)
 
-*** ETL Optimiazation
+**** ETL Optimiazation
 
 Overhead for each file:
 
@@ -154,7 +161,7 @@ Be aware of incremental workload output:
 Data sources like Delta Lake tables store their metadata and deltas in
 json/parquet. These need to be =pruned= and then =vacuumed=
 
-**** Vacuuming Data
+***** Vacuuming Data
 
 Do NOT vacuum while data is being ingested.
 
@@ -177,9 +184,9 @@ For a second, I was thinking CephFS would make this easier .... nope probably
 not. Well maybe: it depends on whether you can move disk segments containing
 files to an logical/named storage device where they are processed.
 
-***** TODO ... honestly what do these do again?
+****** TODO ... honestly what do these do again?
 
-**** Predicate Pushdown
+***** Predicate Pushdown
 
 + Limit the query to the conditions/columns you need.
 + Take advantage of "materialized views" .......... where practical
@@ -190,7 +197,7 @@ files to an logical/named storage device where they are processed.
 Ensure =spark.sql.parquet.filterPushdown= or =parquet.filter.dictionary.enabled=
 are set.
 
-***** Metadata
+****** Metadata
 
 Default metadata: min, max, count.
 
@@ -207,12 +214,12 @@ This is because the rowgroup and pages can be indexed in the file:
     since dictionary sizes can't be known at initial read time.)
 + And strings for structs will consume memory in the client once parsed.
 
-*** Row-based vs Columnar
+**** Row-based vs Columnar
 
 Columnar creates the opportunity for compression (when queries can't easily
 determine the structure in which they'll return results)
 
-**** Low Level Performance
+***** Low Level Performance
 
 Row-based leads to fragmented memory-access patterns, which tends to lead to CPU
 cache invalidation. And who doesn't love their CPU cache on a VM-in-a-VPS (with
@@ -221,9 +228,14 @@ sufficient =niceness=.
 
 
 
-* Misc
+** Misc Formats
 
 + Thrift
 + Apache Avro
 + SBE
 + Cap'n Proto
+
+* Roam
++ [[id:4ab045b9-ea4b-489d-b49e-8431b70dd0a5][Data Science]]
++ [[id:0b80782f-92a8-4b48-958c-a41e7ff8713e][Data Lake]]
++ [[id:e0880f60-63db-4f34-b478-c3b733f1ab96][XML]]

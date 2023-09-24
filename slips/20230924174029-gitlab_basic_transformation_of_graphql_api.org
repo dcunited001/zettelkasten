@@ -1,0 +1,270 @@
+:PROPERTIES:
+:ID:       a0fb0653-7362-4cc3-9760-31f5b760acdb
+:END:
+#+TITLE: Gitlab: Basic transformation of GraphQL API
+#+CATEGORY: slips
+#+TAGS:
+
+This is mostly repeated from [[github:ectorepo/kde][ectorepo/kde]], but has been bit cleaned up so it
+will read more easily. It uses mostly mocked data instead of API calls.
+
+* Org Babel Stuff
+
+Confirm eval, temporarily
+
+#+begin_src emacs-lisp
+(setq-local org-confirm-babel-evaluate nil)
+#+end_src
+
+Limit queries
+
+#+name: nrepos
+#+begin_src emacs-lisp
+100
+#+end_src
+
+This could become a method to =#+call:=
+
+#+name: run-gql
+#+begin_src emacs-lisp :var gql="query string"
+(ghub-graphql gql nil
+              :username "username"
+              :host "invent.kde.org"
+              :forge 'gitlab)
+#+end_src
+
+** Gitlab Groups
+
+Formatted as tab-separated. Use =--raw-output=. Data is below.
+
+#+headers: :stdin eg-json :cmd-line --raw-output
+#+begin_src jq :results output
+.data.groups.nodes[]
+  | [.name, .projects.count, .path, .fullPath, .description]
+  | @tsv
+#+end_src
+
+#+RESULTS:
+: 3rdparty	18	3rdparty	neon/3rdparty
+: Accessibility	1	accessibility	teams/accessibility
+
+*** JSON
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+
+#+name: eg-json
+#+begin_example json
+{
+  "data" : {
+    "groups" : {
+      "nodes" : [
+        {
+          "id" : "gid://gitlab/Group/2684",
+          "name" : "3rdparty",
+          "parent" : {
+            "id" : "gid://gitlab/Group/2647",
+            "name" : "Neon",
+            "path" : "neon",
+            "fullPath" : "neon"
+          },
+          "description" : "",
+          "path" : "3rdparty",
+          "fullPath" : "neon/3rdparty",
+          "projects" : {"count" : 18}
+        },
+        {
+          "id" : "gid://gitlab/Group/19618",
+          "name" : "Accessibility",
+          "parent" : {
+            "id" : "gid://gitlab/Group/638",
+            "name" : "Teams",
+            "path" : "teams",
+            "fullPath" : "teams"
+          },
+          "description" : "",
+          "path" : "accessibility",
+          "fullPath" : "teams/accessibility",
+          "projects" : {"count" : 1}
+        }
+      ]
+    }
+  }
+}
+#+end_example
+
+** Gitlab Projects
+
+Return projects for a group with =rootRef= and convert to =git-repo= XML.
+
+*** GraphQL and JSON
+:PROPERTIES:
+:VISIBILITY: folded
+:END:
+
+Example query
+
+#+name: gql-proj
+#+begin_example graphql
+{
+  group(fullPath: "plasma") {
+    projects(first: 100, sort: ACTIVITY_DESC) {
+      nodes {
+        id
+        name
+        topics
+        path
+        fullPath
+        visibility
+        repository {
+          rootRef
+          exists
+        }
+      }
+    }
+  }
+}
+#+end_example
+
+Results
+
+#+name: eg-proj
+#+begin_example json
+{
+  "data" : {
+    "group" : {
+      "projects" : {
+        "nodes" : [
+          {
+            "id" : "gid://gitlab/Project/2703",
+            "name" : "Plasma Workspace",
+            "topics" : [],
+            "path" : "plasma-workspace",
+            "fullPath" : "plasma/plasma-workspace",
+            "visibility" : "public",
+            "repository" : {"rootRef" : "master", "exists" : true}
+          },
+          {
+            "id" : "gid://gitlab/Project/2163",
+            "name" : "KDE Portal for XDG Desktop",
+            "topics" : [],
+            "path" : "xdg-desktop-portal-kde",
+            "fullPath" : "plasma/xdg-desktop-portal-kde",
+            "visibility" : "public",
+            "repository" : {"rootRef" : "master", "exists" : true}
+          },
+          {
+            "id" : "gid://gitlab/Project/2559",
+            "name" : "PowerDevil",
+            "topics" : [],
+            "path" : "powerdevil",
+            "fullPath" : "plasma/powerdevil",
+            "visibility" : "public",
+            "repository" : {"rootRef" : "master", "exists" : true}
+          }
+        ]
+      }
+    }
+  }
+}
+#+end_example
+
+*** Conversion from JSON to ELD to XML
+
+The =(ghub-graphql ...)= query results come back as JSON but serialized into
+elisp objects.
+
+#+name: graphql-eld-to-xml
+#+begin_src emacs-lisp :var gqldata='(data (group (projects (nodes '())))) :results value html
+(thread-first
+  (thread-last
+    (a-get* (nthcdr 0 gqldata) 'data 'group 'projects 'nodes)
+    ;(mapcar (lambda (el) (a-get* el 'node)))
+    ;(seq-filter (lambda (el) (not (a-get* el 'isArchived))))
+    (mapcar (lambda (el)
+              (let* (;; (defaultBranchRef (a-get* 'defaultBranchRef))
+                     (path (a-get* el 'path))
+                     (name (a-get* el 'fullPath))
+                     (root-ref (a-get* el 'repository 'rootRef))
+                     (ref (concat "refs/heads/" root-ref)))
+                (concat "<project"
+                        " name=\"" name
+                        "\" path=\"" path
+                        "\" revision=\"" ref "\" remote=\"invent\"/>")))))
+  (cl-sort 'string-lessp :key 'downcase)
+  (string-join "\n"))
+#+end_src
+
+It's better to leave it this way, since you can always convert to a json string
+with =(json-serialize)=. Though there's no recursion here, I'm more comfortable
+with Lisp than JQ.  it just seems like most for useful queries =jq= would
+require quite a bit of it.
+
+But the syntax and =di/dx= is confining (ui/ux for developers), though I'm
+probably missing the bigger picture here. There are variables ... can you write
+scripts or something? Everything just disappears into the ether. There seems to
+be very little room for completion, esp for ad-hoc queries. Org babel helps with
+data passing a lot, now, but the jq api still feels wierd.
+
+I tried to convert to =xml= by serializing below.
+
+*** Serializing JSON to TSV/XML
+
+#+name: jq-proj
+#+headers: :stdin eg-proj
+#+headers: :cmd-line --raw-output
+#+begin_src jq :results output
+.data.group.projects.nodes[]
+  | [.name, .path, .fullPath, .description, .repository.rootRef]
+  | @tsv
+#+end_src
+
+#+RESULTS: jq-proj
+: Plasma Workspace	plasma-workspace	plasma/plasma-workspace		master
+: KDE Portal for XDG Desktop	xdg-desktop-portal-kde	plasma/xdg-desktop-portal-kde		master
+: PowerDevil	powerdevil	plasma/powerdevil		master
+
+Wait =xq= doesn't understand json?
+
+Either use a specific tool or something like [[github:tyleradams/json-toolkit][tyleradams/json-toolkit]]. This
+basically serializes the JSON to with a python =dict= as intermediate =XML= with
+a few checks. There are plenty of =libxml2= dependents.
+
+#+headers: :var json=eg-proj
+#+begin_src sh :results output
+echo $json | xq -x '.data.group.projects.nodes[] | [.name, .path, .fullPath, .description, .repository.rootRef]'
+#+end_src
+
+#+RESULTS:
+: xq: Error running jq: ExpatError: syntax error: line 1, column 0.
+: [ Babel evaluation exited with code 1 ]
+
+*** Serialize from ELD to XML with =graphql-eld-to-xml=
+
+Serialize from JSON to an emacs-lisp value.
+
+#+name: eld-proj
+#+begin_src emacs-lisp :results value :var json=eg-proj
+(json-read-from-string json)
+#+end_src
+
+#+RESULTS: eld-proj
+| data | (group (projects (nodes . [((id . gid://gitlab/Project/2703) (name . Plasma Workspace) (topics . []) (path . plasma-workspace) (fullPath . plasma/plasma-workspace) (visibility . public) (repository (rootRef . master) (exists . t))) ((id . gid://gitlab/Project/2163) (name . KDE Portal for XDG Desktop) (topics . []) (path . xdg-desktop-portal-kde) (fullPath . plasma/xdg-desktop-portal-kde) (visibility . public) (repository (rootRef . master) (exists . t))) ((id . gid://gitlab/Project/2559) (name . PowerDevil) (topics . []) (path . powerdevil) (fullPath . plasma/powerdevil) (visibility . public) (repository (rootRef . master) (exists . t)))]))) |
+
+Really nothing works for the above except =:results value=, even =:results value
+code=. It needs to be by the next =#+call= as a quoted list.
+
+#+name: xml-proj
+#+call: graphql-eld-to-xml(gqldata=eld-proj) :results value htmlx
+
+#+RESULTS: xml-proj
+#+begin_export html
+<project name="plasma/plasma-workspace" path="plasma-workspace" revision="refs/heads/master" remote="invent"/>
+<project name="plasma/powerdevil" path="powerdevil" revision="refs/heads/master" remote="invent"/>
+<project name="plasma/xdg-desktop-portal-kde" path="xdg-desktop-portal-kde" revision="refs/heads/master" remote="invent"/>
+#+end_export
+
+* Roam
++ [[id:7a4a7eea-5795-44e5-86e8-eec2afebf110][GraphQL]]
++ [[id:8d789c98-5e74-4bf8-9226-52fb43c5ca51][Gitforge]]
++ [[id:cdf0de7c-cf7c-456f-a12c-b2496359064b][Data Mux: JQ, YQ, XQ, Queries, Conversion]]
