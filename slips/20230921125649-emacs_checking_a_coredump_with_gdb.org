@@ -161,23 +161,28 @@ coredumpctl info $emacspid --no-pager | head -n$nlines
 | Size        | on                                                                                        | Disk:                                                                      | 70.5M             |     |      |       |        |       |
 | Message:    | Process                                                                                   | 4052937                                                                    | (.emacs-29.0.92-) | of  | user |  1000 | dumped | core. |
 
+here the are come get'm ...
+
+#+begin_src emacs-lisp
+(setq-local ecd-path "s/some/other")
+#+end_src
+
 Extract coredump. The =emacs_desktop= variable will be incorrect once you
 restore.
 
-#+begin_src sh :results output :var desktop_lock=(desktop-full-lock-name)
+#+begin_src sh :results output :var desktop_lock=(desktop-full-lock-name) ecdpath=(identity ecd-path)
 emacspid="$(lastcore | tr -d '\"')"
-emacscoredumps=/data/dev/emacsdumps
 
 # lastcore output is still quoted
 [ -f "$desktop_lock" ] \
     && [ $emacspid -eq "$(cat $desktop_lock)" ] \
-           || echo coredumpctl dump "$emacspid" --output "$emacscoredumps/emacs-$(date +%Y-%m_%d-%H-%M).core"
+           || echo coredumpctl dump "$emacspid" --output "$ecdpath/emacs-$(date +%Y-%m_%d-%H-%M).core"
 
 # TODO: change to set to the coredump timestamp
 #+end_src
 
 #+RESULTS:
-: coredump dump 4052937 --output /data/dev/emacsdumps/emacs-2023-09_21-17-44.core
+: coredump dump 4052937 --output s/some/other/emacs-2023-09_21-17-44.core
 
 Check binary for debugging symbols.
 
@@ -226,6 +231,19 @@ coredumpctl list --json=short | jq '. | last | @text '"$joinargs"
 # who knows?
 # "\(.pid) \(.gid) \(.uid) \('.fdsa)|fdsa) \(|) \(fdsa) \(|) \(@test) \("\(.evil?')"
 #+end_src
+
+**** Encrypt the files
+
+i didn't think it was going to work
+
+#+begin_src sh
+ls | sed -E 's/(.*)/\1 \1/g' | xargs -I '{}' gpg -r $me -eo {}.gpg {}
+#+end_src
+
+Some ways... =for c in *.txt; do echo $c $c; done=
+
+or with =find . -type f -name "*.txt" -exec gpg -r $me -eo {}.gpg {} += if no
+subdirs and if pinentry isn't an issue.
 
 * Guix
 
@@ -320,7 +338,6 @@ Stages
 
 * GDB, first attempt
 
-
 #+begin_src emacs-lisp
 (defun dc/gud-gdb-cmd (cmd dump)
   "form the gdb command to call"
@@ -344,7 +361,7 @@ files to a new location.+
 (setq dc-gdb/coredump-hex
       "/var/lib/systemd/coredump/core.\\x2eemacs-29\\x2e0\\x2e92-.1000.cb39ebcaa6434eaab0464cc11b587496.4052937.1695316685000000.zst"
       dc-gdb/coredump
-      "/data/dev/emacsdump/core.emacs-29.0.92-1000.cb39ebcaa6434eaab0464cc11b587496.4052937.1695316685000000.zst"
+      "s/some/other/emacsdump/core.emacs-29.0.92-1000.cb39ebcaa6434eaab0464cc11b587496.4052937.1695316685000000.zst"
       dc-gdb/corebin
       (file-chase-links "/home/dc/.guix-extra-profiles/emacs-g/emacs-g/bin/emacs")
       dc-gdb/corebin-real

@@ -33,7 +33,32 @@ This could become a method to =#+call:=
               :forge 'gitlab)
 #+end_src
 
-** Gitlab Groups
+** GraphQL
+
+It's definitely much faster to work in GraphIQL. I just don't trust the electron
+apps for it.
+
+
+** Schema
+
+This can run in the GraphiQL explorer
+
+#+begin_src graphql
+query {
+  __schema {
+    types {
+      name
+      kind
+      description
+      fields { name }
+    }
+  }
+}
+#+end_src
+
+
+
+* Gitlab Groups
 
 Formatted as tab-separated. Use =--raw-output=. Data is below.
 
@@ -48,7 +73,7 @@ Formatted as tab-separated. Use =--raw-output=. Data is below.
 : 3rdparty	18	3rdparty	neon/3rdparty
 : Accessibility	1	accessibility	teams/accessibility
 
-*** JSON
+** JSON
 :PROPERTIES:
 :VISIBILITY: folded
 :END:
@@ -93,11 +118,37 @@ Formatted as tab-separated. Use =--raw-output=. Data is below.
 }
 #+end_example
 
-** Gitlab Projects
+And the query
+
+#+name: gql-groups
+#+begin_example graphql
+query {
+  groups(first: 100)  {
+    nodes {
+      id
+      name
+      parent {
+        id
+        name
+        path
+        fullPath
+      }
+      description
+      path
+      fullPath
+      projects {
+        count
+      }
+    }
+	}
+}
+#+end_example
+
+* Gitlab Projects
 
 Return projects for a group with =rootRef= and convert to =git-repo= XML.
 
-*** GraphQL and JSON
+** GraphQL and JSON
 :PROPERTIES:
 :VISIBILITY: folded
 :END:
@@ -169,7 +220,7 @@ Results
 }
 #+end_example
 
-*** Conversion from JSON to ELD to XML
+** Conversion from JSON to ELD to XML
 
 The =(ghub-graphql ...)= query results come back as JSON but serialized into
 elisp objects.
@@ -208,7 +259,7 @@ data passing a lot, now, but the jq api still feels wierd.
 
 I tried to convert to =xml= by serializing below.
 
-*** Serializing JSON to TSV/XML
+** Serializing JSON to TSV/XML
 
 #+name: jq-proj
 #+headers: :stdin eg-proj
@@ -239,7 +290,7 @@ echo $json | xq -x '.data.group.projects.nodes[] | [.name, .path, .fullPath, .de
 : xq: Error running jq: ExpatError: syntax error: line 1, column 0.
 : [ Babel evaluation exited with code 1 ]
 
-*** Serialize from ELD to XML with =graphql-eld-to-xml=
+** Serialize from ELD to XML with =graphql-eld-to-xml=
 
 Serialize from JSON to an emacs-lisp value.
 
@@ -255,7 +306,7 @@ Really nothing works for the above except =:results value=, even =:results value
 code=. It needs to be by the next =#+call= as a quoted list.
 
 #+name: xml-proj
-#+call: graphql-eld-to-xml(gqldata=eld-proj) :results value htmlx
+#+call: graphql-eld-to-xml(gqldata=eld-proj) :results value html
 
 #+RESULTS: xml-proj
 #+begin_export html

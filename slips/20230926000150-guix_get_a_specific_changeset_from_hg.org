@@ -1,0 +1,56 @@
+:PROPERTIES:
+:ID:       b320b95c-3688-4ffa-a0b7-60c222083f7f
+:END:
+#+TITLE: Guix: Get A Specific Changeset from Hg
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+
+* Guix Gexp
+
+
+
+** Hg Fetch
+
+I haven't used these much. I'm wrap the inside =hg-fetch= to execute within the
+Guix store to see what is causing my call to download to fail.
+
+#+begin_src scheme
+;; modules missing
+
+(define (hg-package)
+  "Return the default Mercurial package."
+  (let ((distro (resolve-interface '(gnu packages version-control))))
+    (module-ref distro 'mercurial)))
+
+(define foo (package-source tree-sitter-tcl))
+
+#~(begin
+    (use-modules (guix build hg)
+                 (guix build utils))
+
+    (hg-fetch '#$(hg-reference-url foo)
+              '#$(hg-reference-changeset foo)
+              #$output
+              ;; #:hg-command (string-append #+hg "/bin/hg")
+              #:hg-command (string-append (hg-package) "/bin/hg")))
+#+end_src
+
+Still no. I didn't pull in modules req. inside =(guix hg-download)=.
+
+#+begin_src scheme
+#~(begin (use-modules (guix build hg) (guix build utils))
+ (let ((hg #$(hg-package)))
+   (hg-fetch '#$(hg-reference-url foo)
+             '#$(hg-reference-changeset foo)
+             #$output hg
+
+           #:hg-command (string-append  "/bin/hg"))) )
+#+end_src
+
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:53fc747a-3f12-411a-976a-345bb1924e2d][VCS]]

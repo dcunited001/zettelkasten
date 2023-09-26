@@ -306,7 +306,6 @@ export KWIN_XKB_DEFAULT_KEYMAP=yes
 export XKB_DEFAULT_LAYOUT=mylayout
 #+end_src
 
-
 **** FCITX
 
 The [[https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland][FCITX5 wayland doc]] has fairly comprehensive information about how xkbcommon
@@ -317,7 +316,7 @@ works with other tools. See also [[https://www.csslayer.info/wordpress/fcitx-dev
   the input method for all KWin Wayland apps and all apps managed under KWin's
   managed XWayland server)
 
-***** Misc Info
+***** Misc Config Info
 
 XWayland apps will already need some shared launch scripts that set the
 environment for them. the following variables need to be set:
@@ -366,14 +365,14 @@ then you'll see this output when starting =/usr/bin/fcitx5/=. changing the name
 of =evdev.xml= will prevent only the second output: it still recognizes
 /something/ in this directory.
 
-#+begin_quote
+#+begin_example
 I2023-09-20 20:24:02.097978 inputmethodmanager.cpp:198] Found 4 input method(s) in addon keyboard
 *I2023-09-20 20:24:02.098026 inputmethodmanager.cpp:117] No valid input method group in configuration. Buildinga default one*
 I2023-09-20 20:24:02.105048 instance.cpp:366] Items in Default: [InputMethodGroupItem(keyboard-us,layout=)]
 I2023-09-20 20:24:02.105084 instance.cpp:371] Generated groups: [Default]*
 I2023-09-20 20:24:02.115670 addonmanager.cpp:193] Loaded addon kimpanel
 I2023-09-20 20:24:02.115866 addonmanager.cpp:193] Loaded addon virtualkeyboard
-#+end_quote
+#+end_example
 
 *** Sway
 
@@ -721,8 +720,157 @@ the command needs to be run like =setkeycodes $scancode $keycode=.
 ** [[id:39e14ffe-75c9-49e6-b852-6c492c4ee3e0][KDE]]
 
 ** [[id:7bb87626-77c3-4577-ace4-40b791202f4e][Gnome]]
+
 + [[https://help.gnome.org/users/gnome-help/stable/keyboard-layouts.html.en][Use alternative keyboard layouts]]
 
 * [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
 
 * Issues
+
+** Tracking Down XKB Issues in Arch/KWin Wayland
+
+#+begin_quote
+It turns out that the main issue is, when using the =custom:types= option in the
+KDE configuration, KWin will fail if this file isn't defined by the user. The
+rest of the section contains misc information that's mostly incidental to KWin.
+#+end_quote
+
+ =kwin= is issuing these logs when I change keyboard configs.
+
+#+begin_example
+Unrecognized RMLVO variant "ctrl:hyper_capscontrol" was ignored
+Unrecognized RMLVO variant "lvl3:menu_switch" was ignored
+Unrecognized RMLVO variant "lvl3:ralt_alt" was ignored
+Couldn't find file "types/custom" in include paths
+2 include paths searched:
+        /home/dc/.config/xkb
+        /usr/share/X11/xkb
+2 include paths could not be added:
+        /home/dc/.xkb
+        /etc/xkb
+Abandoning keytypes file "(unnamed)"
+Failed to compile xkb_types
+Failed to compile keymap
+#+end_example
+
+*** Ensure =kwin 5.27.8= package is built with =libxkbcommon 1.5.0-1=7
+
++ For now I've disabled FCITX. KWin definitely needs stable keybindings before
+  that. The delays in input handling may be causing other issues.
++ If I enable the =custom:types= option, it needs to exist.
++ For some reason, sway recognizes these =lvl3:.*= and =ctrl:.*= with colons
+  only and other systems seem to require =level3(ralt_alt)= or similar. I think
+  i've seen patches in XKB that rename these symbols. This may be the build,
+  even though Arch has =kwin 5.27.8=
+
+**** Determining what XKB version Kwin is built with
+
+I don't have control over how Arch has built KWin, so even though it accepts
+=libxkbcommon= as a dependency, I think many of the wayland libraries are a
+static dependency, esp. the closer you get to the compositor. The dependencies
+are between four and eight levels deep, but =libxkbcommon= is a direct
+dependency of =qt5-base= ... which you need to rebuild your whole system:
+[[https://aur.archlinux.org/packages/qt5-base-git][Required by (2934)]]. So basically, I'm not sure I want to do that, being on a
+custom flavor of arch.
+
+#+begin_src sh :results output pp
+pactree  -r libxkbcommon | grep kwin
+#+end_src
+
+#+RESULTS:
+: │ │ │     ├─kwin-bismuth-git
+: │ │ │   │   └─kwin
+: │ │ │   │     ├─kwin-effects-sliding-notifications
+: │ │ │   │     ├─kwin-scripts-forceblur
+: │ │ │ │ │ │ │ │ └─kwin
+: │ │ │ │ │ │ │ │ └─kwin
+: │ │ │ │ │ │ │ │ ├─kwin
+: │ │ │ └─kwin
+: │ │ │ ├─kwindowsystem
+
+Nevermind, these are all dynamic.
+
+#+begin_example asm
+lines from buffer: kwin_wayland
+Symbol table '.dynsym' contains 2100 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+    225:   221: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZN4KWin6Effect20grabbedKeyboardEventEP9QKeyEvent
+    412:   408: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZNK20QPlatformIntegration22queryKeyboardModifiersEv@Qt_5_PRIVATE_API (4)
+    653:   649: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZNK14KWaylandServer13SeatInterface8keyboardEv
+    856:   852: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZN14KWaylandServer13SeatInterface35focusedKeyboardSurfaceAboutToChangeEPNS_16SurfaceInterfaceE
+   1000:   996: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZNK4KWin24KeyboardInputRedirection3xkbEv
+   1167:  1163: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZN14KWaylandServer17KeyboardInterface7sendKeyEjNS_16KeyboardKeyStateEPNS_16ClientConnectionE
+   1209:  1205: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZN4KWin14EffectsHandler12mouseChangedERK6QPointS3_6QFlagsIN2Qt11MouseButtonEES7_S4_INS5_16KeyboardModifierEES9_
+   1305:  1301: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZNK14KWaylandServer17KeyboardInterface14focusedSurfaceEv
+   1316:  1312: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZN14KWaylandServer17KeyboardInterface13sendModifiersEjjjj
+   1869:  1865: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZN4KWin16QuickSceneEffect20grabbedKeyboardEventEP9QKeyEvent
+   1875:  1871: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZN15QPlatformWindow22setKeyboardGrabEnabledEb@Qt_5_PRIVATE_API (4)
+   1980:  1976: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND _ZNK14QPlatformTheme11keyBindingsEN12QKeySequence11StandardKeyE@Qt_5_PRIVATE_API (4)
+#+end_example
+
+
+
+*** Check the typical logs
+
+The =journalctl= ... why did i not check really this? I kept checking it for
+emacs and for other things.......
+
+It says right here: "it broke"
+
+#+begin_example journalctl
+Sep 25 07:35:40 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: event6  - Dell KB216 Wired Keyboard: client bug: event processing lagging behind by 2>
+Sep 25 07:42:38 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: event6  - Dell KB216 Wired Keyboard: client bug: event processing lagging behind by 2>
+Sep 25 07:46:15 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: client bug: timer event2 debounce short: scheduled expiry is in the past (-21ms), you>
+Sep 25 07:46:30 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: event6  - Dell KB216 Wired Keyboard: client bug: event processing lagging behind by 2>
+#+end_example
+
+And here:
+
+#+begin_example journalctl
+Sep 25 04:50:24 kratos systemd-coredump[1617573]: [🡕] Process 390188 (kded5) of user 1000 dumped core.
+
+Stack trace of thread 390188:
+#0  0x00007f58714ac83c n/a (libc.so.6 + 0x8e83c)
+#1  0x00007f587145c668 raise (libc.so.6 + 0x3e668)
+#2  0x00007f58730e088f _ZN6KCrash19defaultCrashHandlerEi (libKF5Crash.so.5 + 0x788f)
+#3  0x00007f587145c710 n/a (libc.so.6 + 0x3e710)
+#4  0x00007f5871901c88 _XGetRequest (libX11.so.6 + 0x44c88)
+#5  0x00007f58718f77a9 XQueryExtension (libX11.so.6 + 0x3a7a9)
+#6  0x00007f5870494b2f n/a (libXtst.so.6 + 0x2b2f)
+#7  0x00007f5870495d06 XTestQueryExtension (libXtst.so.6 + 0x3d06)
+#8  0x00007f584dab429a n/a (libkhotkeysprivate.so.5 + 0x3129a)
+#9  0x00007f584daa5f84 _ZN8KHotKeys19KeyboardInputAction7executeEv (libkhotkeysprivate.so.5 + 0x22f84)
+#10 0x00007f584da9e45d _ZN8KHotKeys10ActionData7executeEv (libkhotkeysprivate.so.5 + 0x1b45d)
+#11 0x00007f5871cd0cf3 n/a (libQt5Core.so.5 + 0x2d0cf3)
+#12 0x00007f5872b6bbb7 _ZN7QAction9triggeredEb (libQt5Widgets.so.5 + 0x16bbb7)
+#13 0x00007f5872b7160b _ZN7QAction8activateENS_11ActionEventE (libQt5Widgets.so.5 + 0x17160b)
+#14 0x00007f5871cd0b37 n/a (libQt5Core.so.5 + 0x2d0b37)
+#15 0x00007f586c6291ad n/a (libKF5GlobalAccel.so.5 + 0x161ad)
+#16 0x00007f586c6295e3 n/a (libKF5GlobalAccel.so.5 + 0x165e3)
+#17 0x00007f587280276e n/a (libQt5DBus.so.5 + 0x2176e)
+#+end_example
+
+And especially here:
+
+#+begin_src journalctl
+Sep 25 07:28:46 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: event2  - Razer Razer Basilisk: client bug: event processing lagging behind by 41ms, >
+Sep 25 07:30:41 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: event2  - Razer Razer Basilisk: client bug: event processing lagging behind by 21ms, >
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Unrecognized RMLVO variant "ctrl:hyper_capscontrol" was ignored
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Unrecognized RMLVO variant "lvl3:menu_switch" was ignored
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Unrecognized RMLVO variant "lvl3:ralt_alt" was ignored
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Couldn't find file "types/custom" in include paths
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: 2 include paths searched:
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB:         /home/dc/.config/xkb
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB:         /usr/share/X11/xkb
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: 2 include paths could not be added:
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB:         /home/dc/.xkb
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB:         /etc/xkb
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Abandoning keytypes file "(unnamed)"
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Failed to compile xkb_types
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Failed to compile keymap
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Unrecognized RMLVO variant "ctrl:hyper_capscontrol" was ignored
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Unrecognized RMLVO variant "lvl3:menu_switch" was ignored
+Sep 25 07:31:15 kratos kwin_wayland[3613065]: kwin_xkbcommon: XKB: Unrecognized RMLVO variant "lvl3:ralt_alt" was ignored
+Sep 25 07:31:21 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: event2  - Razer Razer Basilisk: client bug: event processing lagging behind by 37ms, >
+Sep 25 07:31:21 kratos kwin_wayland[3613065]: kwin_libinput: Libinput: event2  - Razer Razer Basilisk: WARNING: log rate limit exceeded (5 msgs per 60min). >
+#+end_src

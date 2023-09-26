@@ -167,9 +167,9 @@ Whether that works for a problem depends on whether your manifolds retain enough
 symmetries, I believe.
 #+end_quote
 
-Here we can see that bins are stripped, though where I was confused: will simply
-including a debug output result in unstripped binaries? No, =strip-binaries?=
-will remove the debug target altogether.
+Here we can see that bins are stripped, though where I was confused: will it
+simply including a debug output result in unstripped binaries? No,
+=strip-binaries?= will remove the debug target altogether.
 
 #+begin_src scheme
 (glib-or-gtk-build
@@ -301,6 +301,291 @@ Just ensure that =-L $NAMESPACE_ROOT= is passed to your guix commands.
 of GTK and supports tree-sitter.")))
 #+end_src
 
+* Crashing Emacs
+
+
+#+begin_quote
+I just upgraded to Emacs 29.1, so hopefully it's unnecessary to debug emacs, the
+following traces were generated on 29.0.92
+#+end_quote
+
+** 20230924 6:22
+
+Emacs crashed after running well for at least 8 hours. I was switching
+to another buffer using the =tabspaces= functions: different tab, same
+frame. I had run the command a few times with different buffers, then
+suddenly, it hung and quit, dumping core. I wasn't running the debug
+emacs though.
+
+*** Attempt to crash emacs
+
+I copied over my emacs systemd service to run it in debug mode,
+thinking that I could trigger similar behavior. I still don't have
+=.gdbinit= scripts or gdb startup scripts. I thought maybe I could
+just connect to the process with =gdb -i=mi -p 10180=, but it couldn't
+run =ptrace=. It looked like maybe it could be a permissions issue. It
+kinda is, I think, though it's not =gdb= with an =inferior= on the
+other side. So I just went ahead and tried =sudo gdb --tui -p 10180=.
+From there, I messed around until I tried clicking the window to see
+if the process could really respond while a debugger was connected to
+it .... It didn't. It greyed out for a second, then crashed when i
+typed =c= for continue. I did manage to list the threads though.
+
+
+*** Hesitent to run emacs in debug all the time
+
+I don't want to run emacs in debug all the time. It'd be nice to find
+a reproducible situation. I think it would make more sense to practice
+debugging other apps. I just want to have this in my toolbelt in case
+it starts to become unstable on my system.
+
+Also, if the coredumps have debugging data in them, you can extract
+information much more easily. So those really need to be deleted if
+unused.
+
+*** Stack Trace
+
+#+begin_example journalctl
+Sep 23 22:45:23 kratos bash[3635223]: Direnv succeeded in /home/dc/
+Sep 23 22:45:23 kratos bash[3635223]: Running direnv in /home/dc/ ... (C-g to abort)
+Sep 23 22:45:23 kratos bash[3635223]: Direnv succeeded in /home/dc/
+Sep 23 22:45:23 kratos bash[3635223]: Loaded ‘ef-tritanopia-dark’
+Sep 23 22:45:23 kratos bash[3635223]: *** Emacs loaded in 5.50 seconds with 24 garbage collections.
+Sep 23 22:45:23 kratos bash[3635223]: [yas] Prepared just-in-time loading of snippets successfully.
+Sep 24 01:25:34 kratos kde-open5[4159312]: QSocketNotifier: Can only be used with threads started with QThread
+Sep 24 01:25:34 kratos kde-open5[4159312]: kf.service.services: The desktop file "ServiceMenus/reimage-convert-rotate.desktop" references the action "agif" >
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.config.core: "KConfigIni: In file /usr/share/applications/scrcpy-console.desktop, line 8: " "Invalid escape se>
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.config.core: "KConfigIni: In file /usr/share/applications/scrcpy-console.desktop, line 8: " "Invalid escape se>
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.config.core: "KConfigIni: In file /usr/share/applications/scrcpy.desktop, line 8: " "Invalid escape sequence \>
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.config.core: "KConfigIni: In file /usr/share/applications/scrcpy.desktop, line 8: " "Invalid escape sequence \>
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.service.services: The desktop entry file "/usr/share/applications/org.freedesktop.Xwayland.desktop" has Type= >
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.service.sycoca: Invalid Service :  "/usr/share/applications/org.freedesktop.Xwayland.desktop"
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.service.services: The desktop entry file "/usr/share/applications/qemu.desktop" has Type= "Application" but no>
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.service.sycoca: Invalid Service :  "/usr/share/applications/qemu.desktop"
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.config.core: "KConfigIni: In file /home/dc/.local/share/applications/gmacsclient.desktop, line 27: " "Invalid >
+Sep 24 01:25:35 kratos kde-open5[4159312]: kf.config.core: "KConfigIni: In file /home/dc/.local/share/applications/gmacsclient.desktop, line 27: " "Invalid >
+Sep 24 01:25:56 kratos kde-open5[4159938]: QSocketNotifier: Can only be used with threads started with QThread
+Sep 24 02:02:56 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:02:56 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:02:56 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:02:56 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:02:56 kratos .emacs-29.0.92-[3635223]: Failed to load module "appmenu-gtk-module"
+Sep 24 02:02:58 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:02:58 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:02:58 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:02:58 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:02:58 kratos .emacs-29.0.92-[3635223]: Failed to load module "appmenu-gtk-module"
+Sep 24 02:03:01 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:03:01 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:03:01 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:03:01 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:03:01 kratos .emacs-29.0.92-[3635223]: Failed to load module "appmenu-gtk-module"
+Sep 24 02:03:06 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:03:06 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:03:07 kratos .emacs-29.0.92-[3635223]: Failed to load module "colorreload-gtk-module"
+Sep 24 02:03:07 kratos .emacs-29.0.92-[3635223]: Failed to load module "window-decorations-gtk-module"
+Sep 24 02:03:07 kratos .emacs-29.0.92-[3635223]: Failed to load module "appmenu-gtk-module"
+Sep 24 05:25:33 kratos kde-open5[3407]: QSocketNotifier: Can only be used with threads started with QThread
+Sep 24 06:22:08 kratos bash[3635223]: Backtrace:
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x52d4fb]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x42418b]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x42467d]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x52bad8]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x52bb49]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/gsjczqir1wbz8p770zndrpw4rnppmxi3-glibc-2.35/lib/libc.so.6(+0x3d2a0)[0x7f3a6ae412a0]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/nb40pwd37v6i1g4b1fq4l6q4h9px3asr-glib-2.72.3/lib/libgobject-2.0.so.0(+0x28794)[0x7f3a6e38a794]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/nb40pwd37v6i1g4b1fq4l6q4h9px3asr-glib-2.72.3/lib/libgobject-2.0.so.0(g_signal_emit_valist+0xc09)[0x7f3a6e39>
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/nb40pwd37v6i1g4b1fq4l6q4h9px3asr-glib-2.72.3/lib/libgobject-2.0.so.0(g_signal_emit+0x82)[0x7f3a6e390bb2]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/nb40pwd37v6i1g4b1fq4l6q4h9px3asr-glib-2.72.3/lib/libgobject-2.0.so.0(+0x1a9a4)[0x7f3a6e37c9a4]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/nb40pwd37v6i1g4b1fq4l6q4h9px3asr-glib-2.72.3/lib/libgobject-2.0.so.0(g_object_notify_by_pspec+0xe4)[0x7f3a6>
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x6429e4]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x479536]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x47dc69]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x47e75e]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x51c292]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x51e952]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x5205a2]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x595c47]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x50c76a]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x595ba1]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x50c70f]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x513663]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x5139da]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x42d132]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/gsjczqir1wbz8p770zndrpw4rnppmxi3-glibc-2.35/lib/libc.so.6(+0x291f7)[0x7f3a6ae2d1f7]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/gsjczqir1wbz8p770zndrpw4rnppmxi3-glibc-2.35/lib/libc.so.6(__libc_start_main+0x7c)[0x7f3a6ae2d2ac]
+Sep 24 06:22:08 kratos bash[3635223]: /gnu/store/ji4lcps27kbbkdhy19dynb9l4jl0dn19-profile/bin/emacs[0x42d601]
+Sep 24 06:22:11 kratos systemd-coredump[8516]: [🡕] Process 3635223 (.emacs-29.0.92-) of user 1000 dumped core.
+
+Module /home/dc/.emacs.g/eln-cache/29.0.92-198a7ab3/org-ref-natbib-bbl-citeproc-daf7a4d3-2115322f.eln without>
+Module /home/dc/.emacs.g/eln-cache/29.0.92-198a7ab3/ob-eukleides-c0b72764-0d863320.eln without build-id.
+Module /home/dc/.emacs.g/eln-cache/29.0.92-198a7ab3/org-collector-568283aa-57ec2e6f.eln without build-id.
+Module /home/dc/.emacs.g/eln-cache/29.0.92-198a7ab3/org-collector-568283aa-57ec2e6f.eln
+Module /home/dc/.emacs.g/eln-cache/29.0.92-198a7ab3/org-invoice-03a06cbf-ceae4999.eln without build-id.
+Module /home/dc/.emacs.g/eln-cache/29.0.92-198a7ab3/org-toc-b7ddd2e3-68e5f2bb.eln without build-id.
+Module /home/dc/.emacs.g/eln-cache/29.0.92-198a7ab3/org-toc-b7ddd2e3-68e5f2bb.eln
+
+... modules
+
+Module eldoc-d20a5fe9-5a429187.eln without build-id.
+Module lisp-mode-410874a4-8e379a7a.eln without build-id.
+Module byte-run-79ff048e-f73ac104.eln without build-id.
+Module simple-fab5b0cf-bcd3ba95.eln without build-id.
+Module register-80045398-74c9598f.eln without build-id.
+Module libblkid.so.1 without build-id.
+Module libdatrie.so.1 without build-id.
+Module libatspi.so.0 without build-id.
+Module libmpfr.so.6 without build-id.
+Module libmpc.so.3 without build-id.
+Module libisl.so.23 without build-id.
+Module libcap.so.2 without build-id.
+Module libhogweed.so.6 without build-id.
+Module libnettle.so.8 without build-id.
+Module libtasn1.so.6 without build-id.
+Module libunistring.so.2 without build-id.
+Module libidn2.so.0 without build-id.
+Module libp11-kit.so.0 without build-id.
+Module libpcre2-8.so.0 without build-id.
+Module libattr.so.1 without build-id.
+Module libbz2.so.1.0 without build-id.
+Module libexpat.so.1 without build-id.
+Module libXdmcp.so.6 without build-id.
+Module libXau.so.6 without build-id.
+Module ld-linux-x86-64.so.2 without build-id.
+Module liblzma.so.5 without build-id.
+Module libpcre.so.1 without build-id.
+Module libffi.so.8 without build-id.
+Module libmount.so.1 without build-id.
+Module libXrender.so.1 without build-id.
+Module libxcb-render.so.0 without build-id.
+Module libxcb.so.1 without build-id.
+Module libxcb-shm.so.0 without build-id.
+Module libpixman-1.so.0 without build-id.
+Module libgraphite2.so.3 without build-id.
+Module libthai.so.0 without build-id.
+Module libXinerama.so.1 without build-id.
+Module libXrandr.so.2 without build-id.
+Module libXcomposite.so.1 without build-id.
+Module libXdamage.so.1 without build-id.
+Module libXcursor.so.1 without build-id.
+Module libXext.so.6 without build-id.
+Module libwayland-egl.so.1 without build-id.
+Module libwayland-cursor.so.0 without build-id.
+Module libwayland-client.so.0 without build-id.
+Module libxkbcommon.so.0 without build-id.
+Module libXfixes.so.3 without build-id.
+Module libcloudproviders.so.0 without build-id.
+Module libatk-bridge-2.0.so.0 without build-id.
+Module libX11.so.6 without build-id.
+Module libXi.so.6 without build-id.
+Module libepoxy.so.0 without build-id.
+Module libfribidi.so.0 without build-id.
+Module libpangoft2-1.0.so.0 without build-id.
+Module libgmodule-2.0.so.0 without build-id.
+Module libc.so.6 without build-id.
+Module libgcc_s.so.1 without build-id.
+Module libsqlite3.so.0 without build-id.
+Module libtree-sitter.so.0 without build-id.
+Module libgccjit.so.0 without build-id.
+Module libgmp.so.10 without build-id.
+Module libjansson.so.4 without build-id.
+Module libelogind.so.0 without build-id.
+Module liblcms2.so.2 without build-id.
+Module libanl.so.1 without build-id.
+Module libgnutls.so.30 without build-id.
+Module libotf.so.1 without build-id.
+Module libfontconfig.so.1 without build-id.
+Module libfreetype.so.6 without build-id.
+Module libselinux.so.1 without build-id.
+Module libncursesw.so.6 without build-id.
+Module libxml2.so.2 without build-id.
+Module libdbus-1.so.3 without build-id.
+Module libacl.so.1 without build-id.
+Module libm.so.6 without build-id.
+Module librsvg-2.so.2 without build-id.
+Module libasound.so.2 without build-id.
+Module libgif.so.7 without build-id.
+Module libpng16.so.16 without build-id.
+Module libjpeg.so.62 without build-id.
+Module libtiff.so.5 without build-id.
+Module libglib-2.0.so.0 without build-id.
+Module libgobject-2.0.so.0 without build-id.
+Module libgio-2.0.so.0 without build-id.
+Module libgdk_pixbuf-2.0.so.0 without build-id.
+Module libcairo.so.2 without build-id.
+Module libcairo-gobject.so.2 without build-id.
+Module libatk-1.0.so.0 without build-id.
+Module libharfbuzz.so.0 without build-id.
+Module libpango-1.0.so.0 without build-id.
+Module libpangocairo-1.0.so.0 without build-id.
+Module libz.so.1 without build-id.
+Module libgdk-3.so.0 without build-id.
+Module libgtk-3.so.0 without build-id.
+Module .emacs-29.0.92-real without build-id.
+Stack trace of thread 3635223:
+#0  0x00007f3a6ae8afec __pthread_kill_implementation (libc.so.6 + 0x86fec)
+#1  0x00007f3a6ae41202 raise (libc.so.6 + 0x3d202)
+#2  0x00000000004241b3 n/a (.emacs-29.0.92-real + 0x241b3)
+#3  0x000000000042467d n/a (.emacs-29.0.92-real + 0x2467d)
+#4  0x000000000052bad8 n/a (.emacs-29.0.92-real + 0x12bad8)
+#5  0x000000000052bb49 n/a (.emacs-29.0.92-real + 0x12bb49)
+#6  0x00007f3a6ae412a0 __restore_rt (libc.so.6 + 0x3d2a0)
+#7  0x00007f3a6e38a794 n/a (libgobject-2.0.so.0 + 0x28794)
+#8  0x00007f3a6e390689 g_signal_emit_valist (libgobject-2.0.so.0 + 0x2e689)
+#9  0x00007f3a6e390bb2 g_signal_emit (libgobject-2.0.so.0 + 0x2ebb2)
+#10 0x00007f3a6e37c9a4 n/a (libgobject-2.0.so.0 + 0x1a9a4)
+#11 0x00007f3a6e37ea34 g_object_notify_by_pspec (libgobject-2.0.so.0 + 0x1ca34)
+#12 0x00000000006429e4 n/a (.emacs-29.0.92-real + 0x2429e4)
+#13 0x0000000000479536 n/a (.emacs-29.0.92-real + 0x79536)
+#14 0x000000000047dc69 n/a (.emacs-29.0.92-real + 0x7dc69)
+#15 0x000000000047e75e n/a (.emacs-29.0.92-real + 0x7e75e)
+#16 0x000000000051c292 n/a (.emacs-29.0.92-real + 0x11c292)
+#17 0x000000000051e952 n/a (.emacs-29.0.92-real + 0x11e952)
+#18 0x00000000005205a2 n/a (.emacs-29.0.92-real + 0x1205a2)
+#19 0x0000000000595c47 n/a (.emacs-29.0.92-real + 0x195c47)
+#20 0x000000000050c76a n/a (.emacs-29.0.92-real + 0x10c76a)
+#21 0x0000000000595ba1 n/a (.emacs-29.0.92-real + 0x195ba1)
+#22 0x000000000050c70f n/a (.emacs-29.0.92-real + 0x10c70f)
+#23 0x0000000000513663 n/a (.emacs-29.0.92-real + 0x113663)
+#24 0x00000000005139da n/a (.emacs-29.0.92-real + 0x1139da)
+#25 0x000000000042d132 n/a (.emacs-29.0.92-real + 0x2d132)
+#26 0x00007f3a6ae2d1f7 __libc_start_call_main (libc.so.6 + 0x291f7)
+#27 0x00007f3a6ae2d2ac __libc_start_main@@GLIBC_2.34 (libc.so.6 + 0x292ac)
+#28 0x000000000042d601 n/a (.emacs-29.0.92-real + 0x2d601)
+
+Stack trace of thread 3744461:
+#0  0x00007f3a6aefdd6f __poll (libc.so.6 + 0xf9d6f)
+#1  0x00007f3a6e281b96 n/a (libglib-2.0.so.0 + 0x55b96)
+#2  0x00007f3a6e281ed3 g_main_loop_run (libglib-2.0.so.0 + 0x55ed3)
+#3  0x00007f3a6e4e3456 n/a (libgio-2.0.so.0 + 0x121456)
+#4  0x00007f3a6e2aad0d n/a (libglib-2.0.so.0 + 0x7ed0d)
+#5  0x00007f3a6ae893aa start_thread (libc.so.6 + 0x853aa)
+#6  0x00007f3a6af09f7c __clone3 (libc.so.6 + 0x105f7c)
+
+Stack trace of thread 3635224:
+#0  0x00007f3a6aefdd6f __poll (libc.so.6 + 0xf9d6f)
+#1  0x00007f3a6e281b96 n/a (libglib-2.0.so.0 + 0x55b96)
+#2  0x00007f3a6e281c9f g_main_context_iteration (libglib-2.0.so.0 + 0x55c9f)
+#3  0x00007f3a6e281cf1 n/a (libglib-2.0.so.0 + 0x55cf1)
+#4  0x00007f3a6e2aad0d n/a (libglib-2.0.so.0 + 0x7ed0d)
+#5  0x00007f3a6ae893aa start_thread (libc.so.6 + 0x853aa)
+#6  0x00007f3a6af09f7c __clone3 (libc.so.6 + 0x105f7c)
+ELF object binary architecture: AMD x86-64
+Sep 24 06:22:12 kratos systemd[10802]: gmacs-arch.service: Main process exited, code=exited, status=139/n/a
+Sep 24 06:22:12 kratos systemd[10802]: gmacs-arch.service: Failed with result 'exit-code'.
+Sep 24 06:22:12 kratos systemd[10802]: gmacs-arch.service: Consumed 47min 42.766s CPU time.
+Sep 24 06:22:42 kratos systemd[10802]: gmacs-arch.service: Scheduled restart job, restart counter is at 1.
+Sep 24 06:22:42 kratos systemd[10802]: Starting Emacs text editor...
+Sep 24 06:22:42 kratos systemd[10802]: Started Emacs text editor.
+Sep 24 06:22:42 kratos bash[8676]: Due to a limitation in GTK 3, Emacs built with PGTK will simply exit when a
+Sep 24 06:22:42 kratos bash[8676]: display connection is closed.  The problem is especially difficult to fix,
+Sep 24 06:22:42 kratos bash[8676]: such that Emacs on Wayland with multiple displays is unlikely ever to be able
+Sep 24 06:22:42 kratos bash[8676]: to survive disconnects.
+Sep 24 06:22:43 kratos bash[8676]: Loading /home/dc/.dotfiles/.emacs.d/per-system-settings.el (source)...
+Sep 24 06:22:43 kratos bash[8676]: Loading /home/dc/.dotfiles/.emacs.d/per-system-settings.el (source)...done
+Sep 24 06:22:43 kratos bash[8676]: Loading /tmp/emacs-custom-1000.el (source)...
+Sep 24 06:22:43 kratos bash[8676]: Loading /tmp/emacs-custom-1000.el (source)...done
+#+end_example
 
 * Roam
 + [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
