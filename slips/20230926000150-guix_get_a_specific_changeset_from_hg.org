@@ -8,11 +8,72 @@
 * Docs
 
 
-* Guix Gexp
+* Tree-sitter TCL Grammer
 
+I was originally trying with this package definition, but it was having problems
 
+#+begin_src scheme
+(define-public tree-sitter-tcl
+  (let* ((rev-base "0.1.0")
+         (revision "112")
+         ;; (changeset-id (substring "8b37d53b9bde1efe75679e156347abd02d264667" 0 7))
+         (changeset-id (substring "8b37d53b9bde1efe75679e156347abd02d264667" 0 7))
+         (grammar-directories '("tcl" "tclsh")))
+    (package
+      (name "tree-sitter-tcl")
+      (version (hg-version rev-base revision changeset-id))
+      (source (origin
+                (method hg-fetch)
+                (uri (hg-reference
+                      (url "https://hg.sr.ht/~cdrozak/tree-sitter-tcl")
+                      (changeset changeset-id)))
+                (file-name (hg-file-name name version))
+                (sha256
+                 (base32
+                  "03xgmvvsxmqrz7blg7cqk0pb9ynhlq6v6jfl532zmjdzp5p3h10d"))))
+      (build-system gnu-build-system)
+      (arguments (list #:grammar-directories grammar-directories))
+      (home-page "https://hg.sr.ht/~cdrozak/tree-sitter-tcl")
+      (synopsis "Tree-sitter TCL grammar")
+      (description "This package provides a TCL grammar for the Tree-sitter library.")
+      (license license:asl2.0))))
+#+end_src
 
-** Hg Fetch
+Unfortunately, as I found after trying to run the =gexp= in the repl manually,
+the =guix-devel-download-package-source= function doesn't seem to work AFAIK.
+
+It would be useful to avoid needing to run the build to discover the hash, which
+kinda defeats the purpose of the hash. Running
+=guix-devel-build-package-definition= will attempt to download anyways, showing
+you the hash.
+
+#+begin_src log
+scheme@(ellipsis packages tree-sitter)> ,run-in-store (build-package tree-sitter-tcl #:use-substitutes? #t #:dry-run? #f)
+ mercurial-6.2.2  3.5MiB                                3.4MiB/s 00:01 ▕██████████████████▏ 100.0%
+substitute: updating substitutes from 'https://ci.guix.gnu.org'... 100.0%
+substitute: updating substitutes from 'https://ci.guix.gnu.org'... 100.0%
+substitute: updating substitutes from 'https://ci.guix.gnu.org'... 100.0%
+substitute: updating substitutes from 'https://ci.guix.gnu.org'... 100.0%
+ module-import-compiled  72KiB                          538KiB/s 00:00 ▕██████████████████▏ 100.0%
+ guile-2.0.14  3.0MiB                                   4.3MiB/s 00:01 ▕██████████████████▏ 100.0%
+building /gnu/store/ppyk74cwr656i9g6awf7djwaalby4wl9-module-import-compiled.drv...
+applying 1 graft for mercurial-6.2.2 ...
+building /gnu/store/r2yfawc7ci9z0qrw9nrq3yyj8zkg58d1-tree-sitter-tcl-0.1.0-0.8b37d53-checkout.drv...
+/r:sha256 hash mismatch for /gnu/store/1s4r2rxsrp75q82vqgpk0f36f6gav9if-tree-sitter-tcl-0.1.0-0.8b37d53-checkout:
+  expected hash: _03xgmvvsxmqrz7blg7cqk0pb9ynhlq6v6jfl532zmjdzp5p3h10d_
+  actual hash:   _1skixfrk3rznnc8a3kj7l5188f357y0xymiam5yrmcdfkjg2crp0_
+hash mismatch for store item '/gnu/store/1s4r2rxsrp75q82vqgpk0f36f6gav9if-tree-sitter-tcl-0.1.0-0.8b37d53-checkout'
+build of /gnu/store/r2yfawc7ci9z0qrw9nrq3yyj8zkg58d1-tree-sitter-tcl-0.1.0-0.8b37d53-checkout.drv failed
+View build log at '/var/log/guix/drvs/r2/yfawc7ci9z0qrw9nrq3yyj8zkg58d1-tree-sitter-tcl-0.1.0-0.8b37d53-checkout.drv.bz2'.
+cannot build derivation `/gnu/store/cxgbynxl20p89hc8w7x7am7wagylr17n-tree-sitter-tcl-0.1.0-0.8b37d53.drv': 1 dependencies couldn't be built
+While executing meta-command:
+ERROR:
+  1. &store-protocol-error:
+      message: "build of `/gnu/store/cxgbynxl20p89hc8w7x7am7wagylr17n-tree-sitter-tcl-0.1.0-0.8b37d53.drv' failed"
+      status: 1
+#+end_src
+
+** Testing Hg With Gexp
 
 I haven't used these much. I'm wrap the inside =hg-fetch= to execute within the
 Guix store to see what is causing my call to download to fail.
@@ -50,6 +111,118 @@ Still no. I didn't pull in modules req. inside =(guix hg-download)=.
            #:hg-command (string-append  "/bin/hg"))) )
 #+end_src
 
+** Trying with =git-fetch=
+
+This downloads, but for some reason either ignores the =grammar-directories= or
+it can't find files. The =Makefile= isn't in the =git= remote and the =hg=
+remote has a few other generated files that the =git= remote lacks.
+
+It fails with =No such file or directory (os error 2)= which is a pretty generic
+=tree-sitter generate= failure -- if i clone the =git= repo manually, I get the
+same failure, whether i enter =./tcl/= or run =tree-sitter generate
+--no-bindings= from the root.
+
+#+begin_src scheme
+(define-public tree-sitter-tcl-git
+  (let* ((grammar-directories '("tcl" "tclsh"))
+         (commit "14db499325bfc05d9699e3ad6542c2fbe7064c06")
+         (version "0.1.0")
+         (guix-revision "0")
+         (guix-version (string-concatenate (list version "-" guix-revision "." (substring commit 0 7)))))
+    (package
+      (name "tree-sitter-tcl-git")
+      (version guix-version)
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/nawordar/tree-sitter-tcl")
+                      (commit "14db499325bfc05d9699e3ad6542c2fbe7064c06")))
+                (file-name (git-file-name name guix-version))
+                (sha256
+                 (base32
+                  "0y9pf5cr3g7l14qazpwyfrfv2z4pral1r5wvf4nciz9hjlrsa1wj"))
+                ;; (snippet
+                ;;  (tree-sitter-delete-generated-files grammar-directories))
+                ))
+      ;; (build-system gnu-build-system)
+      (build-system tree-sitter-build-system)
+      (arguments (list #:grammar-directories grammar-directories))
+      (home-page "https://hg.sr.ht/~cdrozak/tree-sitter-tcl")
+      (synopsis "Tree-sitter TCL grammar")
+      (description "This package provides a TCL grammar for the Tree-sitter library.")
+      (license license:asl2.0))))
+#+end_src
+
+** Trying again with =hg-fetch=
+
+Alright, I got the full thing working. Here's the current package definition,
+which is also in my dotfiles.
+
+#+begin_src scheme
+(define-module (ellipsis packages tree-sitter)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages crates-graphics)
+  #:use-module (gnu packages crates-io)
+  ;; #:use-module (gnu packages icu4c)
+  #:use-module (gnu packages node)
+  #:use-module (guix build-system cargo)
+  #:use-module (guix build-system gnu)
+  #:use-module (guix build-system tree-sitter)
+  #:use-module (guix gexp)
+  #:use-module (guix hg-download)
+  #:use-module (guix git-download)
+  #:use-module (guix packages)
+  #:use-module (guix utils))
+
+;; From Guix ./gnu/packages/tree-sitter.scm
+(define (tree-sitter-delete-generated-files grammar-directories)
+  #~(begin
+      (use-modules (guix build utils))
+      (delete-file "binding.gyp")
+      (delete-file-recursively "bindings")
+      (for-each
+       (lambda (lang)
+         (with-directory-excursion lang
+           (delete-file "src/grammar.json")
+           (delete-file "src/node-types.json")
+           (delete-file "src/parser.c")
+           (delete-file-recursively "src/tree_sitter")))
+       '#$grammar-directories)))
+
+(define-public tree-sitter-tcl
+  (let* ((rev-base "0.1.0")
+         (revision "112")
+         (changeset-full "8b37d53b9bde1efe75679e156347abd02d264667")
+         (changeset-short (substring changeset-full 0 7))
+         (version "0.1.0")
+         (guix-revision "0")
+         (guix-version (string-concatenate (list version "-" guix-revision "." changeset-short)))
+         (grammar-directories '("tcl" "tclsh")))
+
+    (package
+      (name "tree-sitter-tcl")
+      (version guix-version)
+      (source (origin
+                (method hg-fetch)
+                (uri (hg-reference
+                      (url "https://hg.sr.ht/~cdrozak/tree-sitter-tcl")
+                      (changeset changeset-full)))
+                (file-name (hg-file-name name version))
+                (sha256
+                 (base32
+                  "1skixfrk3rznnc8a3kj7l5188f357y0xymiam5yrmcdfkjg2crp0"))
+                ;; (snippet
+                ;;  (tree-sitter-delete-generated-files grammar-directories))
+                ))
+      ;; (build-system gnu-build-system)
+      (build-system tree-sitter-build-system)
+      (arguments (list #:grammar-directories grammar-directories))
+      (home-page "https://hg.sr.ht/~cdrozak/tree-sitter-tcl")
+      (synopsis "Tree-sitter TCL grammar")
+      (description "This package provides a TCL grammar for the Tree-sitter library.")
+      (license license:asl2.0))))
+#+end_src
 
 * Roam
 + [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
