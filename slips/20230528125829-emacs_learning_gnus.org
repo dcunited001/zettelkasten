@@ -49,7 +49,17 @@ mostly from one laptop, but this laptop needs work.
 
 ** Syncing Data
 
-There is the [[https://www.gnu.org/software/emacs/manual/html_mono/gnus.html#The-Gnus-Cloud][Gnus Cloud package]] with four variables. The docs describe it best.
+Functionality could be configured the =init.el= for Emacs or in =gnus.el=.
+
+*** Gnus Cloud
+
+[[https://www.gnu.org/software/emacs/manual/html_node/gnus/The-Gnus-Cloud.html][Gnus Cloud]] stores Gnus data in an IMAP folder & sync multiple clients to it.
+
++ Marks are synchronized for =nnimap= groups, but not for other types of groups
++ "General data and other files" will be synced for most group types, if I'm
+  interpreting this correctly (I have yet to configure it).
+
+The [[https://www.gnu.org/software/emacs/manual/html_mono/gnus.html#The-Gnus-Cloud][Gnus Cloud package]] has four variables. The docs describe it best.
 
 From the group buffer: =~ d= to download and =~ u= to upload
 
@@ -66,6 +76,81 @@ From the group buffer: =~ d= to download and =~ u= to upload
   'loopback)= or the encryption will fail. This is the most convenient option
   for this variable anyways.
 
+*** Gnus Registry
+
+[[https://www.gnu.org/software/emacs/manual/html_node/gnus/The-Gnus-Registry.html][Gnus Registry]]
+
+*** Startup
+
+**** [[https://emacs.stackexchange.com/questions/34537/how-to-prevent-gnus-from-querying-the-server-during-startup][How to prevent Gnus from querying the server during startup?]]
+
+Lower the =gnus-activate-level= so _groups_ at higher levels won't be
+activated. _Groups_ are created with subscription level of
+=gnus-level-default-subscribed=. This req. using =S l= over your =nnimap= groups
+to alter their subscription level.
+
+*** Agent and Plugging
+
+
+*** Daemons
+
+See [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Daemons.html][Daemons]]
+
+Add to the list =gnus-daemon-handles= to schedule functionality. Adding handlers
+requires running =(gnus-demon-init)=
+
+By default, available handlers are:
+
++ gnus-demon-add-disconnection :: disconnect from your servers
++ gnus-demon-add-nntp-close-connection
++ gnus-demon-add-scan-timestamps
++ gnus-demon-add-rescan
++ gnus-demon-add-scanmail :: for mail backends (nnmail, nnimap, etc), but will
+  reopen a closed connection.
+
+**** Auto-fetch =nnimap= mail when not =closed=
+
+... I think I forgot about the Gnus Agent, so the =gnus-demon= callbacks
+probably aren't the best way to do this.
+
+#+begin_example emacs-lisp
+(defun gnus-server-status (method)
+  "Return the status of METHOD."
+  (nth 1 (assoc method gnus-opened-servers)))
+#+end_example
+
+Use =gnus-server-staus= from =gnus.el=
+
+#+begin_src
+(gnus-server-status '(nnimap "imap.gmail.com"))
+#+end_src
+
+A little unwieldy for noobs, since you need to query on an exact list containing
+many of the connection details.
+
+#+begin_src emacs-lisp
+(pp gnus-opened-servers)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+(((nndraft "")
+  ok)
+ ((nntp "news.gmane.io")
+  ok)
+ ((nnfolder "archive"
+            (nnfolder-directory "~/Mail/archive")
+            (nnfolder-active-file "~/Mail/archive/active")
+            (nnfolder-get-new-mail nil)
+            (nnfolder-inhibit-expiry t))
+  ok)
+ ((nnimap "imap.gmail.com")
+  closed))
+#+end_example
+
+
+
+
 ** Merging GNUS state
 
 *** Recovering Group Subscriptions
@@ -73,7 +158,7 @@ From the group buffer: =~ d= to download and =~ u= to upload
 Read the [[https://www.gnu.org/software/emacs/manual/html_mono/gnus.html#Startup-Files][Startup Files]] section in the manual. You should be able to import the
 =.newsrc= file and run
 
-* GNUS Data
+* Data Storage
 
 Since GNUS manages contains email related information, I want to be aware of
 exactly what data is being stored where. To this end, I've "containerized" the
@@ -115,6 +200,38 @@ whatever =message-directory= is set to. This is stored in the =mbox= format.
 + Group Mode
 + Summary Mode
 + Article Mode
+
+** Code
+
+*** Data Structures
+
+**** cl-defstruct
+
+|--------------+----------------+--------+----------------+-------------------------------------------------------------------------|
+| file         | name           | type   | constructor    | slots                                                                   |
+|--------------+----------------+--------+----------------+-------------------------------------------------------------------------|
+| nnheader.el  | (mail-header   | vector |                | number  subject  from  date  id  references  chars  lines  xref  extra  |
+| nnimap.el    | nnimap         |        |                |                                                                         |
+| mm-uu.el     | (mm-uu-entry   | list   | nil            | type beginning-regexp end-regexp function-extract function-1 function-2 |
+| gnus.el      | (gnus-info     |        | gnus-info-make | group rank read marks method params                                     |
+| gnus-sum.el  | (gnus-data     | list   | gnus-data-make | number mark pos header level                                            |
+|--------------+----------------+--------+----------------+-------------------------------------------------------------------------|
+
+
+|----------------+------------------+------------------+-----------------+-------------------+-------------------+---------------------+-------------------------+---------------------+-----------------+-----------------+-----------------------------|
+| name           | slot (type, def) |                  |                 |                   |                   |                     |                         |                     |                 |                 |                             |
+|----------------+------------------+------------------+-----------------+-------------------+-------------------+---------------------+-------------------------+---------------------+-----------------+-----------------+-----------------------------|
+| nnmaildir--art | prefix  (string) | suffix  (string) | num  (natnum)   | msgid  (string)   | nov  (vector)     |                     |                         |                     |                 |                 |                             |
+| nnmaildir--grp | name   (string)  | new    (list)    | cur    (list)   | min    (natnum 1) | count  (natnum 0) | nlist  (list)       | flist  (hash-table)     | mlist  (hash-table) | cache  (vector) | index  (natnum) | mmth  (hash-table)          |
+| nnmaildir--srv | address (string) | method (list)    | prefix (string) | dir (string)      | ls (function)     | groups (hash-table) | curgrp (nnmaildir--grp) | error (string)      | mtime (list)    | gnm             | target-prefix (string type) |
+|----------------+------------------+------------------+-----------------+-------------------+-------------------+---------------------+-------------------------+---------------------+-----------------+-----------------+-----------------------------|
+
+And also, =nnimap= with no specified slots/structure:
+
+|--------+-------------------+----------+--------------+---------------+----------------|
+| group  | process           | commands | capabilities | select-result | newlinep       |
+| server | last-command-time | greeting | examined     | stream-type   | initial-resync |
+|--------+-------------------+----------+--------------+---------------+----------------|
 
 ** Configuration
 
@@ -166,9 +283,69 @@ embark buffer from when I found the best way to configure NNTP was with
 #+end_src
 
 
+
+
+** Treating
+
+Options for [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Customizing-Articles.html][customizing article]] display. prefix: =gnus-treat-=
+
++ buttonize
++ buttonize-head
++ capitalize-sentences
++ overstrike
+
+
+*** Highlighting
+
+**** [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Article-Highlighting.html][Articles]]
+
+Out of the box, Gnus will highlight headers/citation/etc.
+
++ Tweak =gnus-header-face-alist= to customize
++ Not everyone follows [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Article-Signature.html][RFC 5536]] though ....
+
+*** Patches/Diffs
+
+[[https://github.com/orgcandman/emacs-plugins/blob/master/gnus-article-treat-patch.el][orgcandman gnus-article-treat-patch]]:
+
++ other variants: [[https://github.com/redguardtoo/emacs.d/blob/master/site-lisp/gnus-article-treat-patch/gnus-article-treat-patch.el][redguardtoo]] (+10yrs) and velkyel (~ 3yrs?)
++ equiv for [[https://github.com/seanfarley/message-view-patch][mu4e]]
+
+[[https://github.com/mgalgs/diffview-mode][mgalgs/diffview-mode]]: compare patch with extant source tree
+
++ i think other patchtools already do this)
+
 ** Interface
 
+Manual Pages ([[https://www.gnu.org/software/emacs/manual/html_node/gnus/Various.html][Gnus Interface]])
+
++ [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Tabbed-Interface.html][Tabbed interface]]
++ [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Highlighting-and-Menus.html][Highlighting and Menus]]
+
+
+*** TODO enumerate variables of interest
+
+article
+
++ gnus-visible-headers & gnus-sorted-header-list
++ gnus-thread-sort-functions (takes a list, many options)
+
+group
+
++ gnus-level-[un]subscribed (also zombie/killed)
++ gnus-group-sort-functions
++ gnus-topic-display-empty-topics
+
+summary
+
++ gnus-summary-ignore-duplicates
++ gnus-auto-select-first
++ gnus-sum-thread-tree-*
+
 *** Formatting
+
+**** Overview
+
 
 See [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Formatting-Variables.html][formatting variables]]. Tables below contain stuff from embark, defaults.
 
@@ -219,6 +396,324 @@ Misc
 + gnus-next-page-line-format: =%{%(Next page...%)%}\n=
 + gnus-prev-pageline-format: =%{%(Previous page...%)%}\n=
 
+**** Summary
+
++ Article [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Setting-Process-Marks.html][Process Mark]]
+
+***** Format String Comparison
+
+Default =%U%R%z%I%(%[%4L: %-23,23f%]%) %s\n=
+
+#+begin_quote
+  [  23: Ludovic Courtès        ] Re: Guix / Nix Benchmarks
+       <  16: Ricardo Wurmus         >
+           [  26: Wilko Meyer            ]
+               [  31: Ricardo Wurmus         ]
+ #+end_quote
+
+=%U%R%z %(%&user-date; %B%-3L %[%f%]%) %s\n=
+
+#+begin_quote
+  July 02 ○─► 23  [Ludovic Courtès] Re: Guix / Nix Benchmarks
+    July 02  └─► 16  <Ricardo Wurmus>
+    July 02   └─► 26  [Wilko Meyer]
+    July 03    └─► 31  [Ricardo Wurmus]
+#+end_quote
+
+=%U%R %-18,18&user-date; %4L:%-25,25f %B%s\n=
+
+#+begin_quote
+   July 02              18:Ludovic Courtès           ■ Re: Packaging Con
+   July 02              23:Ludovic Courtès           ○─► Re: Guix / Nix Benchmarks
+   July 02              16:Ricardo Wurmus             └─►
+   July 02              26:Wilko Meyer                 └─►
+   July 03              31:Ricardo Wurmus               └─►
+#+end_quote
+
+kitnil =%U%R %d %i %I%(%[%4L: %-23,23f%]%) %s\n=
+
+#+begin_quote
+   02-Jul 0 [  18: Ludovic Courtès        ] Re: Packaging Con
+   02-Jul 0 [  23: Ludovic Courtès        ] Re: Guix / Nix Benchmarks
+   02-Jul 0     <  16: Ricardo Wurmus         >
+   02-Jul 0         [  26: Wilko Meyer            ]
+   03-Jul 0             [  31: Ricardo Wurmus         ]
+#+end_quote
+
+And from =gnus-all-the-icons=. I'm not sure what this does.
+
+#+begin_src emacs-lisp
+(concat "%1{%U%R%z: %}%[%2{%&user-date;%}%] "
+        (propertize ;(all-the-icons-faicon "male")
+         (all-the-icons-material "person")
+         'display '(raise 0.0))
+        " %4{%-34,34n%} %3{"
+        (propertize ;(all-the-icons-faicon "terminal")
+         (all-the-icons-material "send")
+         'display '(raise 0.0))
+        " %}%(%1{%B%}%s%)\n")
+#+end_src
+
++ Updating req. running =gnus-group-restart= or =gnus-update-format=. I haven't
+  figured the second one out yet, but there's definitely some cached state.
+
+***** Format String Alist
+
+The =gnus-summary-line-format-alist= variable:
+
+|--------+------+--------------+-----------------------+--------------------------------------------------------|
+| type   | char | source       | meaning               | desc                                                   |
+|--------+------+--------------+-----------------------+--------------------------------------------------------|
+| int    | %N   | mail-header  | number                |                                                        |
+| string | %S   | mail-header  | subject               |                                                        |
+| string | %s   |              | subject or nil        |                                                        |
+| string | %n   |              | gnus-tmp-name         |                                                        |
+| string | %A   |              | from (address)        |                                                        |
+| string | %a   |              | from (name)           |                                                        |
+| string | %F   |              | from                  |                                                        |
+| string | %x   | mail-header  | xref                  |                                                        |
+| string | %D   | mail-header  | date                  |                                                        |
+| string | %d   | mail-header  | date                  | (gnus-dd-mmm (mail-header-date gnus-tmp-header))       |
+| string | %o   | mail-header  | date                  | (gnus-date-iso8601 (mail-header-date gnus-tmp-header)) |
+| string | %M   | mail-header  | id                    |                                                        |
+| string | %r   | mail-header  | references            |                                                        |
+| int    | %c   | mail-header  | chars                 |                                                        |
+| string | %k   |              | summary line          | pretty printed message size, # bytes                   |
+| string | %L   |              | lines                 | gnus-tmp-lines                                         |
+| int    | %Z   | mail-header  | number                |                                                        |
+| string | %G   | mail-header  | group                 |                                                        |
+| string | %g   | mail-header  | group (short)         |                                                        |
+| bool   | %O   |              | downloaded            |                                                        |
+| string | %I   |              | indentation           |                                                        |
+| string | %T   |              | thread root formatter | hide rest of summary if a root article                 |
+| bool   | %R   |              | replied               |                                                        |
+| string | %[   |              | opening-bracket       |                                                        |
+| string | %]   |              | closing-bracket       |                                                        |
+| string | %>   |              | level (depth)         | string where length = gnus-tmp-level                   |
+| string | %<   |              | level (depth)         | string where length = max(20 -gnus-tmp-level)          |
+| int    | %i   |              | score                 |                                                        |
+| bool   | %z   |              | score-char            |                                                        |
+| int    | %V   | gnus-thread  | total score           | (gnus-thread-total-score  ...)                         |
+| bool   | %U   |              | unread                |                                                        |
+| string | %f   | header/from  | name, To header       |                                                        |
+| int    | %t   |              | # subthread articles  |                                                        |
+| bool   | %e   |              | article has children? |                                                        |
+| string | %u   | user-defined | user-defined          |                                                        |
+| int    | %P   |              | line number           | (gnus-pick-line-number)                                |
+| string | %B   |              | thread tree header    | thread-tree-header-string                              |
+|--------+------+--------------+-----------------------+--------------------------------------------------------|
+
++ =%&user-date= provides a custom format for dates
++ for fields marked =mail-header= most of the descriptions correspond to (or are
+  at least derived from) the cl-defstruct slot accessor -- e.g. =xref= is
+  =(mail-header-xref mail-record)=
+
+***** Summary Tree
+
++ Need to ensure the =gnus-summary-line-format= has =%B= instead of =%I=
+=%U%R%z%I%(%[%4L: %-23,23f%]%) %s=
+
+Some examples of settings. See [[https://www.emacswiki.org/emacs/GnusFormatting#h5o-1][Emacs Wiki]] for more info
+
+These are used along with =gnus-summary-line-format= and its alist below.
+
+****** BonFaceKilz
+
+#+begin_src emacs-lisp
+(when window-system
+  (setq gnus-sum-thread-tree-indent " ")
+  (setq gnus-sum-thread-tree-root "") ;; "● "
+  (setq gnus-sum-thread-tree-false-root "") ;; "◯ "
+  (setq gnus-sum-thread-tree-single-indent "") ;; "◎ "
+  (setq gnus-sum-thread-tree-vertical    "│")
+  (setq gnus-sum-thread-tree-leaf-with-other "├─► ")
+  (setq gnus-sum-thread-tree-single-leaf   "╰─► "))
+#+end_src
+
+****** Alezost
+
+#+begin_src emacs-lisp
+(setq
+ gnus-sum-thread-tree-root            "●─► "
+ gnus-sum-thread-tree-false-root      "○─► "
+ gnus-sum-thread-tree-vertical        "│"
+ gnus-sum-thread-tree-leaf-with-other "├─► "
+ gnus-sum-thread-tree-single-leaf     "└─► "
+ gnus-sum-thread-tree-indent          " "
+ gnus-sum-thread-tree-single-indent   "■ "
+ gnus-summary-newsgroup-prefix        "⇒ "
+ gnus-summary-to-prefix               "→ ")
+#+end_src
+
+
+****** dcunited001
+
+
+This is basically the same charset as Alezost's above.
+
+
+#+begin_src emacs-lisp
+(setq gnus-summary-line-format "%U%R%z %d %B%-3L %[%f%] %s\n"
+      gnus-sum-thread-tree-root            "☼──► "
+      gnus-sum-thread-tree-false-root      "○┬─► "
+      gnus-sum-thread-tree-vertical        "│"
+      gnus-sum-thread-tree-leaf-with-other "├•─► "
+      gnus-sum-thread-tree-single-leaf     "└•─► "
+      gnus-sum-thread-tree-indent          " "
+      gnus-sum-thread-tree-single-indent   "■ "
+      gnus-summary-newsgroup-prefix        "⇒ "
+      gnus-summary-to-prefix               "→ ")
+#+end_src
+
+Alternatives:
+
+#+begin_src emacs-lisp
+(setq gnus-summary-line-format "%U%R%z %d %B%-3L %[%f%] %s\n"
+
+      gnus-sum-thread-tree-root            "╦═► "
+      gnus-sum-thread-tree-false-root      "○╦═► "
+      gnus-sum-thread-tree-vertical        "│"
+      gnus-sum-thread-tree-leaf-with-other "├╤═► "
+      gnus-sum-thread-tree-single-leaf     "└╤═►"
+      gnus-sum-thread-tree-indent          " "
+      gnus-sum-thread-tree-single-indent   "■ "
+      gnus-summary-newsgroup-prefix        "⇒ "
+      gnus-summary-to-prefix               "→ ")
+
+(setq gnus-summary-line-format "%U%R%z %d %B%-3L %[%f%] %s\n"
+
+      gnus-sum-thread-tree-root            "■═► "
+      gnus-sum-thread-tree-false-root      "○╥─► "
+      gnus-sum-thread-tree-vertical        "│"
+      gnus-sum-thread-tree-leaf-with-other "╠╤═► "
+      gnus-sum-thread-tree-single-leaf     "╚╤═►"
+      gnus-sum-thread-tree-indent          " "
+      gnus-sum-thread-tree-single-indent   "■ "
+      gnus-summary-newsgroup-prefix        "⇒ "
+      gnus-summary-to-prefix               "→ ")
+
+(setq gnus-summary-line-format "%U%R%z %d %B%-3L %[%f%] %s\n"
+
+      gnus-sum-thread-tree-root            "○╦═► "
+      gnus-sum-thread-tree-false-root      "╥─► "
+      gnus-sum-thread-tree-vertical        "║"
+      gnus-sum-thread-tree-leaf-with-other "╟──► "
+      gnus-sum-thread-tree-single-leaf     "╙──►"
+      gnus-sum-thread-tree-indent          " "
+      gnus-sum-thread-tree-single-indent   "■ "
+      gnus-summary-newsgroup-prefix        "⇒ "
+      gnus-summary-to-prefix               "→ ")
+
+#+end_src
+
+
+**** Group
+
+The workflow for customizing this one only requires using =g= to refresh the
+groups buffer.
+
+
+***** dcunited001
+
+Though I have almost no experience using =gnus=, this formatting works well with
+the =gnus-topic-mode= set in the =*Group*= buffer.
+
+#+begin_src emacs-lisp
+(setq gnus-group-line-format "%-40,40c │%7y│%5T│%5R│%B%M%S%p│\n"
+      gnus-group-uncollapsed-levels 2)
+#+end_src
+
+It ends up looking like this. I still need to figure out how to control the
+sorting of individual servers/sources. I think there is somewhere to configure a
+line at the top which would explain the meaning of the columns.
+
++ # unread, unticked, non-dormant :: the volume of content remaining
++ # ticked :: the number of ticked (or pinned) articles
++ # read :: the metric I should gamify to increase first
+
+The last column contains character indicators:
+
++ %B :: Whether there's a summary buffer currently open
++ %M :: When there is new mail: =%=
++ %S :: Whether the group is subscribed
++ %p :: When the group is [[https://www.gnu.org/software/emacs/manual/html_node/gnus/Marking-Groups.html][process-marked]] for external processing: =#=
+
+
+#+begin_quote
+[ Gnus -- 1323085 ]
+  [ Academic -- 92108 ]
+news:g.c.e.f.tech.papers                 │  12990│    0│    0│    │
+news:g.e.u.s.call-for-paper.category     │  18752│    0│    0│    │
+news:g.o.c.a.papers.b2aba772-7680-       │  60366│    0│    0│    │
+  [ Gmail -- 6687 ]
+Gmail/Important                          │      2│   20│  292│    │
+GNU/Guix                                 │   2387│    0│  147│    │
+INBOX                                    │    140│   25│  687│    │
+Programming/org-roam                     │      6│    0│    6│    │
+Programming/xkeyboard                    │    800│    0│   89│    │
+Gmail/All Mail                           │   3345│   25│ 2228│    │
+Gmail/Spam                               │      7│    0│ 1418│    │
+Gmail/Starred                            │      0│   26│   30│ *  │
+  [ Guix -- 753359 ]
+news:g.c.g.guix.announce                 │     43│    0│    0│    │
+news:g.c.g.guix.bugs                     │  37139│    1│   26│    │
+news:g.c.g.guix.ci                       │ 242830│    0│    0│    │
+news:g.c.g.guix.devel                    │  67998│    0│   63│    │
+news:g.c.g.g.gwl.devel                   │    130│    0│    0│    │
+news:g.c.g.guix.patches                  │  52577│    0│    9│    │
+news:g.c.g.guix.science                  │    248│    0│    0│    │
+news:g.c.g.guix.scm                      │ 197560│    0│    0│    │
+news:g.c.g.guix.user                     │  17125│    0│   23│    │
+news:g.c.g.nonguix.nonguix               │    429│    0│    5│    │
+news:g.c.l.tag.guix                      │     12│    0│    0│    │
+news:g.o.g.g.ci.events                   │ 137137│    0│    0│    │
+news:g.o.g.g.feeds.blog                  │     76│    0│    0│    │
+news:g.o.g.g.hpc.blog                    │     55│    0│    0│    │
+  [ Gutenberg -- 75525 ]
+news:g.c.l.e.g.announce.monthly          │    195│    0│    0│    │
+news:g.c.l.e.g.announce.posted           │  32562│    0│    0│    │
+news:g.c.l.e.g.announce.weekly           │    673│    0│    0│    │
+news:g.c.l.e.gutenberg.volunteers        │  20297│    0│    0│    │
+#+end_quote
+
+**** Tree Display For Threads
+
+Set =gnus-use-trees=.
+
+Default appearance
+
+#+begin_src emacs-lisp
+{***}
+  |--------------------\
+<Dar>                   <Max>
+  |--\-----\-----\        |--\
+[Dar] [Wil] [Ste] [Ste] [abc] [Dar]
+  |                             |
+[Jer]                         [Kat]
+                                |
+                              [Mic]
+                                |
+                              [Wil]
+                                |
+                              [Chr]
+#+end_src
+
+To customize tree appearance:
+
+These variables are marked internal, though =gnus-generate-tree-function= can be
+set to =gnus-generate-(horizontal|vertical)-tree= or =other=
+
+|-----------+--------------------+-----+---|
+| prefix    | var                | def |   |
+|-----------+--------------------+-----+---|
+| gnus-tree | brackets           |     |   |
+| gnus-tree | line-format        |     |   |
+| gnus-tree | node-length        |     |   |
+| gnus-tree | parent-child-edges |     |   |
+| gnus-tree | line-format-alist  |     |   |
+| gnus-tree | mode-syntax-table  |     |   |
+| gnus-tree | mode-abbrev-table  |     |   |
+|-----------+--------------------+-----+---|
 
 *** Windows and Buffers
 
