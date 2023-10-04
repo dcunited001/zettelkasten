@@ -272,13 +272,74 @@ See here and here: [[https://utcc.utoronto.ca/~cks/space/blog/linux/Ubuntu1204Sy
 
 ** Networking
 
+*** VRFs and Namespaces
 
-*** Virtual Ethernet Devices with VRFs and Namespaces
+#+begin_quote
+no default gateway for you
+#+end_quote
+
+**** Configurations for =veth= with =VRF=
 
 From [[https://linux-blog.anracom.com/2018/01/05/fun-with-veth-devices-linux-bridges-and-vlans-in-unnamed-linux-network-namespaces-viii/][Fun with VRF Devices]], a series of 8+ blogs that are /unreasonably hard/ to
 find on search engines.
 
 [[/data/org/roam/topics/img/fun-with-veth-devices.gif]]
+
+**** In Guix
+
+Guix would define this in =network-link= in the =static-networking= record.
+
+See [[https://guix.gnu.org/en/manual/devel/en/guix.html#Networking-Setup][Networking Setup]] and the Guile-Netlink library. The latter references
+=veth=, =netns= and =vrf= in the API.
+
+According to my insufficient understanding, for this to work with shepherd would
+probably require a similar patthern as with systemd and firewalld. The services
+need to be launched inside the =netns= and you may likely encounter similar Unix
+domain socket limitations as with firewalld/dbus (maybe not, since Guix doesn't
+use firewalld and thus there's no need to control the firewall through the dbus
+socket). As for Shepherd, it could start processes running in another netns, but
+if you hit a wall where you need a separate Shepherd instance (with it's own
+socket), bridging that gap would require that communication occur as "one shot"
+services from the =netns= shepherd to system's =pid 1= shepherd /and vice versa
+if bidirectional/. One shepherd would need to write to the other's socket.
+
+I don't really know though. There may be better ways to do this. Shepherd, being
+written in scheme, would make multiple service managers /a bit/ easier to work
+with ... This is an interesting possibility i've thought a little about, but as
+for using it for netns, there are probably simpler ways (messaging to a second
+dbus)
+
+... not even sure if i've got the fundamentals correct here.
+
+**** Apps in netns routing out a VPN
+
+[[WireGuard in a separate Linux network namespace][Wiregard in a separate Linux Network Namespace]] covers
+
++ Applications connected directly to VPN
++ Launching apps with user priviledges
+
+Doesn't cover [[https://github.com/firewalld/firewalld/issues/884][firewalld]] which apparently uses a dbus socket, not netns
+aware. See [[https://github.com/firewalld/firewalld/issues/884][firewalld/firewalld #884]] and [[https://github.com/firewalld/firewalld/issues/904][#904]]
+
+#+begin_quote
+If you want firewalld to function inside a namespace you need to use both the
+daemon firewalld and the CLI firewall-cmd inside that namespace. You could run a
+firewalld daemon per a namespace. This is what the firewalld testsuite does to
+allow parallel test execution.
+
+The testsuite uses an abstract unix domain socket (which IS namespace aware) in
+order to run multiple firewalld and dbus-daemon instances. You could use a
+similar strategy to run the daemon inside your namespace.
+#+end_quote
+
+And [[https://github.com/firewalld/firewalld/blob/11f997f04fd62c1852f6c381241c089d59ab72bd/src/tests/functions.at#L151-L154][this snippet]] describes that
+
+#+begin_src sh
+dnl create a namespace and dbus-daemon
+m4_ifdef([TESTING_INTEGRATION], [], [
+             m4_define([CURRENT_DBUS_ADDRESS], [unix:abstract=firewalld-testsuite-dbus-system-socket-${at_group_normalized}])
+         ])
+#+end_src
 
 
 *** Socket Stats =ss -s=
