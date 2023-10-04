@@ -38,6 +38,153 @@ you're looking for. If you have "read the manual" then you know enough about
 Emacs to find a solution, but you need some practice/advice when putting these
 tools to work.
 
+** Remote Environment
+
+[[https://www.gnu.org/software/emacs/manual/html_mono/emacs.html#Connection-Variables][Connection-local variables]] these are applied when the following match:
+
+|-------+-----------+--------------+----------|
+| :user | :protocol | :application | :machine |
+|-------+-----------+--------------+----------|
+
+*** Dir Locals In Remote Projects
+
+Setting =enable-remote-dir-locals= in the emacs session will set it for all
+hosts. Instead, you may want to bind this to a specific host or specific remote
+project.
+
+**** Setting dir-locals programmatically
+
+Functions
+
++ dir-locals-set-class-variables :: apply this state to buffers of ='class=
++ dir-locals-set-directory-class :: apply ='class= to buffers that match =/a/dir=
++ hack-dir-local-variables ::
+
+Variables
+
++ dir-locals-directory-cache :: this is modified when set the directory class
++ dir-locals-class-alist :: alist of dir-locals classes
+
+Then, create an elisp script somewhere to load on demand (or however you do):
+
+#+begin_src emacs-lisp
+(dir-locals-set-class-variables
+ 'tramp-enable-remote-dir-locals
+ ;; '((nil . ((enable-remote-dir-locals t))))
+ `((nil . ((enable-remote-dir-locals ,t)
+           (a-test-var "fdsa")))))
+
+(dir-locals-set-directory-class
+ "/ssh:itsame@on.my.example/com:/my/remote/project/"
+ 'tramp-enable-remote-dir-locals)
+
+(dir-locals-set-directory-class
+ "/tmp/testdirlocals"
+ 'tramp-enable-remote-dir-locals)
+
+#+end_src
+
+Unfortunately, this doesn't work. I didn't trace it all the way through. It's
+likely that the dir-locals functionality shares similar code paths -- i.e. it's
+the same logic when using classes or when using =.dir-locals= and thus tramp
+precludes them both if =enable-remote-dir-locals= isn't already set.
+
+It's not that big of a deal to toggle the value for the entire session, since
+you can choose not to load remote variables.
+
+*** Remote Path
+
+**** envrc
+
+Supporting remote environments is in a todo-list, but the =envrc-global-mode=
+won't set the local =envrc-mode= [[https://github.com/purcell/envrc/blob/master/envrc.el#L139-L141][in remote directories]]. It can be called locally
+though, but I'm not quite sure what problems would be encountered
+there. [[https://github.com/purcell/envrc/pull/29][purcell/envrc#29]] covers remote =exec-path=.
+
+**** tramp-own-remote-path
+
+If you want Tramp to run processes with the same path as the remote user's
+profile, then you need to:
+
+=(add-to-list 'tramp-remote-path 'tramp-own-remote-path)=
+
+However, as above, you probably don't want to do this all the time -- or in my
+case, I'd like it to load the actual =direnv= profile configured for that
+project, so python is run with the correct =venv= and so forth.
+
+Including =tramp-own-remote-path= in =.dir-locals.el= doesn't quite fit: it
+would also be included in the project on the local side. What if that project is
+a SSH jump off point for remote projects? It's not clean/correct. Usually other
+devs don't share =.dir-locals.el=, but maybe they would in the future. However,
+=dir-locals-set-directory-class= should be able to append the tramp-remote-path
+to the entire directory.
+
+Unfortunately, it doesn't. Not only can you not use dir-locals classes to set
+=enable-remote-dir-locals= but worse, something doesn't seem to work correctly
+when trying to combine the classes with =.dir-locals.el= -- at least
+remotely. It could be that the logic selects either one or the other.
+
+After testing the dir-locals classes above, I think I'm triggering an issue,
+even after setting Tramp to load remote dir-locals.
+
+#+begin_quote
+Tramp: Opening connection nil for itsame@wa.wA.wahaha.ha using ssh...done
+hack-local-variables-filter: Buffer is read-only: #<buffer *Local Variables*>
+#+end_quote
+
+Removing the other entries from this file cleared things up.
+
+#+begin_src emacs-lisp
+(setq dir-locals-directory-cache
+      '(("/home/itsame/.dotfiles/"
+         /home/dc/.dotfiles/
+         (25880 58885 50186 757000))))
+
+;; '(
+;;   ("/ssh:itsame@wa.wA.wahaha.ha:/my/remote/project/
+;;    tramp-enable-remote-dir-locals
+;;    nil)
+;;   ("/ssh:itsame@wa.wA.wahaha.ha:/my/remote/project/
+;;    tramp-enable-remote-dir-locals
+;;    nil)
+;;   ("/tmp/testdirlocals/"
+;;    tramp-enable-remote-dir-locals
+;;    nil)
+;;   ;; ...
+;;   )
+#+end_src
+
+Also, calling =(dir-locals-set-directory-class ...)= multiple times with the
+same/different definitions appends multiple times.
+
+Okay, so this throws a wrench in things. I was kinda thinking I would end up in
+a place where emacs behaved the same no matter what computer I was on. As long
+as an emacs with the same state which could load =direnv= (whether locally or
+remotely) could connect to a remote project and acquire the locally defined
+state to run code as though I was local.
+
++ I still get the file-management and remoting capabilities of Tramp.
++ But emacs =python= repl lacks the =venv= and =bash= has the wrong path...
++ I could still use tramp to debug remote processes or connect to a remote
+  container's file system ... maybe. There are other, better tools, probably
+  ... but I bet they require installing/maintaining quite a bit of
+  infrastructure.
++ Many features in emacs and its external tools would still the same, even when
+  called over tramp.
+
+So I get most of my profile, but the shell isn't being loaded properly for other
+processes: it's missing quite a few paths from guix profiles, particularly
+whatever includes direnv. Hopefully, it's just a path loading issue and I can
+get this straightened out.
+
++ If so, running python/bash should do what I expect, though I'll have to call
+  them in a specific way.
+
+In any case, there are at least two ways to handle this
+
++ Use containers.
++ Connect to the server with tmux/screen and run the editor in console.
+
 ** File Locking
 
 From Tramp Manual: [[https://www.gnu.org/software/tramp/#Auto_002dsave-File-Lock-and-Backup][Auto-save, File Lock and Backup Configuration]]
