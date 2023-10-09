@@ -1,0 +1,472 @@
+@startuml
+
+class address {
+    +addr : string
+    +addrtype : attr_type
+    +vendor : anySimpleType
+}
+class cpe {
+    +value : string
+}
+class debugging {
+    +level : string
+}
+class distance {
+    +value : string
+}
+class elem {
+    +key : anySimpleType
+    +content : anyType[]
+}
+class extraports {
+    +extrareasons : extrareasons[]
+    +state : string
+    +count : string
+}
+class extrareasons {
+    +reason : anySimpleType
+    +count : anySimpleType
+    +proto : port_protocols
+    +ports : anySimpleType
+}
+class finished {
+    +time : string
+    +timestr : anySimpleType
+    +elapsed : string
+    +summary : anySimpleType
+    +exit : finished_exit
+    +errormsg : anySimpleType
+}
+finished_exit --- finished
+
+class hop {
+    +ttl : anySimpleType
+    +rtt : anySimpleType
+    +ipaddr : anySimpleType
+    +host : anySimpleType
+}
+class host {
+    +status : status
+    +address : address[]
+    +hostnames : hostnames[]
+    +smurf : smurf[]
+    +ports : ports[]
+    +os : os[]
+    +distance : distance[]
+    +uptime : uptime[]
+    +tcpsequence : tcpsequence[]
+    +ipidsequence : ipidsequence[]
+    +tcptssequence : tcptssequence[]
+    +hostscript : hostscript[]
+    +trace : trace[]
+    +times : times
+    +starttime : string
+    +endtime : string
+    +timedout : attr_bool
+    +comment : anySimpleType
+}
+
+address }o--* host
+hostname }o--* host
+smurf }o--* host
+ports }o--* host
+os }o--* host
+tcpsequence }o--* host
+ipidsequence }o--* host
+tcptssequence }o--* host
+uptime }o--* host
+hostscript }o--* host
+trace }o--* host
+
+
+class hosthint {
+    +status : status
+    +address : address[]
+    +hostnames : hostnames
+}
+
+status ||--* host
+status ||--* hosthint
+
+
+address }|--* hosthint
+hostnames }--* hosthint
+
+class hostname {
+    +name : anySimpleType
+    +type : hostname_types
+}
+hostname_types --- hostname
+
+class hostnames {
+    +hostname : hostname[]
+}
+
+hostname }o--* hostnames
+
+class hosts {
+    +up : string
+    +down : string
+    +total : string
+}
+class hostscript {
+    +script : script[]
+}
+
+class ipidsequence {
+    +class : anySimpleType
+    +values : anySimpleType
+}
+class nmaprun {
+    +scaninfo : scaninfo[]
+    +verbose : verbose
+    +debugging : debugging
+    +target : target[]
+    +taskbegin : taskbegin[]
+    +taskprogress : taskprogress[]
+    +taskend : taskend[]
+    +hosthint : hosthint[]
+    +prescript : prescript[]
+    +postscript : postscript[]
+    +host : host[]
+    +output : output[]
+    +runstats : runstats
+    +scanner : nmaprun_scanner
+    +args : anySimpleType
+    +start : string
+    +startstr : anySimpleType
+    +version : anySimpleType
+    +profile_name : anySimpleType
+    +xmloutputversion : anySimpleType
+}
+
+host }o--* nmaprun
+output }o--* nmaprun
+scaninfo }o--* nmaprun
+target }o--* nmaprun
+taskbegin }o--* nmaprun
+taskprogress }o--* nmaprun
+taskend }o--* nmaprun
+runstats ||--* nmaprun
+prescript }o--* nmaprun
+postscript }o--* nmaprun
+
+class os {
+    +portused : portused[]
+    +osmatch : osmatch[]
+    +osfingerprint : osfingerprint[]
+}
+
+portused |o--* os
+osmatch |o--* os
+osfingerprint |o--* os
+
+class osclass {
+    +cpe : string[]
+    +vendor : anySimpleType
+    +osgen : anySimpleType
+    +type : anySimpleType
+    +accuracy : anySimpleType
+    +osfamily : anySimpleType
+}
+
+cpe }|--* osclass
+
+class osfingerprint {
+    +fingerprint : anySimpleType
+}
+
+class osmatch {
+    +osclass : osclass[]
+    +name : anySimpleType
+    +accuracy : string
+    +line : string
+}
+
+osclass }o--* osmatch 
+
+class output {
+    +type : output_type
+    +content : anyType[]
+}
+
+class owner {
+    +name : anySimpleType
+}
+
+class port {
+    +state : state
+    +owner : owner
+    +service : service
+    +script : script[]
+    +protocol : port_protocols
+    +portid : string
+}
+
+service |o--* port
+owner |o--* port
+state ||--* port
+
+class ports {
+    +extraports : extraports[]
+    +port : port[]
+}
+
+port }o--* ports
+extraports }o--* ports
+
+class portused {
+    +state : string
+    +proto : port_protocols
+    +portid : string
+}
+
+class postscript {
+    +script : script[]
+}
+
+class prescript {
+    +script : script[]
+}
+
+class runstats {
+    +finished : finished
+    +hosts : hosts
+}
+
+hosts ||--*  runstats
+finished ||--* runstats
+
+class scaninfo {
+    +type : scan_types
+    +scanflags : anySimpleType
+    +protocol : port_protocols
+    +numservices : string
+    +services : anySimpleType
+}
+
+
+port_protocols -- scaninfo
+scan_types -- scaninfo
+
+class script {
+    +id : anySimpleType
+    +output : anySimpleType
+    +content : anyType[]
+    --
+    (content via #PCDATA)
+    --
+    scripts can contain
+    table/elem/other
+}
+
+table }o--* script
+elem }o--* script
+script }|--* hostscript
+script }|--* prescript
+script }|--* postscript
+
+class service {
+    +cpe : string[]
+    +name : anySimpleType
+    +conf : service_confs
+    +method : service_method
+    +version : anySimpleType
+    +product : anySimpleType
+    +extrainfo : anySimpleType
+    +tunnel : service_tunnel
+    +proto : service_proto
+    +rpcnum : string
+    +lowver : string
+    +highver : string
+    +hostname : anySimpleType
+    +ostype : anySimpleType
+    +devicetype : anySimpleType
+    +servicefp : anySimpleType
+}
+
+cpe ||--* service
+service_method --- service
+
+
+class smurf {
+    +responses : string
+}
+
+class state {
+    +state : string
+    +reason : anySimpleType
+    +reason_ttl : anySimpleType
+    +reason_ip : anySimpleType
+}
+
+class status {
+    +state : host_states
+    +reason : anySimpleType
+    +reason_ttl : anySimpleType
+}
+
+host_states --- status
+
+class table {
+    +table : table[]
+    +elem : elem[]
+    +key : anySimpleType
+    --
+    These are Lua tables
+}
+
+table }o--* table
+elem }o--* table
+
+class target {
+    +specification : anySimpleType
+    +status : target_status
+    +reason : target_reason
+}
+
+target_status --- target
+
+class taskbegin {
+    +task : anySimpleType
+    +time : string
+    +extrainfo : anySimpleType
+}
+
+class taskend {
+    +task : anySimpleType
+    +time : string
+    +extrainfo : anySimpleType
+}
+
+class taskprogress {
+    +task : anySimpleType
+    +time : string
+    +percent : string
+    +remaining : string
+    +etc : string
+}
+
+
+
+class tcpsequence {
+    +index : string
+    +difficulty : anySimpleType
+    +values : anySimpleType
+    --
+    tcp values are hex 
+}
+
+class tcptssequence {
+    +class : anySimpleType
+    +values : anySimpleType
+    --
+    tcp values are hex 
+}
+
+class times {
+    +srtt : anySimpleType
+    +rttvar : anySimpleType
+    +to : anySimpleType
+}
+
+class trace {
+    +hop : hop[]
+    +proto : anySimpleType
+    +port : anySimpleType
+}
+
+hop }o--* trace
+
+class uptime {
+    +seconds : string
+    +lastboot : anySimpleType
+}
+
+class verbose {
+    +level : string
+}
+
+
+enum attr_bool {
+    true = true
+    false = false
+}
+enum attr_type {
+    ipv4 = ipv4
+    ipv6 = ipv6
+    mac = mac
+}
+enum finished_exit {
+    error = error
+    success = success
+}
+enum host_states {
+    up = up
+    down = down
+    unknown = unknown
+    skipped = skipped
+}
+enum hostname_types {
+    user = user
+    PTR = PTR
+}
+enum nmaprun_scanner {
+    nmap = nmap
+}
+enum output_type {
+    interactive = interactive
+}
+enum port_protocols {
+    ip = ip
+    tcp = tcp
+    udp = udp
+    sctp = sctp
+}
+enum scan_types {
+    syn = syn
+    ack = ack
+    bounce = bounce
+    connect = connect
+    null = null
+    xmas = xmas
+    window = window
+    maimon = maimon
+    fin = fin
+    udp = udp
+    sctpinit = sctpinit
+    sctpcookieecho = sctpcookieecho
+    ipproto = ipproto
+}
+enum service_confs {
+    0 = 0
+    1 = 1
+    2 = 2
+    3 = 3
+    4 = 4
+    5 = 5
+    6 = 6
+    7 = 7
+    8 = 8
+    9 = 9
+    10 = 10
+}
+enum service_method {
+    table = table
+    probed = probed
+}
+enum service_proto {
+    rpc = rpc
+}
+enum service_tunnel {
+    ssl = ssl
+}
+enum target_reason {
+    invalid = invalid
+}
+enum target_status {
+    skipped = skipped
+}
+
+
+@enduml
