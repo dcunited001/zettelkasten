@@ -6,6 +6,7 @@
 #+TAGS:
 
 
+
 The point of taking the trouble to do this in Emacs:
 
 + Avoid UI interactions with browser or file manager. Dragging/dropping after
@@ -24,9 +25,13 @@ However, org-ref, bibtex, citar, org-noter, org-roam provide a million ways to
 facilitate the functionality. This is good ... but it will be inefficient to
 randomly meander around emacs without much experience with each component.
 
+*** TODO bibtex/citar/org-ref keybinds
++ [ ] make keybindings available in bibtex-mode and elsewhere
++ [ ] bind =org-ref-bibtex-assoc-pdf-with-entry=
+
 * Workflow
 
-so, the workflow for now is:
+So, the workflow for now is:
 
 1. add =bibtex= to a =*.bib= file, this gives more options for searching &
    fetching files. then maybe try to fetch. If i were to work on a project with
@@ -45,7 +50,7 @@ so, the workflow for now is:
    this, but i don't have time at the moment.
 
 4. from here, the capture template has set the org file, so =pdftools= is ready
-   to go. i will try org-=noter= again soon, but the last time i tried it, it
+   to go. i will try =org-noter= again soon, but the last time i tried it, it
    required manually specifying a few things (due to env. issues or ???)
 
 5. once the org =:PROPERTIES:= are set, then returning to the =pdftools= session
@@ -63,9 +68,85 @@ This is good enough for:
 
 * Example Issues
 
-+ Today, DOI is refusing to respond to API requests with JSON.
-+ If you don't get the PDF automatically, the file doesn't get renamed
-  automatically.
+** Downloading PDFs
+
+Today, DOI is refusing to respond to API requests with JSON.
+
++ Apparently, I'm being redirected to authorization that's failing.
+
+** Naming the PDF File: Clean the bibtex
+
+If you don't get the PDF automatically, the file doesn't get renamed
+automatically.
+
+The =org-ref-bibtex-assoc-pdf-with-entry= function may help with this, but I had
+more success with =org-ref-clean-bibtex-entry=.
+
++ =org-ref= runs a =funcall= on =org-ref-clean-bibtex-key-function= in
+  =orcb-clean= passing it =(bibtex-generate-autokey)=.
++ See the rules for [[https://www.jonathanleroux.org/bibtex-mode.html#0630][Automatic Reference Key Generation]] and the notes in the
+  [[https://github.com/emacs-mirror/emacs/blob/master/lisp/textmodes/bibtex.el#L2994-L3058][bibtex.el source]]. Or just run =M-x customize-group RET bibtex-autokey=.
++ There is an extra function in =org-ref= for cleaning =isbn= keys, so this may
+  be why the doc didn't come through correctly.
+
+*** Bibtex Autokeys
+
+I think you want these to be short since they take up space. I lengthened them a
+bit because I was getting vague keys ... but my bibtex files are small, so i can
+easily adjust them. The universe seems to be sending me some vibes (i'll never
+actually work with anyone else on any of this, so it doesn't matter if keys
+break between two people working on the same paper) so I guess i'll just see
+what happens.
+
+My current settings are here
+
+#+begin_src emacs-lisp
+(setq bibtex-autokey-year-length 4
+      bibtex-autokey-names 2
+      bibtex-autokey-names-stretch 1
+      bibtex-autokey-name-year-separator "-"
+      bibtex-autokey-year-title-separator "-"
+      bibtex-autokey-titleword-separator "-"
+      bibtex-autokey-titlewords 3
+      ;; remove colon from default: [.!?:;]\|--
+      bibtex-autokey-title-terminators "[.!?;]\\|--"
+      bibtex-autokey-titlewords-stretch 1
+      bibtex-autokey-titleword-length 5)
+#+end_src
+
+Compared to the defaults for Scimax, many of which are defaults
+
+#+begin_src emacs-lisp
+(setq bibtex-autokey-year-length 4
+	    bibtex-autokey-name-year-separator "-"
+	    bibtex-autokey-year-title-separator "-"
+	    bibtex-autokey-titleword-separator "-"
+	    bibtex-autokey-titlewords 2
+	    bibtex-autokey-titlewords-stretch 1
+	    bibtex-autokey-titleword-length 5)
+#+end_src
+
+*** ISBN Checksum
+
+ISBN also has an old and interesting checksum, which involves adding the
+digits. Apparently about half of these are unused.
+
+#+begin_quote
+Multiply each of the first 9 digits by a number in the descending sequence from
+10 to 2, and sum the results.
+
+Divide the sum by 11.
+
+Subtract the remainder (not the quotient) from 11.
+
+If the result is 11, use the number 0; if 10, use the letter X.
+#+end_quote
+
+(from O'reilly)
+
+It's an interesting programming problem for beginners -- not when [[https://www.oreilly.com/library/view/regular-expressions-cookbook/9780596802837/ch04s13.html][implemented in
+regexp]] though ... that seems hard. The article says it's not possible ... but
+i'm not so sure since [[https://www.youtube.com/watch?v=B9H0TyApBtU][you can identify prime numbers using a "unary" regex]].
 
 * Roam
 + [[id:5141a9c5-dd2d-490c-b6eb-ddeb2164835a][Biblio]]
