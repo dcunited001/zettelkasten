@@ -1,0 +1,201 @@
+@startuml
+
+
+
+class finished {
+    +time : int
+    +timestr : str
+    +elapsed : int
+    +summary : str
+    +exit : finished_exit
+    +errormsg : str
+}
+finished_exit --- finished
+
+class host {
+    +status : status
+    +address : address[]
+    +hostnames : hostnames[]
+    +smurf : smurf[]
+    +ports : ports[]
+    +os : os[]
+    +distance : distance[]
+    +uptime : uptime[]
+    +tcpsequence : tcpsequence[]
+    +ipidsequence : ipidsequence[]
+    +tcptssequence : tcptssequence[]
+    +hostscript : hostscript[]
+    +trace : trace[]
+    +times : times
+    +starttime : int
+    +endtime : int
+    +timedout : bool
+    +comment : str
+}
+
+hostscript }o--* host
+ 
+class hosts {
+    +up : int
+    +down : int
+    +total : int
+}
+class hostscript {
+    +script : script[]
+}
+
+class nmaprun {
+    +scaninfo : scaninfo[]
+    +verbose : verbose
+    +debugging : debugging
+    +target : target[]
+    +taskbegin : taskbegin[]
+    +taskprogress : taskprogress[]
+    +taskend : taskend[]
+    +hosthint : hosthint[]
+    +prescript : prescript[]
+    +postscript : postscript[]
+    +host : host[]
+    +output : output[]
+    +runstats : runstats
+    +scanner : nmaprun_scanner
+    +args : str
+    +start : int
+    +startstr : str
+    +version : str
+    +profile_name : str
+    +xmloutputversion : str
+    --
+    args is the full nmap invocation
+}
+
+host }o--o nmaprun
+output }o--* nmaprun
+scaninfo }o--* nmaprun
+target }o--* nmaprun
+taskbegin }o--* nmaprun
+taskprogress }o--* nmaprun
+taskend }o--* nmaprun
+runstats ||--* nmaprun
+prescript }o--* nmaprun
+postscript }o--* nmaprun
+
+class output {
+    +type : output_type
+    +content : anyType[]
+}
+
+class postscript {
+    +script : script[]
+}
+
+class prescript {
+    +script : script[]
+}
+
+class runstats {
+    +finished : finished
+    +hosts : hosts
+}
+
+hosts ||--*  runstats
+finished ||--* runstats
+
+class scaninfo {
+    +type : scan_types
+    +scanflags : str
+    +protocol : port_protocols
+    +numservices : int
+    +services : str
+    --
+    services: port ranges
+    comma-separated
+    ranges marked as n-m
+}
+
+port_protocols -- scaninfo
+scan_types -- scaninfo
+
+class script {
+    +id : str
+    +output : str
+    +content : anyType[]
+    --
+    (content via #PCDATA)
+    --
+    scripts can contain
+    table/elem/other tags
+}
+
+table }o--* script
+script }|--* hostscript
+script }|--* prescript
+script }|--* postscript
+
+class table {
+    +table : table[]
+    +elem : elem[]
+    +key : str
+    --
+    These are Lua tables
+    --
+    The definitions are found in
+    scripts/*.nse
+}
+
+table }o--* table
+
+class target {
+    +specification : str
+    +status : target_status
+    +reason : target_reason
+}
+              
+class taskbegin {
+    +task : str
+    +time : int
+    +extrainfo : str
+}
+
+class taskend {
+    +task : str
+    +time : int
+    +extrainfo : str
+}
+
+class taskprogress {
+    +task : str
+    +time : int
+    +percent : float
+    +remaining : int
+    +etc : int
+}
+
+
+enum finished_exit {
+    error = error
+    success = success
+}
+enum port_protocols {
+    ip = ip
+    tcp = tcp
+    udp = udp
+    sctp = sctp
+}
+enum scan_types {
+    syn = syn
+    ack = ack
+    bounce = bounce
+    connect = connect
+    null = null
+    xmas = xmas
+    window = window
+    maimon = maimon
+    fin = fin
+    udp = udp
+    sctpinit = sctpinit
+    sctpcookieecho = sctpcookieecho
+    ipproto = ipproto
+}
+
+@enduml
