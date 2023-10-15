@@ -1,0 +1,171 @@
+:PROPERTIES:
+:ID:       cb9c6cab-0f6b-4efd-8ae9-419b6d31c496
+:END:
+#+TITLE: Red Team: Internet Topology And C2
+#+CATEGORY: slips
+#+TAGS:
+
+I only have passing familiarity with the concepts described below...
+
+I didn't quite cover all the C2 stuff: I don't have experience with it, but I do
+have a few interesting ideas about it.
+
+* Resources
+
+** Mapping the internet
+
++ [[https://www.wired.com/2015/06/mapping-the-internet/][Beautiful, Intriguing and Illegal Ways to Map the Internet]]
++ [[https://www.caida.org/archive/arin-heatmaps/][Measuring the use of IPv4 space with heatmaps]]
+
+** BGP and AS
+
++ APNIC: [[https://blog.apnic.net/2023/01/06/bgp-in-2022-the-routing-table/][BGP in 2022 – the routing table]] many stats on BGP
++ [[https://www.thousandeyes.com/solutions/bgp-and-route-monitoring][BGP Route Monitoring]] (blogs: [[https://www.thousandeyes.com/blog/monitoring-bgp-routes-thousandeyes][2014]], [[https://www.thousandeyes.com/blog/visualizing-bgp-routing-better-network-operations][2018]])
+  - [[https://www.thousandeyes.com/blog/4-real-bgp-troubleshooting-scenarios][BGP Troubleshooting Scenarios]] (2014)
+  - [[https://www.thousandeyes.com/blog/solving-bgp-path-prepending-errors][When Routes Go Wrong]] AS-Path Prepending Errors (2014)
++ [[https://research.facebook.com/publications/running-bgp-in-data-centers-at-scale/][Running BGP in Data Centers At Scale]] from [[Running Border Gateway Protocol in large-scale data centers][Facebook]] ([[https://research.facebook.com/publications/running-bgp-in-data-centers-at-scale/][paper]], [[https://www.youtube.com/watch?v=wHfYUbKNEyc][video]])
+  - BTW: where's the fucking open hardware? can I buy one at walmart? How 'bout
+    Amazon? No? When are the ARM servers going to hit the grey market? Daddy
+    needs a /cool/ low-power rack server! Oh... what's that? Never you say?
+    Everything is cloud these days? You'll never resell server hardware for the
+    same reason that Cisco never resold PBX? Oh.
+
+** Math
+
+Graph Theory
+
++ [[https://en.wikipedia.org/wiki/Expander_graph][Expander Graphs]] (and a [[https://www.youtube.com/watch?app=desktop&v=-jcZu4hDstA][video to explain]])
++ Ramanujan Graphs:
+  - [[SpectralFly: Ramanujan Graphs as Flexible and Efficient Interconnection Networks][SpectralFly: Ramanujan Graphs as Flexible and Efficient Interconnection Networks]]
+  - [[https://arxiv.org/abs/1904.03500][X-Ramanujan Graphs]] a more basic intro to Ramanujan Graphs.
+
+* Mapping the Internet
+
+** Topology
+
+The internet inherits topology from the shape of the earth. Since population
+density drops off closer to the poles and thus demand for bandwidth, then it's
+manifold is toroidal instead of spherical.
+
+#+ATTR_HTML: :style width:800px;
+[[file:img/internet-topology.jpg]]
+
+*** Expander Graphs
+
+Balancing traffic across backbones is a consensus problem. It would be nice if
+there were some solution to encourage connectivity.
+
+[[BGP route][Expander graphs are globally synchronizing]]: (via [[https://www.quantamagazine.org/new-proof-shows-that-expander-graphs-synchronize-20230724/][QuantaMagazine]])
+
+*** Topology of Graphs
+
+Graphs are isometric with hyperbolic Reimannian manifolds. These manifolds have
+curvature. Think of it like this: say you want to generalize the process of
+identifying whether a graph can be depicted in 2D without crossing edges. Many
+graphs whose edges cross in 2D will not have crossing edges in 3D. In higher
+dimensions, the notion of edge crossings needs to be generalized:
+
++ it's almost impossible for the 2D edge crossing to occur
++ edges could be forced through 1-cliques
++ and 1-cliques can intersect in 3D
+
+A 2D graph with multiple planes where an edge must cross through a plane between
+some configuration of nodes with infinite edges is an example of a 2D graph
+which cannot be depicted in 3D without crossing edges.
+
+Knots in 4D are a good way to understand the graph concepts above. A 3D knot can
+be trivially untangled, since you can push into the fourth dimension (video:
+[[https://www.youtube.com/watch?v=2dRwBAoAQlc][unknotting knots in the fourth dimension]])
+
+That is, always untanglable unless the concepts as I understand them correspond
+to different semantics. Semantics, eh?
+
+Anyways, what is responsible for the crossing edges/cliques? What creates this
+in higher dimensions? It's the patterns of connectivity in the graph.
+
+#+ATTR_HTML: :style width:800px;
+[[file:img/toponet_ricci-curvature.jpg]]
+
+As the number of nodes increases while patterns in node connectivity remain
+"similar," then:
+
++ larger scale changes in curvature should also exhibit: folding/warping &
+  holes/loops
++ Short paths through the graph have special properties that relate the number
+  of hops (intrinsic metric) to an extrinsic metric.
+
+#+begin_quote
+Qualifying what is meant here is a bit tricky, so an example: how many sq.
+miles can be covered by 2 hops from your ISP router? 3 hops? 10 hops?
+#+end_quote
+
+This increase in dimensionality thus corresponds to a increase in volume covered
+by n-hop paths. On our earth-bound internet this increases exponentially and is
+then bounded by the earth's extrinsic geometry: it's a sphere -- and if there
+are any aliens listening, please get me the fuck out of here.
+
+Above, I mean "similar" as in "for some creative definition of similar" -- bite
+me: look at [[https://en.wikipedia.org/wiki/Ramanujan_graph][Ramanujan Graphs]] for examples of a well-structured graph with an
+infinite limit. Wikipedia notes that they are "excellent spectral expanders".
+Maybe I found a video on them while searching for videos on Spectral Graph
+Theory and Graph Expanders.
+
+From the SpectralFly paper (also the source of the picture below)
+
+#+begin_quote
+V. ROUTING ALGORITHMS
+
+We consider 3 types of routing strategies for SpectralFly:
+shortest path routing (minimal), Valiant routing, and Universal
+Global Adaptive (UGAL) routing. In minimal routing, given a
+source-destination pair (s, d), a packet is forwarded along the
+routers on the shortest path from s to d.
+#+end_quote
+
+#+ATTR_HTML: :style width:800px;
+[[file:img/toponet-ramanujan.jpg]]
+
+... I have passing familiarity with the concepts /named/ above, but I have thought
+about this a lot. It emerges as /intuitive feelings/ about connections between
+math and other topics, then I work backwards to specify examples of similar
+concepts. It's not process that's oriented around Logos (i.e. rigorous logic
+involving symbols). That sounds weird maybe, but I don't mention that because I
+think I'm special. I'm not even that good at it: I was not mentored or taught
+and I lacked the structure necessary to reinforce fundamentals. I also learned
+too late and burnt myself out. Instead, I mention it because it's just wierd. I
+just know things and it's not the rational part of my mind producing the feeling
+of familiarity.
+
+** Addressing
+
+RIR address blocks are not distributed evenly, nor are they necessarily
+geographically bound. Doing so helps simplify routing, but the address mappings
+for an RIR block are moreso determined by the organization's needs. For larger
+organizations with data centers that need to dynamically distribute IP's (like a
+cloud) then IP blocks may be local to a data center.
+
+See [[https://en.wikipedia.org/wiki/Autonomous_system_(Internet)][autonomous systems]]
+
+#+ATTR_HTML: :style width:800px;
+[[file:img/toponet_bgp-active.png]]
+
+Example of AS-Path prepending from [[https://virtualrack.blogspot.com/2011/09/lab-bgp-bestpath-selection-as-path.html][LAB: BGP BestPath Selection - AS Path Prepend (2011)]]
+
+#+ATTR_HTML: :style width:800px;
+[[file:img/toponet_bgp-as-path-prepend.jpg]]
+
+
+** Traffic Patterns
+
+By Time
+
+[[file:img/toponet_time.gif]]
+
+By Address Space
+
+Overall heatmap of both Chicago-Seattle and Los Angeles-San Jose links (from [[https://www.caida.org/archive/arin-heatmaps/][CAIDA]])
+
+
+
+* Roam
++ [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team]]
