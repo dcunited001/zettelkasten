@@ -1,40 +1,57 @@
 :PROPERTIES:
 :ID:       0c386ed6-5a9d-4fc0-8444-550fce2c39a4
 :END:
-#+title: Sqlite: Read Data From Firefox sqlite databases
+#+title: Firefox: Inspect Profile Data From Files and SQLite
 #+CATEGORY: slips
 #+TAGS:
 #+property: header-args:sqlite :mkdirp yes
 
-* Roam
-+ [[id:38638b3e-e023-460e-9670-84776e61468e][Browser]]
-+ [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]
+#+name: ffprofile
+#+begin_src emacs-lisp :results value silent
+;; (setq-local ob-ffprofile "abcd1234.default")
+(or ob-ffprofile "abcd1234.default")
+#+end_src
 
-* Notes
+#+name: ffdata
+#+begin_src emacs-lisp :results silent :export none
+;; echo "$HOME/.mozilla/firefox"
+(expand-file-name ".mozilla/firefox" (getenv "HOME"))
+#+end_src
+
+#+name: ffplacesschema
+#+header: :dir (expand-file-name ob-ffprofile)
+#+header :db places.sqlite
+#+begin_src sqlite :results output file
+.fullschema --indent
+#+end_src
+
+# +headers: :file (expand-file-name "sql/ffplaces.schema.sql" (file-name-directory (buffer-file-name)))
+
+* Old Notes
 
 Once again, with =:results silent=, since with Bash =:results value= is a return
 code. Emacs Lisp and Python can return strings to parse that way, but not Bash.
 
-#+name: ffdata
-#+begin_src shell :results silent :export none
-echo "$HOME/.mozilla/firefox"
+#+name: ffdata-old
+#+begin_src emacs-lisp :results silent :export none
+;; echo "$HOME/.mozilla/firefox"
+(expand-file-name ".mozilla/firefox" (getenv "HOME"))
 #+end_src
 
 Also, these kind of variable references need to be in a separate =#+header:=
 because of course they do (I always forget).
 
-#+name: ffprofile
+#+name: ffprofile-old
 #+header: :var ffdata=ffdata
 #+begin_src shell :results silent :export none
 #grep -e "^Default=.*" $ffdata/profiles.ini | head -n1 | cut -f2 -d'='
-"usnfxivq.default"
 #+end_src
 
 Same deal with these variables actually. They are only set for the org-babel
 eval environment, which checks blocks for dependencies.
 
 #+begin_src emacs-lisp :var ffdata=ffdata ffprofile=ffprofile :results silent :export none
-(setq foxdata ffdata foxprofile ffprofile)
+(setq-local foxdata ffdata foxprofile ffprofile)
 #+end_src
 
 The following remains undefined for the orgbabel sql =#+header: :var
@@ -42,9 +59,13 @@ ffprofile=ffprofile ffdata=ffdata=, but elisp is valid in headers. so the
 additional variable rename prevents name conflicts. Not worth worrying about it
 for now: there are other approaches in [[https://github.com/dcunited001/ellipsis/blob/master/ANSIBLE.org][ANSIBLE.org]]
 
-#+name: ffplacesschema
+#+name: ffplacesschema-old
 #+header: :dir (expand-file-name foxprofile foxdata)
 #+header: :db places.sqlite
 #+begin_src sqlite :results output file :file (expand-file-name "sql/ffplaces.schema.sql" (file-name-directory (buffer-file-name))) :
 .fullschema --indent
 #+end_src
+
+* Roam
++ [[id:38638b3e-e023-460e-9670-84776e61468e][Browser]]
++ [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]

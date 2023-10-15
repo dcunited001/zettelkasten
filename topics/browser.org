@@ -1,7 +1,7 @@
 :PROPERTIES:
 :ID:       38638b3e-e023-460e-9670-84776e61468e
 :END:
-#+title: Browse
+#+title: Browser
 #+CATEGORY: topics
 #+TAGS:
 
@@ -10,6 +10,122 @@
 * Firefox
 
 ** Topics
+
+*** Profile Data
+
+I would like my keyboard shortcuts to sync or to be exportable.
+
+**** Finding active profile path
+
+Set a default firefox root directory
+
+#+name: ffdata
+#+begin_src emacs-lisp :results silent :export none
+;; echo "$HOME/.mozilla/firefox"
+(expand-file-name ".mozilla/firefox" (getenv "HOME"))
+#+end_src
+
+Probably don't leave your =~/.mozilla/firefox= directory results here.
+
+#+begin_example org
+#+headers: :var ffdata="/some/tmp/directory/"
+#+end_example
+
+Convert data in =profiles.ini= to JSON
+
+#+name: ffprofilesjson
+#+headers: :var ffdata=ffdata
+#+begin_src sh :results output silent code :wrap src yaml
+# ffdata="$HOME/.mozilla/firefox"
+ffprofiles=$ffdata/profiles.ini
+
+# ffdata=/tmp/ffdata
+# ffprofiles=$ffdata/profiles.fake.ini
+
+cat $ffprofiles  \
+    | sed -E 's/=(.*[^"])$/ = "\1"/' \
+    | tomlq
+#+end_src
+
+Extract ID of active profile
+
+#+name: ffactiveid
+#+headers: :results output silent
+#+begin_src jq :stdin ffprofilesjson :cmd-line "-rj"
+# with_entries(select(.value.Default == "1"))
+. | to_entries | map(select(.value.Default == "1"))
+  | first | .value.Path
+
+# with_entries(.value += {Id: "0"})
+#+end_src
+
+Now it can be listed
+
+#+name: ffactivepath
+#+headers: :var ffprof=ffactiveid ffdata=ffdata
+#+begin_src emacs-lisp :results silent
+;; setq-local is kind of a hack
+(setq-local ffactivepath (expand-file-name ffprof ffdata))
+#+end_src
+
+And the databases queried
+
+#+name: ffplacesschema
+#+headers: :dir (identity ffactivepath) :db places.sqlite
+#+headers: :file (expand-file-name "img/sql/ffplaces.schema.sql" (file-name-directory (buffer-file-name)))
+#+headers: :results output file
+#+begin_src sqlite :results output
+.fullschema --indent
+#+end_src
+
+#+RESULTS: ffplacesschema
+[[file:img/sql/ffplaces.schema.sql]]
+
+#+name: ffplacesschema
+#+headers: :dir (identity ffactivepath) :db places.sqlite
+#+headers: :file (expand-file-name "img/sql/ffplaces.schema.sql" (file-name-directory (buffer-file-name)))
+#+headers: :results output file
+#+begin_src sqlite :results output
+.fullschema --indent
+#+end_src
+
+**** Every time i install a new browser/profile
+
+I would love to enter these shortcuts in one at a time, which for an extension
+which itself should've probably just been a feature in 2010. All browsers have
+these problems and actually finding what files contain info like this doesn't
+show up on Google.
+
+#+name: ffshortcuts-for-extension
+#+headers: :results output
+#+headers: :var extension="treestyletab@piro.sakura.ne.jp"
+#+headers: :in-file (expand-file-name "extension-settings.json" ffactivepath)
+#+begin_src jq :cmd-line "-rj"
+# with_entries(select(.value.Default == "1"))
+.commands # | to_entries
+  | map_values(.precedenceList | first)
+  | map_values(select(.id == $extension and (.value.shortcut | length) > 0))
+  | with_entries({"key": .key, "value": .value.value.shortcut})
+
+#+end_src
+
+#+RESULTS: ffshortcuts-for-extension
+#+begin_example
+{
+  "treeMoveUp": "Ctrl+Alt+K",
+  "treeMoveDown": "Ctrl+Alt+J",
+  "focusPreviousSilently": "Ctrl+Alt+W",
+  "focusNextSilently": "Ctrl+Alt+S",
+  "focusParent": "Ctrl+Alt+H",
+  "newChildTab": "Ctrl+Alt+T",
+  "focusFirstChild": "Ctrl+Alt+L",
+  "closeDescendants": "Ctrl+Alt+Q",
+  "newContainerTab": "Ctrl+F1"
+}
+#+end_example
+
+All browsers have neutered functionality. It's not Firefox or Chrome or
+whatever. These are applications designed for corporations, not you the user.
 
 *** Sqlite
 
