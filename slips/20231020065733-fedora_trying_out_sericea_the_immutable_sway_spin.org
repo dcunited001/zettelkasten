@@ -9,8 +9,29 @@
 + [[https://docs.fedoraproject.org/en-US/fedora-sericea/reading-and-resources/][Reading/Resources]]
 
 * Resources
++ [[https://www.youtube.com/watch?v=EuNV1EheN98&t=1128s][Sway Spin and Sericea Update]]
 
 * Senicea
+
+By running with the 39 beta on this distro:
+
++ seems like I get clean Sway
++ with the [[https://www.youtube.com/watch?v=s-ZxespOupU&pp=ygUYbGVhc3QgY29udHJvdmVyc2lhbCBzd2F5][wayland-centric SDDM display manager]]
++ immutable system with SELinux
+
+But critically: a transition path from here to uBlue/Silverblue/CoreOS, which
+rely on many more tools. Silverblue and CoreOS practically assume you'll be PXE
+booting.
+
+This machine isn't supposed to do much.
+
+I'm honestly kind of interested to see if I can use it for videos and light,
+automated dashboards. I would maybe drive this with =swaymsg= and
+etc. remotely.
+
+I may switch to using Guix for this, since it's just way simpler (for me) to
+define shepherd services automated with mcron (or something). But I need CoreOS
+elsewhere.
 
 ** Components
 
@@ -89,12 +110,54 @@ Install with =rpm-ostree install emacs=. Keep it vanilla.
 Look for "rebase" instructions in the =rpm-ostree= cheatsheet.  You must rebase,
 but this command from the RPM OSTree docs is maybe not current
 
+** Flatpak
+
+[[https://docs.fedoraproject.org/en-US/fedora-sericea/getting-started/#flathub-setup][Setting up flathub]] (sericea docs) and [[https://universal-blue.org/guide/codecs/#how-to-install-the-ffmpeg-full-flatpak-runtime][how to install ffmpeg-full runtime]] (ublue docs)
+
+#+begin_src sh
+flatpak --user remote-add --if-not-exists \
+        flathub https://flathub.org/repo/flathub.flatpakrepo
+
+flatpak install --user flathub \
+        org.freedesktop.Platform.ffmpeg-full \
+        org.mozilla.firefox
+#+end_src
+
+Installing =ffmpeg-full= and =firefox= from flatpak the issues where firefox
+wasn't playing videos.
 
 ** Toolbox
 
-Run =toolbox create=. Enter a project and run =toolbox enter=
+Run =toolbox create=. Enter a project and run =toolbox enter=.
 
-** Flatpak
+**** TODO more notes here. Also... podman/libvirt?
+
+
+* Issues
+
+** Drivers/Modules
+
+Sericea doesn't support DKMS currently.
+
+See [[https://rpmfusion.org/Packaging/KernelModules/Akmods][akmods]] and the [[https://rpmfusion.org/Packaging/KernelModules/Kmods2][RPM Fusion guide on Kmods2 packages]].
+
+
+*** Video Decoding
+
+From uBlue docs: [[https://universal-blue.org/guide/codecs/#how-to-check-that-hardware-accelerated-codecs-are-working][how to check Firefox hardware encoding]] (about:support)
+
+I've marginally looked into silverblue/coreos, but those use ignition/butane and
+I'm not quite sure how to solve this given that Sericea seems to primarily use
+rpm-ostree.
+
+Installing =ffmpeg-full= and =firefox= from flatpak fixed things.
+
+It seems that it wasn't a driver issue:
+
++ The BIOS is set with GPU as the primary display device
++ WebGL was running on my [[https://te.xel.io/graphics/2017-06-29-animating-the-gradient.html][Animate the Gradient page]], so I at least have OpenGL
++ In any case, AFAIK the GPU doesn't support video decoding and the intel chip
+  probably doesn't either.
 
 
 * Roam
