@@ -1,0 +1,254 @@
+:PROPERTIES:
+:ID:       d00a4510-df21-4137-9e46-e3e713f65133
+:END:
+#+TITLE: ImageMagick
+#+DESCRIPTION:
+#+TAGS:
+
+Image Magick is occasionally extremely useful. In 2010, where do you think all
+those memes came from? And the online meme editors in the same time period?
+Those were all running ImageMagick, which was pretty difficult on most platforms
+at the time. This program completely changed the face of online communication at
+the time.
+
+* Docs
+
+[[https://www.imagemagick.org/Usage/][ImageMagick site]]
+
++ [[https://imagemagick.org/script/command-line-options.php][Annotated list of CLI options]]
++ [[https://imagemagick.org/script/command-line-processing.php][Anatomy of the Command-line]]
+
+** digiater.nl
+
+[[https://www.digiater.nl/openvms/freeware/v80/imagemagick-6_2_8/www/command-line-tools.html][CLI Tools]] (and [[https://www.digiater.nl/openvms/freeware/v80/imagemagick-6_2_8/www/command-line-options.html#white-threshold][CLI Options]])
+
++ [[https://www.digiater.nl/openvms/freeware/v80/imagemagick-6_2_8/www/mogrify.html][mogrify CLI]]
++ convert
++ compare
+
+* Resources
+
++ [[https://github.com/yangboz/imagemagick-cheatsheet][yangboz/imagemagick-cheatsheet]] examples of short scripts
+
+* Topics
+
+** noexport                                                       :noexport:
+
+#+begin_src emacs-lisp :results silent
+(setq-local org-confirm-babel-evaluate nil)
+
+(org-babel-do-load-languages
+  'org-babel-load-languages
+  '((gnuplot . t)))
+#+end_src
+
+
+** Basics
+
+For operator value input, [[https://www.digiater.nl/openvms/freeware/v80/imagemagick-6_2_8/www/command-line-options.html#white-threshold][the official CLI option docs]] was a much better
+reference than most.
+
+Image operators like =-negate= or =-threshold= will chain
+
+*** CLI Options
+
++ Use [[https://imagemagick.org/script/command-line-options.php#list][-list $type]] or & etc to get information about arguments
+
+Types of =mogrify= CLI options (from the [[https://imagemagick.org/script/command-line-processing.php#option][imagemagick docs]])
+
+**** Image Setting
+
+Options like =-channel RGB= or =-path $path= will affect subsequent
+operations for =mogrify=
+
+**** Image Operator
+
+-black-threshold
+-color-threshold
+-white-threshold
+-random-threshold
+
+**** Image Channel Operator
+**** Image Sequence Operator
+**** Image Geometry
+**** Image Stack
+
+
+*** Filters
+
++ Use [[https://imagemagick.org/script/command-line-options.php#filter][-filter $type]] to specify type for
+
+**** Resize Filters
+
+
+**** Filters with Windows
+
+| Lanczos  | Hamming  | Parzen |
+| Blackman | Kaiser   | Welsh  |
+| Hanning  | Bartlett | Bohman |
+
+There's also =bessel= and =sinc= ... but i'm not sure what these are used for.
+
+The filters can be introspected like so
+
+#+begin_src sh
+magick null: -filter lanczos \
+     -define filter:verbose=1 \
+     -resize 2 null: \
+    | grep -e "^#"
+#+end_src
+
+#+RESULTS:
+| Resampling        | Filter |     (for | graphing) |
+|                   |        |          |           |
+| filter            | =      | SincFast |           |
+| window            | =      | SincFast |           |
+| support           | =      |        1 |           |
+| window-support    | =      |        1 |           |
+| scale-blur        | =      |        1 |           |
+| practical-support | =      |        1 |           |
+
+This also outputs their window data
+
+#+begin_src sh :results output file :file img/imagemagick.dat
+magick null: -filter lanczos \
+       -define filter:verbose=1 \
+       -resize 2 null:
+#+end_src
+
+#+RESULTS:
+[[file:img/imagemagick.dat]]
+
+So you can =gnuplot= the positive half of the lanczos window function.
+
+#+headers: :var datfile="img/imagemagick.dat"
+#+begin_src gnuplot :file img/lanczos.png
+set grid
+plot datfile with lines
+#+end_src
+
+#+RESULTS:
+[[file:img/lanczos.png]]
+
+
+** Invert Colors
+
+KDE has a lot of quick shortcuts for operating on files in a right-click menu,
+including images. It doesn't have image inversion and most applications are just
+too cumbersome to open sets of files for a simple operation.
+
+#+attr_html: :style: width:400px;
+[[file:img/freecad-keys.png]]
+
+Prepend -path some/path to avoid overwriting the images. Here I'm overwriting them anyways.
+
+#+attr_html: :style: width:400px;
+#+headers: :var image="freecad-keys"
+#+begin_src sh :results file link :file img/freecad-keys-2.png
+cp img/$image.png img/$image-2.png
+mogrify -path img -channel RGB -negate img/$image-2.png
+#+end_src
+
+#+RESULTS:
+[[file:img/freecad-keys-2.png]]
+
+I had actually wanted to keep the original colors of keys, while making the
+colors lighter. On text, the =+negate= operator results in font aliasing
+artifacts, when aliasing involves color channels.
+
+#+attr_html: :style: width:400px;
+#+headers: :var image="freecad-keys"
+#+begin_src sh :results file link :file img/freecad-keys-3.png
+cp img/$image.png img/$image-3.png
+mogrify -path img -channel RGB +negate img/$image-3.png
+#+end_src
+
+#+RESULTS:
+[[file:img/freecad-keys-3.png]]
+
+I tried removing this with thresholding, but it didn't work well. This really
+needs to be done before =-negating=, but it's hard to remove the aliasing
+artifacts.
+
+#+attr_html: :style: width:400px;
+#+headers: :var image="freecad-keys" level=(- (expt 2 16) 51250)
+#+begin_src sh :results file link :file img/freecad-keys-4.png
+cp img/$image-3.png img/$image-4.png
+mogrify -channel B -white-threshold 0,0,$level img/$image-4.png
+#+end_src
+
+#+RESULTS:
+[[file:img/freecad-keys-4.png]]
+
+A blur might work, but apparently a [[https://en.wikipedia.org/wiki/Lanczos_resampling][lanczos filter]] does this better. The
+Gaussian blur below has a radias of 1 and it's very blurry. Using a
+=-selective-blur= is a possibility. This uses a contrast threshold when applying
+the blur, but but I'm not quite sure how to use it.
+
+#+attr_html: :style: width:400px;
+#+headers: :var image="freecad-keys" level=(- (expt 2 16) 51250)
+#+begin_src sh :results file link :file img/freecad-keys-5.png
+cp img/$image-3.png img/$image-5.png
+mogrify -channel RGB -gaussian-blur 1 img/$image-5.png
+#+end_src
+
+#+RESULTS:
+[[file:img/freecad-keys-5.png]]
+
+Of course this is faster in an Image editor, but you can't really batch process
+things and you don't necessarily develop a feel for the how the parameter values
+influence the filters.
+
+** Morphology Operators
+
+Dilation also didn't work well. I wasn't sure how to set the arguments on the
+kernel. I had only set the type. I could probably refer to the links above. Some
+parameters may require using python/ruby/etc to interface with imagemagick.
+
+Setting the channels to =B= looks like this
+
+#+attr_html: :style: width:400px;
+#+headers: :var image="freecad-keys" level=(- (expt 2 16) 51250)
+#+begin_src sh :results file link :file img/freecad-keys-dilate-B.png
+cp img/$image-3.png img/$image-dilate-B.png
+mogrify -channel B -morphology dilate disk img/$image-dilate-B.png
+#+end_src
+
+#+RESULTS:
+[[file:img/freecad-keys-dilate-B.png]]
+
+And to =GB=
+
+#+attr_html: :style: width:400px;
+#+headers: :var image="freecad-keys" level=(- (expt 2 16) 51250)
+#+begin_src sh :results file link :file img/freecad-keys-dilate-GB.png
+cp img/$image-3.png img/$image-dilate-GB.png
+mogrify -channel GB -morphology dilate disk img/$image-dilate-GB.png
+#+end_src
+
+#+RESULTS:
+[[file:img/freecad-keys-dilate-GB.png]]
+
+And to =RGB=. So it looks like the dilate operator either iterates on the
+channels separately or increases its effect based on how the kernel matches that
+pixel's neighborhood.
+
+... but on second thought, the colors and the soft/hard edges make for a bit of
+an optical illusion. It's processing with the same intensity (it does iterate
+the channels separately)
+
+#+attr_html: :style: width:400px;
+#+headers: :var image="freecad-keys" level=(- (expt 2 16) 51250)
+#+begin_src sh :results file link :file img/freecad-keys-dilate-RGB.png
+cp img/$image-3.png img/$image-dilate-RGB.png
+mogrify -channel RGB -morphology dilate disk img/$image-dilate-RGB.png
+#+end_src
+
+#+RESULTS:
+[[file:img/freecad-keys-dilate-RGB.png]]
+
+
+* Issues
+
+* Roam
++ [[id:beafc05d-75b4-4013-8b43-9c0483a30328][Art]]
