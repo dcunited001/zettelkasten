@@ -1,0 +1,164 @@
+:PROPERTIES:
+:ID:       cef15f04-5ee7-4a96-b811-c2e86f515823
+:END:
+#+TITLE: Updated Teleology of Ansible Features
+#+CATEGORY: slips
+#+TAGS:
+
+My Ansible project is so riddled with bad patterns that starting over would be
+easier. This is a bit of the "teleology" of Ansible that seems to be
+missing.
+
+* Essential Features
+
+** Playbooks/Tasks
+
+I didn't quite understand the distinction between =playbooks= and =tasks= ... or
+how that leads to reuse without turning everything into a =role=. This left me
+with giant =yml=.
+
+Most content online guides you into writing roles, but you should use a task
+before you use a role, especially when you don't plan on reusing content between
+projects.
+
+There are also very few mentions of "play" in the docs. The concept of =play= is
+introduced very early on and I think it fades into the background for most
+people very quickly ... until you get into the core Ansible source
+code. Understanding the distinction between a play and a playbook was how I
+figured out there was a difference between playbooks and tasks. I only figured
+this out when I went to create UML for the Ansible core classes (which I had
+intended to do a long time ago)
+
+Also, the folder structures in some of the introductury documentation still name
+=tasks= as a folder for your playbooks AFAIK.
+
+** The =groups= and =hostvars= variables
+
+I had looked for this, but I didn't find it until I randomly decided to look at
+a "cheatsheet" I printed in 2021 ... after manually deleting DOM from the
+Ansible github.
+
+These variables help avoid a service dependency on Nautobot. If your network is
+small, then you /can/ keep most everything in YAML, but you have break out your
+=vars.yml= files. The =groups= and =hostvars= variables allow me fragment the
+network config from a single YAML file into the groups the content is supposed
+to live in.
+
+** Playbook vars
+
+These allow you to define templates for variable structures ... this allows you
+to close all those errant tabs for Jinja2 docs. By using playbook vars and
+tasks, you keep the =vars.yml= fragments close to where they're needed. This
+makes them easier to find/maintain ... but it /also/ lets you template data
+structures that are otherwise atrocious to implement in Jinja while sharing with
+other playbooks. You can rest easy knowing that you can throw things away.
+
+** Facts
+
+If you always gather them, you have to authenticate -- so that Cisco IOS with
+2012 OpenSSL requires at least 45 seconds. If you don't always gather them, well
+now you have =cache= problems. You're already dealing with YAML-key =naming=
+problems, so you're one problem short of a 3000-level computer science joke.
+
+These create file-based state (and a digital footprint), so you have to consider
+that. By default, I always assume YAGNI or maybe MYNIL: maybe you need it later.
+
+If someone explained how this state is synchronized, then I would definitely
+understand -- I just found out I need to shop around for a [[https://docs.ansible.com/ansible/latest/plugins/cache.html][cache plugin]].
+However, most Ansible users just have Ansible Tower, which apparently supports
+fact caching and formerly supported fact scanning.
+
+To be fair, I did thoroughly study the entire =ansible.cfg= file and pretty much
+any concept that googling its keys led me to.
+
+** Handlers
+
+This i had assumed I would use ... later, but using them in tasks vs. playbooks
+requires some re-reading. Notify is essential, but you have to plan out how
+you're going to use the handlers and you have to read the fine print. There are
+rules.
+
+** Tests
+
+These are super useful, but you really want to be sure you're not accumulating
+tests you'll delete.
+
+** Ad hoc playbooks directory
+
+You need a place where ad hoc playbooks live until you're ready to maintain
+them. You just need to be able to write these quickly to GTD.
+
+** Abusing the network as a database
+
+The =lookup= plugins help you reuse available data to avoid leaving stuff in
+YAML. I understood that, but hadn't quite figured out the idea that dependable
+data fragments on the network can become a database. This can be literally
+anything:
+
++ DNS TXT Records or funny A records
++ Redis or APIs or static files
++ Even things like VLAN descriptions, open pipes
++ message of the day (dumb term's not laughing)
++ funny MAC addresses (if you don't mind turning it on/off again to clear ARP)
+
+Most of these are useless, but a few are dependable places you can stash data to
+handoff. If you have a secure management plane, you just basically don't need
+them.
+
+You would never actually use Ansible for shenanigans though: it transmits way
+too much network data and beams down way too many file artifacts.
+
+** Tags
+
+I've seen these mentioned as problematic ... but where is a "tags" feature not
+problematic? In any webapp, the team needs to determine how tags should be used,
+what tags are needed, what they will mean and what it means when items aren't
+tagged. They're many-to-many records, so they're costly to maintain when wrong
+and useless when arbitrary.
+
+The Ansible docs mention these and i believe cautions against their
+overuse. It's a bit difficult to figure out how to use them properly, since you
+need to know exactly what 's going to happen when you run playbooks.
+
+You need to determine how you're going to use them:
+
++ You want to run part of a playbook as an ad-hoc playbook -- i.e. by passing
+  args with =-e= in a quick CLI or something.
++ You want to reference a subset of plays/tasks(?) in another playbook, but not
+  all of them.
++ You occasionally want to run everything in a playbook, /except/ X,Y,Z. This I
+  find counterintuitive, since you wouldn't tag those items.
++ You want to /rerun/ items in a playbook, though not recursively.
++ You want to discover content (this will lead to misuse of tags and confusion).
+
+And the last: you're polishing a role you think will be reused and you want to
+increase its reuse value. You've imagined how people might step through the
+setup/maintainence use-cases it supports. Designing collections like [[https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwjFte7YwomCAxWam2oFHRpWD2YQFnoECAYQAQ&url=https%3A%2F%2Flinux-system-roles.github.io%2F&usg=AOvVaw0ys82Ups3D22xtFUCk2bP7&opi=89978449][Linux
+Server Roles]] would be very difficult, since none of these services backed by
+Ansible collections (or any devops tools) are completely isolated from others.
+
+This is why, once you graduate from Ansible roles, the increase in difficulty is
+steep esp. regarding design. Mistakes are expensive and it's not like you're
+working in your NodeJS development environment. When you push buttons in devops,
+not only do things happen, but the world-state changes and it's expensive to go
+looking for things that went wrong.
+
+* Feedback
+
+Perhaps much of this is available in certification and training programs. I
+found quite a bit of useful content in the RHEL example/training playbooks.
+
+My biggest criticism with the ansible docs is that there's just not enough
+pictures. A picture is worth 1,000 words. The only way I figured out the load
+order for ansible vars was a =graphviz= file. Not an image, but a file. I can't
+find the source for it anymore.
+
+It seems that much of the complexity is obviated by Ansible Tower and that much
+of the knowledge behind how to use this is transmitted from person to person
+... Although it's not that hard once you figure out the semantics. I would say
+that it's easy to use Ansible if you only use roles or if you have someone to
+teach you.
+
+
+* Roam
++ [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
