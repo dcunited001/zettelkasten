@@ -1,0 +1,147 @@
+:PROPERTIES:
+:ID:       9c8af1e6-7c24-4a0c-b0f5-0c5ba529486d
+:END:
+#+TITLE: Homelab: Lack of Progress
+#+CATEGORY: slips
+#+TAGS:
+
+
+* Lack of Progress
+
+I have a hard time explaining how irritating my lack of progress is.
+
+I've been working behind a firewall that only whitelists essential services.
+
++ I had assumed that I would eventually set up an internal VPN to work on
+  things, but this is probably a bad idea.
++ I had variously considered a reverse proxy at times, but never walked through
+  it, since it's simple enough for me to change network connections.
++ There are also other options.
+
+I have multiple cables at my desk patched into specific switch ports ... so yeh.
+At this point, being unable to install Ansible/Python modules when needed was
+killing me, so I figured it out: SSH Reverse Proxy via SOCKS on an extra port.
+
+* Repositories and Services
+
+For things like updates, configuration management or persistence, I had assumed
+that in the future I would just set up things like:
+
++ Pulp :: which allows you to set up repositories for Ansible, RPM and
+  Docker. This isn't quite Artifactory, but it is open source and it's feature
+  set has been expanding. It has too many moving parts though. Ansible Galaxy
+  uses a metalink along with VIP's for distribution of its artifacts. I figured
+  out RPM, but I wasted an unbelievable amount of time on Galaxy.
++ Artifactory :: Trying to figure out what the free version does is confusing,
+  though it's easy enough to set up. It looks like I could use it, but it
+  requires persistent storage and if other services would require its
+  availability, then disruption would tend to cascade.
++ RPM Mirror :: This apparently requires like 4TB. No. Besides my personal
+  computers, I'm basically working with 4 TB. I've solved this problem with
+  Ansible by cutting out the RPM metalink in the yum configuration.
++ Nautobot/Netbox :: These come with a dependency on Redis and anything running
+  an Ansible playbook must be able to communicate with it. Make you an EE and
+  set up a runner. Now you need Ansible AWX/Tower, too.
++ Ansible Tower :: The core of Ansible was supposed to be serviceless, though
+  the playbooks were never intended to be. This is light on service
+  dependencies, but requires determining what kind of data footprint it will
+  leave in case it needs to be moved. Formerly, you could run it in Docker, but
+  now every guide on any of these services (AWX, Tower, Nomad, Gitlab) all warn
+  you against it. It's spooky and smacks of FUD.
++ Gitlab :: The featuresets require various levels of service dependencies, so
+  there's some reading to do. Gitea is more reasonable for lighter use and a
+  giant leap forward from Gitolite.
+
+* Why not just run X?
+
+Almost everything I've evaluated that would help me be more efficient can't be
+set up for one of a few reasons below
+
+** Stable Network
+
+The services require multiple components and just assume that you're network is
+stable.  i.e. you have *failover* on your Router and/or Firewall ... My Router
+is my firewall /IS/ my DNS. Those three things really need to be split up
+... or it makes changes to the network all-or-nothing.
+
+Unfortunately, I only have two extra PCIe Network cards. Setting up VLAN's to
+properly use Linux networking is in the middle of everything ... but guess what?
+No redundancy in Network/Firewall/DNS.
+
+Worst of all, I never considered leaning on DHCP for at least some of
+this.......... My network has always been small enough to distribute this
+information via Ansible. I'm only juggling one thing at a time here.
+
+I've mostly figured out what I'm going to do here.
+
+** Kubernetes and cluster requirements
+
+The services basically assume you already have Kubernetes running. Or consul. Or
+nomad (which is easy ... but then quite a bit of work for a single person).
+
+These things require more VM's than I can put on any computer except my desktop.
+
+** Storage/Backups
+
+The services or supporting infrastructure needs much more storage than I have or
+there's a risk of playing a game of "Hard Drive Hanoi" that I am just not
+willing to ever do again.
+
+I also don't want to configure twenty webapps just to have everything fall
+apart. Every additional app is another dataset which takes time set up again if
+it has idiosyncratic backup/restore or can't be automated. Usually this isn't so
+bad -- especially when the data/services aren't dynamically coupled to your
+network -- it's when there are links that can't be assumed to fixed by updating
+DNS. I mean "links" in an abstract sense: both URL's and more abstractly defined
+connections/constraints between data records in multiple services. And I guess
+when these links find their way into your images, that really sucks.
+
+To avoid unnecessary work here, you realllly need to plan ahead.
+
+** Tiered Data Services
+
+If you only have a single PostgreSQL server (or generic database service
+referenced by multiple clients), then you don't care about database security.
+
++ If you only have a single database server then a firewall is pointless. You would
+  really have to depend on database permissions/security at that point ... and
+  you really just don't want to go there more than you need to.
++ If you have multiple servers, you actually have to do ad hoc ETL as
+  needed. This usually assumes familiarity with the data service's schema and
+  files ... which eventually you'll need to know.
++ And you'll probably need to modify firewall config as needed too, but it's
+  really nice to have this in _plain text_.
++ If you run multiple database instances, say, in containers on the same host,
+  now you need familiarity with the underlying datastore/config files. It's not
+  drag-and-drop docker containers anymore. In other words, the stock helm
+  templates just aren't going to cut it.
++ 10g ethernet makes this much easier. Many problems just vanish if you can
+  serve files or =iscsi= over 10g ethernet.
++ If you run database instances on multiple VM's on the same computer, you can
+  choose between migrating the entire VM's or the files on the disks (i would
+  rather migrate the VM's for a homelab), but again, you have to care about
+  where the data lives.
++ If you run it in containers, then you need to move data around (you need
+  excess storage) and thus, you need to set up authentication/replication
+  between SQL users. That, or be prepared to move the data as files, in which
+  case you need to clean up after yourself.
+
+So therefore, it's best to make these data services available over the network
+using DNS. With a single point of failure in the internal network, it's pretty
+easy to find yourself in a dead end (I try to anticipate this AoT).
+
+None of this is prohibitively encumbering -- if you anticipate enough of the
+possible problems along the way.
+
++ Your Linux users/groups need to be consistent.
++ You need to plan for certificate deployment and update. Or you need to at
+  least be aware of about how long you expect services to be in a degraded
+  security state (for a homelab)
++ And etc.
+
+But I'm trying to "do it the hard way" without having much of an opportunity
+for getting feedback.
+
+
+* Roam
++ [[id:48d763a8-5579-4585-a9a2-e7cbb11701fe][Homelab]]

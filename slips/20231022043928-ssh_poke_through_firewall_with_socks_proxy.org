@@ -1,0 +1,80 @@
+:PROPERTIES:
+:ID:       70e49353-4608-48e6-bd9c-8e4c6bb5c25f
+:END:
+#+TITLE: SSH: Poke Through Firewall With Socks Proxy
+#+CATEGORY: slips
+#+TAGS:
+
+* Resources
++ [[https://en.wikibooks.org/wiki/OpenSSH/Cookbook/Proxies_and_Jump_Hosts#Port_Forwarding_Through_One_or_More_Intermediate_Hosts][OpenSSH Book: Port Forwarding Through One Or More Intermediate Hosts]]
+
+* Notes
+
+In this, [[https://thinkingeek.com/2022/01/03/ssh-and-socks/][OpenSSH as a SOCKS Server]], the author installs rust using curl via a
+reverse proxy.
+
+This seems generally useful, but this configuration will cause anything exiting
+the node on that port to follow that path, so you need to kill the tunnels when
+you're done. It would be nice to write some scripts to help facilitate this.
+
+** Sequence Diagram
+
++ the net firewall can't block =22= to Symmetra.
++ firewalld can't block =9999= from Symmetra.
++ port =12345= is fairly arbitrary and but can't be blocked on Tracer either.
+
+#+begin_src mermaid :file img/sshJumpProxy.svg
+sequenceDiagram
+    autonumber
+    participant PyPi
+    participant Socks5
+    participant Tracer
+    participant Bastion
+    participant Symmetra
+
+    Tracer ->> Socks5: `ssh -N<br>-D 127.0.0.1:12345`
+    note over Tracer: A socks proxy<br>on port 12345 now allows<br>traffic to the internet
+    Tracer ->> Bastion: `ssh -N -J Symmetra<br>-R 127.0.0.1:9999:127.0.0.1:12345`
+    Bastion ->> Symmetra: Effectively<br>`ssh -N<br>-R 127.0.0.1:9999:127.0.0.1:12345`
+    note over Symmetra: An SSH Reverse Proxy now connects<br>9999 on Symmetra to 12345 on Tracer
+    Tracer ->> PyPi: `python3 -m pip download pysocks`
+    Tracer ->> Symmetra: `scp -J Bastion<br>PySocks-1.7.1-py3-none-any.whl<br>Symmetra:project/path`
+    Symmetra ->> Symmetra: `VIRTUAL_ENV=myvenv pip install<br>PySocks-1.7.1-py3-none-any.whl`
+    note over Symmetra: Using the socks proxy requires<br>the PySocks package in the virtualenv
+    Symmetra ->> Socks5: `pip install --proxy=socks5://127.0.0.1:9999 httpx`
+    Socks5 ->> PyPi: Effectively<br>`pip install httpx`
+#+end_src
+
+#+RESULTS:
+[[file:img/sshJumpProxy.svg]]
+
+
+** Automating this
+
+I could actually imagine the =shepherd= service manager from Guix as being
+useful for doing so.
+
++ Shepherd more flexibly handles templated services than SystemD -- i.e. you
+  wouldn't naturally reach for SystemD to accomplish this, but you do actually
+  do want a service manager. There are other project-based approaches for
+  managing these kinds of processes, like [[https://github.com/rejeep/prodigy.el][prodigy.el]] or the older [[https://github.com/ddollar/foreman][foreman]], but
+  picking the right one is important.
++ The ports interface for files/sockets in Guile Scheme is one of the language's
+  strong selling points. I can't speak to that technically, but the API's
+  surrounding it just feel natural, though I haven't used them.
++ The shepherd service can be started ad hoc in a contained environment with a
+  handful of files. You really want the ability to have these services
+  auto-destruct if you can't reconnect.
++ The Guile environment can be delivered in a =tar= file by building a guix
+  profile to be exported. Once the tar is unpacked on a proximal-yet-remote
+  =Tracer= system, it doesn't require Guix there, but you can invoke bash with
+  the proper options and get a clean environment where all your bins for jumping
+  to the distal =Symmetra= host are the way you expect them to be.
+
+maybe, i'm trying to think of use cases for shepherd/guix lol, though I guess
+there's better tooling for this kinda stuff.
+
+* Roam
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][SSH]]
++ [[id:7e07a59f-dc1f-45a4-bbe5-e061e8c3b0eb][Security]]
++ [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team]]
