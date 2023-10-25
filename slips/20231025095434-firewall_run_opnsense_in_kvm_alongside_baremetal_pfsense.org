@@ -478,6 +478,107 @@ interface GigabitEthernet 0/8
   switchport nonegotiate
 #+end_src
 
+* Ansible LSR
+
+I had originally tried to setup the KVM host interfaces using the
+[[https://galaxy.ansible.com/ui/repo/published/fedora/linux_system_roles/content/role/network][fedora.linux_system_roles.network]] collection, but it has some checks in it that
+are specific to RPM-distros. I didn't feel like forking/rebasing, so I tapped
+out. This host is using Arch, but it's still an option for the future.
+
+I did get the =network_connections= to work. The network configuration details
+don't completely match what's above though: I still thought I needed to pass KVM
+raw =macvtap= devices.
+
+#+begin_src yaml
+- hosts: kvmhost
+  become: yes
+  vars:
+    # see __network_packages_default_nm in defaults/main.yml for lsr/network
+    # - on RPM-based distro's, it's looking for NetworkManager.
+    # - there are some other deps as well, but mostly for wifi
+    network_packages: ['networkmanager']
+
+    # this will create connections, but they must be macvtap to pass to KVM
+    network_connections:
+      - name: enp2s0
+        interface_name: enp2s0
+        type: ethernet
+        autoconnect: false
+
+      # to pass through to guest
+      # none are vlan-aware in the guest
+      # only 2999 is vlan-aware on the host
+      - name: KWAN
+        parent: enp2s0
+        autoconnect: false
+        type: macvlan
+        macvlan:
+          mode: bridge
+          promiscuous: true
+          tap: false
+
+      - name: KDEV
+        parent: enp2s0
+        autoconnect: false
+        type: macvlan
+        macvlan:
+          mode: bridge
+          promiscuous: true
+          tap: false
+
+      - name: KSVC
+        parent: enp2s0
+        autoconnect: false
+        type: macvlan
+        macvlan:
+          mode: bridge
+          promiscuous: true
+          tap: false
+
+      - name: KMGMT
+        parent: enp2s0
+        autoconnect: false
+        type: macvlan
+        macvlan:
+          mode: bridge
+          promiscuous: true
+          tap: false
+
+  roles:
+    - fedora.linux_system_roles.network
+#+end_src
+
+At this point, you should be able to run something like this on Centos. The
+Ansible collection is much pickier about checking versions/distros before
+running this. There would be quite a few simple changes required to get it
+supporting Arch. I don't think injecting configuration like above with
+=network_packages= will work. I do plan on moving to Fedora sometime ... but my
+computer just runs right now, and yeh. Not doing that.
+
+#+begin_src yaml
+- hosts: kvmhost
+  become: yes
+  vars:
+    network_state:
+      interfaces:
+        - name: KWAN
+          state: up
+        - name: KDEV
+          state: up
+        - name: KSVC
+          state: up
+        - name: KMGMT
+          state: up
+  roles:
+    - fedora.linux_system_roles.network
+#+end_src
+
+
+
+** Network
+
+
+
 * Roam
 + [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
 + [[id:cf2bd101-8e99-4a31-bbdc-a67949389b40][Virtualization]]
