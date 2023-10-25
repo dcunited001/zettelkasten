@@ -1,0 +1,484 @@
+:PROPERTIES:
+:ID:       fbcba632-7805-4acc-af08-10ba7ff3c8cd
+:END:
+#+TITLE: Firewall: Run OPNSense in KVM Alongside Baremetal PFSense
+#+CATEGORY: slips
+#+TAGS:
+
+* Setup
+
+** Linux KVM Host
+
+just create these and add to KVM machine
+
+macvtap devices are needed to pass through interfaces from the host to the guest
+without relying on KVM networking. The switch will need to be configured.
+
+The host's device must be set to promiscuous
+
+#+begin_src sh
+ip link set enp2s0 promisc on
+ip link add link enp2s0 name kwan type macvtap
+ip link add link enp2s0 name kdev type macvtap
+ip link add link enp2s0 name ksvc type macvtap
+ip link add link enp2s0 name kmgmt type macvtap
+#+end_src
+
+** KVM
+
+- no networks during initial VM setup
+- add NIC. type: macvtap, use device name below.
+- no networking/etc (configure vlans in guest)
+
+Just run through the OPNsense installer and try to ignore all networking until
+the machine is created. Then add macvtap devices without setting IP config.
+
+The XML is at the end along with the switch config.
+
+* Design Problems
+
+** Layer 2
+
+One problem to watch out for is Layer 2 loops. Any ports that form a trunk
+should be part of a tree.
+
+**** TODO diagnosing this? VTP domains?
+
+** Layer 3
+
+Unintended traffic flows are the next most obvious problem when running a
+similar setup, whether they're:
+
++ layer 3 issues with policy-based routing (or more logically defined routing)
++ or layer 4 issues where rules aren't being applied as expected because traffic
+  is routing around points of control.
+
+** Other Approaches
+
+The router I have from my ISP has two ports with separate networking config. so
+if I wanted to hack something behind a firewall, I would plug the =enp2s0= into
+the second port and do something with that.
+
+* Networking
+
+Here the IP addressing is set up to "face" the WAN.
+
++ The local side is always =.1=.
++ The far side is always =.10=.
+
+| Vlan | KVM Ifx | Address | OPNsense Ifx    |  OPN Address | PFSense Ifx |    PF Address |
+|------+---------+---------+-----------------+--------------+-------------+---------------|
+|  720 | enp2s0  | None    | vtnet0_vlan720  |  172.18.0.10 | KLAB        |    172.18.0.1 |
+| 3120 | enp2s0  | None    | vtnet1_vlan3120 |  172.22.16.1 | KDEV        |  172.22.16.10 |
+| 1640 | enp2s0  | None    | vtnet2_vlan1640 |  172.22.32.1 | KSVC        |  172.22.32.10 |
+| 3340 | enp2s0  | None    | vtnet3_vlan1880 | 172.22.192.1 | KMGMT       | 172.22.192.10 |
+
+Since the PFSense side of the OPN-controlled interfaces are really downstream of
+the OPNsense, it's the =.10=. However, the WAN interface of the OPNsense is
+downstream of the PFSense and so it's =.10=.
+
+** PFSense
+
+Create VLANs in PFSense to match the OPNSense vlans. Everything should be on a
+VLAN, since it's easier to boot up a lab network if trunk ports can be
+dedicated.
+
+For the 3 VLAN's, give them their own =/24= address space. For routing, it would
+be ideal if this is nested within it's on =/16= address space or at least within
+a super-net.
+
+| Parent Ifx | Ifx   | VLAN |       Address |
+|------------+-------+------+---------------|
+|            | em0   |      |  192.168.1.10 |
+|            | igb0  |      |               |
+|            | igb1  |      |               |
+|            | igb2  |      |               |
+| igb2       | KLAB  |  720 |    172.18.0.1 |
+| igb2       | KDEV  | 1320 |  172.22.16.10 |
+| igb2       | KSVC  | 1640 |  172.22.32.10 |
+| igb2       | KMGMT | 1880 | 172.22.192.10 |
+|            | igb3  |      |               |
+
+** OPNSense
+
+After the install, the OPNsense came up without an IP address on the WAN, which
+I set after the first boot.
+
++ I set an IP on the =vtnet0= interface and this caused some state to get stuck
+  since I don't know my way around the older networking commands. It was more
+  than the address, since routes and firewall rules are automatically created.
++ When this happened before getting to the GUI, I had better luck reinstalling.
++ A default gateway isn't absolutely necessary, but can cause issues... check
+  with =netstat -rn=.
+
+To get to the webadmin, you need to figure out how to get in without going
+through the WAN interface. This may require some custom routing on
+PFSense. Otherwise, you can just use =pfctl -d= to determine if it's a layer2
+problem in KVM/Host, PFSense or the switch.
+
+| Parent Ifx | Ifx             | VLAN |      Address |
+|------------+-----------------+------+--------------|
+|            | vtnet0          |      |              |
+|            | vtnet1          |      |              |
+|            | vtnet2          |      |              |
+|            | vtnet3          |      |              |
+| vtnet0     | vtnet0_vlan720  |  720 |  172.18.0.10 |
+| vtnet1     | vtnet1_vlan1320 | 1320 |  172.22.16.1 |
+| vtnet2     | vtnet2_vlan1640 | 1640 |  172.22.32.1 |
+| vtnet3     | vtnet3_vlan1880 | 1880 | 172.22.192.1 |
+
+** Switch
+
+The configs are long, so they're at the end.
+
+* Debugging
+
+** KVM
+
+*** Promiscuous
+
+The macvtap devices are created as needed for virtd and their parent device on
+the host needs to be in promiscuous mode. Since the devices are created when you
+start the VM, you can change this without restarting the system/services (I
+think that's why)
+
+*** Macvtap
+
+With macvtap, the host system will be basically useless for troubleshooting
+networking issues. I don't think that the KVM host's user-land will be aware of
+anything. The KVM host's ARP table isn't going to show their state. All their
+networking configuration needs to happen in the VM.
+
+** Firewall
+
+*** pfctl
+
+Use =pfctl -d= to drop the firewall on PFSense or OPNsense
+
+Use =pfctl -s rules= to emit the current firewall rule state
+
+*** Networking
+
+Use =netstate -rn= to check the routes.
+
+** ARP
+
+*** PFSense
+
+Usually the =/diag_arp.php= works. I've had to restart services and reroot
+PFSense after it wouldn't clear state and process traffic for interfaces whose
+VLAN/Trunk status had recently changed. This page will tell you the state that
+PFSense perceives.
+
+*** OPNSense
+
+Without the GUI your options are limited. =arp -a= will show the arp tables. If
+OPNsense isn't being forwarded the Layer 2 frames from the host, the error will
+be =Host is down=.
+
+*** Packet Capture
+
+Since my laptop and the host seemed to imply that ARP was occuring normally, the
+packet capture at =/diag_packet_capture.php= was the only way for me to be sure.
+
+Here, =172.18.0.10= is repeatedly asking for the MAC to it's gateway. It's ARP
+neighbors are replying, but its not receiving the frames.
+
+#+begin_quote
+ARP, Request who-has 172.18.0.1 tell 172.18.0.10, length 46
+ARP, Reply 172.18.0.1 is-at 80:61:5f:0e:94:04, length 28
+ARP, Request who-has 172.18.0.1 tell 172.18.0.10, length 46
+ARP, Reply 172.18.0.1 is-at 80:61:5f:0e:94:04, length 28
+STP 802.1d, Config, Flags [none], bridge-id 8168.00:26:51:6a:0f:80.802f, length 42
+ARP, Request who-has 172.18.0.1 tell 172.18.0.36, length 46
+ARP, Reply 172.18.0.1 is-at 80:61:5f:0e:94:04, length 28
+ARP, Request who-has 172.18.0.1 tell 172.18.0.10, length 46
+ARP, Reply 172.18.0.1 is-at 80:61:5f:0e:94:04, length 28
+#+end_quote
+
+** Switch
+
+*** Trunk Ports
+
+The =show vlan brief= command doesn't show trunked port membership.
+
+Instead use =show vlan id 1234=
+
+*** Arp on Switch
+
+You have to give vlan's an ip address in order for entries to populate in the
+arp table. Otherwise the switch is strictly a layer 2 device. This is helpful,
+but I keep my switch as Layer 2.
+
+* XML For KVM
+
+
+#+begin_src xml
+<domain type="kvm">
+  <name>freebsd12.3</name>
+  <!-- ... -->
+  <metadata>
+    <libosinfo:libosinfo xmlns:libosinfo="http://libosinfo.org/xmlns/libvirt/domain/1.0">
+      <libosinfo:os id="http://freebsd.org/freebsd/12.3"/>
+    </libosinfo:libosinfo>
+  </metadata>
+#+end_src
+
+2GB RAM
+
+#+begin_src xml
+  <!-- 2 GB Ram -->
+  <memory unit="KiB">2097152</memory>
+  <currentMemory unit="KiB">2097152</currentMemory>
+#+end_src
+
+The vCPU should be =q35=
+
+#+begin_src xml
+  <vcpu placement="static">4</vcpu>
+  <os>
+    <type arch="x86_64" machine="pc-i440fx-8.1">hvm</type>
+  </os>
+#+end_src
+
+Passthrough 2-cores, 2-threads as one socket
+
+#+begin_src xml
+  <!-- ... -->
+  <cpu mode="host-passthrough" check="none" migratable="on">
+    <topology sockets="1" dies="1" cores="2" threads="2"/>
+  </cpu>
+  <!-- ... -->
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+#+end_src
+
+Networking
+
+#+begin_src xml
+    <!-- virtio disk -->
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2" discard="unmap"/>
+      <source file="/some/pool/libvirt/images/freebsd12.3.qcow2"/>
+      <target dev="vda" bus="virtio"/>
+      <boot order="1"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x07" function="0x0"/>
+    </disk>
+#+end_src
+
+DVD Image of OPNsense
+
+#+begin_src xml
+    <disk type="file" device="cdrom">
+      <driver name="qemu" type="raw"/>
+      <source file="/data/vm/iso/OPNsense-23.7-dvd-amd64.iso"/>
+      <target dev="hda" bus="ide"/>
+      <readonly/>
+      <address type="drive" controller="0" bus="0" target="0" unit="0"/>
+    </disk>
+    <!-- ... usb/spice/serial/etc -->
+#+end_src
+
+Network Devices
+
+#+begin_src xml
+    <interface type="direct">
+      <mac address="52:00:54:c5:5f:f1"/>
+      <source dev="enp5s0" mode="bridge"/>
+      <model type="virtio"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x03" function="0x0"/>
+    </interface>
+    <interface type="direct">
+      <mac address="52:00:54:d4:cf:cd"/>
+      <source dev="enp5s0" mode="bridge"/>
+      <model type="virtio"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x04" function="0x0"/>
+    </interface>
+    <interface type="direct">
+      <mac address="52:00:54:31:1c:41"/>
+      <source dev="enp5s0" mode="bridge"/>
+      <model type="virtio"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x09" function="0x0"/>
+    </interface>
+    <interface type="direct">
+      <mac address="52:00:54:53:0b:ab"/>
+      <source dev="enp5s0" mode="bridge"/>
+      <model type="virtio"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x0a" function="0x0"/>
+    </interface>
+    <!-- more serial/input/spice -->
+#+end_src
+
+feed it all the RAM ahead-of-time
+
+#+begin_src xml
+    <memballoon model="virtio">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x08" function="0x0"/>
+    </memballoon>
+  </devices>
+</domain>
+#+end_src
+
+
+* Switch
+
+The point of the =macvlan= interfaces is to make the KVM networking as
+transparent as possible so it feels like an actual network. Since only the guest
+is using the devices, configuring the switch to permit the VLAN traffic is
+necessary.
+
+To configure vlans greater than 1000, run =spanning-tree system id extended=
+
+** Config for PFSense
+
+VLANs
+
+#+begin_src ios
+vlan 320
+  name net_dev
+interface vlan 320
+  no ip address
+
+vlan 640
+  name net_svc
+interface vlan 640
+  no ip address
+
+vlan 720
+  name net_lab
+interface vlan 720
+  no ip address
+
+vlan 880
+  name net_mgmt
+interface vlan 880
+  no ip address
+#+end_src
+
+Trunk Ports
+
+#+begin_src ios
+! desktop enp2s0: trunk ports for kvm host
+interface GigabitEthernet 0/45
+  switchport mode trunk
+  switchport trunk access vlan 320
+  switchport nonegotiate
+
+interface GigabitEthernet 0/46
+  switchport mode trunk
+  switchport trunk access vlan 640
+  switchport nonegotiate
+
+interface GigabitEthernet 0/47
+  switchport mode trunk
+  switchport trunk access vlan 720
+  switchport nonegotiate
+
+interface GigabitEthernet 0/48
+  switchport mode trunk
+  switchport trunk access vlan 880
+  switchport nonegotiate
+#+end_src
+
+Server access ports
+
+#+begin_src ios
+! net_svc servers
+interface GigabitEthernet 0/20
+  switchport mode access
+  switchport access vlan 640
+
+! ...
+
+! net_mgmt server ports
+interface GigabitEthernet 0/30
+  switchport mode access
+  switchport access vlan 880
+
+! ...
+#+end_src
+
+Other access ports
+
+#+begin_src ios
+! desktop enp6s0: access port for PF-based Network
+interface GigabitEthernet 0/10
+  switchport mode access
+  switchport access vlan 320
+
+! laptop eth0: access port for PF-based Network
+interface GigabitEthernet 0/11
+  switchport mode access
+  switchport access vlan 320
+#+end_src
+
+** Config for KVM-based OPNsense
+
+#+begin_src ios
+spanning-tree
+
+! vlan 720
+!   name net_lab
+
+vlan 3120
+  name opn_dev
+interface vlan 3120
+  no ip address
+
+vlan 1640
+  name opn_svc
+interface vlan 1640
+  no ip address
+
+vlan 1880
+  name opn_mgmt
+interface vlan 1880
+  no ip address
+
+#+end_src
+
+Trunk Ports
+
+#+begin_src ios
+! desktop enp2s0: trunk ports for kvm host
+interface GigabitEthernet 0/1
+  switchport mode trunk
+  switchport trunk access vlan 720,1320,1640,1880
+  switchport nonegotiate
+
+! PFSense opt2: trunk ports for labs
+interface GigabitEthernet 0/2
+  switchport mode trunk
+  switchport trunk access vlan 720,1320,1640,1880
+  switchport nonegotiate
+#+end_src
+
+Access Ports
+
+#+begin_src ios
+! laptop eth0: connect to OPNsense kwan
+interface GigabitEthernet 0/5
+  switchport mode access
+  switchport access vlan 720
+
+! laptop eth0: connect to OPNsense kdev
+interface GigabitEthernet 0/6
+  switchport mode access
+  switchport access vlan 1320
+
+! laptop eth0: connect to OPNsense ksvc
+interface GigabitEthernet 0/7
+  switchport mode access
+  switchport access vlan 1640
+
+! connected to your laptop OPNsense kmgmt
+interface GigabitEthernet 0/8
+  switchport mode access
+  switchport access vlan 1880
+  switchport nonegotiate
+#+end_src
+
+* Roam
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
++ [[id:cf2bd101-8e99-4a31-bbdc-a67949389b40][Virtualization]]
++ [[id:265a53db-5aac-4be0-9395-85e02027e512][PFSense and OPNSense]]
