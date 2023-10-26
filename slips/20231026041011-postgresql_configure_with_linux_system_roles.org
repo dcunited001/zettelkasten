@@ -1,0 +1,136 @@
+:PROPERTIES:
+:ID:       4f654700-01ba-4814-a22c-b1059d517506
+:END:
+#+TITLE: PostgreSQL: configure with Linux System Roles
+#+CATEGORY: slips
+#+TAGS:
+
+https://docs.ansible.com/ansible/latest/vault_guide/vault_managing_passwords.html
+
+
+* Resources
+
+pg_hba.conf
+
++ 19.3 [[https://www.postgresql.org/docs/current/auth-methods.html][Auth Methods]]
+
+pg_ident.conf
+
++ 21.2 [[https://www.postgresql.org/docs/current/auth-username-maps.html][User Name Maps]]
+
+
+** LSR
+
+Examples
+
++ [[https://github.com/linux-system-roles/postgresql/blob/main/examples/basic.yml][basic.yml]]
++ [[https://github.com/linux-system-roles/postgresql/blob/main/examples/certificate.yml][certificate.yml]]
+
+
+* Notes
+
+** Security
+
+*** Passwords
+
+It's actually pretty tough to "google" and "q" ... but it happened.
+
+Debops dynamically generates [[https://github.com/debops/debops/blob/3ddd6a9bcafda2bbf20723bbb3d078e05505a8ad/ansible/roles/postgresql/tasks/main.yml#L238-L286][users/passwords per database]] and stores them in a
+=~/.pgpass= file. See also the note in the [[https://github.com/debops/debops/blob/3ddd6a9bcafda2bbf20723bbb3d078e05505a8ad/ansible/roles/postgresql/defaults/main.yml#L237-L263][debops postgresql defaults]]
+
+The =debops project padlock= command allows you to store [[https://github.com/debops/debops/blob/master/docs/ansible/roles/secret/guides.rst][ansible vault secrets
+in EncFS]]. The CLI subcommand source is at [[https://github.com/debops/debops/tree/master/src/debops/subcommands.py][src/debops/subcommands.py]]
+
+#+begin_src yaml
+- name: Make sure required system groups exist
+  ansible.builtin.group:
+    name: '{{ item.group | d(item.owner) }}'
+    state: 'present'
+    system: '{{ item.system | d(True) }}'
+  loop: '{{ q("flattened", postgresql__pgpass
+                           + postgresql_pgpass | d([])
+                           + postgresql__dependent_pgpass) }}'
+  no_log: '{{ debops__no_log | d(True) }}'
+
+- name: Make sure required system accounts exist
+  ansible.builtin.user:
+    name: '{{ item.owner }}'
+    group: '{{ item.group | d(item.owner) }}'
+    home: '{{ item.home | d(omit) }}'
+    state: 'present'
+    system: '{{ item.system | d(True) }}'
+  loop: '{{ q("flattened", postgresql__pgpass
+                           + postgresql_pgpass | d([])
+                           + postgresql__dependent_pgpass) }}'
+  no_log: '{{ debops__no_log | d(True) }}'
+
+- name: Populate ~/.pgpass file
+  ansible.builtin.lineinfile:
+    dest: '{{ "~" + item.owner }}/.pgpass'
+    regexp: '{{ "^" + ([((item.server | d(postgresql__server if postgresql__server else "localhost")) | replace(".", "\.")),
+                        (item.port | d(postgresql__port)),
+                        (item.database | d("\*")),
+                        (item.name | d(item.role | d(item.owner | d("\*"))))] | join(":")) + ":" }}'
+    line: '{{ [(item.server | d(postgresql__server if postgresql__server else "localhost")),
+               (item.port | d(postgresql__port)),
+               (item.database | d("*")),
+               (item.role | d(item.owner)),
+               (item.password | d(lookup("password",
+                                  secret + "/postgresql/" + (item.server | d(postgresql__password_hostname))
+                                  + "/" + (item.port | d(postgresql__port)) + "/credentials/"
+                                  + item.name | d(item.role | d(item.owner))
+                                  + "/password length=" + postgresql__password_length))
+                                 | regex_replace("\\", "\\\\") | regex_replace(":", "\:"))]
+              | join(":") }}'
+    state: 'present'
+    create: True
+    owner: '{{ item.owner }}'
+    group: '{{ item.owner }}'
+    mode: '0600'
+  loop: '{{ q("flattened", postgresql__pgpass
+                           + postgresql_pgpass | d([])
+                           + postgresql__dependent_pgpass) }}'
+  no_log: '{{ debops__no_log | d(True) }}'
+#+end_src
+
+*** HBA Conf
+
+Reasonable authentication methods:
+
+| method | range                     | map? | notes                                                                     |
+|--------+---------------------------+------+---------------------------------------------------------------------------|
+| mds    | system only (and no)      |      | Use ssl. Also, MD5 is reversible.                                         |
+| peer   | no                        |      |                                                                           |
+| ident  | system only (and no)      | yes  | use ssl                                                                   |
+| gss    | network-local+            | yes  | not sure, but the acronym has recently impressed me. five letters. no, six. |
+| sspi   |                           | yes  | windows only                                                              |
+| pam    | system, but why not LDAP? | yes  | problematic (easier if PAM uses LDAP; can't access /etc/shadow if SVC misconfigured ) |
+| cert   | wherever                  | yes  | secure but a PITA; subject to coordination problems at scale              |
+| krb5   |                           |      | probably costs money                                                      |
+| radius | network, with caution     |      | you don't want to share the DB auth with systems like route/switch        |
+
+Versions 11+ permit =scram-sha-256= instead of =md5=
+
+Why not LDAP? Because it reorients the focus away from network-based
+isolation, which gives you a false sense of security.
+
+Also, SELinux is probably easier without the =local= auth type that uses sockets
+
+*** Certificate
+
+TODO: support non-local connections with certificate-based auth
+- the cert's common name must match their system user's username
+- this is a client-cert authentication method and may require issuing certs
+TODO: potentially remove ident from auth (esp. on mgmt for vault/etc)
+
+** LSR
+
+*** Basic
+
+
+*** Certificate
+
+This ensures postgres starts running with SSL enabled using a self-signed
+certificate.
+
+* Roam
