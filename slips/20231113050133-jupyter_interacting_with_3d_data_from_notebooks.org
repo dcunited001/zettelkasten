@@ -1,0 +1,213 @@
+:PROPERTIES:
+:ID:       a0d4f1e3-36f4-4365-ae97-01654adff744
+:END:
+#+TITLE: Jupyter: Interacting with 3D data from notebooks
+#+CATEGORY: slips
+#+TAGS:
+
+* 3D GUI
+
+The methods in here are just one reason why i've wanted to focus so much on
+build automation. The following require sophisticated tooling/processes to make
+features and hardware more flexible:
+
++ Robotics/ML at the edge :: requires building for targets like Cortex chips, ARM,
+  IoT devices/drivers; or building/optimizing assets to load onto device
++ Graphics/Compute :: to use OpenMP (heterogenous GPU compute), to make software
+  portable, or to make software interactive, then the build tooling needs to be
+  parametric (efficient/adaptable) and easy to learn.
+
+Getting much of anything out of a computer in the future will either involve
+growing enough of these skills or paying for services/products with lock-in &
+lack of choice.
+
+** GUI Options
+
+Options for GUI in Jupyter include:
+
+*** [[https://tutorial.pyvista.org/][PyVista]]
+
+Multiple rendering environments are supported:
+
++ [[https://docs.pyvista.org/version/stable/user-guide/jupyter/trame.html#trame-jupyter][Trame in QT]] ... where [[https://github.com/Kitware/trame/][Trame]] has seen decades of use for scientific/academic
+  rendering.
++ Static Images
+
++ A container environment that can spawn a QT environment is what I'd recommend,
+  but it doesn't run on AMD GPU's without a custom build (see [[https://docs.pyvista.org/version/stable/extras/building_vtk.html#off-screen-plotting-gpu-support][off-screen
+  plotting GPU support]])
++ Addtionally, if running in a container, getting the QT to spawn could be a
+  late-stage or platform-specific problem.
++ QT is necessary to decouple the GUI from the data processing UI/UX in the
+  notebook.
+
+The project has slowed down, so AMD support is unlikely to be introduced,
+whereas with nvidia ... it's pips and installs.
+
+*** [[https://k3d-jupyter.org/][K3D]]
+
+This uses WebGL and introduces quite a bit of JS. The project is a bit dated,
+but I liked the design and simplicity. If mixing JS/Jupyter with Python is not a
+problem, then it would work well AFAIR, as the maintainer was quick to
+respond.
+
++ K3D would require some customization and maintaining JS Builds for changes to
+  browser environments.
++ Future-proofing js builds targeting the browser is a pain, but Web3D is pretty
+  locked in. Changes in Jupyter are much more likely to be the problem.
++ Still, its a good option when you want others to run your environment.
+
+*** Blender
+
+A file-based interface for blender may not be so bad. Once the data is saved to
+a file, you can use tools in blender to visualize it, but it may require a step
+to copy the file first (into assets?) to ensure isolation.
+
+This is the absolute best Blender option, except building blender as a module.
+
++ Easy to use, given you know all of Blender's 400 icons (it's not hard). This
+  is req. for most of these methods.
++ Extremely stable, easy to distribute, futureproof.
++ Requires knowledge of file formats (obj, stl), mesh processing and 3D asset
+  packaging
+
+
+**** Jupyter Kernels
+
+There are custom kernels that can communicate with Blender. I've tried
+[[https://pypi.org/project/blender-notebook/][blender-notebook]], but not [[https://github.com/BradyAJohnston/BNotebooks][bradyajohnston/bnotebooks]].
+
+Typically it's hard to work with blender without locking it up.  These Kernel
+builds will suffer from stability, env. maintainance overhead, and a need to
+know Jupyter internals.
+
+**** Build Blender with ZMQ/Jupyter
+
+A better architecture would be to add deps for [[https://medium.com/@fengliplatform/zmq-and-jupyter-notebook-kernel-223e3bf9ff54][ZMQ and Jupyter Notebook Kernel]]
+into your Blender build. If so, starting this ZMQ Jupyter kernel from the
+blender python console would allow you to connect from any Jupyter client:
+browser, emacs, whatever... However, a naive implementation would lock up the
+Blender application: unless you can play nicely with Blender's existing thread
+management, then while the running scripts are in a control loop they don't
+return control to the application (which tends to lock up)
+
+In theory, a Jupyter kernel that's spawned properly in blender (or somehow via a
+jupyter lab server), could then be executed inside or outside of the running
+Blender applications environment as a thread or process... (and, in theory maybe
+not i guess).
+
+Nevermind... this would otherwise be easy, since you /just/ add a few python
+packages and cross your fingers.
+
+**** Build Blender as a Module, Include ZMQ/Jupyter
+
+The goal here would be to avoid the need for the [[https://wiki.blender.org/wiki/Building_Blender/Other/BlenderAsPyModule][full blender.py module build]] --
+this allows you to run code without instantiating the Blender application AFAIK,
+but comes with its own caveats.
+
++ Fairly easy to automate /and/ use
++ May be difficult to support/distribute on many environments.
+
+**** Extending Blender's environment with System/venv environment
+
+If you extend from the Blender application's environment, then you need to
+modify the python path before the application launches. This ends up requiring
+many restarts and is tricky because you can't /just/ add python dependencies
+from another =VENV=.
+
++ Fairly easy to automate /and hard to use/
++ Frustrating to support/distribute on many environments. You're old scripts go
+  byebye; never run no more. (but it's python, when does that not happen?)
+
+As I note later on, to do this quickly, you need something like DatGUI to get a
+feel for your data while you're processing it. There are notes on 3D GUI later on.
+
+
+* GPU Compat
+
+You have no idea how frustrating this the nvidia and AMD compatibility issues
+are, you really don't. This just basically means unless you magically come up
+with $1500, then you just get to watch everything unfold with machine learning
+while everyone barely pities you as some kind of failure.
+
+And it's not going to get any better: the major CPU Vendors are now all GPU
+Vendors and vice versa.
+
+Also:
+
+** There's ARM and RISC-V is making a comeback
+
+Calling conventions and minor details are completely different when integrating
+devices on these platforms. You can't just put PCIe stuff in here. I don't know
+the full details, but this begins to explain: [[https://electronics.stackexchange.com/questions/661331/is-pcie-io-address-space-meaningless-for-arm-based-system][Is PCIe IO address space
+meaningless for ARM-based system?]]
+
++ The main benefit to ARM is a reduction in power consumption and it's a huge
+  difference (until maybe peripheral devices or other needs are required)
+
+** WASM requires build tooling
+
+I still don't fully understand WASM... but
+
+Targeting WASM maybe helps with application portability, but not when it
+interfaces with hardware. This results in a choice between:
+
++ lack of choice/control
++ reduction in the capabilities in middleware (and thus the application)
++ or quite a bit of complexity, both in tooling and in tracking SBOM's
+
+So a WASM app will run your music player easily, but when these apps need to
+target things where the runtime device must engage with hardware, you either:
+
++ Reduce everything to a limited set of abstractions (which limits
+  capabilties. This is especially true with device interactions: if you add
+  Sensors to a VR/XR environment to extend, then now your application needs some
+  some abstraction like the WebAudio graph (or for more advanced sensors
+  computation graphs). These introduce delay, impact the timings for compute and
+  just generally can't be resolved easily.
++ Create modular components that can be parameterized and produce build
+  artifacts to test on hardware, possibly virtualized.
++ Make everyone buy a black Model-T Ford
+
+** OpenMP and Heterogenous Compute
+
+MLOps is basically heterogenous compute via SOA or via the network. There are
+scaling and timing issues which would cause you to want more compute closer to
+the application, esp when the work is dynamic and the hardware is mixed.
+
++ Heterogenous compute with OpenMP means wrapping applications in code that
+  reshapes encoded GPU commands sent to devices with alternate specifications,
+  potentially over the network (AFAIR).
++ Homogenous compute is much easier to manage, as the timing is more
+  consistent. The hardest part of graphics/game engine programming IMO is
+  buffer/resource allocation, recycling and garbage collecting. But when you can
+  predict the rates at which work occurs (homogenous multi-GPU), then you can
+  make much better use of the resources. Some of the same factors in
+  optimization explain why you want to buy the same RAM sticks, generally
+
+This all means that, to get the most out of the hardware you have, you need to
+tune & control your builds/deployments. Usually some types of hardware present
+functional constraints on computing/software:
+
++ Compute was almost impossible
++ RAM was expensive
++ Then storaget/disk was expensive
++ Then Compute was expensive again (which will pretty much be true forever).
++ Now distributed compute is expensive
+
+Making sure that most of the gas gets to the engine will become more important
+until there are some plateaus in the payouts for compute (viz. like the plateaus
+where storage limited video and network limited file-sharing and compute limited
+us to the uncanny valley). At that point, only new technology or new
+developments can break through to sufficiently novel technological
+possibilities. The tech either is or is not a constraint on the phenomena that
+the tech enables. We'll likely plateau until we deploy optical computing and
+other exotic methods...
+
+... which require better control over building software (it never ends unless AI
+does it).
+
+* Roam
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
++ [[id:b3826464-5132-4a77-9707-93a72bd1d4a3][Blender]]
++ [[id:d28b59f0-b6d5-4e7e-a588-d014bd24cc82][3D Modeling]]

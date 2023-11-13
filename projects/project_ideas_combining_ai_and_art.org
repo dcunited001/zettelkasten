@@ -1,0 +1,202 @@
+:PROPERTIES:
+:ID:       cbb99406-1188-43d9-89f6-4b47af182d40
+:END:
+#+TITLE: Project Ideas Combining AI and Art
+#+DESCRIPTION:
+
+
+
+* Deep Dream With Interpolated Wood Rings
+
+I'm not sure how this would turn out, but it should be fairly simple, though
+fine-tuning the results may be a bit difficult.
+
+The end goal is to identify an image class that fits large/small features of the
+grain structure. Then cut a 3D shape, "moving" the wood grains, nudging them
+into the shape of an image class or to accentuate a macroscopic 3D structure
+... though I'm not sure how this would really turn out.
+
+** Phases
+
+Fully fleshing this out should be done in phases from the end to the beginning
+of the process. That ensures that you're actually producing something tangible
+while figuring out how the programs, formats and processes all fit together.
+
+*** non-STL to STL to CNC-cut workpiece
+
+Generate an mesh using something like Facebook's [[https://github.com/facebookresearch/DensePose][DensePose]]. The repositories for
+all of these were archived on 10/31/2023. Regardless, it's pretty easy to get a
+=*.obj= file. That was easy to do ([[https://github.com/dcunited001/zettelkasten/blob/master/slips/20221224040200-othermill_photo_to_gcode_via_ml_blender_and_caddycad.org][notes/links]]) and even easier on Google Colab.
+But I have like zero photos of myself.
+
+Then, run some post-processing in Blender to convert to a mesh and close off the
+manifold. If the manifold is closed it can be converted to STL in Blender.
+
+From STL, you can open in Fusion (but Autodesk is picky about file conversion:
+you may have to install Inventor). In fusion, generate generate a cutting
+plan.
+
+Put a block on the CNC and hit start, it will take more time to finish than it
+should take your average data scientist to finish the content in the rest of
+this file (... not me though)
+
+That at least fleshes out the process to go from non-STL to STL to a cut
+workpiece.
+
+*** TIFF to Depth-Mask to STL
+
+Take an arbitrary image (non-vector format) and turn it into a depth mask. The
+post-processing in Blender is unnecessary as long as the texture you work with
+can be rendered to a closed triangular mesh with a fairly high polygon count.
+
+*** Post-Process the TIFF
+
+This might be done last, but one phase needs to cover handling TIFFs with many
+image layers & channels.
+
+*** Process the wood images
+
+Start with wood images and produce a TIFF to be processed as intended.
+
+** Process
+
+Minimal AI training required. You should simply need a pretrained image network,
+though some tweaking may be required.
+
+*** Collect Image Input
+
+Take a slice from a log with high-contrast grains. Clean the bark/etc.
+
++ Initially use a fairly thin cylindrical slice, but diagonal/lengthwise slices
+  may produce varying results, perhaps even better.
+
+Create an image layer that annotates the cracked regions.
+
++ This may not be necessary, but if it is, it will probably make things easier.
++ Actually, you can work around any holes/cracks or change their shape. This
+  alters the topology of the image regions where a deep dream filter would be
+  bound.
++ The back image needs to be flipped.
+
+Record some basic metadata
+
++ This at least needs to align the two images in a coordinate system for later
+  interpolation.
+
+*** Process Image Input
+
+The input data for the next step needs additional image layers.
+
++ The image layers should be combined into two TIFF's
++ The annotated regions can basically be stored as a mask in the Alpha layer.
++ RGB channels may be useful, especially if they are helpful in generating
+  stronger deepdream activations. However, you don't want too much variation
+  that doesn't actually appear in the wood grain. The point is to accentuate the
+  shapes that naturally appear.
++ Filters like Sobel (contrast) will be needed to generate a few additional
+  layers for top/bottom layers only.
+
+*** Interpolate the TIFFs
+
+The resolution of the CNC should be taken into account when determining how many
+images should be in the final input. This isn't really all that important.
+Something like 24 or 32 TIFFs should work (or a TIFF with layers for a 3D axis)
+
+The TIFF data can be generated with a notebook.
+
+*** Play Around With The Image Classifier
+
+From here, you need an process to create a depth mask: each pixel should end up
+storing a depth value.
+
++ As the depth changes, the color of the surface changes according to the
+  interpolated TIFF value.
++ When the image classifier runs, it should just treat the object as a flat
+  texture ... to keep things simple. As the user changes the parameters, this
+  should kick off an iterative process that seeks to maximize scores for
+  recognized image classes.
++ The image classifier has separate parameters: scales, positions, orientations
+  for images ... and maybe a few others. It should just conduct gradient descent
+  to maximize score -- but it doesn't need backpropagation or
+  learning.
+
+  Libraries like Tensorflow/PyTorch are actually useful for far more than
+  machine learning ... but i don't really see a ton of examples.
+
+**** "Deep Dream"
+
+Running an image classification algorithm at [[https://www.google.com/url?sa=t&rct=j&q=&esrc=s&source=web&cd=&cad=rja&uact=8&ved=2ahUKEwi55_qWvKyCAxVmIUQIHUiTAMYQFnoECAwQAQ&url=https%3A%2F%2Fwww.analyticsvidhya.com%2Fblog%2F2019%2F10%2Fdetailed-guide-powerful-sift-technique-image-matching-python%2F&usg=AOvVaw2d8t-V6nLukMlo-Eaf90O0&opi=89978449][various length scales]] over the
+image while raising/lowering the depth mask allows you to change the position of
+the rings. This depends on the type of wood. More variation is harder to
+predict, but less variation gives you less change to work with.
+
+Actually warping/altering the pixels with deep dream may not be useful ... I
+haven't fully connected the dots here. If the idea is to paint/color the object
+after cutting, this gives you more freedom. I'm starting to think that maybe the
+"deep dream" results either won't be great or won't be simple.
+
+**** 3D Display
+
++ Visualize the depth mask and maybe display the result as a texture mapped to a
+  quad mesh. This would help you preview the end result as a 3D object.
+
+#+begin_quote
+You're going to need a mesh anyways: to generate the CNC code you'll need a STL
+file. Working with a quad mesh guarantees that the manifold is closed.
+
+At this point, the holes in the mesh will just be transparent pixels, but in the
+depth mask, they need to be set to their neighbor's depth.
+#+end_quote
+
+**** GUI
+
+You'll need something like DatGUI to mess with parameters for each slice until a
+decent effect is demonstrated. A notebook makes sense for generating the TIFF.
+You need to be able to visualize the input layers in real time as you tweak the
+parameters. You need bidirectional input binding. GUI stuff is pretty simple in
+python and other scripting languages, but I just don't see it often.
+
+Jupyter doesn't /realy/ have bidirectional input binding; not without infinite
+scrolling. Julia/Pluto do, but it's tough to arrange the GUI items on any
+platform without opening a link to an external GUI. I could be wrong about that
+because I first met Jupyter in like 2012 or 2013. Things change (so do people),
+but it's hard to know unless you look.
+
+#+begin_quote
+The notebook format sucks for interactive things like this, since you can't
+densely arrange GUI elements ... I've noticed that it's gotten much better, but
+I've probably only worked alongside someone writing a Jupyter notebook maybe
+twice in the past 10 years? I can't remember, since most social interactions
+like these are just passing conversations.
+#+end_quote
+
+
+** Tools
+
+*** TIFF Format
+
+To support TIFFs with custom channels: [[http://www.libtiff.org][LibTIFF]] TIFF, TIFF Library and Utilities.
+
++ Used in Krita TIFF filter, which is probably useful for viewing.
++ Looking into GDAL's GeoTIFF and [[https://gdal.org/tutorials/osr_api_tut.html][coords/projections]] will probably help, since
+  these are more complicated usages of TIFF.
++ Krita supports viewing scientific TIFFs like the [[https://www.gebco.net/data_and_products/gridded_bathymetry_data/][GEBCO bathymetry data]], though
+  getting meaningful visualization is probably tough. I do know that Krita
+  supports editing images with additional channels -- it has features that
+  support design of [[https://en.wikipedia.org/wiki/Lenticular_printing][Lenticular Images]] ... for free. That would require some
+  programming though.
+
+I can't find my notes on GDAL GeoTIFF, NetCDF & etc.
+
+=NetCDF => TIFF= conversion would also provide useful examples of the
+format.
+
+NetCDF is difficult: it's from the 80's when every bit mattered. It's not
+byte-aligned, like MNIST's handwritten digit data, which I [[https://github.com/dcunited001/handwritten-digits/blob/284ab9862a8a105f5f41cb06fb7dd48fcbe3e6a0/src/digits/mnist.clj#L4][parsed in clojure
+using gloss]]. I never finished transcribing the [[https://github.com/dcunited001/handwritten-digits/blob/284ab9862a8a105f5f41cb06fb7dd48fcbe3e6a0/src/digits/net.clj#L113-L118][Wolfe-Powell based optimization
+method]] from Coursera's Machine Learning class. You may need tools specific to
+the format encoding (I've never actually spoken to anyone about NetCDF). it's
+not unlike protobuf serialization, but Clojure won't get you a job in Roanoke.
+
+But hey, it's =clojure= and =lein=, so a 10-year old desktop GUI app probably
+still builds with zero duct tape -- it isn't python after all.

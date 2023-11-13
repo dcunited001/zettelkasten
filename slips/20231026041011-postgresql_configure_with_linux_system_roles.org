@@ -99,7 +99,7 @@ Reasonable authentication methods:
 
 | method | range                     | map? | notes                                                                     |
 |--------+---------------------------+------+---------------------------------------------------------------------------|
-| mds    | system only (and no)      |      | Use ssl. Also, MD5 is reversible.                                         |
+| md5    | system only (and no)      |      | Use ssl. Also, MD5 is reversible.                                         |
 | peer   | no                        |      |                                                                           |
 | ident  | system only (and no)      | yes  | use ssl                                                                   |
 | gss    | network-local+            | yes  | not sure, but the acronym has recently impressed me. five letters. no, six. |
@@ -125,12 +125,49 @@ TODO: potentially remove ident from auth (esp. on mgmt for vault/etc)
 
 ** LSR
 
-*** Basic
+*** Examples
+
+**** Basic
 
 
-*** Certificate
+**** Certificate
 
 This ensures postgres starts running with SSL enabled using a self-signed
 certificate.
+
+*** Configuration Notes
+
+**** Postgres User and Auth
+
+The postgres user cannot be a system user. They need to login.
+
+Also, only the postgres user is setup, so other users need to be
+
+**** Fixing a borked install
+
+If there's no data on the server, then:
+
++ Remove the postgresql data directory =/var/lib/pgsql=
++ Remove the postgres packages =dnf remove postgresql=
+
+Ensure the passwords are correct in =host_vars/$host/vault.yml=
+
+***** Check the install
+
++ Check that certificates were created by =certmonger=
+
+**** Updating the server configuration
+
+Several parts of the configuration are not idempotent with themselves:
+
++ The =pg_hba.conf= file does not get recreated. Separate playbooks/tasks are
+  necessary to update this.
++ The Ansible =no_log= option is set for much of the role, so you need to know
+  where to look on the server to figure out what went wrong (or change it in
+  your galaxy collections source ... at your own peril)
++ The playbook will attempt to reset the password, but will fail over and over
+  again. The certificates are created after this SQL command, so specifying only
+  =hostssl= methods in =pg_hba.conf= leads to partial success, but it can only
+  connect to the server on the first run
 
 * Roam
