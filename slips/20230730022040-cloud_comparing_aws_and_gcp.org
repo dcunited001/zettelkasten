@@ -319,7 +319,38 @@ Managing roles.
 **** Networking
 
 There should be a Networking folder that contains network operations &
-maintainence projects.
+maintainence projects. The important takeaway from the Towers of Hanoi section
+below: when network connectivity breaks for some entity at an OSI level (vlan,
+routing, tls/port, application), then all services dependent on its function may
+fail without some alternative. The lower the level of failure then, roughly, the
+larger the cascade through services connected at higher levels.
+
+Since networking is so interconnected while also being a dependency to
+everything else, you can't have it break. Changes in networking should not
+affect running projects. I lack the experience, but I think this implies you
+need one or more terraform modules:
+
++ to share across many terraform projects which discover parameters for network
+  dependencies.
++ the module(s) should then reference your provider's network APIs.
++ the modules should be capable of intelligently providing multiple instances of
+  resources, where your services need redundancy. This can be avoided somewhat
+  by shifting the complexity into a networking GCP/Terraform project that uses
+  DNS/VIPs as references where possible.
++ the modules should be capable of supplying forward migration configuration to
+  dependent Terraform projects where or ,more simply, when it's necessary.
+
+Since you can scale horizontally in the cloud and use SOA to decouple services
+from dependencies on explicit state/configuration, then in many cases you could
+avoid the need for pushing logic for some of the above (e.g forward migration)
+into the TF project.
+
+Or just write you a self-healing gossip protocol and call it a day, since that's
+what's required for running a decent botnet. Then you don't migrate, everything
+just interfaces through multiple tiers of servers that push updates to connected
+devices which process them according to the authority of the server/devices.
+It's amazing how difficult things like that are. That's a fairly flat topology
+though and doesn't easily permit granular control.
 
 ***** Examples
 
