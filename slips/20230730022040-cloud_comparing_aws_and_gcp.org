@@ -232,6 +232,178 @@ makes sense for a team ... but not for a single person.
 One free GKE cluster. Either you run containers on autopilot and pay for usage
 or you pay for the nodes. This doesn't help if you want Hashicorp Vault. It
 
+
+* Notes
+
+** IAM Setup
+
+
+*** Should Regions Be Folders/OU's?
+
+My first thoughts are no, since region occurs as a parameter for many Terraform
+providers. This would duplicate projects across region-folders, which creates
+more complexity in most situations. Also, this tightly binds the Terraform
+resource management logic to these assumptions, which also forces many of your
+terraform projects to neatly fit to a single region.
+
+Not doing this can imply that some invocations of a Terraform plan should create
+additional resources or not, based on the region. Whether this is an issue
+depends on how flexible your Terraform plans are and how idiosyncratic a
+region's resources or network topology could be.
+
+**** Traps
+
+There are a few major problems with fucking up your OU/Folder structure:
+
++ IAM Roles: How much of your selection/assignment of IAM roles is tied to the
+  organization of your resources/projects/folders? It could be inflexible.
++ Security: is it broke? Don't fix it. Regulatory compliance may be disrupted, etc.
++ Costs: now you need more load balancers ... maybe
++ Consensus (on operations: who do I email; who is responsible for what?)
++ It can't easily be changed without creating a second tree of folders where you
+  gradually migrate things out
+
+In massive cloud clients (those with multi-cloud, on-prem and many resources),
+these aren't huge issues, as reimplementing things across providers gives their
+personnel more insight/experience. A larger footprint they have multiple
+organizations registered in individual cloud providers or have folder trees can
+have multiple roots.
+
+For small clients, it's also not such a big deal, since they have much less to
+manage, far fewer roles to assign and far less consequences. It affects less
+people, thus there should be less to think about -- though for larger
+organizations, if you have confidence in your people this distributes the
+computation. IDK, really.
+
+For medium/large clients, it can be a big problem. Moving files around your
+computer is never fun, especially in programming projects. It also just doesn't
+seem like a productive thing ... until you realize you can save money. You're
+basically doing the same thing here, except actual people are involved, there
+are no refactoring tools and no person really understands the full scope of how
+things connect.
+
+Once a small group forms that consensus on how the folders/OU's for a large
+corporation with 100+ projects to support many products & integrations, only
+then can you consider the possibilities for alternate structures. However, like
+the difference between differentiating on three variables and /differentiating
+along all but three variables/, then considering the possible designs which also
+satisfy path dependency issues is a lot of work. Find a very nice guy, suggest
+him to be promoted and put him in charge: there are no answers for large
+organizations where you check all the boxes and everyone is happy.
+
+**** Costs
+
+... TODO: think/elaborate more on this.
+
+***** 12,000 ways to make money
+
+There are like 12,000+ quotas that show up for me in GCP .... that's basically
+proxy for the number of ways you can be billed. The GCP setup tasks include
+hints on the folder structure. You may want to experiment on this with Terraform
+under a top-level subfolder... but API calls are only available while supplies
+last (just kidding, they're cheap).
+
+I'm not sure I can complete the setup task, since my increase in quota doesn't
+make the warning disappear)
+
+***** Subnets
+
+Subnets will need to be associated to regions anyways, regardless of how your
+folders/OUs are set up.
+
+
+**** Security
+
+Managing roles.
+
+**** Networking
+
+There should be a Networking folder that contains network operations &
+maintainence projects.
+
+***** Examples
+
+Examples of business requirements that may make this complicated:
+
+*Retail or Fast-food locations requiring access to services through multiple
+tunnels.*
+
+Chick-fil-a uses kubernetes and each store needs a network with redundant paths
+to WAN and redundant connections to cloud services. Customers should also be
+able to place orders for a specific store where a cook receives the order on a
+ticket.
+
+A service discovery pattern will avoid the need to centrally track the _stub
+networks_ -- i.e. store turns the computers on, they discover connection info
+and establish the tunnel. Then to track orders across multiple stores, there are
+several possibilities:
+
++ the registers and iphone ordering apps use a separate networks (and service)
+  which has pros/cons, including consistency of data available for order ticket
+  tracking and for tracking revenue.
++ they share a common gateway reachable through the wifi network or 4g/5g
+  network and devices either connect to it through common routes or the traffic
+  is routed best effort.
++ there is software deployed at each location which consolidates data to make
+  available. here, there is still a need to fetch data.
+
+In any case, it's really simpler if you have many internal subnets deployed in
+the cloud, each with a Network LB or VPN that client devices can reach. You can
+further consolidate with a VIP that forwards specific connections for a store
+region (or cloud region) to these subnets. The latter avoids the need to
+distribute connection path configuration to devices ... though you'll still need
+to distribute certificates/etc.
+
+The need to create many subnets here means that region deployments, VIP
+forwarding configuration, folder structure and IP addressing requires additional
+networking services from the cloud. SOA allows you to parameterize, inject
+layers of abstraction, etc to settle on areas of your infrastructure/services
+that don't need to be "aware" of other parts of the design. So in many ways, how
+you solve the problem ultimately won't increase costs by an order of
+magnitude... but the wrong approaches definitely could.
+
+***** Towers of Hanoi
+
+The reason Cisco made so much money from Smartnet contracts is because those
+pizza boxes must simply function, otherwise nothing works. With route/switch and
+firewalls, once your networks are of sufficient size and esp. once you have
+redundancy, then making small changes just turns things into a tower of hanoi:
+
++ add the networks to HA1
++ update devices connected to HA2
++ change the routes for traffic through HA1
++ update relevant firewall rules and test
+
+Now complete a complementary process (in reverse) to complete the changes that
+allow HA1 to push traffic to the new WAN networks (if changes were to disrupt
+HA). Which is essentially the same as the solution to towers of hanoi. Once
+that's done, recursively repeat the process for other devices, like HA2, to
+reach the final state.
+
+/If you don't have HA, then there are many route & switch config changes were
+it's almost impossible to persist connectivity./
+
+Anyways, it's the same for Cloud, but everything is software-defined. If you're
+draining resources from one folder structure, you need to iterate through
+similar recursive processes ... but you have to create the mirrored resources
+before you drain. And, if your SOA design is strong, you may avoid the need for
+the obligatory "It /was/ DNS" joke.
+
+Only once you identify the least connected nodes in your cloud dependency graph
+can you begin to plan an IP addressing or Folder/OU migration. There may be a
+pattern of approaching this which involves "transition" states as well where you
+create a desired intermediate state that allows you to untangle things to resort
+them into new categories, while satisfying path dependencies. The edges in your
+dependency graph can be organized into types (network/service/role dependencies,
+etc.) and where these overlap among many projects, those can be migrated at the
+same time.
+
+It's really no different than migrating to a new system of organizing your art
+stuff in a new room or tools/parts in a workshop or : [[https://www.amazon.com/Organizing-Inside-Out-Second-Foolproof/dp/0805075895][Organizing from the Inside
+Out]]. You can't put things in more than one place, you can nest common items
+within sub/containers, etc. For the cloud, to prevent the many-to-one constraint
+on sub/folders, you can use something like labels/tags or metadata.
+
 * Coursera Notes
 
 These are mostly notes from the coursera course comparing the two platforms.
