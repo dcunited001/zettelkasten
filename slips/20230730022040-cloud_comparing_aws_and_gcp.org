@@ -239,8 +239,116 @@ or you pay for the nodes. This doesn't help if you want Hashicorp Vault. It
 
 + [[https://www.simplethread.com/building-a-multi-region-aws-environment-with-terraform/][Building a Multi-Region AWS Environment with Terraform]]
 
+** VPN to On Prem
+
+*** GCP
+
++ Configure a [[https://cloud.google.com/vpc/docs/vpc-peering][transit network]] with a VPN connection to the on-prem network.
++ (From the example) Configure VPC Peering from vpcB to each of vpcA and vpcC.
++ Configure appropriate firewall rules in the vpcA and vpcC projects. They can't
+  reference objects from other projects/vpc's. The assumption is that firewall
+  logic is configured closest to the VPC subnets. Also, vpcB will probably need
+  firewall rules, as it's a gateway.
++ Consistent ip4 and ip6 addressing schemes are needed across GCP and
+  on-prem. Routes are needed at your on-prem gateway, as well as firewall logic
+  to permit only relevant traffic.
++ Set up Public/Private DNS zone in vpcB's project. Set up DNS peering from vpcA
+  & vpcC to terminate in vpcB.
++ Then set up a DNS Forwarding relationship for requests /into/ the on-prem
+  network. If resources in the on-prem need to talk to GCP DNS names in netA,
+  netB or netC, you need to set up a second private zone in netB.
+
+When forwarding DNS into an on-prem network, this always requires consolidating
+forwarding/peering into its own subnet because BGP route distribution to proxy
+ranges ... or something. It doesn't matter if you use Cloud Interconnect or
+other methods, you still need the same networking pattern.
+
+[[https://medium.com/google-cloud/a-deep-dive-into-the-google-cloud-dns-1a31c4c45a61][A deep dive into the Google Cloud DNS]] Read to the end. Or watch [[https://www.youtube.com/watch?v=OH_Jw8NhEGU&t=1709s][Networking 105:
+How to Use GCP DNS]]
+
+#+begin_quote
+Please note that you always have a single forwarding zone to forward out of GCP
+to your on-Prem, because Proxy Ranges (35.199.192.0/19) can not be distributed
+in the consumer or individual VPCs. Forwarding Zone has to one and that's where
+that proxy ranges setup and lives. So any request coming from on-premise always
+goes back to the Forwarding Zone network and then it further fanning everything
+out.
+#+end_quote
+
+I halfway understand: the routes that are redistributed that point to the
+on-prem network would result in issues where they to be duplicated in across
+multiple networks. You have FW rules and security logic in on place, not many,
+it's better this way anyways ... until you go to point subnets in other regions
+to this on-prem network, in which case you have other problems anyways.
+
+If DNS consistency is not a priority (i.e. it's a homelab and you're not doing
+anything too dynamic), then you can avoid the DNS peering by duplicating the
+zones ... but this is probably a bad idea (too many assumptions and constraints).
+
+You still have to pay $40/month for oldschool VPN and $80/month if you want
+IPv6. DNS is basically free. Definitely cache locally to save money with a high
+volume of requests (where possible? ... oh yeh DNS is cache)
+
+*** AWS
+
+** Vault
+
+*** GCP
+
+**** Vault Blueprint
+
+See [[https://github.com/terraform-google-modules/terraform-google-vault/tree/16b77b0f3c8dcb24d5877371d0aa37f7b7ffed61][Vault on GCE Terraform]]. The root variables.tf shows defaults and
+[[https://github.com/terraform-google-modules/terraform-google-vault/blob/master/modules/cluster/main.tf][./modules/cluster/main.tf]] shows the cluster structure/costs. Should be possible
+to build a similar image and deploy locally. The example details where the
+default config deviates from recommended Vault config.
+
+Requires the following API's
+
++ cloudkms.googleapis.com
++ cloudresourcemanager.googleapis.com
++ compute.googleapis.com
++ iam.googleapis.com
++ logging.googleapis.com
++ monitoring.googleapis.com
+
+Deploys a vault VM template =e2-standard-2=
+instances.
+
++ vault_min_num_servers :: 1
++ vault_max_num_servers :: 7
++ Configures a persistent SSD
+
+Can be configured with an internal ($) or external load balancer ($$)
+
+The external LB autoscale per region ($$) and configures a health check
+($$). Autoscales with:
+
+#+begin_src hcl
+# Autoscaling policies for vault
+resource "google_compute_region_autoscaler" "vault" {
+  project = var.project_id
+
+  name   = "vault-as"
+  region = var.region
+  target = google_compute_region_instance_group_manager.vault.self_link
+
+  autoscaling_policy {
+    min_replicas    = var.vault_min_num_servers
+    max_replicas    = var.vault_max_num_servers
+    cooldown_period = 300
+
+    cpu_utilization {
+      target = 0.8
+    }
+  }
+}
+#+end_src
 
 ** Certificates
+
+*** GCP
+
+*** AWS
 
 ** IAM Setup
 
