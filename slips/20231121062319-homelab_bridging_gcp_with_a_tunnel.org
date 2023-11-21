@@ -1,0 +1,193 @@
+:PROPERTIES:
+:ID:       354734ac-f82d-49f7-a329-fc549c5cefa9
+:END:
+#+TITLE: Homelab: Bridging GCP with a Tunnel
+#+CATEGORY: slips
+#+TAGS:
+
+
+
+* When They Build the VPN to Sicily
+
+The actual approach to building this in the cloud is further below. What I would
+like to implement more than the bare minimum, which wouldn't really learn me
+anything.
+
+Instead, I would like to use some event-driven automation to track the state of
+my VPN tunnel and have a task from my homelab fire to check whether I want a VPN
+tunnel, in which case it would then ask my local firewall to reconnect. This is
+something that you could put on a resume that develops reasonable exposure to a
+cloud provider's tools. It also comes with a handy "off button" in case I need
+to save money.
+
+I've evaluated two free tiers (AWS and GCP) and they're both like airline miles.
+
+** What does a VPN get me?
+
++ I can use my GPU on the go: for Blender or ML or whatever.
++ All the applications will be configured exactly the way I want. I spend a lot
+  of time learning about programs I use.
++ I won't have to migrate files or sync configuration across multiple
+  workstations
++ I can work on the homelab and I don't have to be there.
++ I can run containers like OpenBB to accumulate financial/economic data and do
+  ML on that. This is a fantastic way to learn statistics and demonstrate your
+  knowledge of calculus/etc. I basically failed out of statics/physics.
++ I can run Jupyter notebooks using whatever version of Pandas I want. So if I
+  want it to have Arrow 2.0, it will fucking have Arrow 2.0 (the free GPU for
+  Google Colab at my college was very convenient, but not exactly bleeding edge)
+
+I had imagined this being useful for school. I'm not there anymore for a few
+reasons: one because of the US Government's _artificial_ incompetence in
+managing Adderal precursors. And two: because I thought I would do better to
+focus on the home for awhile and then go back. However, I didn't have the money
+from the FAFSA Federal Work Study. So no money, no options.
+
+Regardless, I /need/ the network. It's not that I /want a network/. There's a
+difference. I need it to support projects I would like to work on.
+
+** How could a VPN be so difficult?
+
++ The cheapest way to set up a tunnel back to my homelab without dynamic DNS
++ where i can get status, turn it on/off on demand, control bandwidth costs
++ and where I make the most of the free tier instance it requires
+
+All that without giving too many responsibilities to an edge device that should
+really be dedicated to VPN/ZeroTier/stunnel.
+
+Other alternatives include:
+
++ Cloud Flare tunnel :: No, it requires moving DNS to cloudflare. They have DNS
+  limitations on CN for certificates they'll issue and there are similar
+  limitations on the tunnels.
++ A VPN in the Cloud :: This is the easiest solution, but on GCP limits you to
+  IPv4 for /at least/ $40/month. It doubles if you want IPv6.
++ Stunnel/ngrok :: I can't afford $10 to $20 per month to introduce a
+  third-party product that convolutes design.
++ WireGuard/OpenVPN :: These are workable, but require control of a cloud
+  computer. It really should be in a VPC subnet with a firewall or load
+  balancer, but those are pricey. I can cut some corners, but any project like
+  this takes more time to /migrate from/ than it does to build.
++ ZeroTier/TailScale :: These are alright. I did build ZeroTier on PFSense,
+  which required about 12-20 hours worth of research into the PFSense codebase,
+  forum posts, etc. To fully build a plugin, without care for more than basic
+  security, it's pretty easy PHP to write. Fortunately, you don't even need
+  that. I also needed to learn how to customize FreeBSD environment without
+  breaking PFSense, which Netgate actively advises against and never provides
+  help with. OPNsense has a ZeroTier plugin, but if it connects to a compute
+  instance in the cloud, that's my one free instance. This also involves some
+  planning for addressing/firewall/routing. And I'm unsure of how much I'll get
+  charged for egress.
+
+This is all pretty easy, but somewhat convoluted if you don't have money. There
+are plenty of other alternative, but I've been going in circles on this on/off
+for about two years. I could really use some feedback, but like someone really
+needs to sit down with me and see what I've tried, what I'm doing,
+etc. Sometimes it could be that I just don't know some magic word like =stunnel=
+or =ngrok=. Learning about these things help a lot. Why reinvent the wheel when
+you could sign up for =Weel.io=? I'm a bit stubborn on things, but ultimately
+rational.
+
+*** Automation
+
+Another blocker is automation: I need to have a firewall where i can see the
+logic for firewall rules in plain text. When I started the homelab thing, I had
+to use iptables -- as convoluted as that was, it was still easy to figure out
+what the logic was. It's easier to assemble iptable scripts for a single device
+modularly than it is to use ansible to manage firewalls. The latter isn't so
+bad, but migrating playbooks from one format to another has been a huge pain.
+
+From what I can see, no one actually does this, which means they don't use the
+network layer for security. Or at least, when their application requirements
+involve dynamic infrastructure, it's just in the cloud and they don't care about
+the budget.
+
+*** Interdependencies
+
+All the unknown and interdependent variables make reasoning about the design
+difficult. If some small thing changes, then it affects variables of small
+scopes in other areas. Changing from Wiregaurd to OpenVPN requires rebuilding
+linux images, maybe deploying certificates, building OpenVPN profiles,
+reconfiguring two ends of a VPN tunnel and getting this to work in Ansible.
+
+*** Budget
+
+I'm working with literally $2,000 per year (2022 was an exception). I don't feel
+like I should get a job until I've reinforced some of these skills, but when
+people in Chad and Mali on average make more money than you ... yeh, it's just
+so abnormal that it's hard to comprehend.
+
+My $300 + $100 trial on GCP trial expired and i had used $1... A few weeks ago,
+I was drawn back to the cloud stuff to figure out how I could set up the VPN.
+
+* Project structure
+
+I'm still not 100% sure how I want to structure my TF and Cloud Function
+projects.
+
+There's one Ansible project and for now there may be multiple Terraform
+projects.  I'd like to have almost everything TF inside one Terraspace project
+as separate builds of stacks/modules, I'm not quite sure how I want that to
+happen. To avoid premature consolidation and later refactoring, I'll just extend
+with new projects.
+
+** Where to host the code?
+
+The free tier for GCP repo's gives =5 project*users=, I guess to encourage you
+to host Gitlab.  So hosting TF modules as git submodules is right out, which is
+fine: that sucks anyways. I've planned on self-hosted Gitlab or Gitea, but when
+advising against small deployments, their guides as confusing as Hashicorp
+vault.
+
+#+begin_quote
+You have 24 hours to build a jet with this free duct tape and cardboard. Here
+are three foreign language dictionaries in the same language families as these 2
+giant 1,000 page foreign language instructions in Korean.
+
+You can't use docker. Don't. Do. It. (I don't know why though)
+#+end_quote
+
+And when I find some part of this incestuous dependency graph with the least
+connections -- some reasonable course of action that results in net-positive
+traction and adds some functional capabilities -- I invariably run into
+certificate deployment problems. What is it that I need Vault for again?
+Oh. Painless certificate deployments for a custom CA. Great. 2-3 nodes, load
+balancer, disks, routing. That'll be $1,000 per month please unless you'd like
+to read the AWS manual for "saving money on the cloud" ... in Korean.
+
+It's possible that running containers on three small compute nodes would host
+vault/etc. It's /possible/, but it's still about $100 per month AFAIK.
+
+** Save with event-driven architecture
+
+So anyways, to save money, you /can/ use cloud functions along with event-driven
+features like workflows, EventArc (on GCP) and pub/sub. In fact: you /should/ do
+this anyways. This gets around load balancing, etc. Now the problem is: where
+does the code go? Into which of those 5 repositories and how? You can do
+accomplish a surprisingly large amount of functionality with this.
+
+Build with Go and save 70% on your compute cycles.
+
++ So I need to learn a programming language: easy.
++ So the project requires using only Standard Lib functionality or you risk
+  going over on your free tier artifact/container storage. Also easy: that's
+  basically what I would prefer anyways.
+
+Doing this requires setting up the proper:
+
++ Projects/Folders
++ Service Accounts to run under
++ Roles with permissions
++ Subnets, peerings and SA/roles to access them.
++ DNS and peerings
++ Caddy or frontend running on a customized image.
++ Builds of Go functions in the artifact repository.
++ CloudEvent message data structures.
+
+This is all pretty easy, but still a lot of work. That's a lot of free
+functionality, but why would the cloud provider give it to you? Are you going to
+reinvent this wheel on another platform? Now you're invested.
+
+* Roam
++ [[id:8a6898ca-2c09-47aa-9a34-a74a78f6f823][Cloud]]
++ [[id:ac2a1ae4-a695-4226-91f0-8386dc4d9b07][DevOps]]
