@@ -60,35 +60,36 @@ difference. I need it to support projects I would like to work on.
 All that without giving too many responsibilities to an edge device that should
 really be dedicated to VPN/ZeroTier/stunnel.
 
-Other alternatives include:
+*** Options for Design/Solution
 
-+ Cloud Flare tunnel :: No, it requires moving DNS to cloudflare. They have DNS
-  limitations on CN for certificates they'll issue and there are similar
-  limitations on the tunnels.
-+ A VPN in the Cloud :: This is the easiest solution, but on GCP limits you to
-  IPv4 for /at least/ $40/month. It doubles if you want IPv6.
-+ Stunnel/ngrok :: I can't afford $10 to $20 per month to introduce a
-  third-party product that convolutes design.
-+ WireGuard/OpenVPN :: These are workable, but require control of a cloud
-  computer. It really should be in a VPC subnet with a firewall or load
-  balancer, but those are pricey. I can cut some corners, but any project like
-  this takes more time to /migrate from/ than it does to build. There are
-  several different designs for this.
-+ ZeroTier/TailScale :: These are alright. I did build ZeroTier on PFSense,
-  which required about 12-20 hours worth of research into the PFSense codebase,
-  forum posts, etc. To fully build a plugin, without care for more than basic
-  security, it's pretty easy PHP to write. Fortunately, you don't even need
-  that. I also needed to learn how to customize FreeBSD environment without
-  breaking PFSense, which Netgate actively advises against and never provides
-  help with. OPNsense has a ZeroTier plugin, but if it connects to a compute
-  instance in the cloud, that's my one free instance. This also involves some
-  planning for addressing/firewall/routing. And I'm unsure of how much I'll get
-  charged for egress.
-+ Caddy mTLS :: this works, but you have to reconfigure/redeploy. When changing
-  adding/changing services to proxy from the cloud to your local WAN, you also
-  need to configure port forwarding on your ISP's modem ... which doesn't
-  exactly have Ansible collections. I will probably use some of this in addition
-  to a VPN.
+**** Cloud Flare tunnel
+
+No, it requires moving DNS to cloudflare. They have DNS limitations on CN for
+certificates they'll issue and there are similar limitations on the tunnels.
+
+**** A VPN in the Cloud
+
+This is the easiest solution, but on GCP limits you to IPv4 for /at least/
+$40/month. It doubles if you want IPv6.
+
+**** Stunnel/ngrok
+
+I can't afford $10 to $20 per month to introduce a third-party product that
+convolutes design.
+
+**** WireGuard/OpenVPN
+
+These are workable, but require control of a cloud computer. It really should be
+in a VPC subnet with a firewall or load balancer, but those are pricey. I can
+cut some corners, but any project like this takes more time to /migrate from/
+than it does to build. There are several different designs for this.
+
+**** Caddy mTLS
+
+This works, but you have to reconfigure/redeploy. When changing adding/changing
+services to proxy from the cloud to your local WAN, you also need to configure
+port forwarding on your ISP's modem ... which doesn't exactly have Ansible
+collections. I will probably use some of this in addition to a VPN.
 
 This is all pretty easy, but somewhat convoluted if you don't have money. There
 are plenty of other alternative, but I've been going in circles on this on/off
@@ -98,6 +99,50 @@ etc. Sometimes it could be that I just don't know some magic word like =stunnel=
 or =ngrok=. Learning about these things help a lot. Why reinvent the wheel when
 you could sign up for =Weel.io=? I'm a bit stubborn on things, but ultimately
 rational.
+
+**** ZeroTier/TailScale
+
+These are alright. Looking into these for my firewall required about 12-20 hours
+worth of research into the PFSense codebase, forum posts, etc.
+
+I did build ZeroTier on PFSense, where I also needed to learn how to customize
+FreeBSD environment without breaking PFSense. Netgate actively advises against
+this and never provides help. To fully build a plugin, without care for more
+than basic security, it's pretty easy PHP to write. Fortunately, you don't even
+need that.
+
+OPNsense has a ZeroTier plugin, but if it connects to a compute instance in the
+cloud, that's my one free instance.
+
+On the cloud end, this also involves some planning for addressing, firewall, and
+routing.
+
++ The addressing is cheap, but you'll need to bind an external IP and you'll
+  probably want multiple networking interfaces, though ZeroTier is set up as a
+  [[https://zerotier.atlassian.net/wiki/spaces/SD/pages/1548845057/Why+is+the+virtual+interface+limited+to+10Mb+s][TUN device without an underlying physical interface]].
++ the VPC routing is cheap, but deployment and management could potentially be
+  complicated. You can avoid this by doing it on the device, but then other
+  devices won't necessarily know about your gateway.
++ Any cloud features that configure firewall can be incredibly expensive. You
+  can do this on the EC2 instance with firewalld or something, but this adds
+  overhead.
++ And I'm unsure of how much I'll get charged for egress.
+
+IMO, unless you have really thought it out, you don't want to bind ZeroTier
+interfaces to many devices. You can unintentionally render your WAN firewall
+useless if you add it to devices (particularly WiFi or 4g/5g devices also
+connected to your LAN).  My take on it is that it's like fire: it's either a
+tool or it will burn your house down. It's not too different from a VPN though.
+
+I need to know more about ZT (e.g. you have to explicitly activate full-tunnel
+mode), but either the traffic needs to hit a route on an intermediate device or
+the device needs to know to send it out the ZeroTier TUN device.
+
+It's extremely useful. Overlays are one of the most promising features of
+IPv6. ZT kinda abstracts the overlay network, so you can establish connectivity
+between devices with logic defined by the addressing or rules applied by ZT at
+each device. Doing so would probably require configuring your own private ZT
+Root Servers and controlling the traffic's routes is difficult.
 
 *** Automation
 
