@@ -1,0 +1,540 @@
+:PROPERTIES:
+:ID:       49373db0-532d-4b0f-b8ec-3f9a3f897895
+:END:
+#+TITLE: StepCA
+#+DESCRIPTION:
+#+TAGS:
+
+* Resources
+
+** Step CLI
+
+*** [[https://smallstep.com/docs/step-cli/basic-crypto-operations/index.html#generate-json-web-tokens-jwts-and-json-web-keys-jwks][Basic Crypto Operations Using =step=]]
+
++ The =step ca= commands are not necessary to create a Root CA. In this case,
+  you won't have provisioners, but you can use templates.
++ Root CA certs can be installed into a system's local trust store with =step
+  certificate install=
+
+*** [[https://smallstep.com/blog/command-line-secrets/][How to Handle Secrets on the Command Line]]
+
++ The Linux kernel apparently has a per-process/thread keyring accessible via the
+  =keyctl= command or system calls.
++ I also had no idea that curl accepted =.netrc= files.
+
+It's pretty clear that the reason no one mentions this is because of the shear
+amount of work required compared to simply using environment files.
+
+** Step CA
+
++ [[https://smallstep.com/docs/step-ca/certificate-authority-server-production/#overview][Production considerations when running a CA Server]]
+
+*** [[https://smallstep.com/blog/access-your-homelab-anywhere/][Access your homelab from anywhere with a Yubikey and mutual TLS]].
+
+This uses the =step ca acme-da= provisioner and requires using =step ca policy=
+to restrict trust of the Yubico Root CA by device ID.
+
+* SOPS
+
+Keep secrets in =./vars/*.sops.yml= and other config in =./vars/*.vars.yml= for
+now.
+
+** Config
+
+#+begin_src yaml
+---
+stores:
+  yaml:
+    indent: 2
+creation_rules:
+  - pgp: >-
+      9E013E9459081C7D2C10DEB69FCE9B3064CED760
+#+end_src
+
+*** mac_only_encrypted
+
+If you want to edit unecrypted values in =*.sops.yml= files, then You'll want to
+set =mac_only_encrypted=true= in the SOPS =creation_rules=.
+
+*** TODO add =age= and plan to distribute secrets without GPG
+
+
+** Basic Usage
+
+*** Encrypt from stdin
+
++ You need to encrypt the =/dev/stdin= file.
++ Since the default =--input-type= is determined from the file extension, this
+  needs specification.
++ Use =--output= or redirect =stdout= to write the file.
+
+#+begin_src sh :results output code :wrap src yaml
+printf "foo:\n  bar:\n    private_key: baz" \
+    | sops -e --encrypted-regex "^(private_key)" \
+           --input-type yaml \
+           --output-type yaml \
+           /dev/stdin
+#+end_src
+
+#+RESULTS:
+#+begin_src yaml
+foo:
+    bar:
+        private_key: ENC[AES256_GCM,data:fFK0,iv:rY5eAQAB8ysCacHQ+9TPw5OUnNpi9qVf153tq+AosRY=,tag:m/TsymzFGhsMTwW/m30xpQ==,type:str]
+sops:
+    kms: []
+    gcp_kms: []
+    azure_kv: []
+    hc_vault: []
+    age: []
+    lastmodified: "2023-12-18T07:20:20Z"
+    mac: ENC[AES256_GCM,data:86ULj/fX8wy+wO1vdXcFIvMjHd6iPhXo/7nD4qUmMN/t+ot9XKI2WqeK7xJ6yAGh3UL5F5brtHmxpJWqvJYmnUERKyBmCf5yVGLnybjhmj1qZkcEFcv8sgMOo4Ow0TQeqIqHrqLm8EfS7y8IoJewUc0fCcYKrBsy9qlbGxw3Pxc=,iv:Lv3zpI/3slcTk4X7PW669n7ibzCD6CK5RaOshSS4JWg=,tag:26rJkfxjQmIdYZnengq8xg==,type:str]
+    pgp:
+        - created_at: "2023-12-18T07:20:20Z"
+          enc: |-
+            -----BEGIN PGP MESSAGE-----
+
+            hQIMAwAAAAAAAAAAAQ/8DwAPfK/YsvP4fVO7LSZRdrrxoN8Ewy0IHThETqJ8ZMw1
+            W69V40yK6BJO02J4t527CHg6PCFEPgqGBYuvmg+NEB3zfBKhPEGReNUqObQRL/mg
+            /gG85uewxBu40EnlGiAFEf+6n1IGMU4dDxQNrVPQnnc99qUbob/1h+rXYVv3bT0v
+            ufIM8J6N+Gatuq1mXLRLR6ETYcQ81mRPbh3H8t3faKtdNLS1IEKXQFOHpywLUp0C
+            S/3H3yU1PNWcfAr/HHJc8MQCqbdvJbMKZ8q0LtgerF7P9oX9FT8FOMHKK7F/TMmw
+            OgxbzZtFvMa8tOoX9oiOnAw3SRs1iJ5KIpDXQR3++7F8NjiAdvFuKKUKEWWoAMgS
+            WhE03HZ+nFgXrE7iTpxL2FPhoaPSATExg6pLWdlWsx6GeEbclWS9UQTOdQf3mO12
+            5JEMOKOiyehawEPejjKbsLC33zkaT5HonEjHIoOuc3k0n6e+UzDkqbQz0/PQGimh
+            jqCs7G0Z424IAskCw6cA9b+im/nIww69Xd7yxOx791f/ViCQdjbI1hEFh8+ysPTy
+            FvFTsDH8/eMJ+o1HeTH1bp8ZLt6o6cWKFk4oVZOm+ypW8UQxZfdG/zeUbDCk9lsK
+            Vpm6Y17a9YQvsmnJkdLkWd/dB05y6+PR6K0Qp40vIdOJZQLr+4NR3Yv9AxTH5uTS
+            XgHZvZQgJPOrc9ZXY2ZYOwgkBtDPYoUzfw5Br8T+YDwRU5DemGaSekhJjyDYfj6y
+            ZMNR5bB86urq3N/OqOD9ez8v0H5+OwBDLIngmNd3cde4MX4Ln5NxLuvv6Z6w4bw=
+            =akdO
+            -----END PGP MESSAGE-----
+          fp: 9E013E9459081C7D2C10DEB69FCE9B3064CED760
+    encrypted_regex: ^(private_key)
+    version: 3.8.1
+#+end_src
+
+** Ansible Usage
+
+There's an example of openssl key/cert/csr here: [[https://docs.ansible.com/ansible/latest/collections/community/sops/docsite/guide.html][Protecting Ansible Secrets with
+Mozilla SOPS]]
+
+*** Loading as vars
+
+Configure the =community.sops.sops= plugin. Dynamically loading the =*.sops.yml=
+using the =community.sops.load_vars= is not "safe."
+
+#+begin_src conf
+[defaults]
+vars_plugins_enabled = host_group_vars,community.sops.sops
+#+end_src
+
+Also, Ansible "doesn't really let you" modify vault files from playbooks. So
+GLHF, it also "doesn't really let you" get the =pwd= for =.sops.yml= and =$PWD=
+will be set to the playbook's directory, which is what it is ... but it is not
+clear.
+
+Also, the "search box" on the Ansible docs is mostly ironic since it does not
+whatsoever place predence on ansible keywords. So just use Google magicks and
+why would you ever not on any site?
+
+**** Playbook
+
+Goddammit, gluing these things together is fucking frustrating as hell.
+Basically, no one is doing this if the infrastructure is not paid for by their
+job.
+
+#+begin_quote
+NOTE: it would be possible to use a second set of inventory for certificates.
+#+end_quote
+
+The problem with placing it in =group_vars= is that it will always be part of
+any group's execution environment that an ansible playbook is running in. And
+certificates aren't necessarily bound to inventory: they map to applications,
+services and contexts. And unless you just get a single wildcard cert from Let's
+Encrypt and call it a day. Great! Just put that little file on every server you
+have. You're done!
+
+And see above: YOU CAN'T EASILY WRITE TO ANSIBLE VAULT FILES. So you can't
+automate this _without bash scripts_ .... unless you ansible tower bro. And
+again: see above. You have to PAY for ansible tower. You have to PAY for
+hashicorp vault. You have to PAY for clusters in k8s clusters. The cloud
+providers will let you shoehorn certs into their secrets managers, but then you
+can't treat those objects as the actual fucking objects that they are.
+
+#+begin_src yaml
+---
+- name: Try encrypting and decrypting a file with suboptions
+  hosts: localhost
+  gather_facts: false
+  vars:
+    pwd: "{{ lookup('config', 'ANSIBLE_HOME') }}"
+
+  # ==================================
+  # this doesn't work! only placing it in group_vars will work!
+
+  # vars_files:
+  #   - "../tmp/foo.sops.yml"
+
+  # foo.bar.private_key: ENC[AES256_GCM,data:mudt,iv:7Bjmrpts63IlDe5rJXDft4pD9OubUfDGZq/A1IFZixc=,tag:K3F/Xf83RnldtFiVjttpyw==,type:str]
+
+  tasks:
+    - name: "Try reading with community.sops.load_vars"
+      debug:
+        var: foo.bar.private_key
+
+    # a block is only needed for the "always" callback
+    # - block:
+
+    - name: Try encrypting foo.bar
+      community.sops.sops_encrypt:
+        path: "{{ pwd }}/tmp/foo.sops.yml"
+        config_path: "{{ pwd }}/.sops.yml"
+        force: true # must force or it will decrypt and won't update
+        encrypted_regex: '^(private_key)$'
+        content_yaml:
+          foo:
+            bar:
+              private_key: "baz"
+      delegate_to: localhost
+#+end_src
+
+You're welcome, by the way.
+
+** Misc
+
+*** Passing in with =docker exec=
+
+Running your =step-ca= in docker should be fine, as long as you don't bind the
+web API ports. I don't plan on doing it forever, but I need a container running
+continuously, so i can pass in content via =docker exec=.
+
+**** Testing
+
+Just need something random
+
+#+begin_src sh :var me=(identity user-mail-address) :results silent
+STEPPATH=foo
+cfg=$STEPPATH/config/ca.json
+
+cat $cfg | tr '\n' 'x' \
+    | sha256sum | cut -b1-32 \
+    | gpg -aer $me > /tmp/asecret.asc
+#+end_src
+
+* Yubikey
+
+** PIV
+
+*** Setup
+
+If resetting the entire PIV application is needed:
+
+#+begin_example sh
+# do not eval
+ykman piv reset
+#+end_example
+
+Reset management key (change to AES256 from TDES)
+
+#+begin_example sh
+# this generates a new random AES256 key and protects it with a MGMT pin
+ykman piv change-management-key -a AES256 -pg
+#+end_example
+
+Rotate the PIN for PIV
+
+#+begin_example sh
+ykman piv access change-pin
+#+end_example
+
+*** Regenerate Keys
+
+
+*** Signing Certs with Keys in Yubikey PIV Slots
+
+You need something like =step kms=.
+
+AFAIK, you can't sign certs using =ykman= or =yubico-piv-tool= CLI with a key
+stored in the Yubikey's slots. Though the latter affords some functionality,
+interaction with a PCKS11 client lib is necessary for all functions, which means
+you need a binary built to the specific purpose. All the guides online are for
+signing software in a windows environment ... go figure.
+
+/I think/ that all you can get out of =ykman= is a self-signed cert.
+
+
+** PIV CA
+
+*** TODO Root Certificate (edit or delete)
+
+Download the PIV root attestation CA
+
+#+begin_src sh
+yubico_ca_url=https://developers.yubico.com/PIV/Introduction/piv-attestation-ca.pem
+curl -so yk/yubico-piv.pem $yubico_ca_url
+#+end_src
+
+Export the yubikey's intermediate cert
+
+#+begin_src sh
+ykman piv certificates export
+#+end_src
+
+* Step CLI
+
+** Building the CGO
+
+The =step kms= plugin is req. for Yubikey PIV and it requires =CGO= extensions
+
+** Commands
+
+*** Certificate
+
+=step certificate=
+
+| bundle        | bundle a certificate with intermediate certificate(s) needed for certificate path validation |
+| create        | create a certificate or certificate signing request                                          |
+| format        | reformat certificate                                                                         |
+| inspect       | print certificate or CSR details in human readable format                                    |
+| fingerprint   | print the fingerprint of a certificate                                                       |
+| lint          | lint certificate details                                                                     |
+| needs-renewal | Check if a certificate needs to be renewed                                                   |
+| sign          | sign a certificate signing request (CSR)                                                     |
+| verify        | verify a certificate                                                                         |
+| key           | print public key embedded in a certificate                                                   |
+| install       | install a root certificate in the supported trust stores                                     |
+| uninstall     | uninstall a root certificate from the supported trust stores                                 |
+| p12           | package a certificate and keys into a .p12 file                                              |
+
+Key options from the =step create -h=. I'm assuming the same terms/options are
+used in other subcommands. The arguments are specified in the table as a
+personal reminder, but all of these require args.
+
+| Issued Cert     | Issuer             | Crypto           | Templates                  |
+|-----------------+--------------------+------------------+----------------------------|
+| --san           | --ca               | --kty=EC,OKP,RSA | --template=template.tpl    |
+| --kms           | --ca-kms           | --size=bits      | --set="key=value"          |
+| --key           | --ca-key           | --curve=P-384    | --set-file=tpl-values.json |
+| --password-file | --ca-password-file |                  |                            |
+
+The =--san=$subject_alt_name= can be used multiple times.
+
+When using =--profile=$profile=, there are four main values (though I think
+others are possible using the =step context= feature or using configuration).
+
+| leaf            | x509 leaf cert for TLS               |
+| intermediate-ca |                                      |
+| root-ca         |                                      |
+| self-signed     | self-signed leaf (requires --subtle) |
+
+These options do not require args:
+
+| --bundle             | Bundle the new leaf cert with the signing cert |
+| --skip-csr-signature | Skip the CSR. Go straight to cert.             |
+| --subtle             | For delicate things                            |
+
+**** Create
+
+This generates a cert with a password-protected private key (all in one go)
+
+#+begin_src sh
+step certificate create $subject $crt-file $key-file \
+     --password-file <(sops ...) \
+     --ca-password-file <(sops ...)
+#+end_src
+
+*** Context
+
+The =step context= subcommand helps manage/switch contexts when working with
+multiple CA's. When using contexts with =step ca=, the relevant files are
+created with the =step ca bootstrap= command, which typically creates the file
+structure under =$STEPPATH=
+
+| current | current returns the name of the current context   |
+| list    | list available certificate authority contexts     |
+| remove  | remove a context and all associated configuration |
+| select  | select the default certificate authority context  |
+
+*** Crypto
+
+=step crypto=
+
+| change-pass | change password of an encrypted private key (PEM or JWK format)   |
+| keypair     | generate a public / private keypair in PEM format                 |
+| jwk         | create JWKs (JSON Web Keys) and manage JWK Key Sets               |
+| jwt         | sign and verify data using JSON Web Tokens (JWT)                  |
+| jwe         | encrypt and decrypt data and keys using JSON Web Encryption (JWE) |
+| jws         | sign and verify data using JSON Web Signature (JWS)               |
+| jose        | collection of JOSE utilities                                      |
+| hash        | generate and check hashes of files and directories                |
+| kdf         | key derivation functions for password hashing and verification    |
+| key         | manage keys                                                       |
+| nacl        | easy-to-use high-speed tools for encryption and signing           |
+| otp         | generate and verify one-time passwords                            |
+| rand        | generate random strings                                           |
+| winpe       | extract certificates and verify Windows Portable Executable files |
+
+*** KMS
+
+This plugin bundles access to the yubikey and pcks11 dynamic libs.
+
+=step kms=
+
+| attest      | create an attestation certificate                          |
+| certificate | print or import a certificate in a KMS                     |
+| completion  | Generate the autocompletion script for the specified shell |
+| create      | generates a key pair in the KMS                            |
+| decrypt     | decrypt the given input with an RSA key                    |
+| encrypt     | encrypt a given input with an RSA public key               |
+| help        | Help about any command                                     |
+| key         | print the public key in a KMS                              |
+| sign        | sign the given digest using the kms                        |
+| version     | print the current version                                  |
+
+**** Yubikey PIV
+
+Using =step kms create= generates a key in a Yubikey PIV slot. After the
+certificates are experted, you can point =ca.json= to them and update the =kms=
+values to the Yubikey URI's.
+
+At this point, Smallstep interfaces with the Yubikey using the PCKS#11
+specification/protocol.
+
+* Step CA
+
+The =step ca= subcommands uses the HTTP API.
+
+** Commands
+
+The =--offline= flag is documented for the following =step ca= subcommands:
+token, certificate, rekey, revoke, proxycommand.
+
+*** Init
+
++ --pki :: this suppresses the creation of =config/ca.json=, as its assumed you
+  won't be running the server (afaik)
++ --remote-management :: This stores the provisioner configuration in a
+  database, instead of =ca.json=. It also sets up an =Admin JWK= provisioner and
+  a few other things. See [[https://smallstep.com/docs/step-ca/provisioners/#remote-provisioner-management][Remote Provisioner Management]]
++ --provisioner :: This is the initial provisioner id, defaulting to JWK.
++ --helm :: This generates =--helm= values for [[https://github.com/smallstep/helm-charts/tree/master/step-certificates][smallstep/helm-charts]] (handy!)
+
+*** Bootstrap
+
+This prepares a (new & possibly clean) local environment for interacting with
+the CA. You will need to supply the =--ca-url= option and others.
+
+It's not 100% necessary for a homelab. According to the docs:
+
+#+begin_quote
+Bootstrap will:
+
++ store the root certificate in $STEPPATH/certs/root_ca.crt
++ and create a configuration file in $STEPPATH/configs/defaults.json with the CA
+  url, the root certificate location and its fingerprint.
+
+After the bootstrap, ca commands do not need to specify the flags --ca-url,
+--root or --fingerprint if we want to use the same environment.
+#+end_quote
+
+** Server
+
+*** Handling the secrets
+
+Use =--password-file <(process substitution)=
+
+**** TODO similar process for handling the Yubikey PIN
+
+** Database
+
+The =step-ca= needs a NoSQL backend. The following two are embedded into the
+=step-ca= binary. Their CLI tools are not available in the Docker image by
+default.
+
++ [[github:dgraph-io/badger][dgraph-io/badger]] is the default
++ An alternative, BoltDB, is an =etcd= fork.
+
+The db is a key/value store -- and totally flat, i think, without structure.
+Thus, as long as badger's crypto features are enabled, then I believe it's a bit
+hard to pull info out of the DB. I'm not sure about BoltDB, though I assume it
+has similar features built-in, since it's an =etcd= fork.
+
+From what I see, it's just important to know the DB is there.
+
+#+begin_quote
+If i'm going through the trouble of interfacing with SOPS "homomorphically"
+without writing to disk... then I'd like to know that nothing else is writing to
+disk either.
+#+end_quote
+
+If you're using MySQL or Postgres, then you're going to want to lock that down.
+
+** Config
+
+Though a few of the guides direct you to edit =ca.json=, they recommend to use
+the =step= and =step ca= CLI to edit the config where possible.
+
+*** Provisioners
+
+See [[https://smallstep.com/docs/step-ca/provisioners/#choosing-a-provisioner][Choosing a Provisioner]]
+
++ Set both =--password-file= and =--provisioner-password-file=
+
+**** JWK (JSON Web Key)
+
+Fields:
+
+| key.*        | JWK public key (used to validate signed tokens)                            |
+| encryptedKey | The encrypted JWK key that signs tokens, not necessary for some operations |
+
+***** Interacting with JWK from the CLI
+
+The encryptedKey is published on the =/provisioners= endpoint if the Step CA is
+running remotely. This is recommended (I think?) so you don't need to keep up
+with the key locally.
+
+To remove the JKW =encryptedKey=, run:
+
+#+begin_src sh
+step ca provisioner update $provisioner_id --private-key ""
+#+end_src
+
+
+*** Templates
+
+See [[https://smallstep.com/docs/step-ca/templates][docs on templates]], which also contains examples and links to more advanced
+use cases.
+
+There are at two types. These templates are set in the list under
+=authority.provisioners= in =options=
+
+| Type | Json         | Code            | Desc              |
+|------+--------------+-----------------+-------------------|
+| x509 | options.x509 | crypto/x509util | x509 Certificates |
+| SSH  | options.ssh  | crypto/sshutil  | SSH Certificates  |
+
+In both the source directories above, files of interest are:
+
++ certificate.go
++ templates.go
++ options.go
+
+**** x509
+
+**** SSH
+
++ Can assign a principle for the =step= OIDC & Cloud provisioners
+
+* StepCA: Yubikey
+
+
+* StepCA: Cert Manager
+
+Run StepCA with the guix binary package
+
+** Deployment
+
+Plan to run StepCA in =docker= or on =k0s=
+
+* Roam
