@@ -34,6 +34,12 @@ amount of work required compared to simply using environment files.
 This uses the =step ca acme-da= provisioner and requires using =step ca policy=
 to restrict trust of the Yubico Root CA by device ID.
 
+** Yubikey
+
++ [[https://github.com/samngms/yubikey-ca/blob/master/Dockerfile][samngms/yubikey-ca]] A Yubikey CA example that runs in a docker container. This
+  shows how to get an image to play nice with =libykcs11=, though I think the
+  typical =pkcs11= lib is sufficient.
+
 * SOPS
 
 Keep secrets in =./vars/*.sops.yml= and other config in =./vars/*.vars.yml= for
@@ -264,6 +270,71 @@ signing software in a windows environment ... go figure.
 /I think/ that all you can get out of =ykman= is a self-signed cert.
 
 
+*** PIV device in container
+
+Share the device with =--device $dev= when running the container.
+
++ Use =lsusb | grep Yubico= to get the USB number
++ Use =lsusb -t= to get the USB device tree or use =udevadm info -t=
+
+With one yubiky, get the bus & device id's
+
+#+begin_src sh
+vendor=1050
+device=
+busid="$(lsusb | grep Yubico | sed -E 's/^Bus ([0-9]+).*$/\1/g')"
+devid="$(lsusb | grep Yubico | sed -E 's/^Bus.*Device ([0-9]+).*$/\1/g')"
+devpath="/dev/bus/usb/$busid/$devid"
+#+end_src
+
+Then start with:
+
+#+begin_src sh
+docker container run -it --rm \
+       -v /tmp/step:/home/step \
+       --device $devpath \
+       smallstep/step-ca:hsm
+#+end_src
+
+**** Dockerfile to troubleshoot
+
+This adds yubikey-specific env/pkgs to help figure out what's up. Not sure what
+the best way to do this is ... probably run an airgapped image using =step-ca=
+bins built in docker containers.
+
+#+begin_src dockerfile
+FROM smallstep/step-ca:hsm
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    usbutils ykcs11 opensc libccid libengine-pkcs11-openssl \
+    yubikey-manager yubico-piv-tool
+
+# root runs `service pcscd restart && bash` in this container, but step can
+#    restart pcscd. https://github.com/samngms/yubikey-ca/blob/master/Dockerfile
+
+# ENV PKCS11_MODULE_PATH=/usr/lib/x86_64-linux-gnu/libykcs11.so
+
+# TODO assign user the rights to access the device
+USER step
+
+ENV PKCS11_MODULE_PATH=/usr/lib/x86_64-linux-gnu/libykcs11.so
+
+ENTRYPOINT service pcscd restart && /bin/bash
+#+end_src
+
+Build and run with something like:
+
+#+begin_src sh
+docker container run -it --rm \
+       --device=/dev/bus/usb/001/012 \
+       -v /tmp/step:/home/step  dc/stepyk:latest /bin/bash
+#+end_src
+
+I'm not sure if =--privileged= may be required. The =lsusb= output shows all the
+devices regardless.... but only root can access them in the container.
+
 ** PIV CA
 
 *** TODO Root Certificate (edit or delete)
@@ -400,6 +471,13 @@ values to the Yubikey URI's.
 
 At this point, Smallstep interfaces with the Yubikey using the PCKS#11
 specification/protocol.
+
+***** TODO Test yubikey device access for KMS in docker
+
+Try =step kms create 'yubikey:slot-id=82'=
+
+(does it require configuring 'kms' first? this creates the key in the slot)
+
 
 * Step CA
 
