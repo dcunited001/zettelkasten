@@ -40,6 +40,124 @@ to restrict trust of the Yubico Root CA by device ID.
   shows how to get an image to play nice with =libykcs11=, though I think the
   typical =pkcs11= lib is sufficient.
 
+
+
+*** Signing Certs with Keys in Yubikey PIV Slots
+
+You need something like =step kms=.
+
+AFAIK, you can't sign certs using =ykman= or =yubico-piv-tool= CLI with a key
+stored in the Yubikey's slots. Though the latter affords some functionality,
+interaction with a PCKS11 client lib is necessary for all functions, which means
+you need a binary built to the specific purpose. All the guides online are for
+signing software in a windows environment ... go figure.
+
+/I think/ that all you can get out of =ykman= is a self-signed cert.
+
+**** With =step certificate sign=
+
+With these vars
+
+#+begin_src sh
+leaf_id=foo
+leaf_san="fdsa.local"
+ca="My CA"
+ca_id="myca"
+#+end_src
+
+Create an openssl ecdsa key
+
+#+begin_src sh
+# This is a shortcut, but `step` needs the params removed from the PEM
+# openssl ecparam -name P-384 -genkey
+
+openssl genpkey -algorithm EC \
+        -pkeyopt ec_paramgen_curve:P-384 \
+        -pkeyopt ec_param_enc:named_curve > /tmp/teststep/$leaf_id.key
+#+end_src
+
+Create a CSR using an existing private key:
+
+#+begin_src sh
+# --ca $ca --ca-key <(echo my-ca-secret-key-PEM) \
+
+step certificate create --csr \
+     --san $leaf_san --key <(cat /tmp/teststep/$leaf_id.key) \
+     $leaf_id $leaf_id.csr
+#+end_src
+
+From here, you can sign with your CA.
+
+* Signing with =step-kms-plugin= outside of =step ca=
+
+TL;DR: ... it doesn't work. Most of the guides I read don't really 100% fit my
+use-cases or goals -- for anything homelab, not just step or yubikey or x509. To
+be fair, the docs from smallstep are generally some of the best on x509/etc
+... and also, sometimes my design goals don't make too much sense. I had
+previously read that the Yubikey can only generate leaf certificates ... esp if
+it's going to attest them, but I thought this was an x509 extension and i didn't
+see it in emacs' =x509.el=.
+
+With these vars:
+
+#+begin_src sh
+yubi_slot=82
+yubi_uri="yubikey:slot-id=$yubi_slot"
+yubi_device=12345678
+PKCS11_LIB=/usr/lib/opensc-pkcs11.so
+# --kms 'pkcs11:module-path='$PKCS11_LIB';token=smallstep?pin-value=password' \
+#+end_src
+
+Overwrite the key in =slot 82=.
+
+#+begin_src sh
+step kms create --json 'yubikey:slot-id=82'
+
+# {
+# "name": "yubikey:slot-id=82",
+# "publicKey": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEH9Hl19X1A09jf/4O2rFZ0HSB/bkp\n1RFCyDgvdNFWOp1xNu+jmESy0ZrsNgmggkiePiGDqGJ3zvFEhAJ50K575Q==\n-----END PUBLIC KEY-----\n"
+# }
+#+end_src
+
+Export the public key
+
+#+begin_src sh
+ykman --device $yubi_device piv keys export $yubi_slot $ca_id.pem
+#+end_src
+
+Create a cert in that slot
+
+#+begin_src sh
+_output=$ca_id.pem
+_numdays=30
+ykman --device $yubi_device piv certificates \
+      generate --subject "$ca" -d $_numdays \
+      -a SHA512 $yubi_slot $ca_id.crt
+
+# can export:
+ykman --device $yubi_device piv certificates \
+      export $yubi_slot $ca_id.crt
+#+end_src
+
+Sign a CSR using step-kms-plugin
+
+#+begin_src sh
+step certificate sign \
+     --kms 'yubikey:' \
+     $leaf_id.csr $ca_id.crt $yubi_uri
+#+end_src
+
+From which I get the response:
+
+#+begin_quote
+issuer certificate is not a certificate authority
+#+end_quote
+
+This is one of those confusing things about x509 that's not well advertised: the
+yubikey generates leaf certificates. I think you need to abuse the signing
+functionality on the key to trick the yubikey into appending the signed bytes
+for it's signature onto a modified CSR.
+
 * SOPS
 
 Keep secrets in =./vars/*.sops.yml= and other config in =./vars/*.vars.yml= for
@@ -256,19 +374,17 @@ ykman piv access change-pin
 
 *** Regenerate Keys
 
+*** Troubleshooting
 
-*** Signing Certs with Keys in Yubikey PIV Slots
+**** pcscd device exclusivity errors
 
-You need something like =step kms=.
+Also, I'm consistently getting =pscsd= device exclusivity errors. These require
+=systemctl restart pcscd=
 
-AFAIK, you can't sign certs using =ykman= or =yubico-piv-tool= CLI with a key
-stored in the Yubikey's slots. Though the latter affords some functionality,
-interaction with a PCKS11 client lib is necessary for all functions, which means
-you need a binary built to the specific purpose. All the guides online are for
-signing software in a windows environment ... go figure.
-
-/I think/ that all you can get out of =ykman= is a self-signed cert.
-
+#+begin_quote
+Error: error opening yubikey: connecting to smart card: the smart card cannot be
+accessed because of other connections outstanding
+#+end_quote
 
 *** PIV device in container
 
@@ -287,12 +403,25 @@ devid="$(lsusb | grep Yubico | sed -E 's/^Bus.*Device ([0-9]+).*$/\1/g')"
 devpath="/dev/bus/usb/$busid/$devid"
 #+end_src
 
+
+Then run =ls -al $devpath= and note the major/minor number for the driver. It's
+needed for =--device-cgroup-rule=.
+
++ The =usb_device= driver will always load with =189= -- see =/proc/devices=.
++ Along with =--device= then the major number will suffice unless you want to
+  block access to devices on the same USB hub.
++ The =rwm= in the cgroup rule: read, write, mknod.
++ The container/host permissions/groups may need to be adjusted to access some
+  devices. TTY access requires =dialout= group membership in & out of the
+  container.
+
 Then start with:
 
 #+begin_src sh
 docker container run -it --rm \
        -v /tmp/step:/home/step \
        --device $devpath \
+       --device-cgroup-rule="c 189:* rwm" \
        smallstep/step-ca:hsm
 #+end_src
 
@@ -637,6 +766,30 @@ In both the source directories above, files of interest are:
 **** SSH
 
 + Can assign a principle for the =step= OIDC & Cloud provisioners
+
+
+* Guix
+
+** Packaging =step=,  =step-ca= and =step-kms-plugin=
+
+Just as a proof-of-concept,
+
++ I hacked my way around packaging these by exporting their builds from a docker
+  container. I literally put these in a gzip'd tarball on my system and used a
+  =file:///= URL ... LMAO heresy (it's a proof of concept)
++ If found that the =(nonguix build-system binary)= module handles simple
+  scenarios requiring =patchelf=.
+
+Still, whatever is needed is going to be a bit more complicated.
+
++ The major versions match and the three binaries were all built in the
+  =smallstep/step-ca:hsm= docker container.
++ However, after a few setbacks, I got the binaries past the =RUNPATH= issues by
+  getting =patchelf= to modify the =rpath=. Still, there are segfaults, so the
+  =dylib= versions they were built against -- or maybe the =glib2=, =gcc= or
+  other deps -- do not quite match. Here, I think the early segfault means that
+  the addressing in the binaries do not "agree".
++ If they need to be relinked or something.... that's way out of my league.
 
 * StepCA: Yubikey
 
