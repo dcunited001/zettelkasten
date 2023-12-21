@@ -296,7 +296,9 @@ docker container run -it --rm \
        smallstep/step-ca:hsm
 #+end_src
 
-**** Dockerfile to troubleshoot
+**** Troubleshooting
+
+***** Build yubikey tools onto smallstep/step-ca:hsm
 
 This adds yubikey-specific env/pkgs to help figure out what's up. Not sure what
 the best way to do this is ... probably run an airgapped image using =step-ca=
@@ -334,6 +336,38 @@ docker container run -it --rm \
 
 I'm not sure if =--privileged= may be required. The =lsusb= output shows all the
 devices regardless.... but only root can access them in the container.
+
+***** Using the [[https://github.com/go-piv/piv-go][go-piv/piv-go]] library
+
+The [[https://github.com/go-piv/go-ykpiv][go-piv/go-ykpiv]] library has a [[https://github.com/go-piv/go-ykpiv/blob/master/Dockerfile][Dockerfile]] where you should be able to run its
+tests. It's not on hub.docker.com; clone the repo
+
++ Change =stretch-slim= to =bullseye-slim=. The release file changed hosts.
++ Add =pkg-config= to packages
++ And =libssl-dev= to the packages to fix complaints about libcrypto.pc
+
+The dockerfile should look like this:
+
+#+begin_src dockerfile
+FROM debian:bullseye-slim
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		ca-certificates pkg-config gcc git golang-any libc6-dev libssl-dev \
+		libykpiv-dev yubico-piv-tool \
+	&& rm -rf /var/lib/apt/lists/*
+
+ENV GOPATH /go
+WORKDIR $GOPATH/src/pault.ag/go/ykpiv
+COPY . .
+
+RUN go get -v -t ./...
+#+end_src
+
+The tests will fail early if you don't specify =--wipe-yubikey=
+
+
+Instead, you just need to learn to build a go script that runs.
 
 ** PIV CA
 
