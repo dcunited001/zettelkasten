@@ -1,0 +1,282 @@
+:PROPERTIES:
+:ID:       f93af49c-e1e8-41af-bff6-011ac7b29216
+:END:
+#+TITLE: Yubikey: Troubleshooting piv, openpgp, pscsd, scdaemon, age, pcks11
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+** GnuPG
+
+Main [[https://www.gnupg.org/documentation/manuals/gnupg/index.html][docs]]
+
++ [[https://www.gnupg.org/documentation/manuals/gnupg/Helper-Tools.html][Helper Tools]] like =gpg-connect-agent= and =gpgconf=
++ Docs for [[https://www.gnupg.org/documentation/manuals/gnupg/gpg_002dcard.html][the =gpg-card= tool]]
+
+LinuxFromScratch [[https://www.linuxfromscratch.org/blfs/view/11.2-systemd/postlfs/gnupg.html][Intro to GnuPG]]
+
+*** scdaemon 2.4
+
++ [[https://www.gnupg.org/documentation/manuals/gnupg/Invoking-SCDAEMON.html][invoking scdaemon]] (GnuPG manuals)
++ [[https://www.gnupg.org/(en)/documentation/manuals/gnupg24/scdaemon.1.html][man pages]]
+
+** Yubikey
+
+The [[https://developers.yubico.com/][dev.yubico]] and also [[https://docs.yubico.com/#][links to most of Yubico's docs]]
+
++ [[https://docs.yubico.com/hardware/yubikey/yk-5/tech-manual/yubihsm-auth.html][YubiHSM Auth]] (application for managing access to [[https://developers.yubico.com/YubiHSM2/][YubiHSM]])
+
+** Step
+
++ [[Everything you should know about certificates and PKI but are too afraid to ask][Everything you should know about certificates & PKI but are too afraid to ask]]
+  incredibly helpful overview.
++ [[https://smallstep.com/docs/step-ca/configuration/#cryptographic-protection][KMS systems]] for  =step-ca= with [[https://github.com/smallstep/step-kms-plugin][smallstep/step-ksm-plugin]]
++ [[https://github.com/go-piv][go-piv github org]]
+
+*** Guides
+
+Smallstep has a free plan that covers most of the functionality of their
+product. This gives you a URL to use with =step ca bootsrap=. That generates a
+=config/ca.json= to use and you can then begin adding provisioners or setting
+policies. This comes with a web gui, I believe, and thus makes it a bit easier
+to learn to use their software. For me to do this, I would need to plan to
+utilize multiple Root CA's for my homelab, at least in the future.
+
++ [[Build a Tiny Certificate Authority For Your Homelab][Build a Tiny CA for your Homelab]] need to set this up before the next part.
++ [[https://smallstep.com/blog/access-your-homelab-anywhere/][Issue mTLS certs using =acme-da= with device attestation]] these are stored in
+  yubkey PIV slots, can be remotely issued and can have policies for fast
+  expiration. They can be x509 certs or SSH certs.
+
+* Resources
+
++ [[https://www.procustodibus.com/blog/2023/04/how-to-set-up-a-yubikey/][An Opinionated Yubikey Setup Guide]] clarification of details and precise
+  terminology. Recent (April 2023). Includes a handy hint to avoid GnuPG 2.2
+  with smartcards
++ [[https://demu.red/blog/2017/03/how-to-check-if-your-smartcards-gpg-key-is-in-cache-part-3/][How to check if your smartcard's GPG key is in cache (part 3)]] useful scripts
+  for gpg-agent & scdaemon
++ [[https://peterbabic.dev/blog/gnupg-pin-cache-smartcards-yubikeys-and-notifications/][GnuPG PIN Cache, Smartcards, Yubikeys and Notifications]] this is for OpenPGP
+  smartcards (not Yubikey's openpgp application, per se)
+  + [[OpenPGP Smartcard KDF issue: Bad PIN][OpenPGP Smartcard KDF issue: Bad PIN]] details on KDF
++ [[https://ludovicrousseau.blogspot.com/2019/06/gnupg-and-pcsc-conflicts.html][GnuPG and PC/SC conflicts]]: this is an older resolution for conflicts that
+  doesn't account for changes in =scdaemon=
+
+
+* SOPS
+
+Since I don't have the GPG key everywhere I need the secrets, then I need to
+distribute the SOPS files encrypted with =age= public keys ... or assume that
+servers can access my keys stored in:
+
++ Hashicorp Vault
++ Some cloud KMS system (like [[https://docs.aws.amazon.com/kms/][Amazon KMS]] or [[https://cloud.google.com/security/products/security-key-management?hl=en][Google Cloud KMS]])
+
+Why SOPS? It's more portable then =ansible-vault= and can be used with Terraform
+or in other projects. It also provides a transition path for you to gradually
+move some secrets to Cloud secrets managers or KMS or HC Vault. It supports
+multiple environments.
+
+** Age
+
+This allows you to use small ECDSA keys to decrypt/encrypt secrets for
+SOPS. It's similar to GnuPG and with [[https://github.com/str4d/age-plugin-yubikey][str4d/age-plugin-yubikey]], you can store
+these on Yubikey PIV.
+
+* Yubikey CLI Access
+
+Applications with exclusivity over the card can present some issues when reading
+data from it. Applications should definitely have exclusivity over the card,
+unless you temporarily relax that restriction to debug or something.
+
+This information is otherwise distributed piecemeal across the web. It's found
+ad-hoc to the context (which may be specific to the reader type or PKCS11/etc
+driver). Thus, it's hard to synthesize into a comprehensive understanding of how
+this works. The advice you encounter for PCSC/CCID exclusivity issues are
+unending -- and usually outdated.
+
+** YKCS11
+
+The =ykman= and =yubico-piv-tool= CLI's do not (AFAIK) allow you to sign/import
+arbitrary certificates. You need to import C libraries into a programming
+project to do this, which is very frustrating. This makes it a bit difficult
+(without writing a bunch of files)
+
+*** ykman
+
++ ykman info -s :: return only serial numbers for connected cards.
+
+*** yubico-piv-tool
+
+This CLI tool gives you deeper access to the =PIV= app on a card.
+
+** gpg-connect-agent
+
++ gpg-connect-agent 'keyinfo --list' | grep $_serial :: Show the subkeys that
+  =gpg= has cached on card with serial =$_serial=. This is a
++ pstree -h "$(pgrep -fa gpg-agent | cut -f1 -d' ' )" :: show the process tree
+  for =gpg-agent=. This will tell you if it's running an =scdaemon=
+  instance. Using =pstree -H= can tell you whether a service manager like
+  =shepherd= or =systemd= has started =gpg-agent=.
+
+*** scdaemon
+
+Run =gpg-connect-agent "$scd_cmd" /bye= to run a command.
+
++ scd help :: will list subcommands
++ scd getinfo app_list :: will list the apps available. You need to use
+  =gpg-connect-agent --decode "$scd_cmd" /bye= to debug the output of some
+  commands.
++ scd switchapp $_app :: will switch =scdaemon= to interface with the =openpgp=
+  or =piv= card apps.
+
+This was working for me and now i'm having some trouble.
+
++ I'm getting I/O errors when a yubikey is plugged in.
++ To make the cards available for other applications, I need to run =herd stop
+  gpg-agent=, which also terminates the =scdaemon= sub-process.
+
+When using =scdaemon=, you /should/ be able to switch applications using ==
+
+**** Writing results to encrypted files
+
+So, for automating actions on one card, =scdaemon= can't easily switch between
+apps. To deal with this, you need to run a commands on a single card-app that
+pass results to a =sops= encrypted file output.
+
++Since =sops= can write sercets or reencrypt without access to+ ... goddammit I
+just realized this doesn't work. When sops writes t a file with mixed
+encrypted/unencrypted content. It really likes to decrypt the content (in case
+it needs to merge the results). Unfortunately, I think this means it will want
+to authenticate both your =GPG= and =AGE=. If you have two cards, then you can
+use one at a time, since the =card-app= is set per-card...
+
+There may be some SOPS action that avoids these restriction and forces writes
+without decrypting the contents first. That is certainly how public-key crypto
+should work.
+
+**** Logging
+
+Edit your =$GNUPGHOME/scdaemon.conf= to include a logfile. If you still wanted
+to use =socat= you can make it log to a socket.
+
+#+begin_src conf
+log-file /tmp/scdaemon.log
+debug-level advanced
+#+end_src
+
+This is how I was strongly validate my suspicion that my =pscsd= and =scdaemon=
+woes derived from some persistent state on my smartcard (or in =$GNUPGHOME=
+somewhere). I needed the =gpg-card= CLI tool and I was pretty sure something in
+=gnupg 2.2= or =scdaemon= was "doing it wrong."
+
+** opensc-tool
+
+These tools include:
+
++ opensc-tool :: general tool
++ opensc-explorer :: explore smartcard data. this an interactive prompt similar
+  to =gpg-connect-agent= but I didn't get it to work ([[https://manpages.ubuntu.com/manpages/xenial/man1/opensc-explorer.1.html][man pages]])
++ opensc-notify :: notify on smardcard events
++ opensc-asn1 :: just format asn1 data
+
+Useful commands that interface through =scdaemon= and can query for =PIV= or
+=OPENPGP= data set on multiple cards.
+
++ opensc-tool --list-readers :: list the readers. The first field returned is
+  the =$reader_id=.
++ opensc-tool --serial -r $reader_id :: return the serial number.
++ opensc-tool --list-algorithms -r $reader_id :: list algorithms available. This
+  is very useful, as figuring out why your yubikey won't decrypt content when
+  you used, say, RSA-4096 without realizing the lack of card support will not
+  give you clear feedback as to why it fails!
+
+*** opensc-notify
+
+This would be useful to integrate into a service that sends notifications. I
+hope it uses a socket interface, but even if it does, it likely needs to be
+started under the correct parent process. Otherwise, when you start/stop
+=scdaemon=, you'll likely need to restart this as well.
+
++ The help shows two modes: standard/customized
++ To watch events, you need to run it without arguments.
++ According to the docs, it's not clear how you launch a persistent service
+  while specifying the events you want to watch.
+
+I tried it. If I get it to work, I may update this.
+
+** pscsd
+
+*** pscs-spy
+
+The =pcsc-spy= tool allows you to snoop on the data that =pscsd= is handling.
+
++ Using it requires tools like =socat= and bash scripts to set up debugging
+  using =IPC=. THUS: If you find yourself needing to debug using this tool, you
+  have lost the war.
++ If your problems are actually related to =scdaemon=, it's much easier to
+
+#+begin_quote
+While proficiency with =socat= would be great, actually debugging IPC using this
+efficiently requries either bash scripts, some wierd photographic memory or
+templating for =GNU screen= launch scripts.
+
+If it's a production scenario with =SELinux= ... good luck.
+#+end_quote
+
+
+** pkcs11-tool
+
+These tools include:
+
++ pkcs11-tool :: general CLI Tool
++ pkcs11-register :: install a pkcs11 module into known applications (like
+  Chrome/Firefox/Thunderbird)
+
+** SOPS
+
+*** age
+
+**** age-plugin-yubikey
+
+This is a Rust CLI tool that sets up yubikey slots for =age=. Some of the
+commands may overwrite your slots, but should generally warn you beforehand.
+
+The trick is that the certs that Yubkey's PIV normally generates need a bit of
+editing and resigning (I believe). What you care about are the 256-bit keys, so
+you need a custom CLI tool to store those and then interface with the Yubikey
+the way you want.
+
+** Step
+
+The =step kms= tool will interface with smartcard apps on the 5-series yubikeys
+like =5ci=. The =config/ca.json= that's needed to interface with a smartcard
+requires different config for:
+
++ kms.type=pkcs11 :: a =YubiHSM= app
++ kms.type=yubikey ::  the yubkey =PIV= app
+
+So, to be clear, the URIs and =--kms= options can utilize bash process
+substitution to pass secrets from something like =GNU pass= or =SOPS=.
+
++ The =PIV= app is handled separately by assigning a URI like
+  =yubikey:slot-id=XX= to the certificates.
++ The URIs needed for HSM-access via =PKCS11= also require secrets.
+
+*** github.com/go-piv
+
+These are go libraries used by =step-cli= and =step-ca= for accessing the
+yubikey. The [[github:go-piv/go-ykpiv][go-piv/go-ykpiv]] library includes a =ykls= cli tool that lists
+certs, but I haven't used it directly.
+
+These are useful tools, but using them without =step= may require
+writing/running some quick =go= scripts. Otherwise getting your yubikey to sign
+certs with their =9c= slot is a bit tricky, as you would need =step kms= or the
+python =cryptography= library to edit fields on certificates, so they're
+valid. I can't easily compile =step kms= on my guix system or run it in Docker
+without issues related to =scdaemon=
+
+* Roam
+
++ [[id:013f2a46-ac4a-4881-a25a-ef0beb9d8290][Yubikey]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptograpy]]
++ [[id:49373db0-532d-4b0f-b8ec-3f9a3f897895][StepCA]]
