@@ -1,0 +1,313 @@
+:PROPERTIES:
+:ID:       a5407920-3d71-44dd-b50d-1e593bce11a9
+:END:
+#+TITLE: Python: A simple app for simple man
+#+CATEGORY: slips
+#+TAGS:
+
+Why not Ruby on Rails? Because =nodejs= happened, more or less.
+
+* Resources
+
+** SQLModel
+
++ [[https://sqlmodel.tiangolo.com/tutorial/code-structure/][Code Structure and Multiple Files]] importing all modules in a single file or
+  dealing with circular imports.
++ [[https://sqlmodel.tiangolo.com/tutorial/indexes/][DB indexes]]
+
+*** Python Packages
+
+**** FastAPI
+
++ SQLModel: [[https://sqlmodel.tiangolo.com/tutorial/fastapi/session-with-dependency/][DB Session with a FastAPI Dependency]]
+
+**** SQL Alchemy
+
++ [[https://sqlmodel.tiangolo.com/tutorial/connect/create-connected-tables/][SQLModel: Create Connected Tables]] hmmm, I may not need migrations if data
+  persistence not a big deal)
+
+***** Alembic
+
++ [[https://alembic.sqlalchemy.org/en/latest/][Docs]]
+
+**** Pydantic
+
+Validations (I thought this did more?)
+
+*** Model Needs
+
+**** Factories
+
+I don't need factories, at least not for testing.
+
+[[https://github.com/tiangolo/sqlmodel/discussions/615][Using SQLModel with pytest and FactoryBoy]] it looks like it can interface with
+other tools but that there may be some problems.
+
+** FastAPI
+
+Mostly referring to this to figure out how Python apps/libs should be
+structured.
+
++ [[https://fastapi.tiangolo.com/python-types][Python Types Intro]]
++ [[https://fastapi.tiangolo.com/advanced/middleware][Advanced middleware]]
++ [[https://fastapi.tiangolo.com/tutorial/sql-databases][SQL (Relational) Databases]]
++ [[https://fastapi.tiangolo.com/tutorial/background-tasks][Background Tasks]]
+
+*** Environment
+
+[[https://fastapi.tiangolo.com/advanced/settings][Settings & Environment Variables]]
+
++ this is just handled by pydantic =BaseSettings= and =SettingsConfigDict=
++ Use the =@lru_cache= and probably crypt your =.env= file and read it with
+  python.
+
+* FastAPI Project Templates
+
+[[https://fastapi.tiangolo.com/project-generation][Project Generation Templates]]
+
+For the repo [[tiangolo/full-stack-fastapi-postgresql]]:
+
+The template is currently being refactored, but it looks like quite a bit of
+that has been redone. My notes should carry the same caveat. Judging by the
+commits on files in =./**/scripts= most of the files that will need updates are
+those assoc. with automation or template generation.
+
++ Under the root, the only python files are under =hooks= and =scripts=.
++ No python files in either =./src/frontend= or =./src/new-frontend=
++ Under =./src/backend/app= you find the Poetry =pyproject.toml= for the
+  backend.
+
+** Environment
+
+There are two =.env= files assoc with the =docker-compose.yml= files. These are
+useful for determining the service dependencies the framework expects
+
+*** Docker
+
+*** Compose
+
+Services
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+# this is a superset of the .services keys in docker-compose.override.yml
+find . -name "*compose.yml" -exec yq -y '.services | keys' \{\} +
+#+end_src
+
+#+RESULTS:
+: - backend
+: - celeryworker
+: - db
+: - flower
+: - frontend
+: - new-frontend
+: - pgadmin
+: - proxy
+: - queue
+
+The =docker-compose.overrides.yml= specifies these ports
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+# this is a superset of the .services keys in docker-compose.override.yml
+read -d '' yqscript <<EOF
+     .services[] | to_entries | map(select(.key == "ports")) | map([.key, .value])
+EOF
+
+find . -name "*compose.override.yml" -exec \
+     yq -y "$yqscript" \{\} +
+#+end_src
+
+#+RESULTS:
+#+begin_example
+- - ports
+  - - 80:80
+    - 8090:8080
+---
+- - ports
+  - - 5050:5050
+---
+- - ports
+  - - 5555:5555
+---
+- - ports
+  - - 8888:8888
+--- []
+--- []
+--- []
+#+end_example
+
+** src/backend/app
+
+*** src/backend/app/app
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+tree -d ./src/backend/app/app
+#+end_src
+
+#+RESULTS:
+#+begin_example
+./src/backend/app/app
+├── api
+│   └── api_v1
+│       └── endpoints
+├── core
+├── crud
+├── db
+├── email-templates
+│   ├── build
+│   └── src
+├── schemas
+└── tests
+    ├── api
+    │   └── api_v1
+    ├── crud
+    └── utils
+
+16 directories
+#+end_example
+
+*** Modules
+
+Only these =__init__.py= module specs are non-empty
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+find ./src/backend/ -name "__init__.py" -type f -size +0 -exec ls \{\} +
+#+end_src
+
+#+RESULTS:
+: ./src/backend/app/app/crud/__init__.py
+: ./src/backend/app/app/schemas/__init__.py
+
+These modules are defined
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+# I thought find couldn't do this ... glad i looked
+cd src/backend/app
+find . -name "__init__.py" -type f -exec ls \{\} \; | sed -e 's/\/__init__.py//'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+./app
+./app/api
+./app/api/api_v1
+./app/api/api_v1/endpoints
+./app/core
+./app/crud
+./app/db
+./app/schemas
+./app/tests
+./app/tests/api
+./app/tests/api/api_v1
+./app/tests/crud
+./app/tests/utils
+#+end_example
+
+*** Database
+
+**** Engine
+
+The engine (or database connection) is defined here
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+find . -name "*engine*" -print -exec cat \{\} +
+#+end_src
+
+#+RESULTS:
+: ./src/backend/app/app/db/engine.py
+: from sqlmodel import create_engine
+:
+: from app.core.config import settings
+:
+: engine = create_engine(settings.SQLALCHEMY_DATABASE_URI)
+
+The =SQLALCHEMY_DATABASE_URI= is referenced in these files:
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+grep -nre "SQLALCHEMY_DATABASE_URI"
+#+end_src
+
+#+RESULTS:
+: src/backend/app/app/core/config.py:40:    SQLALCHEMY_DATABASE_URI: Optional[PostgresDsn] = None
+: src/backend/app/app/core/config.py:42:    @validator("SQLALCHEMY_DATABASE_URI", pre=True)
+: src/backend/app/app/db/engine.py:5:engine = create_engine(settings.SQLALCHEMY_DATABASE_URI)
+
+**** Migrations
+
+#+begin_src sh :results output :dir (identity py-proj-root)
+ls ./src/backend/app/alembic.ini
+tree ./src/backend/app/alembic
+#+end_src
+
+#+RESULTS:
+: ./src/backend/app/alembic.ini
+: ./src/backend/app/alembic
+: ├── env.py
+: ├── README
+: ├── script.py.mako
+: └── versions
+:     └── e2412789c190_initialize_models.py
+:
+: 2 directories, 4 files
+
+Migrations are not strictly necessary. To avoid them,
+
++ uncomment =Base.metadata.create_all(bind=engine)= in =app.db.init_ib=
++ comment the relevant line in the =prestart.sh=
++ the =src/README.md= file tells you this... (but i guess i didn't see it)
+
+The =app.db.init_db= module is referenced in =app.initial_data= which can run as
+a standalone script -- the module name as no other references except
+=./src/backend/app/prestart.sh=
+
+** Tests
+
+[[https://github.com/OpenBB-finance/OpenBBTerminal/tree/develop/tests][OpenBB Terminal Unit Testing]]
+
+*** Test Harness with SQLModel
+
+[[https://sqlmodel.tiangolo.com/tutorial/fastapi/tests/][Test Applications with FastAPI and SQLModel]] (see section on [[https://sqlmodel.tiangolo.com/tutorial/fastapi/tests/#pytest-fixtures][Pytest Fixtures]])
+
+** Invoke
+
+This is like =rake=, but I'm not 100% convinced I need it.
+
+There is also [[https://github.com/seomoz/shovel][seomoz/shovel]]
+
+* Miscellaneous Ranting
+
+I just need a simple app, but one where some of the code can be split off into a
+library without pains. It needs:
+
++ SQLite: might as well. I thought about flat files and YAML, but the thought of
+  needing too much more =jq= query syntax than absolutely necessary is... yeh.
++ ORM: now I need an ORM. SQLmodel combines SQLAlchemy and Pydantic. How much
+  more pythonic can you get?
++ Factories: shit I stumbled into about 3 dozen different options for factories
+  very quickly. Time to run the fuck away. I hate webapps. I'm not building a
+  webapp.
++ Migrations: okay I might as well have migrations, but now I'm starting to
+  worry about convention over configuration without any clear conventions.
++ Rake: I have some scripts that I want to run. Where TF do they go?
+
+And again, I'm _not_ writing an API. It will not be an API. I just need an
+environment that's primed to split out a library.
+
++ This environment should give me a runtime and the tooling to load data into
+  sqlite needs some tasks. The tasks are not /really/ migrations. I guess I
+  could wipe the SQL schema every time, but then I better have good rake tasks.
++ Part of the app or library should break images into pieces and store them in
+  the filesystem. The =extcolors= lib should extract colors from images. The
+  data obtained should be queriable and presentable in tabular format or
+  however. I may want to use the linear algebras on it.
++ The library should be able to process data that's presented to it in fairly
+  generic ways. Particularly, it should be able to convert records from Pandas
+  or sqlite. Then I want to plot things in various color spaces using PyVista.
+
+That's it. I could literally do most of this with =imagemagick= in the
+commandline, but I need to do some computations.
+
+I hate boilerplate. And no we can't have nice things like "clojure" if we want
+to be employed because everyone with a job has the imagination of a 65 year old.
+
+* Roam
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
