@@ -107,9 +107,9 @@ find . -name "*compose.yml" -exec yq -y '.services | keys' \{\} +
 The =docker-compose.overrides.yml= specifies these ports
 
 #+begin_src sh :results output :dir (identity py-proj-root)
-# this is a superset of the .services keys in docker-compose.override.yml
+# .services[] | to_entries | map(select(.key == "ports"))
 read -d '' yqscript <<EOF
-     .services[] | to_entries | map(select(.key == "ports")) | map([.key, .value])
+     .services | to_entries | map({key: .key, value: .value.ports}) | from_entries
 EOF
 
 find . -name "*compose.override.yml" -exec \
@@ -118,21 +118,18 @@ find . -name "*compose.override.yml" -exec \
 
 #+RESULTS:
 #+begin_example
-- - ports
-  - - 80:80
-    - 8090:8080
----
-- - ports
-  - - 5050:5050
----
-- - ports
-  - - 5555:5555
----
-- - ports
-  - - 8888:8888
---- []
---- []
---- []
+proxy:
+  - 80:80
+  - 8090:8080
+pgadmin:
+  - 5050:5050
+flower:
+  - 5555:5555
+backend:
+  - 8888:8888
+celeryworker: null
+frontend: null
+new-frontend: null
 #+end_example
 
 ** src/backend/app
