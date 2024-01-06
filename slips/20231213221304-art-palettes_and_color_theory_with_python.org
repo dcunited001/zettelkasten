@@ -8,9 +8,14 @@
 
 
 * Resources
+
 + Python [[https://pypi.org/project/extcolors/][extcolors]]
 + [[https://michaellynnadams.com/color-chart-exercise-for-oil-paints/][Richard Schmid Color Charts]] from Michelle Lynn Adams
 + Using venv in org-babel ([[https://github.com/doomemacs/doomemacs/issues/2416][doomemacs issue 2416]]) or just use =jupyter.el=
+
+** Python
+
++ [[https://dev.to/codesphere/visualizing-the-color-spaces-of-images-with-python-and-matplotlib-1nmk][Visualizing Color Spaces]]
 
 * Notes
 
@@ -73,6 +78,101 @@ A gimp palette to import as a Krita resource
 #+RESULTS:
 
 file:img/art/palettes/_basic.gpl
+
+
+* G'MIC
+
+
+** Resources
+
+*** Filter Ideas
+
+Useful filters for palette selection
+
++ [[https://piaille.fr/@gmic][G'MIC Mastadon]]
++ [[https://gmic.eu/gmic300/][3.0.0 Release]]
+
+** Ideas
+
+
+*** Colormap
+
++ Chop into pieces or identify coords for input.
++ Use a grid system: for a 16x9 image: subdivide (h/16)-pixel sized blocks
++ Maybe plot a grid on the image to select blocks.
++ Pick block indexes $\left(x_i,y_i\right)$ to send to G'MIC. Use CLI options to
+  get raw data from the output.
++ Send the output to something that plots the colors in a colorspace.
+
+*** Laplacian
+****** TODO finish editing gmic/laplacian (but i don't think it's as useful as i thought)
++ $Laplacian \circ Sobel \circ dilate$ this will increase the appparent edges
+  without appearing to blur (use with small =del_smoothness= value)
+
+**** Landscape Filter
+
+Similar to the Sobel filter, the Laplacian filter identifies edges, but it's
+color-aware.  It evaluates a kernel per-pixel to calculate a directional
+derivative. It looks for the nearby changes in pixel value adds a
+position-shifted delta back onto the image.
+
+#+NAME: gmic_del_landscape
+| del_smoothness      | 1.00 |
+| del_min_threshold   |   50 |
+| del_max_threshold   |   70 |
+| del_absvalue        |      |
+| del_negative_colors |    1 |
+
++ del_negative_colors=0 :: appears to add $\Delta RGB$ back into the
+  interiors of shapes. Using the =subtraction= blend-mode here is a smarter way
+  to sharpen the image ... but it's computationally expensive.
++ del_negative_colors=1 :: appears to enhance color opposition around
+  edges. With a bit of imagination, it's basically a =Van Gogh= filter.
++ With the exception of the image boundaries, summing over the Laplacian should
+  conserve values. i.e. $|\pm\Delta RGB| \approx |\mp\Delta RGB|$. So setting the
+  blend-mode to normal, addition, subtraction is sufficient.
+
+#+begin_src jupyter-python
+!extcolors "/data/xdg/Documents/art/reference/20231225-xmas-mom/_irises.jpg" --image "/data/xdg/Documents/art/reference/20231225-xmas-mom/_irises.palette" --silence --tolerance 10
+!mogrify -resize "10%" "/data/xdg/Documents/art/reference/20231225-xmas-mom/_irises.palette.png"
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jupyter-python
+!extcolors "/data/xdg/Documents/art/reference/20231225-xmas-mom/_irises.orig.jpg" --image "/data/xdg/Documents/art/reference/20231225-xmas-mom/_irises.orig.palette" --silence --tolerance 10
+!mogrify -resize "10%" "/data/xdg/Documents/art/reference/20231225-xmas-mom/_irises.orig.palette.png"
+#+end_src
+
+#+RESULTS:
+
+***** Filter masks:
+
+Some blendmodes will require noise reduction. The Laplacian filter could benefit
+from edge detection.
+
+Adjust Laplacian results to emphasize specific color deltas:
+
++ Color to Alpha (post-process)
++ Levels (Hue, post-process)
+
+Can also use normal masking or channel-based masking, but it requires more
+layers.
+
+
+**** Misc
+
+The right settings combine well with the layer blending modes:
+
+
++ set the bottom layer to the original image, top to laplacian results
++ the superposition of both can be further refined with filter transformations
+  in between the layers.
++ The =boolean= blending modes actually produce good good results ... maybe.
+
+
+*** CLUT
+
 
 * Palettes
 
