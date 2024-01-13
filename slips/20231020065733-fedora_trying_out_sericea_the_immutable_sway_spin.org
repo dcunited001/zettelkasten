@@ -10,8 +10,40 @@
 
 * Resources
 + [[https://www.youtube.com/watch?v=EuNV1EheN98&t=1128s][Sway Spin and Sericea Update]]
++ [[https://docs.fedoraproject.org/en-US/fedora-sericea/updates-upgrades-rollbacks/][Update Fedora Sericea]]
 
-* Senicea
+** Silverblue generally
+
+[[https://www.reddit.com/r/Fedora/comments/zkp5y4/some_of_my_fedora_ostree_silverblue_and_kinoite/][Fedora OSTree (Silverblue and Kinoite) recommendations for post install]] includes
+information on customizing a desktop, including user-level systemd services
+
+** rpm/ostree
+
++ Fedora Magazine: [[https://fedoramagazine.org/trying-different-desktop-environments-using-rpm-ostree/][trying different desktop environments using =rpm ostree rebase=]]
+
+*** Beginners Guide to Fedora Silverblue
+
+[[https://www.dvlv.co.uk/pages/a-beginners-guide-to-fedora-silverblue.html#20-how-is-silverblue-different-from-workstation][How is Silverblue different from Workstation]]
+
+This resolved a lot of ambiguity for me regarding the primitive concepts in
+=rpm/ostree= and particularly the =rpm-ostree= concepts. Section [[https://www.dvlv.co.uk/pages/a-beginners-guide-to-fedora-silverblue.html#20-how-is-silverblue-different-from-workstation][3.0 Installing
+Software on Silverblue]] is also helpful, as it addresses the telos of each
+method, whether it's flatpak, rpm-ostree or toolbox.
+
+**** Example telos
+
+#+begin_quote
+Example telos: you need to add systemd services at the system layer. You
+/may/ need to install the related packages or services with rpm-ostree.
+
+... hmmmm ...
+
+... nevermind /etc and /var are writable, but they may lose content or conflict
+with future updates.
+#+end_quote
+
+
+* Sericea
 
 By running with the 39 beta on this distro:
 
@@ -76,17 +108,42 @@ rpm-ostree update
 
 And reboot
 
+*** RPM Fusion
+
 Then add the RPM Fusion Repositories
 
-#+begin_src sh :tangle ~/.bin/install-rpm-fusion :shebang /bin/bash
+#+begin_src sh :tangle ~/bin/install-rpm-fusion :shebang /bin/bash
 rpmfree=https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm
-rpmnonfree=https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+pmnonfree=https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
 
 sudo rpm-ostree install $rpmfree $rpmnonfree
 #+end_src
 
 And reboot: you must reboot before changes are effective when rpm-ostree
-updates.  To apply changes to the live environment use:
+updates.
+
+**** Upgrade after major version release
+
+If upgrading from Fedora 39 to 40 and maybe if changing desktop environments,
+then you'd need to remove and readd the rpmfusion repositories ... and i think
+it may need to be a oneliner, so it occurs in a single translation
+
+#+begin_src sh :tangle ~/bin/update-rpm-ostree :shebang /bin/bash
+sudo rpm-ostree update --uninstall rpmfusion-free-release --uninstall rpmfusion-nonfree-release --install rpmfusion-free-release --install rpmfusion-nonfree-release
+#+end_src
+
+**** Nonfree/Free Package Conflicts
+
+I think =rpmfusion-free= packages take precedence on my system. I'm not sure how
+to undo that. Maybe reversing the order of =$rpmfree= and =$rpmnonfree= in the
+install script would do that (and similar in the update script).
+
+However, this would be complicated if it also means removing many packages from
+my system. I can get most of what I need using =toolbox= or =flatpak=.
+
+*** Live Changes
+
+To apply changes to the live environment use:
 
 =rpm-ostree install --apply-live=
 
@@ -107,8 +164,46 @@ Install with =rpm-ostree install emacs=. Keep it vanilla.
 
 *** Updating
 
-Look for "rebase" instructions in the =rpm-ostree= cheatsheet.  You must rebase,
-but this command from the RPM OSTree docs is maybe not current
+Updates are not as complicated as i thought.
+
+#+begin_example sh
+# check version
+rpm-ostree status -b
+
+# upgrade
+rpm-ostree upgrade
+
+# to check without actually running
+rpm-ostree upgrade --check
+#+end_example
+
+
+**** RPM OSTree Updates with Rebase
+
+Look for "rebase" instructions in the =rpm-ostree= cheatsheet or in the [[https://docs.fedoraproject.org/en-US/fedora-sericea/updates-upgrades-rollbacks/][Sericea
+Docs]].  You must rebase
+
++ When upgrading Fedora versions: e.g. 38 -> 39
++ When jumping between Fedora Desktop Environments
++ When fetching upstream changes from a remote ref ... if rolling your own
+  custom uhhhh =os-rpm= thingy.
+
+#+begin_quote
+It's like git, okay... It's just =git rebase=, basically,
+which i still get switched up. I think i've been carrying around the same
+=$HOME/.gitconfig= for too long and something confuses this concept.
+#+end_quote
+
+***** Nope
+
+Maybe rebase is required after +adding custom ostree packages to your system+
+adding package layers to your system? ... (maybe this is why i thought it was
+complicated?)
+
+But no, it should not be, though the more packages you add with =rpm-ostree
+install=, the greater the odds are your system diverges from the base -- more or
+less, you'll get =rpm-ostree= "merge" conflicts ... that don't have clever
+strings to grep for like =>>>>>=
 
 ** Flatpak
 
@@ -126,12 +221,68 @@ flatpak install --user flathub \
 Installing =ffmpeg-full= and =firefox= from flatpak the issues where firefox
 wasn't playing videos.
 
+Ensure it starts with a =$HOME/bin/firefox= script:
+
+#+begin_src sh :tangle ~/bin/firefox :shebang #!/bin/bash
+flatpak run org.mozilla.firefox $@
+#+end_src
+
+* Topics
+
+** Just RPM
+
 ** Toolbox
 
-Run =toolbox create=. Enter a project and run =toolbox enter=.
+Run =toolbox create=. Enter a project and run =toolbox enter=
+
+*** Images
+
+Update the basic toolbox images by pulling with podman.
+
+#+begin_src sh
+# for me, `toolbox create` still uses fedora-toolbox:39
+podman image pull "registry.fedoraproject.org/fedora-toolbox:latest"
+#+end_src
+
+Update and add deps to the toolbox with
+
+#+begin_src sh
+# Q: when are upgrades necessary?
+# toolbox run -c "$toolbox" sudo dnf upgrade -y
+toolbox run -c "$toolbox" sudo dnf install -y $rpms
+#+end_src
+
 
 **** TODO more notes here. Also... podman/libvirt?
 
+** Podman
+
+
+** Guix/Nix
+
+[[https://gist.github.com/queeup/1666bc0a5558464817494037d612f094][Nix package manager on Fedora Silverblue]] This gist recommends downgrading
+SELinux to permissive, but that's the whole point to Fedora IMO. It makes it
+relatively easy to have a decent SELinux config .... I think? I'm guessing
+there's a lot I don't know about it.
+
+** Free Desktop
+
+
+*** Menu
+
+From the same guide to silverblue: [[https://www.dvlv.co.uk/pages/a-beginners-guide-to-fedora-silverblue.html#how-do-i-add-things-from-toolbox-into-my-menu][How Do I Add Things From Toolbox Into My Menu]]
+
+This is QOL.
+
+
+** Multimedia
+
+*** MPV
+
+For online video and VLC, i needed to install them with =flatpak= so probably
+other applications need this as well.
+
+*** MPD
 
 * Issues
 
