@@ -242,8 +242,120 @@ Setup account on [[gerrit.googlesource.com][gerrit.googlesource.com]] by authent
 ** Topics
 *** Worktree
 
+Don't use =git worktrees= if you have submodules (or so i've read)
+
 + [[https://stackoverflow.com/questions/31871888/what-goes-wrong-when-using-git-worktree-with-git-submodules][A brief history of time and worktree/submodule [in]compatibility]] ~2016
   - and [[https://stackoverflow.com/questions/34460811/git-submodule-update-is-slow-how-can-i-debug-why-its-slow/52452587#52452587][the epilogue]] ~2018-2020
+
+**** Initial setup
+
+For the initial clone, you either need to chose to:
+
++ create git worktrees to exist in a parent of the first worktree
++ or to run =git clone --bare= (like [[https://morgan.cugerone.com/blog/how-to-use-git-worktree-and-in-a-clean-way/][this example]]), which also requires some
+  extra config (see another [[https://morgan.cugerone.com/blog/workarounds-to-git-worktree-using-bare-repository-and-cannot-fetch-remote-branches/][blog with the fix]] from the same author)
+
+I would prefer the bare clone, to make configuration simpler. I hope this will
+be okay when using multiple editors on the project ... (i don't want VSCode to
+stomp on whatever magit has buffered)
+
+With one worktree configured, my =.bare/config= file looks like:
+
+#+begin_example gitconfig
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+[remote]
+	pushDefault = dc
+[remote "origin"]
+	url = git@github.com:the-origin/the-project
+  fetch = +refs/heads/*:refs/remotes/origin/*
+[remote "dc"]
+  url = git@github.com:dcunited001/the-project
+  fetch = +refs/heads/*:refs/remotes/dc/*
+[branch "main"]
+	remote = origin
+	merge = refs/heads/main
+#+end_example
+
+This is what my directory looks like with =tree -aL 2 .= in.
+
+#+begin_quote
+.
+├── .bare
+│   ├── branches
+│   ├── config
+│   ├── HEAD
+│   ├── refs
+│   └── worktrees
+│       └── main
+│           └── gitdir
+├── .git
+├── .bin
+└── main
+    ├── .git
+    ├── .github
+    ├── .gitignore
+    ├── LICENSE
+    ├── README.md
+    └── site
+#+end_quote
+
++ The =.git= file points to =gitdir: ./.bare= so all of git's local state is in
+  there, somewhere.
++ The =./main/.git= file points to: =gitdir: /data/mr/www/.bare/worktrees/main=
++ The =.bare/worktrees/main/gitdir= points to: =/data/mr/www/main/.git=
+
+So these last two are absolute references and will break when moved. I think
+changing them to relative paths will work and that there is probably CLI to
+avoid the need to fix ... but I usually end up editing the config files.
+
+***** magit
+
+When using =magit= I do end up with multiple =magit-status= buffers. Opening in
+the directory that contains =.bare/= will open a =magit-status= there (and
+associated process). Opening in the =main= worktree will open a =magit-status=
+there.
+
+Since I'm using the =.bare= checkout, everything points to a pretty well-defined
+=gitconfig= definition, though i think one can get this with/out the =.bare=
+checkout by simply designating a single =main= clone in a =$parent/main=
+directory, then using =git worktree add $wtname ../$wtdir=. This would have
+basically the same result.
+
+What worries me is automation in the background for most editors (that hide
+details from users). It would come down to how the tools access the index -- i
+believe the =git= CLI was designed to handle cases where multiple processes
+attempt to access index files. As long as everything uses the =git= CLI as a
+common interface from which it extracts data ... then at least the git index
+AFAIK should be ok.
+
+... the worktrees that are checked out ... idk. I would scope one editor per worktree.
+
+***** magit with forge.el
+
+As for Forge, it adds remotes to a database keying on the remote URL, so I think
+it will mostly work -- though there is still the need to keep the multiple
+=magit-status= buffers in mind... I was worried about extra state/structure
+increasing the cognitive load.
+
++ In neither the =./.bare= clone nor the =./main= worktree can I directly access
+  the pull requests from the =magit-status= buffer for that directory. I can use
+  use =Nlp= to list them, then access the contents from there.
++
+
+***** Migrating unfinished work
+
+To help migrate over, i moved my original =git clone= to a sibling directory
+=./www2/=, then created a new directory in its place and cloned the =.bare=
+inside of it.
+
+Then I examined the unpushed local brances in the original checkout and used
+=magit= to =format patch=. This saves a branch to a bunch of files in sequence
+that can be applied later. If the changes are atomic/independent, then applying
+the patches should not result in merge conflicts.
+
 
 *** Subtree
 

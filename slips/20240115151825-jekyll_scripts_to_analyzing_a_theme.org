@@ -1,0 +1,919 @@
+:PROPERTIES:
+:ID:       bd17a18d-8725-4b06-aae1-65b8428b02f2
+:END:
+#+TITLE: Jekyll: Scripts to Analyze a Theme
+#+CATEGORY: slips
+#+TAGS:
+
+I haven't done this in awhile, so i needed to dissect the theme. There are very
+few references in here to our decisions/discussions (other than my thoughts) and
+no PII, so I feel like it's alright to post these notes.
+
+Also, a better way to conduct this analysis would be to:
+
++ customize jekyll logging options and parse logs for rendering templates
++ edit jekyll source (in the bundle...) and "spy" on calls to render templates
++ add a jekyll module to trace through the calls to render templates
+
+Then it would definitely be more accurate and also more generally applicable.
+
+* Resources
+
+** Basically Basic
++ [[https://mmistakes.github.io/jekyll-theme-basically-basic/markup/markup-html-elements-and-formatting/][Markup: HTML elements and Formatting]] The theme processing of Markdown/HTML
+
+** HTML5 and CSS3
+
+From fireship: [[https://www.youtube.com/watch?v=Qhaz36TZG5Y][10 CSS Protips]]: covers newer features like =flex= and =grid=
+
+More On flexbox/grid
+
++ [[https://www.youtube.com/watch?v=phWxA89Dy94][Learn CSS flexbox in 8 minutes]]
++ [[https://www.youtube.com/watch?v=EiNiSFIPIQE][Learn CSS Grid: 13 Minute Deep Dive]]
++ [[https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_flexible_box_layout/Basic_concepts_of_flexbox][CSS3 flex directives]] (see [[https://web.dev/learn/css/flexbox][web.dev's content on flex]])
+
+*** CSS frameworks
+
++ [[https://news.ycombinator.com/item?id=36785469][YC thread]] comparing Tachyons vs Tailwind (newer)
+
+*** Accessibility
+
++ [[https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA][ARIA]]
++ [[https://blog.logrocket.com/design-accessibility-css-visually-hidden-class/][Design for accessibility]] (2023)
+
+** SASS
+
++ [[https://anotheruiguy.gitbooks.io/sassintherealworld_book-i/content/handy-tools/default-flag.html][SASS in the Real World]]
++ [[https://www.oddbird.net/2017/06/28/susy3/][Susy.scss]] a dependency of basically-basic theme
+
+* Features
+
+** HTML Head
+
+sets up the HTML metadata, scripts, etc. Also sets up SEO and the Atom feed
+
+| _includes/head.html      | this provides the =<head>= |
+| _includes/head-seo.html  | seo metatags               |
+| _includes/head-feed.html |                            |
+
+** Search
+
+The search widget is selected in =_includes/search-form.html=. There's a case
+statement here. Elsewhere, in =_includes/scripts=, another case statement
+determines which include to load from =_includes/search/*-search-scripts.html=
+
+Relevant includes
+
+| search-form.html | search/algolia-search-scripts.html | search/lunr-search-scripts.html |
+
+*** Lunr
+
+The index gets built into =lunr.store.js= by
+[[https://github.com/mmistakes/jekyll-theme-basically-basic/blob/c5a8aaf5795aaa9a5fe8322094dd9fe0b3c333ca/assets/javascripts/lunr/lunr.store.js#L4][assets/javascripts/lunr/lunr.store.js]].
+
++ [[https://lunrjs.com][lunr.js]] is an external dependency of the theme that adds content search
++ the [[https://lunrjs.com/docs/lunr.Index.html][lunr.Index()]] object could also return ref, score and =lunr.MatchData=.
+
+*** Algolia
+
+Online, requires setup and external service.
+
+* Theme Structure
+
+Many of these scripts should work for other themes (with some minor adaptations)
+
+** About
+
+*** Tags
+
+Posts about the theme are indexed by topic in the [[https://mmistakes.github.io/jekyll-theme-basically-basic/tags/][tag archive]]
+
+** Layouts
+
+Main structure
+
+| default.html | page.html | collection.html |
+
+Pages
+
+| home.html | about.html | cv.html |
+
+Collections
+
+| post.html       | posts.html      |
+| category.html   | categories.html |
+| tag.html        | tags.html       |
+
+** Includes
+
+These are the most complicated includes, by line number, excluding those
+involving icons.
+
+#+begin_src sh :results output table :dir ./jekyll/jekyll-theme-basically-basic
+_findpath=./_includes
+find $_findpath -type f \
+     -name "*.html" \
+     ! -name "*icon*" \
+     -exec wc -l \{\} + \
+    | sort -rn \
+    | head -n50
+
+# | sed -e 's/\(.*\) /| \1 | /'
+#+end_src
+
+#+RESULTS:
+| 826 | total                                          |
+| 105 | ./_includes/search/lunr-search-scripts.html    |
+|  68 | ./_includes/cv/basics.html                     |
+|  52 | ./_includes/search/algolia-search-scripts.html |
+|  46 | ./_includes/cv/work.html                       |
+|  46 | ./_includes/cv/volunteer.html                  |
+|  38 | ./_includes/page-intro.html                    |
+|  36 | ./_includes/cv/education.html                  |
+|  35 | ./_includes/head.html                          |
+|  33 | ./_includes/entry.html                         |
+|  29 | ./_includes/cv/publications.html               |
+|  27 | ./_includes/contact-list.html                  |
+|  25 | ./_includes/navigation.html                    |
+|  23 | ./_includes/masthead.html                      |
+|  23 | ./_includes/cv/references.html                 |
+|  23 | ./_includes/cv/awards.html                     |
+|  20 | ./_includes/cv/skills.html                     |
+|  19 | ./_includes/documents-collection.html          |
+|  19 | ./_includes/cv/languages.html                  |
+|  19 | ./_includes/cv/interests.html                  |
+|  18 | ./_includes/cv/intro.html                      |
+|  16 | ./_includes/disqus_comments.html               |
+|  15 | ./_includes/scripts.html                       |
+|  15 | ./_includes/posts-paginated.html               |
+|  14 | ./_includes/search-form.html                   |
+|  14 | ./_includes/page-tags.html                     |
+|  13 | ./_includes/read-time.html                     |
+|  11 | ./_includes/footer.html                        |
+|   8 | ./_includes/skip-links.html                    |
+|   8 | ./_includes/google-analytics.html              |
+|   3 | ./_includes/posts-tag.html                     |
+|   3 | ./_includes/posts-category.html                |
+|   2 | ./_includes/posts-all.html                     |
+|   0 | ./_includes/head-seo.html                      |
+|   0 | ./_includes/head-feed.html                     |
+
+** Includes References
+
+In includes
+
+#+name: jekyll-includes-references
+#+begin_src sh :results output verbatim :dir ./jekyll/jekyll-theme-basically-basic
+# Close Enough
+find _includes -type f -name "*.html" ! -name "*icon*" \
+     -exec grep -e '{% include' \{\} + \
+    | sort -n \
+    | sed -Ee 's/: .*(\{% include .* %\})\+?.*$/: \1/' \
+    | grep -ve '/cv'
+#+end_src
+
+#+RESULTS: jekyll-includes-references
+#+begin_example
+_includes/contact-list.html: {% include icon-github.html username=site.github_username label='GitHub' %}
+_includes/contact-list.html: {% include icon-twitter.html username=site.twitter_username label='Twitter' %}
+_includes/contact-list.html: {% include icon-email.svg %}
+_includes/contact-list.html: {% include icon-rss.svg %}
+_includes/documents-collection.html: {% include entry.html %}
+_includes/entry.html: {% include icon-calendar.svg %}
+_includes/entry.html: {% include read-time.html %}{% endcapture %}
+_includes/entry.html: {% include icon-arrow-right.svg %}
+_includes/head.html: {% include head-feed.html %}
+_includes/head.html: {% include head-seo.html %}
+_includes/page-intro.html: {% include read-time.html %}{% endcapture %}{{ read_time | strip }}</span>{% endif %}
+_includes/page-intro.html: {% include author %}
+_includes/page-intro.html: {% include {{ action.icon | prepend: 'icon-' | append: '.svg' }} %}</span>{% endif %}
+_includes/posts-all.html: {% include entry.html %}
+_includes/posts-category.html: {% include entry.html %}
+_includes/posts-paginated.html: {% include entry.html %}
+_includes/posts-paginated.html: {% include icon-arrow-right.svg %}
+_includes/posts-paginated.html: {% include icon-arrow-left.svg %}
+_includes/posts-tag.html: {% include entry.html %}
+_includes/scripts.html: {% include google-analytics.html %}
+_includes/scripts.html: {% include search/algolia-search-scripts.html %}
+_includes/scripts.html: {% include search/lunr-search-scripts.html %}
+#+end_example
+
+In layouts
+
+#+name: jekyll-layouts-references
+#+begin_src sh :results output verbatim :dir ./jekyll/jekyll-theme-basically-basic
+# Close Enough
+find _layouts -type f -name "*.html" ! -name "*icon*" \
+     -exec grep -e '{% include' \{\} + \
+    | sort -n \
+    | sed -Ee 's/: .*(\{% include .* %\})\+?.*$/: \1/' \
+    | grep -ve '/cv'
+#+end_src
+
+#+RESULTS: jekyll-layouts-references
+#+begin_example
+_layouts/about.html: {% include author %}
+_layouts/about.html:{% include page-intro.html %}
+_layouts/categories.html: {% include entry.html %}
+_layouts/category.html: {% include posts-category.html taxonomy=page.taxonomy %}
+_layouts/collection.html: {% include documents-collection.html collection=page.collection sort_by=page.sort_by sort_order=page.sort_order %}
+_layouts/default.html: {% include contact-list.html %}
+_layouts/default.html: {% include footer.html %}
+_layouts/default.html: {% include head.html %}
+_layouts/default.html: {% include masthead.html %}
+_layouts/default.html: {% include navigation.html %}
+_layouts/default.html: {% include scripts.html %}
+_layouts/default.html: {% include search-form.html %}
+_layouts/default.html: {% include skip-links.html %}
+_layouts/home.html:{% include page-intro.html %}
+_layouts/home.html: {% include posts-all.html %}
+_layouts/home.html: {% include posts-paginated.html %}
+_layouts/page.html:{% include page-intro.html %}
+_layouts/post.html: {% include disqus_comments.html %}
+_layouts/post.html:{% include page-intro.html %}
+_layouts/posts.html: {% include entry.html %}
+_layouts/tag.html: {% include posts-tag.html taxonomy=page.taxonomy %}
+_layouts/tags.html: {% include entry.html %}
+#+end_example
+
+*** Dependencies
+
+Includes
+
+#+name: jekyll-includes-graph
+#+headers: :results output verbatim
+#+begin_src sh  :stdin jekyll-includes-references  :noweb-ref jekyll-includes
+_pattern="_includes"
+sed -Ee 's/^'$_pattern'\/(.*): /  \1 --> /' \
+    | grep -ve 'action.icon' \
+    | sed -Ee 's/--> \{% (include [^ ]+ ){1}.*/ --> \1/' \
+    | sed -Ee 's/ include / /'
+    #| sed -Ee 's/:( )\{% include (.*)+? %\}.*(\{%)?(%\})+?.*/\1 --> \2/'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+  contact-list.html  --> icon-github.html
+  contact-list.html  --> icon-twitter.html
+  contact-list.html  --> icon-email.svg
+  contact-list.html  --> icon-rss.svg
+  documents-collection.html  --> entry.html
+  entry.html  --> icon-calendar.svg
+  entry.html  --> read-time.html
+  entry.html  --> icon-arrow-right.svg
+  head.html  --> head-feed.html
+  head.html  --> head-seo.html
+  page-intro.html  --> read-time.html
+  page-intro.html  --> author
+  posts-all.html  --> entry.html
+  posts-category.html  --> entry.html
+  posts-paginated.html  --> entry.html
+  posts-paginated.html  --> icon-arrow-right.svg
+  posts-paginated.html  --> icon-arrow-left.svg
+  posts-tag.html  --> entry.html
+  scripts.html  --> google-analytics.html
+  scripts.html  --> search/algolia-search-scripts.html
+  scripts.html  --> search/lunr-search-scripts.html
+#+end_example
+
+Layouts
+
+#+name: jekyll-layouts-graph
+#+headers: :results output verbatim :noweb-ref jekyll-layouts
+#+begin_src sh  :stdin jekyll-layouts-references
+_pattern="_layouts"
+sed -Ee 's/^'$_pattern'\/(.*): ?/  \1 --> /' \
+    | grep -ve 'action.icon' \
+    | sed -Ee 's/--> \{% (include [^ ]+ ){1}.*/ --> \1/' \
+    | sed -Ee 's/ include / /' \
+    | sed -Ee 's/:( )\{% include (.*)+? %\}.*(\{%)?(%\})+?.*/\1 --> \2/' \
+    | sed -Ee 's/> (\S+)/> \1/'
+#+end_src
+
+#+RESULTS: jekyll-layouts-graph
+#+begin_example
+  about.html  --> author
+  about.html  --> page-intro.html
+  categories.html  --> entry.html
+  category.html  --> posts-category.html
+  collection.html  --> documents-collection.html
+  default.html  --> contact-list.html
+  default.html  --> footer.html
+  default.html  --> head.html
+  default.html  --> masthead.html
+  default.html  --> navigation.html
+  default.html  --> scripts.html
+  default.html  --> search-form.html
+  default.html  --> skip-links.html
+  home.html  --> page-intro.html
+  home.html  --> posts-all.html
+  home.html  --> posts-paginated.html
+  page.html  --> page-intro.html
+  post.html  --> disqus_comments.html
+  post.html  --> page-intro.html
+  posts.html  --> entry.html
+  tag.html  --> posts-tag.html
+  tags.html  --> entry.html
+#+end_example
+
+Jekyll graph
+
+#+name: jekyll-mermaid
+#+headers: :results output :var layouts=jekyll-layouts-graph includes=jekyll-includes-graph
+#+begin_src sh :dir ./www
+printf "flowchart LR\n${layouts}${includes}" \
+    | grep -vE 'icon' \
+    | mmdc -o tmp/jekyll.svg -i -
+#+end_src
+
+[[file:img/jekyll-theme-includes.svg]]
+
+
+*** Misc Features
+
++ skip links?
+
++ Read Time :: _includes/read-time.html
++ Disqus :: _includes/disqus_comments.html
+
+**** CV
+
+Lots of includes for this. Not so relevant for us
+
+| cv/awards.html | cv/basics.html    | cv/education.html    | cv/interests.html  |
+| cv/intro.html  | cv/languages.html | cv/publications.html | cv/references.html |
+| cv/skills.html | cv/volunteer.html | cv/work.html         |                    |
+
+* Styles
+
+Most of the [[https://github.com/mmistakes/jekyll-theme-basically-basic][basically-basic]] theme's CSS is defined in the its gem source. This
+is a bit confusing for people who would otherwise be comfortable in HTML/CSS. So
+this is an an overview of the theme's SASS.
+
+#+begin_quote
+I'm not quite sure where the line is drawn between SASS and SCSS, so my usage is
+inconsistent, leaning towards SASS.
+#+end_quote
+
+** Migrating
+
+Most of the functionality that SASS provides has been implemented in CSS3:
+
++ theme colors with color mixing
++ basic functions like =calc()=
++ responsive layouts
++ fluid or block grid systems with parameters
+
+Unfortunately, using the new CSS3 features while mixing the old styles can be
+more difficult than either by itself.
+
+To help gauge how much work is required to remove SASS, an outline of
+basically-basic's SASS dependencies is included at the end of the doc.
+
+** SASS
+
+Where other scss files are referenced by the external jekyll theme, it first
+searches the equivalent paths in this github project
+
+The entry point that our Jekyll theme uses to build =main.css= is
+=_scss/basically-basic/basically-basic.scss=.
+
+Outside of its dependencies, the "basically basic" mainly offers simple (good!)
+definitions of:
+
++ classes and elements
++ some simple responsive elements
++ generation of a color palette
+
+*** Variables
+
+If we add a =variables.scss= script, it needs to provide a value for everything
+in the Jekyll theme's script.
+
+Throughout our the =basically-basic= theme, these 4 variables are passed to
+=breakpoint.scss= determine the sizes of our responsive layout.
+
+| $small | $medium | $large | $xlarge |
+
+*** Structure
+
+=main.scss=  is the entry point to loading your theme.
+
+#+begin_src scss
+---
+# Only the main Sass file needs front matter (the dashes are enough)
+---
+
+@charset "utf-8";
+
+// Theme skin
+@import "basically-basic/themes/{{ site.data.theme.skin | default: 'default' }}";
+
+@import "basically-basic";
+#+end_src
+
+| _base   | for basic html elements                                               |
+| _intro  | used in cv & page-intro, (the latter referenced by most pages)        |
+| _footer | just the site footer                                                  |
+| _reset  |                                                                       |
+| _global | appear on many/all pages. e.g. site title & taxonomy(tags,categories) |
+| _layout |                                                                       |
+
+**** Responsive Layouts
+
+See [[https://stackoverflow.com/a/8876069][s/o question]] on =@media (...)= queries
+
+This theme has two dependencies for responsive themes:
+
++ breakpoint: this simply sets points at which content should be broken. their
+  main site is offline, but [[https://docs.gerillass.com/docs/breakpoint/][this demo]] is still up
++ [[https://www.oddbird.net/susy/][susy]] this project sets up a grid system, but it's deprecated. Some of its
+  functions are still used by the theme.
+
+*** Components
+
+| _buttons             |                                |
+| _icons               |                                |
+| _sidebar             |                                |
+| _navigation          | menu, skip-links and pager     |
+| _navicons            | svgicons (packed with [[https://github.com/svg/svgo][SVGO]])     |
+| _search              |                                |
+| _tables              |                                |
+| _entries             |                                |
+| _contact-lists       | the list of social profiles    |
+| _responsive-embed    | aspect ratios for video embeds |
+| _syntax-highlighting |                                |
+
+*** Functional
+
+**** _functions
+
+***** _color.scss
+
+Defines =tint()= and =shade()=
+
++ =shade()= is only used in two places: to darken =.btn= and =a &:hover=
+
+***** _fluid-type
+
+Defines =strip-unit()= and =fluid-type=. The former is only ever referenced in
+the latter.
+
+#+begin_src sh :results output none :dir ./jekyll/jekyll-theme-basically-basic
+# grep -C5 -nrE 'fluid-type\(.*\)' .
+grep -nrE 'fluid-type\(.*\)' .
+#+end_src
+
+This sets only the font size for specific viewports. Three are considered (the
+first is implicit)
+
+#+begin_src css
+/* viewport.width <= 320px */
+html { font-size: 14px; }
+/* 320 <= viewport.width < 1280px */
+@media screen and (min-width: 320px) { html { font-size: calc(14px + 4 * ((100vw - 320px) / 960)); } }
+/* viewport.width > 1280px */
+@media screen and (min-width: 1280px) { html { font-size: 18px; } }
+#+end_src
+
+This function affects the elements below. =_breakpoint.scss= and =_susy.scss=
+also provide some responsive behavior.
+
+#+headers: :results output verbatim :wrap src css
+#+begin_src sh :dir ./www/site
+cssbuild=_site/assets/stylesheets/main.css
+grep -E '@media.*(1280)' $cssbuild \
+     | sed -Ee 's/\{ font-size.*$//' \
+     | sed -Ee 's/^@media.*\{ //'
+#+end_src
+
+#+RESULTS:
+#+begin_src css
+html
+h1
+h2
+h3
+h4
+h5
+h6
+pre
+table
+.site-title
+.taxonomy-title
+.sidebar .menu
+.sidebar .contact-list
+.search-toggle .icon
+.search-content .search-input
+.entry-title
+.entry-meta
+.entries-grid .entry-title
+.intro-title
+.intro-subtitle
+#+end_src
+
+**** _mixins
+
+SASS mixins
+
+| file                | mixins        |             |            |
+| _clearfix.scss      | clearfix      |             |            |
+| _float.scss         | float-left    | float-right | float-none |
+| _image.scss         | img-fluid     | img-retina  |            |
+| _lists.scss         | list-unstyled |             |            |
+| _text-truncate.scss |               |             |            |
+
+references in utilities
+
+| .clearfix   | .text-truncate |              |
+| .float-left | .float-right   | .float-clear |
+
+**** _utilities
+
+The theme provides some accessibility, but I worry that it's a bit dated. There
+may be better, simpler options.
+
+***** screen reader
+
+=_visibility= defines:
+
++ .is--hidden
++ .is--visible
++ .visually-hidden
++ and classes on dom inside =body:hover .visually-hidden=
+
+=_accessibility= defines
+
++ classes and hover for =.screen-reader-text, .screen-reader-text span
+  .screen-reader-shortcut=
++ =.screen-reader-text:focus, .screen-reader-shortcut:focus=
+
+***** _print
+
+*** Colors
+
+The references here do not include those redefined in the =_theme.scss= files:
+
+Base color mixes to #747d8f;
+
+#+begin_src scss
+$base-color: mix(#625772, #a9eee6, 75%) !default;
+$text-color: #625772 !default;
+$accent-color: #e85482 !default;
+$background-color: #fefaec !default;
+$code-background-color: #fff !default;
+$border-color: rgba($text-color, 0.5) !default;
+$overlay-color: #fff !default;
+#+end_src
+
++ =.sidebar.inner= ends up with a shifted =box-shadow=
++ =$overlay-color= is set, but only used when =$intro-image-color-overlay= is
+  true. defaults to false. only used on hero images =.intro-image=
++ all =$.*-color= variables are set with SASS =!default=, so they won't change
+  if already set.
++ There are few references to =shade(...)= but many references to =tint(...)=,
+  making a dark background difficult to implement without rewriting a
+  considerable amount of SASS
++ Icons have their own colors set in =_scss/basically-basic/_icons.scss=, which
+  isnt so easy to override
+
+**** Base Color:
+
+#+begin_src grep
+_sass/basically-basic/_sidebar.scss:102:      background-color: $base-color;
+_sass/basically-basic/_sidebar.scss:122:      color: $base-color;
+_sass/basically-basic/_sidebar.scss:45:      color: $base-color;
+_sass/basically-basic/_sidebar.scss:56:        background-color: $base-color;
+_sass/basically-basic/utilities/_accessibility.scss:25:    background-color: $base-color;
+#+end_src
+
+variables: determines defaults for code, borders and overlays
+
+#+begin_src grep
+_sass/basically-basic/_variables.scss:52:$base-color: #393e46 !default;
+_sass/basically-basic/_variables.scss:56:$code-background-color: tint($base-color, 95%) !default;
+_sass/basically-basic/_variables.scss:57:$border-color: tint($base-color, 80%) !default;
+_sass/basically-basic/_variables.scss:58:$overlay-color: $base-color !default;
+#+end_src
+
+**** Text Color:
+
+#+begin_src grep
+_sass/basically-basic/_base.scss:11:  color: $text-color;
+_sass/basically-basic/_base.scss:16:  color: tint($text-color, 40%);
+_sass/basically-basic/_entries.scss:213:    color: tint($text-color, 25%);
+_sass/basically-basic/_entries.scss:22:  color: tint($text-color, 25%);
+_sass/basically-basic/_footer.scss:7:  color: tint($text-color, 40%);
+_sass/basically-basic/_global.scss:32:    color: $text-color;
+_sass/basically-basic/_global.scss:51:  color: lighten($text-color, 50%);
+_sass/basically-basic/_global.scss:74:  color: lighten($text-color, 60%);
+_sass/basically-basic/_global.scss:79:  color: lighten($text-color, 50%);
+_sass/basically-basic/_intro.scss:44:  color: tint($text-color, 25%);
+_sass/basically-basic/_layout.scss:156:      color: tint($text-color, 40%);
+_sass/basically-basic/_sidebar.scss:165:  color: $text-color;
+_scss/basically-basic/_layout.scss:156:  color: tint($text-color, 40%);
+#+end_src
+
+Variables: determines default navicon color
+
+#+begin_src grep
+_sass/basically-basic/_variables.scss:103:$navicon-content-bg: $text-color !default;
+_sass/basically-basic/_variables.scss:53:$text-color: #181c22 !default;
+#+end_src
+
+**** Accent Color:
+
+#+begin_src grep
+_sass/basically-basic/_base.scss:105:  color: $accent-color;
+_sass/basically-basic/_base.scss:108:    color: shade($accent-color, 25%);
+_sass/basically-basic/_base.scss:113://   border-color: $accent-color;
+_sass/basically-basic/_base.scss:115://   box-shadow: 0 0 10px $accent-color;
+_sass/basically-basic/_buttons.scss:10:  background-color: $accent-color;
+_sass/basically-basic/_buttons.scss:18:    background-color: tint($accent-color, 20%);
+_sass/basically-basic/_buttons.scss:23:    background-color: shade($accent-color, 20%);
+_sass/basically-basic/_entries.scss:68:    fill: $accent-color;
+_sass/basically-basic/_entries.scss:81:      color: $accent-color;
+_sass/basically-basic/_global.scss:109:      color: $accent-color;
+_sass/basically-basic/_intro.scss:23:      background-color: rgba($accent-color, 0.25);
+_sass/basically-basic/_layout.scss:140:      color: $accent-color;
+_sass/basically-basic/_navigation.scss:56:    background-color: $accent-color;
+_sass/basically-basic/_navigation.scss:63:      background-color: tint($accent-color, 20%);
+_sass/basically-basic/_search.scss:93:  color: $accent-color;
+_sass/basically-basic/_search.scss:98:  color: $accent-color;
+_sass/basically-basic/_sidebar.scss:61:        color: $accent-color;
+#+end_src
+
+Variables: determines no other colors
+
+#+begin_src grep
+_sass/basically-basic/_variables.scss:54:$accent-color: #00838a !default;
+#+end_src
+
+**** Background Color:
+
+#+begin_src grep
+_sass/basically-basic/_base.scss:10:  background: $background-color;
+_sass/basically-basic/_layout.scss:18:  background-color: $background-color;
+_sass/basically-basic/_sidebar.scss:140:  background-color: $background-color;
+#+end_src
+
+Variables: determines no other colors
+
+#+begin_src grep
+_sass/basically-basic/_variables.scss:55:$background-color: #fff !default;
+#+end_src
+
+**** Code Background Color:
+
+Variables: determines no other colors
+
+#+begin_src grep
+_sass/basically-basic/_variables.scss:56:$code-background-color: tint($base-color, 95%) !default;
+#+end_src
+
+** SASS Dependencies
+
+*** Breakpoint.scss
+
+Breakpoint is one of the first scss scripts sourced in the theme -- after the
+SCSS files for functions, variables and mixins. It generates rules like those
+below. Its code can be found in =_sass/basically-basic/vendor/breakpoint=
+
+Unfortunately, calls to breakpoint mixins/functions wrap around some of the
+calls to susy's functions like =gutter(...)=.
+
+#+headers: :results output verbatim :wrap src css
+#+begin_src sh  :dir ./www/site
+cssbuild=_site/assets/stylesheets/main.css
+grep -e "^@media" $cssbuild \
+    | grep -vE '(320|1280)' | sort
+#+end_src
+
+#+RESULTS:
+#+begin_src css
+@media (max-width: 48em) { .entry-meta ul li { display: inline-block; margin-right: 1.5rem; } }
+@media (min-width: 20em) { .intro > .inner, main > .inner { padding-right: 1rem; padding-left: 1rem; } }
+@media (min-width: 20em) { .search-content .inner { padding-right: 1rem; padding-left: 1rem; } }
+@media (min-width: 20em) { .site-footer .inner { padding-right: 1rem; padding-left: 1rem; } }
+@media (min-width: 48em) { .entries-list .entry-content { width: 68.3544303797%; } }
+@media (min-width: 48em) { .entries-list .entry-excerpt { width: 68.3544303797%; } }
+@media (min-width: 48em) { .entries-list .entry-meta { float: right; width: 30.3797468354%; padding-left: 1.2658227848%; } }
+@media (min-width: 48em) { .entry-meta ul li { padding-bottom: 0.5rem; } }
+@media (min-width: 48em) { .intro > .inner, main > .inner { padding-right: 2rem; padding-left: 2rem; } }
+@media (min-width: 48em) { .layout--about .entry-content { -ms-flex: 1; flex: 1; } }
+@media (min-width: 48em) { .layout--about .entry-sidebar .author-picture { margin: 0 0 0 2rem; } }
+@media (min-width: 48em) { .layout--about .entry-sidebar { order: initial; -ms-flex-order: initial; } }
+@media (min-width: 48em) { .layout--about .entry-wrap { -ms-flex-wrap: nowrap; flex-wrap: nowrap; } }
+@media (min-width: 48em) { .layout--cv .entries .entry-content { float: right; width: 68.3544303797%; } }
+@media (min-width: 48em) { .layout--cv .entries .entry-header { width: 30.3797468354%; padding-right: 1.2658227848%; /* remove space after last child element */ }
+@media (min-width: 48em) { .search-content .inner { padding-right: 2rem; padding-left: 2rem; } }
+@media (min-width: 48em) { .sidebar > .inner { padding: 3rem; } }
+@media (min-width: 48em) { .sidebar-toggle-wrapper { right: 2rem; padding-right: 0; } }
+@media (min-width: 48em) { .site-footer .inner { padding-right: 2rem; padding-left: 2rem; } }
+@media (min-width: 48em) { .site-title { padding-left: 2rem; } }
+@media (min-width: 64em) { .intro > .inner, main > .inner { padding-right: 3rem; padding-left: 3rem; } }
+@media (min-width: 64em) { .is--pushed { transform: translateX(480px); } }
+@media (min-width: 64em) { .layout--post .entry-content, .layout--page .entry-content { width: 87.3417721519%; } }
+@media (min-width: 64em) { .search-content .inner { padding-right: 3rem; padding-left: 3rem; } }
+@media (min-width: 64em) { .sidebar { max-width: 480px; } }
+@media (min-width: 64em) { .sidebar-toggle-wrapper { right: 5vw; } }
+@media (min-width: 64em) { .site-footer .inner { padding-right: 3rem; padding-left: 3rem; } }
+@media (min-width: 64em) { .site-title { padding-left: 5vw; } }
+@media (min-width: 64em) { .taxonomy-index { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 80em) { .intro > .inner, main > .inner { padding-right: 4rem; padding-left: 4rem; } }
+@media (min-width: 80em) { .search-content .inner { padding-right: 4rem; padding-left: 4rem; } }
+@media (min-width: 80em) { .site-footer .inner { padding-right: 4rem; padding-left: 4rem; } }
+@media print { [hidden] { display: none; }
+#+end_src
+
+*** susy
+
+Susy was mainly deprecated with version 3 (see [[https://github.com/mmistakes/jekyll-theme-basically-basic/commit/628629d268a196c7c2907d934eb4487849cf672a][this commit]] in our theme
+project). The docs are mostly offline.
+
+It has 3 "publically callable" functions and this file contains information
+about them: =_sass/basically-basic/vendor/susy/susy/_api.scss=. They are:
+
+=gutter(...)=
+
+#+begin_src grep
+_sass/basically-basic/_layout.scss:121:        padding-right: gutter(1 of 16);
+_sass/basically-basic/_entries.scss:116:      padding-left: gutter(1 of 16);
+#+end_src
+
+and =span(...)=
+
+#+begin_src grep
+_layout.scss:71:      width: span(14 of 16);
+_layout.scss:120:        width: span(5 of 16);
+_layout.scss:133:        width: span(11 of 16);
+_entries.scss:87:      width: span(11 of 16);
+_entries.scss:103:      width: span(11 of 16);
+_entries.scss:115:      width: span(5 of 16 last);
+#+end_src
+
+So, basically, we don't need to worry about all these functions.
+
+#+begin_src grep
+susy/_normalize.scss:53:@function susy-normalize(
+susy/_normalize.scss:122:@function susy-normalize-span(
+susy/_normalize.scss:159:@function susy-normalize-columns(
+susy/_normalize.scss:210:@function susy-normalize-spread(
+susy/_normalize.scss:247:@function susy-normalize-location(
+susy/_parse.scss:53:@function susy-parse(
+susy/_su-validate.scss:33:@function su-valid-span(
+susy/_su-validate.scss:68:@function su-valid-columns(
+susy/_su-validate.scss:115:@function su-valid-gutters(
+susy/_su-validate.scss:148:@function su-valid-spread(
+susy/_su-validate.scss:183:@function su-valid-location(
+susy/_syntax-helpers.scss:28:///   @function susy-gutter(
+susy/_syntax-helpers.scss:103:@function susy-compile(
+susy/_syntax-helpers.scss:163:@function su-call(
+susy/_unprefix.scss:15:@function span(
+susy/_unprefix.scss:33:@function gutter(
+susy/_unprefix.scss:51:@function slice(
+susy/_settings.scss:215:@function susy-repeat(
+susy/_settings.scss:286:@function susy-settings(
+susy/_settings.scss:317:@function susy-get(
+susy/_api.scss:139:@function susy-span(
+susy/_api.scss:199:@function susy-gutter(
+susy/_api.scss:249:@function susy-slice(
+susy/_su-math.scss:62:@function su-span(
+susy/_su-math.scss:128:@function su-gutter(
+susy/_su-math.scss:170:@function su-slice(
+susy/_su-math.scss:218:@function _su-sum(
+susy/_su-math.scss:269:@function _su-calc-span(
+susy/_su-math.scss:338:@function _su-calc-sum(
+susy/_su-math.scss:415:@function _su-needs-calc-output(
+susy/_utilities.scss:34:@function _susy-error(
+susy/_utilities.scss:61:@function _su-is-comparable(
+susy/_utilities.scss:111:@function _su-map-add-units(
+susy/_utilities.scss:145:@function _susy-flatten(
+plugins/svg-grid/_svg-utilities.scss:20:@function _susy-svg-validate-units(
+plugins/svg-grid/_svg-utilities.scss:53:@function _susy-svg-rect(
+plugins/svg-grid/_svg-utilities.scss:90:@function _susy-svg-color(
+plugins/svg-grid/_svg-utilities.scss:117:@function _susy-svg-gradient(
+plugins/svg-grid/_svg-grid-math.scss:21:@function _susy-svg-column-position(
+plugins/svg-grid/_svg-grid-math.scss:49:@function _susy-svg-offset(
+plugins/svg-grid/_svg-unprefix.scss:12:@function svg-grid(
+plugins/svg-grid/_svg-api.scss:66:@function susy-svg-grid(
+#+end_src
+
+* Other theme options
+
+SASS/SCSS aren't particularly necessary anymore. So we should avoid using
+content from the SASS/SCSS files that the =basically-basic= theme provides, as
+it makes switching to a new theme a bit difficult.
+
+** Jekyll
+*** Supply
+
++ Set up for ecommerce (doesn't fit our needs precisely)
++ But it does not use SCSS, which makes integrating CSS3 features a bit more
+  difficult. Instead it uses Tachyons CSS
+
+** CSS
+
++ [[https://dev.to/borama/series/11626][Migrating from Tachyons to Tailwind]] 3 part series
+
+*** Tachyons
+
++ [[https://components.ai/tachyons-theme/Q1qdMFMBZMV0ASzFUpu9][Tachyons CSS]] which offers a widget for customizing its components. This is
+  built on flexbox css, using the
++ [[https://github.com/dwyl/learn-tachyons#one-minute-summary][dwyl/learn-Tachyons]]
+
+** [[https://tailwindcss.com/][Tailwind CSS]]
+
++ [[https://www.youtube.com/watch?v=QBajvZaWLXs][My Tailwind Journey]] video overviewing pros/cons of tailwind
+
+IMO, for small projects, Tailwind would introduce too much complexity in
+configuring the editor and it makes things unreadable for beginners.
+
+*** Jekyll Themes
+
++ [[https://github.com/abhinavs/cookie][abhinavs/Cookie]] (this seems the best starting point)
++ [[https://www.bestjekyllthemes.com/theme/thenewdynamic-thenewdynamic.org/][TheNewDynamic]] meh, good examples
++ [[github:vsoch/tw-jekyll][vsoch/tw-jekyll]]
+
+Tailwind requires PostCSS, whatever that is
+
+Other themes
+
++ [[https://harrywang.medium.com/developing-tailpages-a-jekyll-template-based-on-tailwind-css-b8b51e60e25b][Tailpages]] (github, [[https://harrywang.me/tailpages/about][demo]])
++ [[https://github.com/zerostaticthemes/jekyll-atlantic-theme][zerostaticthemes/jekyll-atlantic-theme]] (older, but apparently properly done)
++ [[https://github.com/mzrnsh/jekyllwind/commits/main/][mzrnsh/jekyllwind]] also older
+
+*** Features
+
+**** Responsive
+
++ [[https://tailwindcss.com/docs/responsive-design][Five breakpoints]]
+
+**** Accessibility
+
++ [[https://tailwindcss.com/docs/screen-readers][Screen Readers]]
++ [[https://tailwindcss.com/docs/forced-color-adjust][Forced Colors]]
+
+*** Needs
+
++ Explain components
++ Refactor with =@apply= or to ={% include component.html %}=
++ Prettier+Tailwind (sorts classes)
++ Tailwind LSP?
++ Apparently easier to port code from other projects/components using tailwind
+
+* Site Content :noexport:
+
+These scripts were analyzing our [[github:makeroanoke/makeroanoke.org][makeroanoke/makeroanoke.org]] project
+
+** Jekyll
+
+#+headers: :results output code :wrap src grep
+#+begin_src sh :dir www/site
+grep -IrE "\{%" --exclude-dir _site
+#+end_src
+
+#+RESULTS:
+#+begin_src grep
+_includes/mermaid.html:{% if page.mermaid == true %}
+_includes/mermaid.html:{% endif %}
+_includes/contact-list.html:  {% if site.email %}
+_includes/contact-list.html:        <span class="icon icon--email">{% include icon-email.svg %}</span>
+_includes/contact-list.html:  {% endif %}
+_includes/contact-list.html:  {% if site.github_username %}
+_includes/contact-list.html:    <li>{% include icon-github.html username=site.github_username label='GitHub' %}</li>
+_includes/contact-list.html:  {% endif %}
+_includes/contact-list.html:    <li>{% include icon-instagram.html username='make_roanoke' label='Instagram' %}</li>
+_includes/contact-list.html:  {% if site.twitter_username %}
+_includes/contact-list.html:    <li>{% include icon-twitter.html username=site.twitter_username label='Twitter' %}</li>
+_includes/contact-list.html:  {% endif %}
+_includes/contact-list.html:    {% if site.plugins contains 'jekyll-feed' or site.gems contains 'jekyll-feed' %}
+_includes/contact-list.html:        <span class="icon icon--rss">{% include icon-rss.svg %}</span>
+_includes/contact-list.html:    {% endif %}
+_includes/head.html:  {% if site.plugins contains 'jekyll-seo-tag' or site.gems contains 'jekyll-seo-tag' %}
+_includes/head.html:    {% comment %}
+_includes/head.html:    {% endcomment %}
+_includes/head.html:    {% include head-seo.html %}
+_includes/head.html:  {% else %}
+_includes/head.html:    <title>{% if page.title %}{{ page.title | escape }}{% else %}{{ site.title | escape }}{% endif %}</title>
+_includes/head.html:  {% endif %}
+_includes/head.html:  {% if site.data.theme.google_fonts %}
+_includes/head.html:    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family={% for font in site.data.theme.google_fonts %}{{ font.name | replace: ' ', '+' }}{% if font.weights %}:{% endif %}{{ font.weights | remove: ' ' }}{% if forloop.last != true %}|{% endif %}{% endfor %}">
+_includes/head.html:  {% endif %}
+_includes/head.html:  {% if site.plugins contains 'jekyll-feed' or site.gems contains 'jekyll-feed'%}
+_includes/head.html:    {% comment %}
+_includes/head.html:    {% endcomment %}
+_includes/head.html:    {% include head-feed.html %}
+_includes/head.html:  {% endif %}
+_layouts/base.html:  {%- include head.html -%}
+_layouts/base.html:    {%- include header.html -%}
+_layouts/base.html:    {%- include footer.html -%}
+_layouts/base.html:  {% if page.mermaid == true %}
+_layouts/base.html:  {% include mermaid.html %}
+_layouts/base.html:  {% endif %}
+_posts/2023-12-29-test-theme.md~:{% capture notice-text %}
+_posts/2023-12-29-test-theme.md~:{% endcapture %}
+_posts/2024-01-08-instagram.md:{% include instagram.html %}
+#+end_src
+
+* Roam
++ [[id:1fd23f33-ec84-47e2-b326-dce568f1ae83][Web Design]]
