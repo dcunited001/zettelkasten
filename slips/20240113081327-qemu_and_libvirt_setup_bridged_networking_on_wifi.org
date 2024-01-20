@@ -28,7 +28,16 @@ way. Apparently getting Intellij to run goes a little like this.
 For the L2 Bridge method, basic networking works inside the guest. Since
 everything is in the same namespace (see the gist comments), sessions which
 originate from the host to the Guest will attach to the Guest (so ssh doesn't
-work). This could be fixed using a slightly different configuration of ipvtap (maybe L3)
+work).
+
+This could maybe be fixed using a slightly different configuration of ipvtap
+using L3 with routes (and different subnets?).
+
+Simply adding a route to the l2 bridge did not work. Though =ss -ai | grep
+$guestip= shows =ntp= traffic from guest, i'm not sure how move further.
+
+These macvtap/ipvtap devices are extremely useful, but there are very few
+examples online.
 
 ** Using ipvtap (L2 bridge)
 
@@ -36,8 +45,9 @@ See [[https://gist.github.com/gdamjan/ed095763b8c322ee5bed17e11bbaed6d][this gis
 
 #+begin_src sh
 device=wlan0
-ip link add name ipvtap0 link $_device type ipvtap mode l2 bridge
-ip link set up ipvtap
+vtap=ipvtap0
+ip link add name $vtap link $device type ipvtap mode l2 bridge
+ip link set up $ipvtap
 #+end_src
 
 Edit the VM's nic with =virsh edit $vmname=
@@ -67,12 +77,22 @@ set ipv4.gateway 172.20.20.1
 set ipv4.dns 8.8.8.8 8.8.4.4
 #+end_example
 
-Then in guest =nmcli reload= and on the host: =ip addr add dev ipvtap0 $guestIP=
+Then in guest =nmcli reload= and on the host: =ip addr add dev ipvtap0 $ipguest=
 
 And in guest: =nmcli conn up "Not-Wired Connection 1"=
 
 After this, ping something and you should be connected on the same network. Then
 run =dnf install NetworkManager-tui= so you have basic quality of life tools.
+
+*** Teardown
+
+#+begin_src sh
+vtap=ipvtap0
+ipguest=172.20.20.200/24
+ip addr del $ipguest dev $vtap
+ip link set down $vtap
+ip link delete dev $vtap type ipvtap
+#+end_src
 
 *** Ensure stable MAC address
 
