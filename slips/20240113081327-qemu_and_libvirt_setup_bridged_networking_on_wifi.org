@@ -1,0 +1,180 @@
+:PROPERTIES:
+:ID:       a14660c0-4156-4399-86c1-68dea94c25b5
+:END:
+#+TITLE: QEMU and Libvirt: setup bridged networking on wifi
+#+CATEGORY: slips
+#+TAGS:
+
+I got the proprietary =vscode= running in Guix, but it's just way easier this
+way. Apparently getting Intellij to run goes a little like this.
+
+* Resources
+
++ [[https://gist.github.com/gdamjan/ed095763b8c322ee5bed17e11bbaed6d][ipvtap gist]] which should work assuming that libvirt uses network namespaces
+  (see comments for more info on that and DHCP)
++ [[https://github.com/AlexStragies/lsnetdev][AlexStragies/lsnetde]] parse =ip link= output to display topology. it can output
+  graphviz which is super useful
++ [[https://linuxconfig.org/how-to-use-bridged-networking-with-libvirt-and-kvm][How to use bridged networking with libvirt and KVM]]
++ Guix Cookbook: [[https://guix.gnu.org/cookbook/en/html_node/Routed-network-for-libvirt.html][Routed network for libvirt]]
++ [[enp0s29u1u1][docs.bisdn.de]] More comprehensive docs on linux bridges
+
+* Notes
+
++ Using Fedora i3 spin
++ May need to adjust the bridge later
+
+* Networking
+
+For the L2 Bridge method, basic networking works inside the guest. Since
+everything is in the same namespace (see the gist comments), sessions which
+originate from the host to the Guest will attach to the Guest (so ssh doesn't
+work). This could be fixed using a slightly different configuration of ipvtap (maybe L3)
+
+** Using ipvtap (L2 bridge)
+
+See [[https://gist.github.com/gdamjan/ed095763b8c322ee5bed17e11bbaed6d][this gist]]. Use the nettree command to verify the =ipvtap0= topology.
+
+#+begin_src sh
+device=wlan0
+ip link add name ipvtap0 link $_device type ipvtap mode l2 bridge
+ip link set up ipvtap
+#+end_src
+
+Edit the VM's nic with =virsh edit $vmname=
+
+#+begin_src xml
+<interface type="ethernet">
+  <mac address="01:02:03:0a:0b:ff"/>
+  <target dev="ipvtap0" managed="no"/>
+  <model type="virtio"/>
+  <!-- qemu/virt will add these lines (and it's easier that way) -->
+  <!-- <alias name="net0"/> -->
+  <!-- <address type="pci" domain="0x0000" bus="0x01" slot="0x00" function="0x0"/> -->
+</interface>
+#+end_src
+
+Ensure the correct NIC is set in the VM, then start it.
+
+There are tricks with =DHCP= to relay its requests from inside the guest to the
+host's network, but I just set a manual ip4 address. You need to retrieve the
+host IP address on the wireless network first (they must be on the same network)
+
+Run =nmcli conn edit "Not-Wired Connection 1"=
+
+#+begin_example txt
+set ipv4.addresses 172.20.20.200/24
+set ipv4.gateway 172.20.20.1
+set ipv4.dns 8.8.8.8 8.8.4.4
+#+end_example
+
+Then in guest =nmcli reload= and on the host: =ip addr add dev ipvtap0 $guestIP=
+
+And in guest: =nmcli conn up "Not-Wired Connection 1"=
+
+After this, ping something and you should be connected on the same network. Then
+run =dnf install NetworkManager-tui= so you have basic quality of life tools.
+
+*** Ensure stable MAC address
+
+The quickest fix for me was to specify an address in an nmcli connection profile
+using =nmtui=. This would need to be updated on a per-connection basis, but it
+works.
+
+WPA supplicant seems to default to random MACs on my laptop. I'm unsure of
+whether it's BIOS, but i really don't feel like restarting my laptop. In the
+=nmcli= connection profile, a stable mac can be specified and this will be
+inherited by the attached =ipvtap0= device.
+
++ On Guix, the =wpa-supplicant= service doesn't pass a config if one isn't
+  provided in the system definition.
++ The =wpa-supplicant= package has an XML spec for dbus service endpoints at
+  =/etc/dbus-1/system.d/wpa-supplicant.conf=. I tried looking at these with
+  =d-feet=, but i'm at a loss here.
++ Tried =nmcli= commands, but they led me to dbus errors. There were no other
+  config files on the laptop in =/etc/NetworkConnections= besides the system
+  connections
++ Also tried =wpa_gui= with guix shell and I got it to run, but it may not have
+  had the right environment for the sstem dbus or something.
+
+
+
+
+
+** Using bridge
+Because I haven't messed around with libvirt in Guix much (certificate paranoia)
+and I don't have time to customize the system config... then a script needs to
+configure the network temporarily:
+
+Nothing shows in guix for this:
+
+#+begin_src sh
+sudo virsh net-list --all
+#+end_src
+
+*** Virtual Bridge
+
+So I followed the Guix cookbook instructions on setting up the bridged
+network. It doesn't autostart:
+
+#+begin_src sh
+virsh net-define /tmp/virbr0.xml
+# virsh net-autostart virbr0
+virsh net-start virbr0
+#+end_src
+
+But this doesn't work, since I only have one network device and I'd need more
+complex config. I won't have control over the gateway's static routes.
+
+#+begin_src sh
+virsh net-destroy virbr0
+#+end_src
+
+*** Bridge
+
+Add a bridge device. it will need a master device later
+
+#+begin_src sh
+ip link add br0 type bridge
+
+# and verify
+ip link show type bridge
+
+#+end_src
+
+And actually i think I need that virbr0 bridge. A separate device would be
+needed if wifi is to be bridged.
+
+#+begin_src sh
+# virsh net-define /tmp/virbr0.xml
+virsh net-start virbr0
+#+end_src
+
+Set the master device on the bridge
+
+#+begin_src sh
+ethdev=enp0s29u1u1
+
+# ensure up: ip link set $ethdev up
+ip link set $ethdev master br0
+
+# and verify
+ip link show master br0
+
+# undo with: ip link set $ethdev nomaster
+#+end_src
+
+Now, i'm offline :(
+
+#+begin_src sh
+old_ip=172.16.20.24/29
+sudo ip address add dev br0 $old_ip
+
+# and verify
+ip addr show br0
+#+end_src
+
+* Roam
+
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:cf2bd101-8e99-4a31-bbdc-a67949389b40][Virt]]
