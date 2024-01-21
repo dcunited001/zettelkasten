@@ -44,3 +44,71 @@ And see [[https://github.com/vermiculus/graphql.el][vermiculus/graphql.el]] for 
 Kafka launches treesitter workers.
 
 *** GraphQL
+
+
+* Github Actions
+
+** Docs
++ [[https://docs.github.com/en/actions/security-guides/using-secrets-in-github-actions][Using Secrets in Github Actions]]
++ NaCl [[https://libsodium.gitbook.io/doc/public-key_cryptography/sealed_boxes][libsodium sealed boxes]] use X25519 and XSalsa20-Poly1305.
+
+
+** Resources
+
+
+** Topics
+
+*** Secrets
+
+The usage of =crypto_box= implies the key needs a secondary method of encryption
+to be safely stored.
+
+*** Secrets Encryption
+
+Crypto Box
+
+| Key exchange | Encryption | Authentication |
+|--------------+------------+----------------|
+| X25519       | XSalsa20   | Poly1305       |
+
+**** x25519 Support
+
++ [[https://github.com/arekinath/pivy][arekinath/pivy]] can work with =crypto_box= (and it is agent-based YAY!) ... but
+  it's an =ebox= which doesn't use =Curve22519= ... so nevermind. PIV itself
+  [[https://github.com/str4d/age-plugin-yubikey/issues/70][doesn't support x25519]].
+
+***** On x25519
+
+x25519 key exchange offers [[https://libsodium.gitbook.io/doc/public-key_cryptography/authenticated_encryption][authenticated encryption]] (which is probably why it's
+difficult to work into the PIV specification). This is similar to signing, but
+means that someone can validate whether a decryptable secret was encrypted by
+someone (i guess it's similar to signing)
+
+#+begin_quote
+Based on Bob’s public key, Alice can compute a shared secret key. Using Alice’s
+public key and his secret key, Bob can compute the same shared secret key. That
+shared secret key can be used to verify that the encrypted message was not
+tampered with before decryption.
+#+end_quote
+
+If i'm getting this correctly:
+
++ $f : A_{priv}, B_{pub} \rightarrow AB_{shared}$
++ and $f\prime : A_{pub}, B_{priv} \rightarrow AB_{shared}$
++ but also maps between pub/private keys
+
+So, I'm skeptical because symmetry must satisfy critical properties in crypto.
+You want functions that transform domains into ranges where measure is
+near-uniform.
+
++ The maps should "mix" values going from message-space to cipher-space and this
+  should be computationally easy.
++ Entropy should be high in cipher-space (the values are well-mixed)
++ Unmixing the values should be computationally hard without the keys.
++ You can easily create functions that transform a domain into uniform measure
+  which are also easily reversed.
+
+So, you must violate some kinds of symmetry while preserving others. This and
+not all elliptic curves are created equally ... i'm pessimistic, not optimistic.
+I guess the maps $f, f\prime$ above are only used for authentication. IDK
+though.
