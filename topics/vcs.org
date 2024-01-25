@@ -239,6 +239,73 @@ Setup account on [[gerrit.googlesource.com][gerrit.googlesource.com]] by authent
 [[http://ryanflorence.com/deploying-websites-with-a-tiny-git-hook/][Deploying website with git hooks]]
 
 ** Topics
+
+*** Scripting
+
+**** git for-each-ref
+
+
+
+**** [[https://www.viget.com/articles/the-new-git-option-for-rebasing-multiple-branches-at-once/][git rebase --update-refs]]
+
+The =git rebase --update-refs= can be used interactively. This fixes downstream
+branches that point back to an =upstream-to-checkout= range of commits being
+rebased.
+
+
+#+begin_verse
+A---o---o---o---(M)  master
+ \
+  o---o---o---o---(B)  next
+                   \
+                    o---o---(C)  topic
+#+end_verse
+
+#+begin_example sh
+git rebase --interactive --update-refs first~
+#+end_example
+
+
+*** Rebase
+
+
+**** "Grammar"
+
+Not sure why i have so much issue with the "grammar", but I never properly
+learned it. I just restricted its usage to a handful of invocations. I used this
+all the time, but as you can see, [[https://github.com/dcunited001/dc.files.alias/blob/master/func.sh#L51-L57][quite a bit of my usage was redundant]] ... better
+options are now available like =--update-refs=
+
+=git rebase --onto <newbase> <upstream> <checkout/branch>=
+
+These are just coordinates for a tree:
+
++ The =upstream= to =checkout/branch= are a range of commits.
++ The =--onto= is a location in the tree.
+
+=git rebase= has a kind of "VO" grammar, though the "object" is specified as a
+combination of the =<upstream> <branch>= arguments, which is easier to think of
+as:
+
++ =from <upstream> to <branch>= onto...
++ =from <upstream> out to <checkout>= onto...
++ Move =0 to N= to =@= (see below)
+
+Rebase is just a macro, so it will literally checkout the =branch= argument,
+then rewind it to upstream (equiv. to some reset invocation)
+
+#+begin_verse
+o---o---o---o---@  master
+ \
+  o---o---o---o---0  next
+                   \
+                    o---o---N  topic
+#+end_verse
+
+Anyways, this probably doesn't account for edge cases.
+
+****
+
 *** Refs
 
 **** commit-ish and tree-ish
