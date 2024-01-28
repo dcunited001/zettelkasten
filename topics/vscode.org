@@ -11,6 +11,55 @@
 
 * Topics
 
+** vscdb
+
++ vscode stores state as blobs in a single-table vscdb sqlite database
+
+** secretStorage
+
+[[https://cycode.com/blog/exposing-vscode-secrets/][VS Code’s Token Security: Keeping Your Secrets… Not So Secretly]]
+
+#+begin_quote
+TLDR:
+
++ be wary of 3rd party extensions and/or VSCode builds.
++ auto-expire your sessions if possible
++ it's a hell of a lot better than most electron apps (jesus christ!)
+#+end_quote
+
+IMO, it seems to take care to handle your secrets fairly well, though there be
+dragons ... when are there not? Still, the article provides some good
+information
+
++ vscode provides each extension's context with a secretStorage object
++ it mediates access to the OS keychain (potential implementation problems)
+  using node.js =KeyTar=
++ It does restrict mutation/access to these objects to isolate their
+  interactions with the rest of the software (in theory)
+
+Nevermind, vscode is apparently using a combination of the =machineid= and the
+VSCode executable path.
+
++ The blog demonstrates calling unwrap twice on [[https://dtantsur.github.io/rust-openstack/openssl/hash/struct.MessageDigest.html][openssl::hash::MessageDigest]]
+  from a node process sharing the VSCode executable. It sources the extensions
+  (into a single context?) and siphons the secrets out that way
++ The keychain is still isolated from other applications ... *if* your OS is
+  configured properly. MacOS isolates this fairly well (AFAIK... which isn't
+  much). I don't trust my keychain. So on MacOS, you'll at least get notified
+  that your keychain is being accessed and it isn't granted access to all of
+  your keychain.
++ On Linux, it's absolutely possible to use the keychain incorrectly. There may
+  be other issues, depending on the VSCode or Codium build.
+
+VSCode should:
+
++ provide a means to survey/log each's extensions access state.
++ allow for PIV and/or GPG-based layers of encryption on top. This would
+  preferably use something like OpenSSL or AGE.
++ VSCode should not handle PIN requests and, optionally via extra configuration,
+  should warn users if they're PIN interactions are using weak applications or
+  inexclusive access (not sure if it's possible)
+
 * Issues
 ** Guix
 
