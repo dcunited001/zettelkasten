@@ -1,0 +1,127 @@
+:PROPERTIES:
+:ID:       b1dab949-e7d3-47cb-a22c-111572298c94
+:END:
+#+TITLE:     Magit: Rebase in Emacs
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+#+OPTIONS: ':nil *:t -:t ::t <:t H:3 \n:nil ^:t arch:headline
+#+OPTIONS: title:nil author:nil c:nil d:(not "LOGBOOK") date:nil
+#+OPTIONS: e:t email:nil f:t inline:t num:t p:nil pri:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:t todo:t |:t
+#+OPTIONS: toc:nil
+
+#+SELECT_TAGS:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+
+#+STARTUP: inlineimages
+
+#+PROPERTY: header-args :eval never-export
+# #+OPTIONS: texht:t
+
+# formatting
+#+LATEX_CLASS: article
+#+LATEX_CLASS_OPTIONS: [a4paper,portrait]
+#+LATEX_HEADER_EXTRA: \usepackage[margin=1.0in]{geometry}
+#+LATEX_HEADER: \setlength{\parskip}{0.1em}
+
+# tables
+#+LATEX_HEADER_EXTRA: \usepackage{tabularx}
+#+LATEX_HEADER_EXTRA: \usepackage{tabu,longtable}
+#+LATEX_HEADER_EXTRA: \usepackage{booktabs}
+#+LATEX_HEADER_EXTRA: \usepackage[table]{xcolor}
+#+LATEX_HEADER_EXTRA: \definecolor{lightgray}{gray}{0.92}
+
+#+begin_quote
+Commands in the table starting with =-= are prefixed by =git-rebase=.
+#+end_quote
+
+* Continue or Abort
+
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|l|c|c|l|
+|---------+---------------+------+------+------------------------------------------------------|
+| key     | command       | opts | args | description                                          |
+|---------+---------------+------+------+------------------------------------------------------|
+| C-c C-c | -continue     |      |      | tell Git to make it happen                           |
+| C-c C-k | -abort        |      |      | tell Git that you changed your mind, i.e., abort     |
+| g       | revert-buffer |      |      | reread =.git/rebase-merge/git-rebase-todo= from disk |
+|---------+---------------+------+------+------------------------------------------------------|
+
+* Basic movement
+
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|l|c|c|l|
+|-------+---------------------+------+------+-----------------------------------------------------|
+| key   | command             | opts | args | description                                         |
+|-------+---------------------+------+------+-----------------------------------------------------|
+| S-SPC | scroll-down-command |      |      | scroll buffer down                                  |
+| n     | forward-line        |      |      | move point to next line                             |
+| p     | -backward-line      |      |      | move point to previous line                         |
+| SPC   | -show-or-scroll-up  |      |      | show commit in another buffer                       |
+| RET   | -show-commit        |      |      | show commit in another buffer and select its window |
+| C-_   | -undo               |      |      | undo last change                                    |
+| ?, h  | describe-mode       |      |      |                                                     |
+|-------+---------------------+------+------+-----------------------------------------------------|
+
+* Basic Interactive Rebase
+
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|l|c|c|l|
+|-------------------+-----------------+------+----------+-------------------------------------------|
+| key               | command         | opts | args     | description                               |
+|-------------------+-----------------+------+----------+-------------------------------------------|
+| M-p, M-\uparrow   | -move-line-up   |      |          | move commit at point up                   |
+| M-n, M-\downarrow | -move-line-down |      |          | move commit at point down                 |
+| k, C-k            | -kill           |      |          | drop at point                             |
+| c                 | -pick           |      | <commit> | use commit                                |
+| r, w              | -reword         |      | <commit> | use commit, but edit the commit message   |
+| m                 | -edit           |      | <commit> | use commit, but stop for amending         |
+| s                 | -squash         |      | <commit> | use commit, but meld into previous commit |
+|-------------------+-----------------+------+----------+-------------------------------------------|
+
+* Advanced Interactive Rebase
+
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|l|c|c|l|
+|-----+---------+---------------+------------+--------------------------------------------------------------------------|
+| key | command | opts          | args       | description                                                              |
+|-----+---------+---------------+------------+--------------------------------------------------------------------------|
+| z   | -noop   |               |            | add noop action at point                                                 |
+| y   | -insert |               |            | insert a line for an arbitrary commit                                    |
+| f   | -fixup  | [-C \vert -c] | <commit>   | like =squash= but keep only the previous commit's log message (see note) |
+| x   | -exec   |               | <command>  | run command (the rest of the line) using shell                           |
+| b   | -break  |               |            | stop here. continue rebase with =git rebase --continue=                  |
+|-----+---------+---------------+------------+--------------------------------------------------------------------------|
+
++ git-rebase-fixup :: keeps only the previous commit's log message, unless =-C=
+  is used, in which case keep only this commit's message; =-c= is same as =-C=
+  but opens the editor
+  
+* Refs and Labels
+
+#+LATEX: \taburowcolors[2]2{lightgray..white}
+#+ATTR_LATEX: :environment tabu :font \footnotesize :placement [h!] :align |r|l|c|c|l|
+|-----+-----------------------+--------+-----------------------+----------------------------------|
+| key | command               | opts   | args                  | description                      |
+|-----+-----------------------+--------+-----------------------+----------------------------------|
+| l   | -label                |        | <label>               | Label current HEAD with a name   |
+| t   | -reset                |        | <label>               | Reset HEAD to a label            |
+| M M | -merge                | \cdots | <label> [# <oneline>] | Create a merge commit            |
+| M t | -merge-toggle-editmsg |        |                       | Toggle invoking editor on merge. |
+| u   | -update-ref           |        | <ref>                 |                                  |
+|-----+-----------------------+--------+-----------------------+----------------------------------|
+
++ git-rebase-update-ref :: track a placeholder for the =<ref>= to be updated to
+  this position in the new commits. The =<ref>= is updated at the end of the
+  rebase
++ git-rebase-merge :: With no args, this adds a merge commit with the original
+  with the merge commit message -- or the oneline if no original merge commit
+  was specified; use =-c <commit>= to reword the commit message. Accepts these
+  options: =[-C <commit> \vert -c <commit>]=.
++ git-rebase-merge-toggle-editmsg :: Toggle whether an editor is invoked when
+  performing the merge at point.  This could potentially cause problems if you
+  didn't intentially toggle it.
