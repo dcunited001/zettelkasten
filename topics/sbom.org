@@ -1,0 +1,180 @@
+:PROPERTIES:
+:ID:       563e2fb8-df10-485e-bc41-3d56d2bcccda
+:END:
+#+TITLE: SBOM
+#+DESCRIPTION: 
+#+TAGS:
+
+* Docs
+
+* Resources
+
+* Supply Chain
+
+** Projects
+
++ [[https://owasp.org/www-project-dependency-track/][Dependency-Track]]: reduce software supply-chain exposure with component
+  analysis on SBOM metadata
+
+** Standards
++ [[https://spdx.dev][SPDX]] (Linux Foundation)
++ [[https://cyclonedx.org][CycloneDX]] (OWASP)
+
+** Software Verification
++ [[https://owasp.org/scvs][SCVS]]
++ [[https://slsa.dev][SLSA]]
+
+** Resources
++ [[https://owasp.org/www-community/Component_Analysis#tools-listing][Component Analysis Tools]] (OWASP)
+
+* Topics
+
+* Issues
+
+* SPDX
+** Docs
+
+** Resources
+
+** Topics
+
+It's unclear how generated content would be treated; jekyll does not
+include a LICENSE in generated sites, but it defaults to MIT for
+generated themes
+
+This is a little silly, since it's regarding mixing a theme's sources,
+but this gives insight into some other issues for SBOM and SPDX. I'm
+not an expert here -- as a programmer, I'd just always make a
+package. So this is speculative.
+
+*** Mixing License Types
+
+In a single source tree, like an implementation of a theme that
+requires copying files, mixing license is a bit complicated. Using
+SPDX requires less comments to cite attribution.
+
++ add an SPDX that accounts for your project's license and the
+  dependencies of software it redistributes 
++ add SPDX attribution headers to all your files.
++ import files from theme and add the attribution for it (and it's
+  dependencies? if mixed source tree, then yes) to the main SPDX file.
++ commit, then delete files that are unnecessary
++ add SPDX attribution to each file
++ when they are changed, maybe indicate additional copyright mark
+  under the same licence
++ prefer to remove & recreate files where possible, but this is tricky
+  to do properly, since you'll inevitably copy
+  
+**** Alternate Approaches
+
+***** Git Submodule + Stow
+
+Another way to do this would be to use a git submodule and stow, then
+they are sufficiently separated... but that's complicated and hard to
+explain.
+
+This is technically distributed by the Git repository.
+
+***** Git Orphan Branch + Citation
+
+This could be a little sloppy, but something based on it /could/
+work. It's only really relevant for mixed source trees with different
+licenses. If your initial or early commits permit, you could also
+descend from an early commit, instead of using an orphan.
+
+The orphan branch and your changes to the mixed source tree should
+have file paths that are somewhat compatible. e.g.
+
++ you want only half the theme files
++ or the project is mostly confined to to a subdirectory where you
+  plan on substatially modifying its behavior (particularly using a
+  plugin interface). in this case, file links or git submodules for
+  your own project to exist within your imported dependencies source
+  tree are far simpler
+
+Anyways, this is what would work, maybe
+
++ ensure your project has a =LICENSE= before you commit content from
+  the project with with the second license type
++ add the new content to an orphan branch in its in original form,
+  then copy it over.
++ in the README, attribute the license, potentially adding
+  =LICENSE.otherproject= and reference the hash of the orphan branch
+  and it's location on a git server.
++ SPDX comments would be preferred
+
+This has a lot of problems.
+
+***** LICENSE.old
+
+This may work if you add header comments, as it really just augments SPDX
+
+*** SPDX License Validation
+
+SPDX and SBOM's are really supposed to account for the problem of
+"what's in this anyways", so you may need to validate file content,
+but this is part of the value that Nix/Guix deliver. Mostly one hash
+is all you need, given the build is deterministic. If you've seen that
+hash and you can validate the hashes of the package derivations
+... it's beyond impossible to fake.  So the best answer to this is to
+use something with deterministic builds like Nix/Guix. A build can be
+run any number of times and neither it's hashes nor its derivation's
+inputs will change. Build artifacts and the processes that created
+them (so long as source objects are retrievable) will, in theory,
+always be recreatable, no matter how complicated your build targets
+are -- which is critical for low-level software written to build to
+the myriad of novel silicon being produced like ARM, RISC, Optical,
+etc.
+
+This is critical to distribute, validate and archive software for IoT
+devices. If the builds were deterministic -- and if device that
+returns a specific hash and can be trusted to return its true software
+hash -- then you can *know* with certainty the process used to build
+the software on that device. 
+
+**** Speeding up validation of mixed source trees
+
+With mixed source files, there are some issues for SBOM validation, if
+attributions are noted. The licenses are designed for extension. Git
+commit hashes get you 98% of the way there (probably), but they aren't
+sufficient, especially when the project is forked or is a derivative
+work on mixed files. Files may be added that fake a license and trick
+you into assuming some files are associated with a specific software
+product. It's much, much better to avoid needing to inspect package
+contents. This shouldn't present problems for too many projects.
+
+It also presents problems for performance, since any SPDX validation
+process is a separate operation -- you have to extract/read files for
+other operations already, but these operations can't be entangled with
+the SPDX validation.
+
+mixing source trees of different license types should be
+avoided. Obviously, it's complicated, but it also makes SPDX
+complicated for source code consumers who want to validate
+licenses/contents for a builds tree of dependencies. At each package,
+file references need to be verified.
+
+A way to improve performance (for validation of metadata only) would
+be to add a single SPDX metadata tag containing a hash of the SPDX
+attribution at the top of each file (first line, ideally...) then add
+a hidden file at the subdirectory root. When the SPDX lines are
+changed, then the hash is recalculated. The hidden file contains a
+hash of hashes for the directories subcontents.
+
+Unfortunately, this doesn't speed much up: checking the hash on the
+file-based SPDX attribution content for mixed source trees still
+requires opening each file -- the file open operation that's
+slow.
+
+It's possible that you could can bundle the each file's contents
+inside a =tar.gz= "envelope", placing the SPDX comments outside the
+compressed files. Then you only open one file. Or you can store
+locations to the files in =tar.gz= which is fast enough for emacs to
+open large RPMs and =tar.gz= files without delay ... Emacs can even
+search within these files (somehow?). It may just extract them to RAM,
+but some operations are limited.
+
+* Roam
+
+
+

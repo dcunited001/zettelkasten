@@ -1,0 +1,368 @@
+#+TITLE:     Clojure: Old notes
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+From 3/2022
+
+* Clojure Setup
+
+** Notes from Kate
+
++ https://github.com/thheller/reagent-react-native
++ https://github.com/thheller/reagent-expo
++ https://github.com/thheller/fulcro-expo
+
++ https://github.com/thheller/wasm-pack-cljs
++ https://github.com/thheller/cljs-protobuf
+
+3 different ways to pack up CLJS deps with shadow
+
++ https://github.com/thheller/cljs-jsmodules-test code splitting (is there a better example?
++ https://github.com/thheller/code-splitting-clojurescript
++ https://code.thheller.com/blog/shadow-cljs/2019/03/03/code-splitting-clojurescript.html
+
+maybe
+
++ https://github.com/thheller/shadow-experiments
++ https://github.com/noprompt/meander
++ https://jacobian.org/2009/nov/10/what-to-write/
+
+** Environment Setup
+
+*** TODO port in relevant info from markdown doc
+
+
+*** Three main options to cover lein's bases:
++ Lein
++ Boot
++ Clojure CLI
+
+*** Setup environment
+
+install language and tooling:
+
+#+begin_src shell :tangle no
+sudo pacman -Syu clojure clojure-lsp-bin leiningen
+sudo pamac install boottD
+#+end_src
+
+setup practicalli
+
+#+begin_src shell :tangle no
+git clone git@bitbucket.org:dcunited001/dotfiles/clojure $HOME
+#+end_src
+
+update practicalli
+
+#+begin_src shell :tangle no
+# pulls in new practicalli changes into dated file, so they can be diffed
+clojure -M:project/outdated > $(date +%Y%m%d).org
+#+end_src
+
+
+** Emacs Setup
+
+** Project Setup
+
+
+
+* ClojureScript Setup
+
+** Main Environment
+
+Setup ~cljs~ and ~shadow-cljs~
+
+** Emacs Setup
+
+*** TODO check for the following Clojure emacs packages
++ async
++ ob-async
++ ob-clojurescript
++ org-babel-eval-in-repl
++ eval-in-repl
+
+*** TODO other misc emacs packages/configs
++ org-shift-select
+
+** Reagent Template Project Setup
+
+use for a thick-client, singlepage frontend only app, with no reliance on a
+custom API.
+
+** [[https://github.com/fulcrologic/fulcro-template#connect-to-the-cljs-nrepl][Fulcro Template]] Project Setup
+
+The Fulcro framework is more appropriate for projects with a clj API backend and
+a cljs-based reagent frontend. By default, Fulcro doesn't use Hiccup; including
+Hiccup breaks some of its server-side rendering capabilities =/
+
++ Notes on basic usage below.
++ Refer to the link above for more detailed usage.
++ Refer to the [[https://book.fulcrologic.com/#_about_this_book][Fulcro Developer Guide]] for the most detail
+
+#+begin_src shell :tangle no
+git clone --depth 1 -o fulcro-template https://github.com/fulcrologic/fulcro-template.git $DEV_HOME_CLOJURE/fulcro-app
+cd fulcro-app
+
+# The shadow-cljs compiler is a dependency.
+yarn install # or: npm install
+
+# 1. Start shadow-cljs frontend compilation server:
+npx shadow-cljs server
+# 2.: Visit the shadow-cljs compile server UI at http://localhost:9630
+#     and enable the "main" and optionally "workspaces" builds
+# 3. Start the backend server:
+#    (Note: for proper development you will want to start it in a nREPL-based
+#     REPL, see the detailed instructions for "The API Server" below.)
+clj -A:dev -J-Dtrace -J-Dghostwheel.enabled=true
+user=> (require 'development)
+user=> (in-ns 'development)
+development=> (start)
+# after modifications of the backend code run: `(restart)`
+# 4. Visit the application at http://localhost:3000
+
+# (Optional): Visit the Workspaces UI at http://localhost:3000/wslive.html
+# (Optional): Run tests via `npm run client/test` and visit http://localhost:8022
+#+end_src
+
+** React Native
+
+Luca C has [[https://luca.cambiaghi.me/posts/react-native-cljs.html][A Good Blog]] on react native with CLJS
+
++ The article covers writing a [[https://github.com/lccambiaghi/sudoku-cljsrn][Sudoku App]] for iphone (and how to configure the environment)
++ The blog itself is written with [[https://github.com/yosevu/shadow-static][Shadow Static]] a Shadow CLJS tool for static pages.
+
+* Clojars
+
+** TODO Setup Environment for building clojars
+
++ [X] install Clojure Compiler: ~sudo pamac install closure-compiler~
++ [ ] install ~lein doo~? or do i use... WTF_DO_I_USE_FOR_THIS?
+
+
+** Contributing a Libarary to [[https://github.com/cljsjs/packages][cljsjs/packages]]
+
+*** TODO create a new space in my fork of *cljsjs/packages* and symlink
+
++ [ ] update scripts to include basic error handling for args/etc
++ [ ] check for more official tooling from clojars/cljs/cljsjs
++ [ ] if no tooling exists, create a template to be copied
+
+#+begin_src shell :tangle (concat (file-name-as-directory (getenv "DEV_HOME_CLOJURE")) "scripts/cljsjs.sh")
+cljsjs-create-new-paths() {
+    new_cljsjs_path=$DEV_HOME_CLJSJS/packages/$1/resources/cljsjs/$1/common
+    mkdir -p $new_cljsjs_path
+
+    echo CREATED: $new_cljsjs_path
+}
+
+cljsjs-create-links() {
+    new_cljsjs_path=$DEV_HOME_CLJSJS/packages/$1
+    new_cljsjs_link=$DEV_HOME_CLOJURE/clojars/cljsjs/$1
+    ln -s $new_cljsjs_path $new_cljsjs_link
+
+    echo LINKED: $new_cljsjs_link
+    echo TO: $new_cljsjs_path
+}
+
+cljsjs-create-minimal-files() {
+    new_cljsjs_path=$DEV_HOME_CLJSJS/packages/$1
+    touch $new_cljsjs_path/build.boot
+    touch $new_cljsjs_path/README.md
+}
+#+end_src
+
+*** TODO learn to put together a Clojar
++ [ ] refer to the cljsjs documentation on [[https://github.com/cljsjs/packages/wiki/Creating-Packages][Creating Packages]]
++ [ ] refer to the cljsjs documentation on [[https://github.com/cljsjs/packages/wiki/Creating-Externs][Creating Externs]]
++ [ ] create a branch & subdir in the cljsjs packages project
++ [ ] use ~ln -s~ to create a link from within ~$DEV_HOME/clojure/clojars~ to ~$DEV_HOME/clojars/cljsjs/packages/$LIB_NAME~
++ [ ] use ~unpkg~ or similarto include a dependable ~./dist/~ build of the js
+  lib in ~$LIB_HOME/~
++ [ ] create the directory structure for the project
++ [ ] use [[https://github.com/jmmk/javascript-externs-generator/][Javascript Externs Generator]] to prep a js lib for Google Closure
++ [ ] create the externs definition
++ [ ] add ~build.boot~
++ [ ] add ~README.md~
+
+*** TODO learn to push a clojar
++ [ ] Assert that the clojar libary is ready for external use
++ [ ] integrate the repo into the [[https://github.com/cljsjs/packages][cljsjs packages]] project
++ [ ] Follow the Clojars tutorial
++ [ ] build tooling(githooks?) to notify/rebuild the externs declaration & the
+  Clojar on upstream lib releases
+
+*** TODO create tooling for event-driven notifications to rebuild scripts for packages pushed to clojars
+
+i absolutely do not want to be on the hook for this shit just because i want to use a library with ClojureScript
+
+*** TODO create clojars for Uber's frameworks
++ [ ] luma-gl
++ [ ] math-gl
++ [ ] deck-gl
+
+** My Clojars
+
+** My Cljsjs Packages
+
+*** [[https://github.com/uber-web/math.gl][math.gl]]
+*** TODO cljsjs clojar for [[https://github.com/visgl/luma.gl][luma.gl]]
+*** TODO cljsjs clojar for [[https://github.com/visgl/deck.gl][deck.gl]]
+*** TODO cljsjs clojar for loaders.gl
+*** TODO cljsjs clojar for vis.gl
+*** TODO cljsjs clojar for deck.gl-data
+
+
+* Reference projects
+
+** old script to use on the markdown formatted list:
+
+#+begin_src shell :tangle no
+cat README.md | grep -e "- CLONE: " | sed "s/^- CLONE: //g" | xargs -n2 git clone`
+#+end_src
+
+
+** TODO discovery script for producting a list of files/commands to reinit git repos
+
+#+begin_src shell :tangle no
+echo "you complet me"
+#+end_src
+
+** Clone script
+
+Does Github have some concept of "repo playlists" or lists of repo's I can easily clone at once
+
+#+begin_src shell :tangle (concat (file-name-as-directory (getenv "DEV_HOME_CLOJURE")) "scripts/clones.sh")
+
+### Finance Examples
+
+git clone https://github.com/daveduthie/mortgage-calc $DEV_HOME_CLOJURE/finance/mortgage-reagent2
+git clone https://github.com/Romacoding/Mortgage-Calculator $DEV_HOME_CLOJURE/finance/mortgage-reagent
+git clone https://github.com/yangaxnkohla/mortgage-calculator $DEV_HOME_CLOJURE/finance/mortgage-calculator
+git clone https://github.com/clojure-finance/clojure-backtesting $DEV_HOME_CLOJURE/finance/clojure-backtesting
+
+## Statistics
+
+git clone https://github.com/ptaoussanis/tukey $DEV_HOME_CLOJURE/dsci/tukey
+git clone https://github.com/bfollek/baseball $DEV_HOME_CLOJURE/dsci/baseball
+git clone https://github.com/uncomplicate/bayadera $DEV_HOME_CLOJURE/dsci/bayadera
+
+## Science
+
+git clone https://github.com/intermine/bluegenes $DEV_HOME_CLOJURE/dsci/bluegenes
+git clone https://github.com/saidone75/wa-tor $DEV_HOME_CLOJURE/dsci/wa-tor-population-sim
+
+## Libraries
+
+git clone https://github.com/pbaille/question-mark $DEV_HOME_CLOJURE/lib/question-mark
+git clone https://github.com/defold/defold $DEV_HOME_CLOJURE/lib/defold
+
+## Clojure
+
+git clone https://github.com/clojure/clojure $DEV_HOME_CLOJURE/tools/clojure
+
+## Tools
+
+git clone https://github.com/technomancy $DEV_HOME_CLOJURE/tools/leiningen
+git clone https://github.com/BetterThanTomorrow/calva $DEV_HOME_CLOJURE/tools/calva
+git clone https://github.com/clojure-emacs/orchard $DEV_HOME_CLOJURE/tools/orchard
+git clone https://github.com/seancorfield/dot-clojure $DEV_HOME_CLOJURE/tools/dot-clojure
+git clone https://github.com/practicalli/clojure-deps-edn $DEV_HOME_CLOJURE/tools/clojure-deps-edn
+git clone https://github.com/stathissideris/positano $DEV_HOME_CLOJURE/tools/positano
+git clone https://github.com/yosevu/shadow-static $DEV_HOME_CLOJURE/tools/shadow-static
+
+## Shadow CLJS
+git clone https://github.com/thheller/shadow-cljs $DEV_HOME_CLOJURE/tools/shadow-cljs
+
+## Learning
+
+git clone https://github.com/exercism $DEV_HOME_CLOJURE/learn/exercise-clojure
+git clone https://github.com/functional-koans/clojure-koans $DEV_HOME_CLOJURE/learn/clojure-koans
+
+## Docs
+
+git clone https://github.com/fulcrologic/fulcro-developer-guide $DEV_HOME_CLOJURE/tools/fulcro-developer-guide
+git clone https://github.com/shadow-cljs/shadow-cljs.github.io $DEV_HOME_CLOJURE/tools/shadow-cljs-developer-guide
+
+## Luminus
+
+git clone https://github.com/luminus-framework/luminus-template $DEV_HOME_CLOJURE/web/luminus-template
+git clone https://github.com/luminus-framework/guestbook $DEV_HOME_CLOJURE/web/luminus-guestbook
+git clone https://github.com/luminus-framework/examples $DEV_HOME_CLOJURE/web/luminus-examples
+git clone https://github.com/magnars/confair $DEV_HOME_CLOJURE/web/confair
+
+## Native
+
+git clone https://github.com/lccambiaghi/sudoku-cljsrn $DEV_HOME_CLOJURE/native/sudoku-cljsrn
+git clone https://github.com/thheller/reagent-expo $DEV_HOME_CLOJURE/native/shadow-reagent-expo
+git clone https://github.com/thheller/fulcro-expo $DEV_HOME_CLOJURE/native/shadow-fulcro-expo
+
+## Web Examples
+
+### `shadow-cljs` examples
+
+git clone https://github.com/shadow-cljs/quickstart-browser $DEV_HOME_CLOJURE/web/examples/quickstart-browser
+git clone https://github.com/mhuebert/shadow-re-frame $DEV_HOME_CLOJURE/web/examples/shadow-re-frame
+git clone https://github.com/Day8/re-frame $DEV_HOME_CLOJURE/web/examples/re-frame
+git clone https://github.com/Day8/re-frame-trace $DEV_HOME_CLOJURE/web/examples/re-frame-trace
+git clone https://github.com/jacekschae/shadow-reagent $DEV_HOME_CLOJURE/web/examples/shadow-reagent
+git clone https://github.com/jacekschae/shadow-firebase $DEV_HOME_CLOJURE/web/examples/shadow-firebase
+git clone https://github.com/ahonn/shadow-electorn-starter $DEV_HOME_CLOJURE/web/examples/shadow-electorn-starter
+git clone https://github.com/jacekschae/conduit $DEV_HOME_CLOJURE/web/examples/conduit
+git clone https://github.com/quangv/shadow-re-frame-simple-example $DEV_HOME_CLOJURE/web/examples/shadow-re-frame-simple-example
+git clone https://github.com/teawaterwire/cryptotwittos $DEV_HOME_CLOJURE/web/examples/cryptotwittos
+git clone https://github.com/loganpowell/shadow-proto-starter $DEV_HOME_CLOJURE/web/examples/shadow-proto-starter
+git clone https://github.com/manuel-uberti/boodle $DEV_HOME_CLOJURE/web/examples/boodle
+git clone https://github.com/iku000888/shadow-cljs-kitchen-async-puppeteer $DEV_HOME_CLOJURE/web/examples/shadow-cljs-kitchen-async-puppeteer
+git clone https://github.com/baskeboler/cljs-karaoke-client $DEV_HOME_CLOJURE/web/examples/cljs-karaoke-client
+git clone https://github.com/flexsurfer/ClojureRNProject $DEV_HOME_CLOJURE/web/examples/ClojureRNProject
+git clone https://github.com/jacekschae/shadow-cljs-devcards $DEV_HOME_CLOJURE/web/examples/shadow-cljs-devcards
+git clone https://github.com/jacekschae/shadow-cljs-tailwindcss $DEV_HOME_CLOJURE/web/examples/shadow-cljs-tailwindcss
+
+### Reagent
+
+git clone https://github.com/reagent-project/reagent-utils $DEV_HOME_CLOJURE/reagent/reagent-utils
+git clone https://github.com/reagent-project/reagent-forms $DEV_HOME_CLOJURE/reagent/reagent-forms
+git clone https://github.com/reagent-project/reagent-cookbook $DEV_HOME_CLOJURE/reagent/reagent-cookbook
+git clone https://github.com/reagent-project/reagent-template $DEV_HOME_CLOJURE/reagent/reagent-template
+git clone https://github.com/reagent-project/reagent $DEV_HOME_CLOJURE/reagent/reagent
+git clone https://github.com/reagent-project/reagent-frontend-template $DEV_HOME_CLOJURE/reagent/reagent-frontend-template
+
+### React-vis Examples
+
+git clone https://github.com/chrismurrph/fulcro-react-vis $DEV_HOME_CLOJURE/web/examples/fulcro-react-vis
+git clone https://github.com/mooreryan/cljs_reagent_react_vis_blog_materials $DEV_HOME_CLOJURE/templates/cljs-react-vis
+
+### Fulcro
+
+git clone https://github.com/fulcrologic/fulcro $DEV_HOME_CLOJURE/fulcro/fulcro
+git clone https://github.com/fulcrologic/fulcro-rad $DEV_HOME_CLOJURE/fulcro/fulcro-rad
+git clone https://github.com/fulcrologic/fulcro-rad-semantic-ui $DEV_HOME_CLOJURE/fulcro/fulcro-rad-semantic-ui
+git clone https://github.com/fulcrologic/fulcro-spec $DEV_HOME_CLOJURE/fulcro/fulcro-spec
+git clone https://github.com/fulcrologic/fulcro-rad-datomic $DEV_HOME_CLOJURE/fulcro/fulcro-rad-datomic
+git clone https://github.com/fulcrologic/fulcro-i18n $DEV_HOME_CLOJURE/fulcro/fulcro-i18n
+git clone https://github.com/fulcrologic/fulcro-native-template $DEV_HOME_CLOJURE/fulcro/fulcro-native-template
+git clone https://github.com/fulcrologic/fulcro-expermental-template $DEV_HOME_CLOJURE/fulcro/fulcro-experimental-template
+git clone https://github.com/fulcrologic/grokking-fulcro $DEV_HOME_CLOJURE/fulcro/grokking-fulcro
+git clone https://github.com/fulcrologic/fulcro-inspect $DEV_HOME_CLOJURE/fulcro/fulcro-inspect
+git clone https://github.com/fulcrologic/fulcro-template $DEV_HOME_CLOJURE/fulcro/fulcro-template
+git clone https://github.com/fulcrologic/fulcro-rad-sql $DEV_HOME_CLOJURE/fulcro/fulcro-rad-sql
+git clone https://github.com/fulcrologic/fulcro-websockets $DEV_HOME_CLOJURE/fulcro/fulcro-websockets
+git clone https://github.com/fulcrologic/fulcro-native $DEV_HOME_CLOJURE/fulcro/fulcro-native
+git clone https://github.com/fulcrologic/aws-logs $DEV_HOME_CLOJURE/fulcro/aws-logs
+git clone https://github.com/fulcrologic/fulcro-garden-css $DEV_HOME_CLOJURE/fulcro/fulcro-garden-css
+git clone https://github.com/fulcrologic/fulcro-rad-tutorial $DEV_HOME_CLOJURE/fulcro/fulcro-rad-tutorial
+
+## Bioinformatics
+
+git clone https://github.com/mooreryan/clj-parse-fasta $DEV_HOME_CLOJURE/bio/clj-parse-fasta
+git clone https://github.com/mooreryan/derep $DEV_HOME_CLOJURE/bio/derep
+#+end_src 
+
+
+
+### CLJFS
+
+GUI in clojure using a scene graph
+
+git clone https://github.com/cljfx/cljfx

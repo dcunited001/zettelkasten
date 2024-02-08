@@ -1,0 +1,279 @@
+:PROPERTIES:
+:ID:       87874ebe-b9c7-4243-a018-4e940b993adc
+:END:
+#+TITLE: Guix: Configure udev to lock screen on yubikey removal
+#+CATEGORY: slips
+#+TAGS:  
+
+I just realized that what I'm going for is close to the [[https://www.youtube.com/watch?v=9BW-mbC7Xag&pp=ygUMc3VuIHJheSB0aGlu][hotdesking on Sun's
+sadly failed Solaris-based Sun Ray thin-clients]].
+
+* Docs
+
+* Udev
+
+For udev as a package in Guix, there are a few options:
+
++ assume the script exists and find out later in =/var/log=
++ inline the script if it's reasonably small. executing it should be restricted
+  and specifying the file permissions is something of a complication, since you
+  need to call procedures on the guile file objects ... or add a phase before
+  install that runs =chmod= (... the rubber ducky effect)
++ use =extra-special-file= which doesn't work here (and may be complicated to do
+  from a package)
++ for a personal project, just read the script from the file system. however,
+  you still need to adjust the ownership/permissions, which causes problems in
+  my repo and may not be preserved when cloning.
++ create a repository for it, which is way too much overhead
++ use an orphan branch for the package source... confusing, versioned only by
+  git references and potentially very difficult to maintain
+
+** Testing
+
+*** Udev
+
+Finding device info and testing
+
+#+begin_example sh
+udevadm info --query=property --property=ID_VENDOR,ID_VENDOR_ID --name=/dev/bus/usb/001/008
+udevadm info -a -n sdb
+udevadm info -q all $ykdev
+#+end_example
+
+*** Loginctl
+
+**** Listing Sessions to lock
+
+This emits quotes and requires =jq= which IMO root need not have by default
+(does it really matter though?)
+
+#+begin_example sh
+loginctl list-sessions -o json -P uid \
+  | jq '.[] | @text "\(.session) \(.uid)"'
+  | tr -d'"'
+#+end_example
+
+Another option (apparently this easily works over Tramp SSH)
+
+#+begin_src sh
+loginctl show-user 1000 \
+    | grep -e "^Sessions=" \
+    | sed -e 's/Sessions=//g'
+#+end_src
+
+#+RESULTS:
+: 2
+
+=loginctl= options allow you to conduct this filtering, though a script needs to
+query on pscsd, scdaemon, etc... to obtain the correct user's id for the removed
+Yubikey device. 
+
+#+begin_src sh
+loginctl show-user $(id -u) --property Sessions --value
+#+end_src
+
+#+RESULTS:
+: 2
+
+** Rules
+
+This can be inlined in the system. I need to double-check the logic of the rules
+here.
+
+#+begin_src scheme
+(define-public %dc-ylock-udev
+  (udev-rule
+   "80-yubikey-lock.rules"
+   "ACTION==\"remove\", ENV{ID_VENDOR}==\"Yubico\",
+ENV{ID_VENDOR_ID}==\"1050\",
+ENV{ID_MODEL_ID}==\"0010|0111|0112|0113|0114|0115|0116|0401|0402|0403|0404|0405|0406|0407|0410\",
+RUN+=\"/usr/bin/ylock\""))
+#+end_src
+
+** Deploying a script to the system
+
+
+There are a few options that could be combined:
+
++ 
+
+*** Using an inline file
+
+
+*** Using a package
+
+
+**** TODO consider using an orphan branch for small packages?
+This is sufficient for version tracking (with git revisions; not perfect)
+
+** PAM
+
+I don't believe PAM is required, since the script only reduces access. Also, the
+only relevant PAM hook (i think?) is =closing= which would happen after we lock
+the session (and may never run ... idk).
+
+I found this in the Guix codebase, btw. That's how I actually know an answer in
+terms of first principles instead of convoluting on cargo-culted answers from
+google.
+
+* Rationale
+
+Since the set of users who should run this script are restricted, then it could
+require more work than seems necessary for a simple task. For me, specifying
+this in Guix packages and/or system modules is versionable, uses a common
+language and is easy to find. It's also auto-documenting -- the source itself
+serves to note how to extend/tweak the functionality. This requires less browser
+tabs.
+
+There are many packages that configure udev rules:
+
++ steam-udev-rules
++ android-udev-rules
++ yubikey-personalization
+
+Less of the guix packages also provide scripts without including larger sources
+to build. 
+
+By searching the Guix codebase for =udev-rule=, you can find countless
+references to widely-distributed projects for many types of devices that
+demonstrate proper/hygienic udev configurations. Otherwise, I would be opening
+100 browser tabs and cargo culting ... It's really not been easy for me to learn
+where to look for these things (for ... reasons).
+
+Anyways, udev is actually very cool for the same reason that =Wake on LAN= might
+be cool. But the configuration overhead starts to pile up. Unless you have some
+photographic memory for filetrees where you stash random scripts/configs, then
+you're going to want to deploy it to new systems. That's plus for me ... but no
+one's memory can recall the structure of files that changed without their
+knowledge -- like if someone toggled a config on a service config for a server
+somewhere. Instead, I would prefer to treat servers and protocol data as both
+"objects" and "immutable" so I can burn it down and know that state hasn't
+drifted.
+
++ For most package managers, you can store these in git/etc to avoid the
+  overhead of configuring a PPA repository or setting up Fedora COPR.
++ It's still fairly slow on RPM unless you use =mock=. Ansible is also another
+  deployment option.
++ And your packages still contain many files & moving parts, much of which needs
+  to be separately versioned (along with the dependencies that reference them).
++ Then you need to bump package versions for config files. I still need to do
+  that somewhat, but at least they will all be in two or three git repositories.
+
+So getting 10 lines of code on your new laptop, server or ddwrt router to add
+some =udev= functionality ends up being something you want to streamline. 
+
+However, unless someone tells you which patterns you should imitate (so you
+don't search the entirety of "design space"), you'll typically iterate on
+designs/patterns which causes package-rot. While there are no OSS package
+maintainers who are going to help you with personal packages, the number of
+people who can help maintain public packages is limited by the learning curve of
+properly setting up a local PPA or RPM repository ... and worse (for me), I
+didn't know that you should even be working towards that. So when you have noob
+problems, you lose all your config customizations. Even if you have file
+backups, it's a bit tricky to find out what was modified, unless your
+installation/configuration is scripted (... and auto-documenting).
+
+* Service Composition
+
+In guix, services like =udev= have can be extended and composed. The parent
+service will declare extension and composition functions, so that other services
+can "reopen" them. Really, the system build will accumulate procedure
+representations (which are "thunks" ... i think?), then pass these to the
+service which then knows how to =fold= them together. Not sure if fold is
+actually used, but that is the idea behind fold.
+
+#+begin_example scheme
+(define udev-service-type
+  (service-type (name 'udev)
+  
+                (extensions
+                 (list (service-extension shepherd-root-service-type
+                                          udev-shepherd-service)
+                       (service-extension etc-service-type udev-etc)))
+
+                (compose concatenate)
+                
+                (extend (lambda (config rules)
+                          (let ((initial-rules
+                                 (udev-configuration-rules config)))
+                            (udev-configuration
+                             (inherit config)
+                             (rules (append initial-rules rules))))))
+                             
+                (default-value (udev-configuration))
+                
+                (description
+                 "Run @command{udev}, which populates the @file{/dev}
+directory dynamically.  Get extra rules from the packages listed in the
+@code{rules} field of its value, @code{udev-configuration} object.")))
+#+end_example
+
+You don't easily get the same mileage from =fold= outside of Haskell, Scheme and
+Lisp. Even when it's possible in OtherLang, the design of these functional
+programs is somewhat flipped inside out. This isn't necessarily obvious as an
+option and furthermore -- lower level components of design will often need to
+make assumptions about pure functions riding on top. When you mix libraries not
+designed to separate side effects (in a language where it's not easy to do so),
+then it causes problems.
+
+Why is JAX fast? It can recombinate code for you because it knows how to trace
+to search for side effects and will fail for some operations when they are not
+/pure functions/.
+
+** Service Composition
+
+In guix, services like =udev= have can be extended and composed. The parent
+service will declare extension and composition functions, so that other services
+can "reopen" them. Really, the system build will accumulate procedure
+representations (which are "thunks" ... i think?), then pass these to the
+service which then knows how to =fold= them together. Not sure if fold is
+actually used, but that is the idea behind fold.
+
+#+begin_example scheme
+(define udev-service-type
+  (service-type (name 'udev)
+  
+                (extensions
+                 (list (service-extension shepherd-root-service-type
+                                          udev-shepherd-service)
+                       (service-extension etc-service-type udev-etc)))
+
+                (compose concatenate)
+                
+                (extend (lambda (config rules)
+                          (let ((initial-rules
+                                 (udev-configuration-rules config)))
+                            (udev-configuration
+                             (inherit config)
+                             (rules (append initial-rules rules))))))
+                             
+                (default-value (udev-configuration))
+                
+                (description
+                 "Run @command{udev}, which populates the @file{/dev}
+directory dynamically.  Get extra rules from the packages listed in the
+@code{rules} field of its value, @code{udev-configuration} object.")))
+#+end_example
+
+You don't easily get the same mileage from =fold= outside of Haskell, Scheme and
+Lisp. Even when it's possible in OtherLang, the design of these functional
+programs is somewhat flipped inside out. This isn't necessarily obvious as an
+option and furthermore -- lower level components of design will often need to
+make assumptions about pure functions riding on top. When you mix libraries not
+designed to separate side effects (in a language where it's not easy to do so),
+then it causes problems.
+
+Why is JAX fast? Why use Mojo over Python?
+
+JAX can recombinate code for you because it knows how to trace to search for
+side effects and will fail for some operations when they are not /pure
+functions/. Where JAX is concerned about mutating functions without altering
+behavior, Guix and scheme are concerned with continuing computation by retaining
+data representations, then continuing it later (or passing it to the build
+daemon).
+
+I think that's mostly correct.... the service composition/extension are less
+related.
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
