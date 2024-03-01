@@ -44,6 +44,78 @@ Nix and /not have this functionality/
 + pacreport :: track unowned files (from pacutils)
 ** Updating stale AUR-git packages
 * Garuda
+** Performance Optimizations
+
+See generic Arch [[https://wiki.archlinux.org/title/improving_performance][overview on archwiki]]
+
++ how changes are applied: 3 services and one package
++ [[https://gitlab.com/garuda-linux/applications/garuda-assistant/-/blob/master/garudaassistant.ui?ref_type=heads#L1329-1403][arguments]] to changes applied
+
+
+*** [[https://gitlab.com/garuda-linux/themes-and-settings/settings/performance-tweaks][performance-optimizations]] (package)
+
+Some of these would be difficult to apply yourself, esp. at a low level or on
+startup. The udev tweaks to disks are good, if some interface with the kernel
+doesn't already do that. Other settings seem to mirror what i've got set in
+BIOS.
+
++ Sets [[https://wiki.archlinux.org/title/AMDGPU#Boot_parameter][AMDGPU boot parameter]] to overclock, which I kinda hope doesn't conflict
+  with my BIOS or override other settings.
++ [[https://gitlab.com/garuda-linux/themes-and-settings/settings/performance-tweaks/-/tree/master/usr/lib/udev/rules.d?ref_type=heads][udev tweaks]] to tune handling of devices
++ other [[https://gist.github.com/dante-robinson/cd620c7283a6cc1fcdd97b2d139b72fa][tweaks]] for power management, cpu governor, etc
+
+*** [[https://github.com/irqbalance/irqbalance][IRQBalance]]
+
++ Rebalances IRQ load across cores. Probably more beneficial for CPU's that have
+  a high core count ... but something generates an insanely high process count
+  for me.
+
+*** [[https://github.com/irqbalance/irqbalance][Ananicy]]
+
+This applies a community-developed policy for managing niceness to processes.
+
++ It won't let me renice processes though.
+
+I need emacs to be snappy. My desktop has 16 cores, twice the RAM, etc ... but
+my laptop with 6 cores runs emacs 3-4x faster ... I don't have nearly the same
+number of buffers open.
+
+*** [[https://wiki.archlinux.org/title/preload][Preload]]
+
++ /etc/conf.d/preload :: config file. Docs at [[https://github.com/arunanshub/preload/blob/master/preload.conf.in][arunanshub/preload]], though it's
+  not clear that this is the original format.
++ sets ~IONICE_OPTS="-c3"~
++ see [[https://wiki.archlinux.org/title/improving_performance#Storage_I/O_scheduling_with_ionice][ionice in archwiki]]
+
+Preloads application files in RAM. The archwiki mentions that =preload= records
+statistics about which programs are loading, but it's unclear how it informs the
+kernel of the ELF's executable's image in memory (and/or the ELF's
+assoc. files?)
+
+I guess I could read [[https://cs.uwaterloo.ca/~brecht/courses/702/Possible-Readings/prefetching-to-memory/preload-thesis.pdf][Preload: An Adaptive Prefetching Daemon]]
+
+The combination of =preload= with =ionice= is probably very helpful
+
+#+begin_quote
+For high-interrupt processes with unpredictable load requiring many copies of
+the same program, a fully static compilation could help ... though it's
+complicated, since it tightly constrains your process/threading model.  The
+=k0s= distribution makes more efficient utilization of shared memory by
+statically compiling all components of =kubernetes= into a single binary. It's
+unclear to me exactly how the shared memory images are shared.
+
+But (i think) you just have a service that spawns instances with the same
+initial shared memory image ... it really depends on whether a forked process
+can continue executing with the same stack/heap and (if so) how both processes
+manage immediately manage the shared stack/heap to split child procs off
+efficiently.
+
+idk what i'm talking about.
+
+But it does really seem that software design makes very poor usage of compute &
+energy resources.
+#+end_quote
+
 ** Dock
 *** Plasma Dock replaced Latte Dock
 Latte UI/UX was great, but the project really needed some love. Diffing configs

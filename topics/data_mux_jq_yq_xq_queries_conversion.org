@@ -14,7 +14,96 @@
 
 ** Topics
 
+*** XQ
+
+**** Working with Attributes
+
+Specifying =[]= after =.manifest.project[]= causes document separators to be
+inserted for =xq -y= output. Annoying if you're not expecting, but useful
+otherwise. The =[]= is somewhat of an implicit map.
+
+While also relevant to =jq=, this is more helpful for =xq= to =yq= conversions.
+The triple-dash document separators are actually part of the YAML standard
+whereas =jq= must know to parse them while maintaining escaped strings.
+
+This first query creates a unified stream where each XML node can be treated as
+separate documents, whereas the latter splats everything together. They both
+lose their identity as =<project/>= nodes.
+
+#+begin_src sh :dir (identity dc/repo-path) :results output verbatim :wrap example yaml
+xq  -y '
+    .manifest.project[]
+    | select(."@path" != ."@name")' typescript/astro-themes.xml
+#+end_src
+
+#+RESULTS:
+#+begin_example yaml
+'@name': abdllahdev/nimbus-narratives
+'@path': algorizr/nimbus-narratives
+'@groups': blog,preact,tailwind,typescript,mdx
+---
+'@name': bywhitepine/astro-minimal-starter
+'@path': jaydanurwin/astro-minimal-starter
+'@groups': minimal
+---
+'@name': bywhitepine/cannonball
+'@path': littlesticks/cannonball
+'@groups': landing-page
+---
+'@name': bywhitepine/odyssey-theme
+'@path': littlesticks/odyssey-theme
+'@groups': featured,landing-page
+---
+'@name': bywhitepine/simple-blog-astro
+'@path': littlesticks/simple-blog-astro
+'@groups': blog,lit,mdx
+---
+'@name': Johnkat-Mj/agency-landing-page-astrojs
+'@path': Johnkat-Mj/agencex-astro
+'@groups': landing-page,tailwind
+---
+'@name': LaB-CH3/astrobrew
+'@path': anthonylan/astrobrew
+'@groups': landing-page
+#+end_example
+
+Without separators:
+
+#+begin_src sh :dir (identity dc/repo-path) :results output verbatim :wrap example yaml
+xq  -y '
+    .manifest.project
+    | map(select(."@path" != ."@name"))' typescript/astro-themes.xml
+#+end_src
+
+#+RESULTS:
+#+begin_example yaml
+- '@name': abdllahdev/nimbus-narratives
+  '@path': algorizr/nimbus-narratives
+  '@groups': blog,preact,tailwind,typescript,mdx
+- '@name': bywhitepine/astro-minimal-starter
+  '@path': jaydanurwin/astro-minimal-starter
+  '@groups': minimal
+- '@name': bywhitepine/cannonball
+  '@path': littlesticks/cannonball
+  '@groups': landing-page
+- '@name': bywhitepine/odyssey-theme
+  '@path': littlesticks/odyssey-theme
+  '@groups': featured,landing-page
+- '@name': bywhitepine/simple-blog-astro
+  '@path': littlesticks/simple-blog-astro
+  '@groups': blog,lit,mdx
+- '@name': Johnkat-Mj/agency-landing-page-astrojs
+  '@path': Johnkat-Mj/agencex-astro
+  '@groups': landing-page,tailwind
+- '@name': LaB-CH3/astrobrew
+  '@path': anthonylan/astrobrew
+  '@groups': landing-page
+#+end_example
+
+
+
 ** Issues
+
 
 *** XQ not attributing
 
