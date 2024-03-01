@@ -1,0 +1,321 @@
+:PROPERTIES:
+:ID:       c84697b2-0891-4734-b9b6-6d4f17e01838
+:END:
+#+TITLE: Astro: Learning the Framework Via Starlight
+#+CATEGORY: slips
+#+TAGS:  
+
+* Resources
+
+* Starlight
+
+** Components
+
+There are 33 components in =./starlight/components=
+
+*** Useful Patterns
+
+**** Footer
+
+The props fall through to the child components, which all know the same
+language, so to speak. 
+
+#+begin_src astro
+<footer>
+	<div class="meta sl-flex">
+		<EditLink {...Astro.props} />
+		<LastUpdated {...Astro.props} />
+	</div>
+	<Pagination {...Astro.props} />
+</footer>
+#+end_src
+
+**** Head
+
+The =Head.astro= component provides dictionary-based spec of metadata to
+assemble for the =<head>= section. It's config schema is in
+=./starlight/schemas/head.ts=.
+
+#+begin_src typescript
+import { z } from 'astro/zod';
+
+export const HeadConfigSchema = () =>
+	z
+		.array(
+			z.object({
+				/** Name of the HTML tag to add to `<head>`, e.g. `'meta'`, `'link'`, or `'script'`. */
+				tag: z.enum(['title', 'base', 'link', 'style', 'meta', 'script', 'noscript', 'template']),
+				/** Attributes to set on the tag, e.g. `{ rel: 'stylesheet', href: '/custom.css' }`. */
+				attrs: z.record(z.union([z.string(), z.boolean(), z.undefined()])).default({}),
+				/** Content to place inside the tag (optional). */
+				content: z.string().default(''),
+			})
+		)
+		.default([]);
+
+export type HeadUserConfig = z.input<ReturnType<typeof HeadConfigSchema>>;
+export type HeadConfig = z.output<ReturnType<typeof HeadConfigSchema>>;
+#+end_src
+
+The =HeadUserConfig= and =HeadConfig= exports above are an example of a Zod
+=z.transform=.
+
+
+*** Props
+
+28 Components mainly import the default props:
+
+#+begin_src astro
+import type { Props } from '../props';
+#+end_src
+
+Which pulls from this file:
+
+#+begin_src typescript
+export type { StarlightRouteData as Props } from './utils/route-data';
+#+end_src
+
+which pulls an interface from =./starlight/utils/route-data.ts=
+
+#+begin_src typescript
+export interface StarlightRouteData extends Route {
+	/** Array of Markdown headings extracted from the current page. */
+	headings: MarkdownHeading[];
+	/** Site navigation sidebar entries for this page. */
+	sidebar: SidebarEntry[];
+	/** Whether or not the sidebar should be displayed on this page. */
+	hasSidebar: boolean;
+	/** Links to the previous and next page in the sidebar if enabled. */
+	pagination: ReturnType<typeof getPrevNextLinks>;
+	/** Table of contents for this page if enabled. */
+	toc: { minHeadingLevel: number; maxHeadingLevel: number; items: TocItem[] } | undefined;
+	/** JS Date object representing when this page was last updated if enabled. */
+	lastUpdated: Date | undefined;
+	/** URL object for the address where this page can be edited if enabled. */
+	editUrl: URL | undefined;
+	/** Record of UI strings localized for the current page. */
+	labels: ReturnType<ReturnType<typeof useTranslations>['all']>;
+}
+#+end_src
+
+
+*** ./starlight/schemas/*.astro
+
+These are loaded by =./starlight/schemas/components.ts=
+
+The =z.string().default('@astrojs/starlight/components/Search.astro')= loads
+each =.astro= files' default export.
+
+| Banner                | ./starlight/components/Banner.astro                |
+| ContentPanel          | ./starlight/components/ContentPanel.astro          |
+| EditLink              | ./starlight/components/EditLink.astro              |
+| FallbackContentNotice | ./starlight/components/FallbackContentNotice.astro |
+| Footer                | ./starlight/components/Footer.astro                |
+| Head                  | ./starlight/components/Head.astro                  |
+| Header                | ./starlight/components/Header.astro                |
+| Hero                  | ./starlight/components/Hero.astro                  |
+| LanguageSelect        | ./starlight/components/LanguageSelect.astro        |
+| LastUpdated           | ./starlight/components/LastUpdated.astro           |
+| MarkdownContent       | ./starlight/components/MarkdownContent.astro       |
+| MobileMenuFooter      | ./starlight/components/MobileMenuFooter.astro      |
+| MobileMenuToggle      | ./starlight/components/MobileMenuToggle.astro      |
+| MobileTableOfContents | ./starlight/components/MobileTableOfContents.astro |
+| PageFrame             | ./starlight/components/PageFrame.astro             |
+| PageSidebar           | ./starlight/components/PageSidebar.astro           |
+| PageTitle             | ./starlight/components/PageTitle.astro             |
+| Pagination            | ./starlight/components/Pagination.astro            |
+| Search                | ./starlight/components/Search.astro                |
+| Sidebar               | ./starlight/components/Sidebar.astro               |
+| SiteTitle             | ./starlight/components/SiteTitle.astro             |
+| SkipLink              | ./starlight/components/SkipLink.astro              |
+| SocialIcons           | ./starlight/components/SocialIcons.astro           |
+| TableOfContents       | ./starlight/components/TableOfContents.astro       |
+| ThemeProvider         | ./starlight/components/ThemeProvider.astro         |
+| ThemeSelect           | ./starlight/components/ThemeSelect.astro           |
+| TwoColumnContent      | ./starlight/components/TwoColumnContent.astro      |
+
+Those not loaded in =./starlight/schemas/components.ts=:
+
+| Badge          |
+| CallToAction   |
+| Page           |
+| Select         |
+| SidebarSublist |
+| StarlightPage  |
+
+**  Styles
+
+*** Page
+These styles are loaded into =Page.astro=
+
+#+begin_src astro
+import '../style/props.css';
+import '../style/reset.css';
+import '../style/shiki.css';
+import '../style/util.css';
+
+// Remark component CSS (needs to override `MarkdownContent.astro`)
+import '../style/asides.css';
+
+// Important that this is the last import so it can override built-in styles.
+import 'virtual:starlight/user-css';
+#+end_src
+
+*** MarkdownContent
+
+#+begin_src astro
+import '../style/markdown.css';
+#+end_src
+
+
+* Astro
+
+** Collections
+
+*** API
+
+In [[https://github.com/withastro/astro/blob/main/examples/ssr/src/api.ts][./examples/ssr/src/api.ts]] there are examples of =get<T>= implementations
+for custom queries on collections. Here they make HTTP requests, but they don't
+have to.
+
+*** Enforcing Types on =Astro.props=
+
+From the hackernews example, follow references in [[https://github.com/withastro/astro/blob/main/examples/hackernews/src/types.ts][src/types.ts]]
+
+#+begin_src grep
+src/types.ts:1:export interface IComment {
+src/types.ts:5:	comments: IComment[];
+src/types.ts:18:	comments: IComment[];
+src/components/Comment.astro:2:import type { IComment } from '../types.js';
+src/components/Comment.astro:8:	comment: IComment;
+src/components/Comment.astro:22:			<For each={comment.comments}>{(comment: IComment) => <Astro.self comment={comment} />}</For>
+src/pages/stories/[id].astro:7:import type { IComment, IStory } from '../../types.js';
+src/pages/stories/[id].astro:37:					{(comment: IComment) => <Comment comment={comment} />}
+#+end_src
+
+
+** Components
+
+*** Head
+
+Another way of setting up the Head component is found in [[https://github.com/withastro/astro/blob/main/examples/starlog/src/components/SEO.astro][SEO component]] from the
+starlog example
+
+** Framework
+
+*** extending collection functions
+
+[[https://github.com/withastro/astro/blob/main/packages/astro/src/content/runtime.ts][./packages/astro/src/content/runtime.ts]] contains the logic that returns
+collection methods. This is usually imported as =astro:config=.
+
+
+
+*** astro:content
+
+This is an interesting file to grok, but it's apparently autogenerated?
+
+#+begin_src typescript :tangle /tmp/foobar.ts
+declare module 'astro:content' {
+	export { z } from 'astro/zod';
+
+	// This needs to be in sync with ImageMetadata
+	export type ImageFunction = () => import('astro/zod').ZodObject<{
+		src: import('astro/zod').ZodString;
+		width: import('astro/zod').ZodNumber;
+		height: import('astro/zod').ZodNumber;
+		format: import('astro/zod').ZodUnion<
+			[
+				import('astro/zod').ZodLiteral<'png'>,
+				import('astro/zod').ZodLiteral<'jpg'>,
+				import('astro/zod').ZodLiteral<'jpeg'>,
+				import('astro/zod').ZodLiteral<'tiff'>,
+				import('astro/zod').ZodLiteral<'webp'>,
+				import('astro/zod').ZodLiteral<'gif'>,
+				import('astro/zod').ZodLiteral<'svg'>,
+				import('astro/zod').ZodLiteral<'avif'>,
+			]
+		>;
+	}>;
+#+end_src
+
+We apparently need to recursively handle side effects
+
+#+begin_src typescript :tangle /tmp/foobar.ts
+	type BaseSchemaWithoutEffects =
+		| import('astro/zod').AnyZodObject
+		| import('astro/zod').ZodUnion<[BaseSchemaWithoutEffects, ...BaseSchemaWithoutEffects[]]>
+		| import('astro/zod').ZodDiscriminatedUnion<string, import('astro/zod').AnyZodObject[]>
+		| import('astro/zod').ZodIntersection<BaseSchemaWithoutEffects, BaseSchemaWithoutEffects>;
+
+	type BaseSchema =
+		| BaseSchemaWithoutEffects
+		| import('astro/zod').ZodEffects<BaseSchemaWithoutEffects>;
+#+end_src
+
+I hope this means we can get an image of the schema? Is that right?
+
+... [[https://github.com/withastro/astro/pull/6766][no, it's not]]
+
+#+begin_src typescript :tangle /tmp/foobar.ts
+	export type SchemaContext = { image: ImageFunction };
+#+end_src
+
+And here we have the type union that defines a hard distinction between =data=
+and =content= collections in Astro, which is finally exported below.
+
+#+begin_src typescript :tangle /tmp/foobar.ts
+	type DataCollectionConfig<S extends BaseSchema> = {
+		type: 'data';
+		schema?: S | ((context: SchemaContext) => S);
+	};
+
+	type ContentCollectionConfig<S extends BaseSchema> = {
+		type?: 'content';
+		schema?: S | ((context: SchemaContext) => S);
+	};
+
+	type CollectionConfig<S extends BaseSchema> =
+		| ContentCollectionConfig<S>
+		| DataCollectionConfig<S>;
+
+	export function defineCollection<S extends BaseSchema>(
+		input: CollectionConfig<S>
+	): CollectionConfig<S>;
+#+end_src
+
+and here we have our =Astro::ActiveRecord= query functions
+
+#+begin_src typescript :tangle /tmp/foobar.ts
+	/** Run `astro sync` to generate high fidelity types */
+	export const getEntryBySlug: (...args: any[]) => any;
+	/** Run `astro sync` to generate high fidelity types */
+	export const getDataEntryById: (...args: any[]) => any;
+	/** Run `astro sync` to generate high fidelity types */
+	export const getCollection: (...args: any[]) => any;
+	/** Run `astro sync` to generate high fidelity types */
+	export const getEntry: (...args: any[]) => any;
+	/** Run `astro sync` to generate high fidelity types */
+	export const getEntries: (...args: any[]) => any;
+	/** Run `astro sync` to generate high fidelity types */
+	export const reference: (...args: any[]) => any;
+  #+end_src
+
+As well as some =any= types. What's this =astro sync= ... oh that's
+what's up with the wierd =flymake= messages.
+  
+  #+begin_src typescript :tangle /tmp/foobar.ts
+	/** Run `astro sync` to generate high fidelity types */
+	export type CollectionKey = any;
+	/** Run `astro sync` to generate high fidelity types */
+	export type CollectionEntry<C> = any;
+	/** Run `astro sync` to generate high fidelity types */
+	export type ContentCollectionKey = any;
+	/** Run `astro sync` to generate high fidelity types */
+	export type DataCollectionKey = any;
+	/** Run `astro sync` to generate high fidelity types */
+	export type ContentConfig = any;
+}
+#+end_src
+
+* Roam
++ [[id:4630e006-124c-4b66-97ad-b35e9b29ae0c][Javascript]]
