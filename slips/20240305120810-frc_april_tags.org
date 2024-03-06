@@ -1,0 +1,118 @@
+:PROPERTIES:
+:ID:       18b6e880-37af-4276-ae0a-9f92f02d0412
+:END:
+#+TITLE: FRC: April Tags
+#+CATEGORY: slips
+#+TAGS:  
+
+Notes from [[https://docs.wpilib.org/en/stable/docs/software/vision-processing/wpilibpi/walkthrough-video.html][FRC Vision with Raspberry Pi & Robot Simulation with WPILib]]
+
+* Resources
+** FRC Tooling
++ [[https://docs.wpilib.org/en/stable/docs/software/dashboards/advantagescope.html#advantagescope][AdvantageScope]]: data visualization using logs (recorded or live)
+  
+*** Vision
++ [[https://docs.wpilib.org/en/latest/docs/software/vision-processing/wpilibpi/index.html][Vision with WPILibPi]] (wpilib docs)
+
+*** Network Tables
+
+**** [[https://github.com/wpilibsuite/allwpilib/blob/main/ntcore/doc/networktables4.adoc][Version 4.1 Spec]]
+
++ [[https://github.com/wpilibsuite/allwpilib/blob/main/ntcore/doc/networktables4.adoc#server-published-meta-topics][Server-published Meta Topics]]
+
+** Raspberry PI
++ [[https://azeria-labs.com/emulate-raspberry-pi-with-qemu/][RPi on QEMU]] an older guide for emulating Raspberry Pi hardware
++ [[https://www.qemu.org/docs/master/system/arm/raspi.html][QEMU Targets for Raspberry Pi]] raspi2b, raspi3b, raspi4b
+
+*** [[https://github.com/anholt/linux/wiki/Raspberry-Pi-development-environment#building-the-Kernel][Raspberry Pi development environment]]
+
+From this [[https://stackoverflow.com/a/71185370][s/o answer]]. Includes Raspian kernerl build instructions (overkill, but
+maybe useful).
+
++ Raspi4b QEMU cannot be accelerated (translation layer between incompatible
+  instruction sets is slow)
++ This [[https://stackoverflow.com/a/78075547][answer]] indicates GENET eth controller and PCIE root port cannot be
+  emulated for =raspi4b=, perhaps to be included in 8.3. Both this and the
+  performance needs indicate probably =raspi3b=.
+
+* Overview
+
+** Coprocessor
+
+Separation of concerns improves reliability (here still be dragons).
+
++ Robot  code should ideally function with/out cameras/vision
+  
+Using coprocessor offloads compute.
+
++ RPi 3 is 2x faster than roboRIO; RPi 4 is 4x faster.
++ network tables now include timestamp on vision events, so
+  latency/interpolation is less of an issue.
+
+** Networking
+
+#+begin_src mermaid :file img/frc-network-connections.svg
+%% req. subsubgraphs.
+#+end_src
+
+*** Vision Program
+
+Your vision program (VP) can connect as client to a NetworkTables server (NTS)
+on roboRIO (RIO) or act as a NTS to provide camera stream info (CSI) for your
+Dashboard app (DA).
+
+* FRC Vision
+
+An image for the RPi (2,3,4) as coprocessor OS
+
++ Headless, can install standard RPi packages
++ All wireless disabled (competition legal)
++ Read-only FS: robust to hard poweroffs
++ Boots in 20 seconds: power applied -> vision prog running (faster than radio)
+
+Includes a full copy of WPILib (C++, Java, RobotPy) for OpenCV, CameraServer,
+NetworkTables
+
+** Setup
+
+* Simulation
+
+** Features
+
++ Gui for interactive use. Can change any RIO input, see all RIO outputs.
++ Full Support WPILib, including =CameraServer= and =NetworkTables=
++ There can be issues with simulator for vendor-specific dependencies.
+  - Full support on Win/Linux (at least for WPI Lib). Support for vendor libs on
+    Mac can be a bit spotty.
++ Some debugging support (pausing, single-stepping loops)
++ Provides hardware "mocks" and execution platform for unit testing.
+
+** GUI
+
+The GUI will launch given a Robot specification (in code). See =42:00= for a
+demonstration.
+
+
+* NetworkTables
+
+** Architecture
+
+This is firstmost a Java program =Java -> JNI -> C/C++ -> FFI -> etc=. See some
+of the [[https://github.com/wpilibsuite/allwpilib/blob/main/ntcore/src/generated/main/native/cpp/jni/types_jni.cpp][JNI interface]]. Android does this in the reverse when calling C/C++.
+
+Using another C/C++ based interop means you (or the calling language/library)
+needs to pass datastructures through the above layers while garbage collecting
+at bottom and top layers. Just use the JVM. Java's control over GC is probably a
+good design choice here, since stream-oriented servers ... yeh idk what i'm
+talking about. But it is interesting.
+
+IDK if it matters.
+
+* Issues
+
+** Potential Problems
+
+Ensuring the Device UUIDs are always the same.
+
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]

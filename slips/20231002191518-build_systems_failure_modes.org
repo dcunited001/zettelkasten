@@ -1,0 +1,100 @@
+:PROPERTIES:
+:ID:       2707cdca-fa8b-4cb2-910e-ab1ec42b7682
+:END:
+#+TITLE: Build Systems: Failure Modes
+#+CATEGORY: slips
+#+TAGS:
+
+
+From [[https://www.youtube.com/watch?v=Y1OR3yO8REk][Fantastic build system failure modes and how to fix them]]. These notes are
+incomplete.
+
+* Common Issues
+
+** Differential Builds
+
+Main methods (and problems)
+
++ last-modified timestamp :: wrong
++ hash :: slow
++ timestamp + hash :: fast
+
+** Dependencies
+
+Recursive Dependencies
+
+Lack of proper version pinning in subdeps
+
++ timestamp-based build systems rebuild often. this can mask issues when deps
+  are not fully specified
++ but how, exactly? .... hmmm.
+
+#+begin_quote
+According to iteration order in [[https://chameth.com/reproducible-builds-docker-images/][Reproducible Builds and Docker Images]], some
+build tools can generate artifacts/environment based partially on timestamp. So
+when your project has multiple copies of the same library (with different
+versions), then one dev's local checkout can generate a slightly different build
+environment than another dev's. This is likely the unintentional side effect of
+sorting, perhaps not even intentionally specified in the build tool (probably,
+but possibly not).
+
+This is why Nix/Guix set timestamps to the epoch date of =Dec 31 1969=. In the
+manual, it gives the example of Java building the date into the artifact, but
+they may have really meant this scenario.
+#+end_quote
+
+Git checkout causes issues. Suggests a =post-checkout= hook:
+
++ set timestamps of files to date last committed
++ then lots of things break
+
+** Targets Depend On Build Rules
+
+When the Makefile changes, do all build targets (or downstream targets) need to
+be rebuilt? ... (it depends, but it's hard to know. probably rebuild).
+
+CMake, I believe can be configured to do this (though under the hood, it just
+writes Makefiles). I'm not sure if things like [[https://github.com/cristianadam/cmake-checks-cache][cristianadam/cmake-checks-cache]]
+actually handle this.
+
+** Targets Depend on Nonexistent Files/Rules
+
+*Files*
+
+e.g. "a wild header file has appeared" and rebuild. Or a new image/asset in a
+javascript webapp.
+
+In this case, should the build tool consider branches of the build to be dirty
+when a directory's contents have changed?
+
+*Rules*
+
+* What Causes Build System Failure Modes?
+
+** DAGs
+
++ because DAG
++ ingesting the dependency DAG nodes/edges (can't have total prior knowledge)
+  - service-based build tools can watch files? does this help?
++ effors to make dag's work
+
+
+* The "Redo" Approach to Build Tools
+
+** fdsa
+
+** Four Patterns
+
+
+*** redo-always
+
+Note: a good way to identify problems in a build tool
+
+** Questions
+
+But does this jive with reproducible builds? (he hasn't mentioned that yet,
+actually, even though determinism good for performance /and/ reproducibility)
+
+
+* Roam
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]

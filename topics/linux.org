@@ -456,6 +456,37 @@ file is encoded as little/big endian.
 + How =mmap= command maps regions of =*.so= files
 + How this shared memory is managed
 
+**** PLT, GOT and Loading linked subroutines
+
+[[https://newrustacean.com/show_notes/e031/][NewRustacean (31) FFI Deep Dive]]: the FFI issues in this podcast are
+Rust-specific, but illuminate the translation layers quite a bit.
+
++ I had assumed that FFI was magic. The podcast cleared that up.
++ It turns out that your binding programs and libraries communicate by throwing
+  data structures over the fence, but representations must exist on both ends,
+  at least until GC (again... idk what i'm talking about really)
+
+One problem that is (i think?) usually avoided, is technically possible and
+can't be solved cleverly (at least not AFAIK): a stack frame that alternates or
+interleaves calls to the FFI with the calling program's routines (really the
+scripting language's VM).
+
++ The C/C++ code shouldn't be calling back to the scripting language, but may
+  have objects with pointers which it doesn't provide an interface to serialize
+  to the calling program. 
++ Dynamic libraries in scripting languages +can't be easily linked at the
+  process start time+ are expected to load lazily. An ELF file will +describe+
+  name the interfaces it expects to link to ... but the caller can't know about
+  the dynamic lib structure it hasn't linked in yet. See [[https://blog.k3170makan.com/2018/11/introduction-to-elf-format-part-vii.html][Intro to ELF Format
+  (part 7)]]
++ If you build native, the performance gains are more than you would
+  expect. Streamlining how the CPU/kernel divvy up work suffers when you can't
+  know the result/structure/timing of program data/instructions. In the above
+  article (and in general), it's still not clear to me how dynamic linking
+  arranges is linked instructions in program memory (or whether it matters if
+  related subroutines are chunked... probably not).
+
+
 *** Reverse Engineering
 
 *** Linking
