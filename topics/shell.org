@@ -189,6 +189,61 @@ bar="${foo[*]}" && echo $bar
 + [[https://www.cherryservers.com/blog/a-complete-guide-to-linux-bash-history][A complete guix to linux bash history]]
 
 ** Issues
+*** Gargarsgs (things that be hard that should not be)
+
+**** Read multiline var into array (or variable)
+
+See this [[https://serverfault.com/questions/72476/clean-way-to-write-complex-multi-line-string-to-a-variable][stack overfault]]
+
+#+begin_example sh
+#!/bin/bash
+
+mapfile Pattern <<-eof
+        <?xml version="1.0" encoding='UTF-8'?>
+        <painting>
+          <img src="%s" alt='%s'/>
+          <caption>%s, painted in
+          <date>%s</date>-<date>%s</date>.</caption>
+        </painting>
+        eof
+
+while IFS=";" read file alt caption start end ;do
+    printf "${Pattern[*]}" "$file" "$alt" "$caption" "$start" "$end"
+  done <<-eof
+        madonna.jpg;Foligno Madonna, by Raphael;This is Raphael's "Foligno" Madonna;1511;1512
+        eof
+
+#+end_example
+
+And the rationale:
+
+#+begin_quote
+mapfile read entire here document in an array.
+
+the syntaxe "${Pattern[*]}" do cast this array into a string.
+
+I use IFS=";" because there is no ; in required strings
+
+The syntaxe while IFS=";" read file ... prevent IFS to be modified for the rest of the script. In this, only read do use the modified IFS.
+
+no fork.
+#+end_quote
+
+Holy shit, that's a time saver right there.
+
+***** This hack right here...
+
+LOL... it almost works (still no line breaks)
+
+#+begin_example sh
+while IFS='' read -r -d '' _usage; do
+    _usage=$_usage
+done<<EOF
+  muh FOE
+EOF
+
+echo $_usage
+#+end_example
 
 * Zsh
 
