@@ -61,7 +61,104 @@ From [[https://www.youtube.com/watch?v=ybWFSIWEfVM][6 KDE Plasma Features you *a
 + Gestures: add under custom shortcuts
 + Mousemark: desktop effect to add a draw layer to the composited desktop
 
+** Configuration
+*** General
+**** Order of loading
+
+|-----------------------------+-----------------|
+| ~/.config/myAppConfigrc     | (i.e dolphinrc) |
+| /etc/xdg/myAppConfigrc      | (i.e dolphinrc) |
+| ~/.config/kdeglobals        |                 |
+| /etc/xdg/kdeglobals         |                 |
+| ~/.config/system.kdeglobals |                 |
+| /etc/xdg/system.kdeglobals  |                 |
+| /etc/kde5rc                 |                 |
+|-----------------------------+-----------------|
+
+**** KCM: KDE Control Module
+
+KDE allows you to set [[https://develop.kde.org/docs/administration/kiosk/introduction/][policy on user configurations via =Kiosk=]]. See [[https://develop.kde.org/docs/administration/kiosk/keys/][Kiosk keys]],
+which also provides a fairly comprehensive list of the configuration surface
+area.
+
++ Inidividual config files can be set to be ignored: by using =[module][$i]=
+  where =[$i]= is not a variable, but a directive that causes the config merging
+  to stop.
++ Defaults can be set for the configs.
++ To set policy, change a config file that merges earlier
++ See the config loading order above
+
+** KSysGuard
+
+
+*** Sensor Faces and Plots
+
++ [[https://api.kde.org/frameworks/kquickcharts/html/index.html][KQuickCharts for plots]]
++ [[https://develop.kde.org/docs/apps/sensor-faces/][Creating Sensor Faces]]
++ Styling?
+
+*** KQuickCharts
+
+#+ATTR_HTML: :width 800px
+[[file:img/kde/doxygen-kquickcharts-hierarchy.png]]
+
 ** Automation
+
+*** Using =qdbus=
+
+Looking through KDE docs, quite a lot gets configured through D-Bus which is the
+"source of truth" where the config files and State files are only secondary. So
+it's possible to generally [[https://sleeplessbeastie.eu/2013/02/26/how-to-automate-kde-using-d-bus/][automate KDE configuration using qdbus]] (article
+from 2013)
+
+There is also this 3-part series [[https://freeaptitude.altervista.org/articles/playing-with-dbus-and-kde-applications-part-1.html][Playing with D-Bus and KDE Applications]] which
+seems pretty extensive.
+
++ The first part covers klipper
++ the second covers automation via =org.kde.konsole-*= services (which don't
+  seem to exist for me) -- nevermind: they just take a second to appear.
++ The third part covers the most ground (configuration automation) and is the
+  most worthwhile.
+
+**** Kdialog
+
+See [[https://freeaptitude.altervista.org/tags/kdialog/][Show a dialog with Kdialog]] (3 parts)
+
+***** Progress bars and handling dialog responses
+
+From the [[https://develop.kde.org/docs/administration/kdialog/][administration doc on kdialog]]:
+
+The =kdialog= command returns a dbus service name
+
+#+begin_src sh
+dbusRef=`kdialog --progressbar "Initializing" 4`
+qdbus $dbusRef Set "" value 1
+qdbus $dbusRef setLabelText "Thinking really hard"
+sleep 2
+qdbus $dbusRef Set "" value 2
+sleep 2
+qdbus $dbusRef setLabelText "Thinking some more"
+qdbus $dbusRef Set "" value 3
+sleep 2
+qdbus $dbusRef Set "" value 4
+sleep 2
+qdbus $dbusRef close
+#+end_src
+
+
+#+begin_src sh
+dbusRef=`kdialog --progressbar "Press Cancel at Any time" 10`
+qdbus $dbusRef showCancelButton true
+
+until test "true" = `qdbus $dbusRef wasCancelled`; do
+ sleep 1
+ inc=$((`qdbus $dbusRef Get "" "value"` + 1))
+ qdbus $dbusRef Set "" "value" $inc;
+done
+
+qdbus $dbusRef close
+#+end_src
+
 
 *** Configs
 + [[https://www.thegeekdiary.com/kwriteconfig5-command-examples-in-linux/][kwriteconfig5 command examples]]

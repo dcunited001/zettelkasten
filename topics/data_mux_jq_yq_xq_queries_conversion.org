@@ -14,6 +14,142 @@
 
 ** Topics
 
+*** Tree Traversal
+
+**** Combining Multiple Queries
+
+For projects/scripts that require many tree traversals and can make guarantees
+on niceness/schema for tree structure, then it may be more useful:
+
++ tangle queries into separate files (or write them as such)
++ and use the =/bin/sh= pipe operate to pipeline modifications.
+
+Compare these three queries
+
+#+name: jqRemoveSVG
+#+begin_example jq
+walk(
+  if type == "object" and has("svg") then
+    .svg = {Icon: {"@type": "Icon"}}
+  else .
+end)
+#+end_example
+
+Slightly more complex, but less composable
+
+#+begin_example jq
+walk(if type=="object" then
+  if has("svg") then {Icon: {"@type": "Icon"}} else . end
+  # Additional queries here -- this is like an extra { block; } in awk
+else
+  .
+end
+#+end_example
+
+Way more complicated.
+
+#+name: jqWalkDom
+#+begin_example jq
+walk(if type == "object" then
+      to_entries
+        | map(. |= if .key == "svg" then {key: "Icon", value: {"@type": "Icon"}} else . end)
+        | map(. += if .key == "@class" then {value: (.value | gsub("\\b\\sdark:[\\w\\-:]*\\b"; ""))} else . end)
+        | from_entries
+     else .
+    end)
+#+end_example
+
+**** Generic
+
+... and only then do i see =.what?= ???! GDMT (see giant any/all query)
+
+#+name: jqHuh
+#+begin_example jq
+# .. | [ any(."@class"?) ]
+# .. | map(any(."@class"?))
+
+# swapping the order of $fdsa and the select breaks the query.
+# - it also doesn't really retrieve what i want
+.. as $fdsa | [ select(type=="object") | any(."@class"?), $fdsa ]
+
+# this also works and is simple, but without order guarantees, it's useless
+
+# [ paths | [ join("/") ]]
+#+end_example
+
+#+headers: :var jqHuh=jqHuh
+#+begin_src sh :results output code :wrap src yaml
+cat $_REPO/typescript/components/flowbite/components/accordion/accordion-always-open-example.html |\
+    tidy -iq --tidy-mark no -w 0 --show-body-only auto --doctype omit -xml |\
+    xq -y "${jqHuh}"
+#+end_src
+
+Trying to fanout the list of paths to apply to other functions is obnoxius
+... but there is probably just the thing i don't know about ... which is the
+obvious thing that handles the obvious use-case. But IDK it.
+
+So since =paths($arg)= doesn't allow you to pipe to it, most of what i'm trying
+to do does not work. it also would not be efficient ... but i wasn't going for
+efficient.
+
+***** Any/All
+
+These can be woven (or interleaved) with the results of another method that
+produces objects/paths -- like recurse, paths, etc. as it traverses the tree. As
+long as the order is consistent, then you can apply the result =any= or =all=.
+
+For example, this would help you remove all objects in a DOM tree that don't
+specify class
+
+#+name: jqWovenZip
+#+begin_example jq
+# .. | select(type=="object" and has("@class"))
+# [.. | select(type=="object") | any(type=="object" and has("@class"))] | all
+
+#. as $og
+# | [ paths | [ join("/"), . ] ]
+
+#paths
+. as $orig
+| [ $orig | paths,
+# ....................
+    recurse | getpath($orig) | any(type=="object" and has("@class"))]
+
+# | map(any(type="object" and has("@class"))) ]
+
+
+# getpath(paths)
+
+# [ paths
+# | map(. as $p | join("/")
+# #  [ join("/")
+#   #,. as $p | [ path($p)]
+# #  ]
+#   )]
+
+  #| recurse | select(type=="object")
+  #                 | any(type=="object" and has("@class"))] | all])]
+#+end_example
+
+#+headers: :var jqWovenZip=jqWovenZip jqRemoveSVG=jqRemoveSVG
+#+begin_src sh :results output code :wrap src yaml
+cat $_REPO/typescript/components/flowbite/components/accordion/accordion-always-open-example.html |\
+    tidy -iq --tidy-mark no -w 0 --show-body-only auto --doctype omit -xml |\
+    xq -y "${jqRemoveSVG}" |\
+    yq -y "${jqWovenZip}"
+#+end_src
+
+#+RESULTS:
+#+begin_src yaml
+jq: error (at <stdin>:1): Cannot iterate over string ("accordion-...)
+[ Babel evaluation exited with code 5 ]
+#+end_src
+
+**** Walk
+
+**** Recurse
+
+
 *** XQ
 
 **** Working with Attributes
