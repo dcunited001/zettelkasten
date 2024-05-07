@@ -1,0 +1,112 @@
+:PROPERTIES:
+:ID:       c30b9d02-1a6d-412a-b40e-9d0bd879df68
+:END:
+#+TITLE: Linux: From MPD to Fork Bomb
+#+CATEGORY: slips
+#+TAGS:
+
+Needed to set up MPD on a Fedora Silverblue derivative and I ended up reading
+the source. I'm somewhat intelligent, so small amounts of information can
+occasionally lead to a lot of interpolation/extrapolation, though this should be
+should happen far more frequently with more social access.
+
+#+begin_quote
+Actually I guess I'm pretty dump
+#+end_quote
+
+I have encountered snippets of this fork/exec stuff for a long time -- like from
+hearing about how the Unicorn server forked your Rails app processes. In this
+case, I feel like /now/ i have a lot more confidence, instead of the Unicorn
+server thing being one of the few ways I could explain this ...
+
+... which isn't for lack of trying. The C/C++ source code just wasn't a route I
+was taking.
+
+#+begin_src sh
+_tb=fedora-39-mpd
+toolbox create $_tb
+# update rpm?
+
+rpmfree=$rpmfree
+rpmnonfree=$rpmnonfree
+
+toolbox run -c $_tb "sudo yum install $rpmfree $rpmnonfree"
+toolbox run -c $_tb "sudo dnf install -y mpd"
+#+end_src
+
++ Then find the installed files with =dnf repoquery -l mpd=
++ Copy the systemd unit files to =~/.local/share/systemd/user= and take a
+  look. It runs =mpd --systemd=, but that may fail if the toolbox is expecting a
+  systemd.
++ Run =man mpd=. Puzzle over the missing documentation for =mpd --systemd=. WAT
+  IT DO? Googling for it doesn't help.
++ Run =strings `which mpd` | grep "systemd"= in the toolbox. Command not found.
+
+So, run on arch... (to later discover that it shows in =mpd -h=)
+
+#+begin_src sh :results verbatim
+strings `which mpd` | grep "systemd"
+#+end_src
+
+#+RESULTS:
+: libsystemd.so.0
+: systemd
+: systemd service mode
+: Ignoring the 'pid_file' setting in systemd mode
+:  avahi dbus udisks epoll icu inotify ipv6 systemd tcp un
+
+Run =cat allofgithub.com/MusicPlayerDaemon/mpd | grep things=
+
++ The =doc/mpdconf.example= shows that =mpd --systemd= should avoid setting log file
+  and pid file. This is great because running =mpd= in the toolbox blows up when it can't
+  write to the log file.
+
+Check =mpd= option handling in =src/CommandLine.cxx= because running =cat
+allofgoogle.com/halpmelinux= takes too long. RTFS: it's just easier to read the
+source.
+
++ I'm too lazy to clone the repo, but according to github search ...
++ =option.systemd= appears once in another file, =src/Main.cxx= and solely tells
+  =mpd= to forget about the pid file.
++ At least in this file, it is _only_ relevant in case you're running =mpd= with
+  =systemd= but have a config file where you forgot to remove the pidfile
+  line
+
+#+begin_quote
+I've got $10 on =git blame= showing this is from 2010. You're apparently
+supposed to know what this pidfile thing is. Nope... [[https://github.com/MusicPlayerDaemon/MPD/commit/a4e42172045f62583cbf97a6a94c3d2b9de77a6c][git blame]] says
+2021. It's for people migrating from or between distributions with other service
+managers
+#+end_quote
+
+And after reading through [[https://github.com/MusicPlayerDaemon/MPD/blob/master/src/unix/Daemon.cxx#L110-L181][daemonize_begin]], I'm now 99% convinced that all
+scripting languages are an abomination that hurt performance, diffuse open
+source productivity and cripple people's understanding of Unix/Linux.
+
+[[https://www.baeldung.com/linux/fork-child-process][Why do we need the fork system call to create new processes]]
+
+It seems that because daemonize creates an open pipe before it forks, it
+"synchronizes" state b/w parent/child. I'm not sure how essential the pipe is to
+synchronization ... but here, the conditional /seems to imply/ that the
+parent/child logically continue executing as though the parent/child's heaps are
+identical.
+
+Scripting languages would rarely have performance benefits from forking, but
+also offer reduced IPC design possibilities ... which simply aren't efficient
+anyways. To make things worse, I have trouble really grokking what the pidfile
+is, more or less. I know it uses the file system to allow process status/id to
+be advertised, but it's pretty easy to use linux and never understand what it
+is. I learned about it 15+ years ago, but the basics are so fucking irrelevant,
+that all i do is search Google for forum posts.
+
+Forking is subject to [[https://ops-class.org/slides/2016-02-03-forksynch/][race conditions]]. For more complexity, see notes on
+[[https://cs61.seas.harvard.edu/site/2023/Synch/#gsc.tab=0][Synchronization from Harvard CS 61]]. Designing interactions between programs also
+becomes complicated ... but I'm pretty sure that's what IPC is for.
+
+You want big static binary starts process with small heap, then many forks with
+IPC like a giant Moog synth... the parent process tracks IPC events and the
+child processes should share more L2 cache. It make NUMA go vroom.
+
+I guess I don't know what I'm talking about, but it really seems like languages
+requiring a virtual machine and/or garbage collection (like ruby, python or any
+scripting language) will quickly stomp all over the COW shared memory pages.

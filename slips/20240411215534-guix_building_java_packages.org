@@ -1,0 +1,130 @@
+:PROPERTIES:
+:ID:       dd64f171-f66c-41e5-9238-c8710605095f
+:END:
+#+TITLE: Guix Java: Helm Chartmap
+#+CATEGORY: slips
+#+TAGS:
+
+* Resources
+
+[[https://lepiller.eu/en/supporting-java-modules-in-guix.html][Supporting Java Modules in Guix]] walks through building the JOSM Open Street Maps
+editor.
+
+* Overview
+
+I need [[https://github.com/melahn/helm-chartmap/blob/master/pom.xml][melahn/helm-chartmap]] and I wanted to try to work through building a java
+package. I don't know a ton about Maven, but the packages and build-systems in
+Guix help a lot to learn builds for various languages.
+
+* Maven Build System
+
+Clone =melahn/helm-chartmap= and setq-local for =chartmap-src=
+
+#+name: pom
+#+begin_src emacs-lisp :results value silent
+(expand-file-name "pom.xml" chartmap-src)
+#+end_src
+
+** Query =pom.xml=
+
+Extract from =pom.xml=
+
+#+name: pomExtract
+#+begin_src sh pom=pom.xml query="." :results output table
+# ... babel just parses json? is that new? ... nevermind
+#xq -yr "\"\" as \$empty | \"ø\" as \$newline | ${query}" $pom |\
+xq -r "\"\" as \$empty | ${query}" $pom
+#+end_src
+
+Query Dependencies
+
+#+name: jqMavenDeps
+#+begin_example jq
+.project.dependencies.dependency[]
+| ([.groupId, .artifactId, .version, .scope // $empty] | join(", "))
+#| map(. | @text "\(.groupId), \(.artifactId), \(.version), \(.scope // $empty)")
+#| join($newline)
+#+end_example
+
+#+name: mavenDeps
+#+call: pomExtract(pom=pom, query=jqMavenDeps)
+
+#+RESULTS: mavenDeps
+| com.fasterxml.jackson.core        | jackson-databind        |   2.13.4 |      |
+| com.fasterxml.jackson.dataformat  | jackson-dataformat-yaml |   2.13.4 |      |
+| com.melahn                        | archive-extract         |    1.0.0 |      |
+| commons-cli                       | commons-cli             |    1.5.0 |      |
+| net.sourceforge.plantuml          | plantuml                | 1.2022.7 |      |
+| org.apache.commons                | commons-collections4    |      4.4 |      |
+| org.apache.commons                | commons-compress        |     1.21 |      |
+| org.apache.commons                | commons-lang3           |   3.12.0 |      |
+| org.apache.httpcomponents.client5 | httpclient5             |    5.1.3 |      |
+| org.apache.logging.log4j          | log4j-core              |   2.19.0 |      |
+| org.json                          | json                    | 20220320 |      |
+| org.junit.jupiter                 | junit-jupiter           |    5.9.0 | test |
+| org.mockito                       | mockito-inline          |    4.8.0 | test |
+| org.yaml                          | snakeyaml               |      1.3 |      |
+
+Query Plugins
+
+#+name: jqMavenPlugins
+#+begin_example jq
+.project.build.plugins.plugin[]
+| ([.groupId // $empty, .artifactId, .version] | join(", "))
+#+end_example
+
+#+name: mavenPlugins
+#+call: pomExtract(pom=pom, query=jqMavenPlugins)
+
+#+RESULTS: mavenPlugins
+| org.jacoco               | jacoco-maven-plugin   |    0.8.8 |
+| org.apache.maven.plugins | maven-compiler-plugin |   3.10.1 |
+| org.apache.maven.plugins | maven-enforcer-plugin |    3.1.0 |
+|                          | maven-failsafe-plugin | 3.0.0-M7 |
+| org.apache.maven.plugins | maven-gpg-plugin      |    3.0.1 |
+| org.apache.maven.plugins | maven-help-plugin     |    3.3.0 |
+| org.apache.maven.plugins | maven-jar-plugin      |    3.3.0 |
+| org.apache.maven.plugins | maven-javadoc-plugin  |    3.4.1 |
+| org.apache.maven.plugins | maven-shade-plugin    |    3.4.0 |
+| org.apache.maven.plugins | maven-source-plugin   |    3.2.1 |
+| org.apache.maven.plugins | maven-surefire-plugin | 3.0.0-M7 |
+
+** Query Guix
+
+Running =guix show $plugin 2>/dev/null | recsel -P "version"= will show the
+available package version.
+
+#+name: guixMavenPlugins
+#+begin_src sh :var plugins=mavenPlugins[,1] versions=mavenPlugins[,2] :results output table
+# echo $mvnPlugins
+i=0
+# declare -a versions
+# versions=($versions)
+read -a versions < <(echo $versions)
+echo ${plugins[@]} | while read -r -d ' ' plugin; do
+    reqversion=${versions[$i]}
+    guixversion="$(guix show $plugin 2>/dev/null | recsel -P "version")"
+    # guixfound=$? # handle errors some other way
+
+    echo $plugin $reqversion $guixversion
+    ((i++))
+done
+#+end_src
+
+#+RESULTS: guixMavenPlugins
+| jacoco-maven-plugin   |    0.8.8 |       |
+| maven-compiler-plugin |   3.10.1 | 3.8.1 |
+| maven-enforcer-plugin |    3.1.0 | 3.0.0 |
+| maven-failsafe-plugin | 3.0.0-M7 |       |
+| maven-gpg-plugin      |    3.0.1 |       |
+| maven-help-plugin     |    3.3.0 |       |
+| maven-jar-plugin      |    3.3.0 | 3.2.0 |
+| maven-javadoc-plugin  |    3.4.1 |       |
+| maven-shade-plugin    |    3.4.0 |       |
+| maven-source-plugin   |    3.2.1 |       |
+
+*** TODO finish analyzing required maven plugins
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:97ae00f5-9337-4108-b85f-1edfc7f86ed7][Java]]

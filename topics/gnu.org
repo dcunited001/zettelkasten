@@ -47,7 +47,10 @@ with recfile databases. Various software libraries support the format.
 Example: search guix for all =emacs-org= packages.
 
 #+begin_src shell
-guix search emacs-org | recsel -p name | cut -d' ' -f2 | sort | uniq | head -n5
+guix search emacs-org |\
+    recsel -p name |\
+    cut -d' ' -f2 |\
+    sort | uniq | head -n5
 #+end_src
 
 #+RESULTS:
@@ -64,6 +67,92 @@ guix search emacs-org | recsel -p name | cut -d' ' -f2 | sort | uniq | head -n5
 + [[https://gist.github.com/gmolveau/6be062d9b9005cf985cda98dabdf0baa][tutorial]]
 + [[https://github.com/maninya/python-recutils][python bindings]] (2015)
 
+*** Topics
 
+**** Guix
+
+***** Convert to Flat YAML
+
+okay...
+
+#+begin_src sh :results output
+guix package -s "emacs-ob-.*" |\
+    recsel -p name,version |\
+    sed -e 's/^$/---/' |\
+    yq -sy '.[] | @text "\(.name) \(.version)"' |\
+    sed -e 's/--- //'
+#+end_src
+
+#+RESULTS:
+: emacs-ob-sclang 0.1-1.cd3f3c8
+: emacs-ob-restclient 0.02-3.1b021ce
+: emacs-ob-ipython 20180224
+: emacs-ob-go 0.02-0.2067ed5
+: emacs-ob-erlang 20210321-1.a029c23
+: emacs-ob-elm 0.0-0.d3a9fbc
+: emacs-ob-async 1.0.0
+: emacs-ob-asymptote 1.0
+: ...
+
+hmmm... just generally easier with JSON
+
+#+begin_src sh
+guix package -s "emacs-ob-.*" |\
+    recsel -p name,version |\
+    recfmt 'name: {{name}}
+version: {{version}}
+---
+'
+#+end_src
+
+#+RESULTS:
+| name:    | emacs-ob-sclang     |
+| version: | 0.1-1.cd3f3c8       |
+| ---      |                     |
+| name:    | emacs-ob-restclient |
+| version: | 0.02-3.1b021ce      |
+| ---      |                     |
+| name:    | emacs-ob-ipython    |
+| version: | 20180224            |
+| ---      |                     |
+| name:    | emacs-ob-go         |
+| version: | 0.02-0.2067ed5      |
+| ---      |                     |
+| name:    | emacs-ob-erlang     |
+| version: | 20210321-1.a029c23  |
+| ---      |                     |
+| name:    | emacs-ob-elm        |
+| version: | 0.0-0.d3a9fbc       |
+| ---      |                     |
+| name:    | emacs-ob-async      |
+| version: | 1.0.0               |
+| ---      |                     |
+| name:    | emacs-ob-asymptote  |
+| version: | 1.0                 |
+| ---      |                     |
+
+
+**** Commands
+
+Manage
+
+| Type      | Command   | Description                                                      |
+|-----------+-----------+------------------------------------------------------------------|
+| Create    | recins    | Insert new records in a rec database                             |
+| Read      | recsel    | Select and print rec data                                        |
+| Update    | recset    | Alter or delete fields in records                                |
+| Delete    | recdel    | Remove (or comment out) records from a rec file                  |
+|-----------+-----------+------------------------------------------------------------------|
+| Transform | recfmt    | Apply a template to records read from standard input             |
+| Meta      | recinf    | Print information about the types of records stored in the input |
+|-----------+-----------+------------------------------------------------------------------|
+| Manage    | recfix    | Check and fix rec files                                         |
+| Convert   | rec2csv   | Convert rec into data csv data                                   |
+| Convert   | csv2rec   | Convert csv data into rec data                                   |
+
+
+**** Emacs: rec-mode and ob-rec
+
+A separate project contains =rec-mode.el= and =ob-rec.el=.
 
 * Info

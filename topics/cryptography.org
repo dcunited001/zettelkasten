@@ -128,9 +128,81 @@ KexAlgorithms foobar-123, ... # in order of priority
 ** Issues
 
 
+* PKI
+
+** Resources
+*** Tools
++ [[https://www.dogtagpki.org/][DogtagPKI]] used by CERN, apparently
+
+**** Analysis
++ [[github:lanrat/CertGraph][lanrat/CertGraph]]
+
+*** Design
++ [[https://www.thesslstore.com/blog/pki-architecture-fundamentals-of-designing-a-private-pki-system/][PKI Architecture: Fundamentals of Designing a Private PKI System]]
++ [[https://docs.aws.amazon.com/privateca/latest/userguide/ca-hierarchy.html][AWS: Designing a CA Hierarchy]]
++ [[https://www.idmanagement.gov/university/pki/][PKI 101: Certificate Chains For Feds]]
+
+** Topics
+
+*** DANE+DNSSEC
+
+By adding =TLSA= records to your domain (with DNSSEC), this provides you with a
+bit of flexibility when bootstrapping or migrating PKI. You can establish
+trusted certificates in DNS
+
+#+begin_quote
+Everybody knows DNS is the O.G. Bighash in the Sky
+#+end_quote
+
+
+
+*** Chain(S) of Trust (plural)
+
+Read [[https://medium.com/@sleevi_/path-building-vs-path-verifying-the-chain-of-pain-9fbab861d7d6][Path Building vs Path Verifying: The Chain of Pain]].
+
+*** Cross Signing
+
+I'm mainly looking for answers to a following questions ... but more generally:
+when does the whole "someone got the key for your CA so now they can sign
+anything they want" thing matter?
+
++ How does a signing CA implement rules for restricted SAN's when signing Certs
+  & CA's?
++ How do clients interpret that these rules were adhered to for certs signed by
+  Intermediate CA's? If the metadata that defines these SAN restrictions is
+  contained on the Intermediate CA's cert, then when a client validates a chain
+  not containing that cert, it has no idea they're supposed to be there --
+  unless it gets the full chain from the server. This may not happen for every
+  =(app, server)= pair or for every =(client, application)= pair
+
++ [[https://access.redhat.com/documentation/en-us/red_hat_certificate_system/10/html/administration_guide/managing_subject_names_and_subject_alternative_names#doc-wrapper][Redhat Certificate Services: Managing SN and SAN's]]
++ [[https://www.digicert.com/kb/digicert-root-certificates.htm#cross-signed][Digicert has examples of cross signed root certs]] used in previous migrations
+  to new Root CA's. This helps ... but isn't going to provide a clear
+
+**** Hashicorp has a guide to [[https://developer.hashicorp.com/vault/tutorials/secrets-management/pki-engine][Build Your Own Certificate Authority]].
+
+This documents what i'm looking for, but I can't clearly elucidate it by
+analyzing the example certs with =certtool -i < /tmp/cross-ica.crt=. (still no
+answer)
+
+Also, isn't this supposed to include more constraints on what should be signed?
+
 * Certificates
 
 ** Resources
+
+*** NIST & US Gov't
+
++ [[https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57pt1r5.pdf][NIST SP 800-57 Part 1]]: Recommendation for Key Management
++ [[https://csrc.nist.gov/pubs/sp/800/57/pt2/r1/final][NIST SP 800-57 Part 2]]: Best Practices for Key Management
++ [[https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-57Pt3r1.pdf][NIST SP 800-57 Part 3]]: Recommendations for Key Management
+
+[[https://www.idmanagement.gov/fpki/notifications/#fpki-graph][FPKI Graph]]: Example of certificate deployment using cross-signing.
+
++ Gdmt... mesh-based PKI was difficult to find conclusive answers on ... and
+  X.509 is ALL mesh-based PKI. See cross certificates.
++ Now I'm wondering why I kept seeing intermittent failing Entrust certificates
+  on my iphone (probably bc PKI is hard).
 
 *** Cheatsheets
 
@@ -138,6 +210,31 @@ From Illustrated [[https://darutk.medium.com/illustrated-x-509-certificate-84aec
 
 #+ATTR_HTML: :style width:800px;
 [[file:img/x509-illustrated.png]]
+
+** Applications
+*** Postgres
+
++ [[https://severalnines.com/blog/how-configure-selinux-postgresql-and-timescaledb/][How to configure SELinux for Postgresql and TimescaleDB]]
+
+** Issues
+*** Certification Path Validation
+
+**** Per Client Library
+
+This video (and assoc. content) clarifies handling details for validation by
+several client libraries. It's a bit dated (2018), but covers a lot of ground.
+
++ [[https://www.youtube.com/watch?v=ZxQx2OhzFO0][Revisiting the X.509 Certification Path Validation (Dr. Falko Strenzke)]]
++ [[github:mtg-ag/cpt][mtg-ag/cpt]] x.509 conformance test suite (and a [[https://cryptosource.de/blogpost__cpt_en.html][blog]] about it with slides/etc)
++ The [[https://www.bsi.bund.de/EN/Themen/Unternehmen-und-Organisationen/Informationen-und-Empfehlungen/Kryptografie/Certification-Path-Validation-Test-Tool/certification-path-validation-test-tool.html][docs]] on the bundewatsitheit site
+
+AFAIK, any specific issues depend on:
+
++ how an implementation validates CSRs (& PKI interactions with CA/RA etc)
++ how the software for each client/server perform validation
+
+so if a library doesn't process extensions or attributes correctly, it may
+sign/accept/reject/skip, but then client or server software may reject/report.
 
 ** Cloud
 

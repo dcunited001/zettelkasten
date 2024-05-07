@@ -6,11 +6,172 @@
 #+TAGS:
 
 * Docs
+
 * Resources
 
-* Graphviz/PlantUML
 
+
+** Archetectural Diagrams
+
++ [[https://holori.com/saas-pricing/][Holori]] cloud diagramming, free plan with imports from terraform (50 CI
+  imports, 3 on-demand imports)
++ [[https://github.com/beveradb/logo-diagram-generator][beveradb/logo-diagram-generator]] generate radial diagrams for tech stacks to
+  help connect a central tech's roles to the tools that fulfill them
+
+** Misc
++ [[https://kroki.io/#examples][kroki.io]] provides an environment for generating diagrams using many languages
+
+* Graphviz/PlantUML
 See [[id:e77048aa-d626-44c1-8bbb-037a1173d01d][Graphviz]]
+
+* Mingrammer
+
+[[github:mingrammer/diagrams][mingrammer/diagrams]]: graphviz-based python lib for generating cloud architecture
+diagrams.
+
+Categories
+
+| onprem       | generic  | c4          |
+| aws          | k8s      | programming |
+| azure        | oci      | custom      |
+| gcp          | elastic  |             |
+| ibm          | saas     |             |
+| alibabacloud | outscale |             |
+| openstack    |          |             |
+| digitalocean |          |             |
+
+** Docs
++ [[https://diagrams.mingrammer.com/docs/getting-started/examples][Cloud Infrastructure examples]]
+
+** Resources
++ [[github:dmytrostriletskyi/diagrams-as-code][dmytrostriletskyi/diagrams-as-code]] write Diagrams in YAML (see [[https://github.com/dmytrostriletskyi/diagrams-as-code/blob/main/json-schemas/0.0.1.json][JSON schema]])
++ [[https://github.com/tabatkins/railroad-diagrams][tabatkins/railroad-diagrams]] generate diagrams for a real language like haskell
+
+*** Dependent Packages
+
+[[berylliumsec/nebula_watcher][berylliumsec/nebula_watcher]] visualizes pentesting progress.
+
++ parses initial NMAP scan results
++ generates diagram that depicts the network/machines
++ runs a webserver that displays the diagram.
++ then when network activity is detected on each path/port, it updates
+  =state.json= and changes arrows from red to green
+
+[[https://github.com/SecuraBV/RedWizard][securabv/redwizard]] sets up OPSEC-safe infrastructure for pentesting
+
++ uses diagrams for ummm diagrams ... here in [[https://github.com/SecuraBV/RedWizard/blob/main/tools/diagram.py][diagrams.py]] it more
+  programmatically generates a diagram that reflects your pentesting
+  infrastructure
++ It's also a good example of an Ansible project.
+
+[[https://github.com/dora-metrics/pelorus/blob/778192ff8d72d2f05c3fbb2318036e7c68522f45/docs/img/diagrams/generate_diagrams.py#L4][dora-metrics/pelorus]] measure IT's contribution to code delivery
+
++ example of =Custom= icon usage in [[https://github.com/dora-metrics/pelorus/blob/master/docs/img/diagrams/generate_diagrams.py][docs/img/diagrams/generate_diagrams.py]]
+
+** Topics
+
+*** CLI
+
+This was briefly added, but it's gone. A python wrapper script is needed.
+
+*** Usage
+
+**** Classes
+
+Diagram
+
+| param      | type  | default | desc                                             |
+|------------+-------+---------+--------------------------------------------------|
+| name       | str   | ""      | Diagram name.                                    |
+| filename   | str   | ""      | The output filename, without extension           |
+| direction  | str   | "LR"    | Data flow direction.                             |
+| curvestyle | str   | "ortho" | Curve bending style. One of "ortho" or "curved". |
+| outformat  | str   | "png"   | Output file format. Default is 'png'.            |
+| show       | bool  | True    | Open generated image after save                  |
+| graph_attr | Dict? | None    | Provide graph_attr dot config attributes.        |
+| node_attr  | Dict? | None    | Provide node_attr dot config attributes.         |
+| edge_attr  | Dict? | None    | Provide edge_attr dot config attributes.         |
+| strict     | bool  | False   | Rendering should merge multi-edges.              |
+
+Cluster. Group is defined as an alias to Cluster, at least initially
+
+| param      | type  | default   | desc |
+|------------+-------+-----------+------|
+| label      | str   | "cluster" |      |
+| direction  | str   | "LR"      |      |
+| graph_attr | Dict? |           |      |
+
+Node
+
+| param | type | default | desc |
+|-------+------+---------+------|
+| label | str  | ""      |      |
+
+Edge
+
+
+| param   | type   | default | desc |
+|---------+--------+---------+------|
+| node    | "Node" | None    |      |
+| forward | bool   | False   |      |
+| reverse | bool   | False   |      |
+| label   | str    | ""      |      |
+| color   | str    | ""      |      |
+| style   | str    | ""      |      |
+| attrs   | Dict   |         |      |
+
+**** Example
+
+From the example [[https://diagrams.mingrammer.com/docs/getting-started/examples#advanced-web-service-with-on-premise-with-colors-and-labels][Advanced Web Service with On-Premise (with colors/labels)]]
+
+#+headers: :var fname="img/mingrammer_test" fext="png"
+#+begin_src python :results output file link
+from diagrams import Cluster, Diagram, Edge
+from diagrams.onprem.analytics import Spark
+from diagrams.onprem.compute import Server
+from diagrams.onprem.database import PostgreSQL
+from diagrams.onprem.inmemory import Redis
+from diagrams.onprem.aggregator import Fluentd
+from diagrams.onprem.monitoring import Grafana, Prometheus
+from diagrams.onprem.network import Nginx
+from diagrams.onprem.queue import Kafka
+
+with Diagram(name="Advanced Web Service with On-Premise (colored)",
+             filename=fname,
+             outformat=fext,
+             show=False):
+    ingress = Nginx("ingress")
+
+    metrics = Prometheus("metric")
+    metrics << Edge(color="firebrick", style="dashed") << Grafana("monitoring")
+
+    with Cluster("Service Cluster"):
+        grpcsvc = [
+            Server("grpc1"),
+            Server("grpc2"),
+            Server("grpc3")]
+
+    with Cluster("Sessions HA"):
+        primary = Redis("session")
+        primary - Edge(color="brown", style="dashed") - Redis("replica") << Edge(label="collect") << metrics
+        grpcsvc >> Edge(color="brown") >> primary
+
+    with Cluster("Database HA"):
+        primary = PostgreSQL("users")
+        primary - Edge(color="brown", style="dotted") - PostgreSQL("replica") << Edge(label="collect") << metrics
+        grpcsvc >> Edge(color="black") >> primary
+
+    aggregator = Fluentd("logging")
+    aggregator >> Edge(label="parse") >> Kafka("stream") >> Edge(color="black", style="bold") >> Spark("analytics")
+
+    ingress >> Edge(color="darkgreen") << grpcsvc >> Edge(color="darkorange") >> aggregator
+
+print(f'{fname}.{fext}', end='')
+#+end_src
+
+#+RESULTS:
+[[file:img/mingrammer_test.png]]
+
 
 * Mermaid
 

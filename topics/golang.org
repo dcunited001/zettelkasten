@@ -12,6 +12,116 @@
 * Topics
 
 * Issues
+** CGO
+*** On Nix
+
+
+*** On Guix
+
+I grepped across many channels and found only one reference to =CGO_ENABLED=0=,
+so I'm going to assume that it's not so easy
+
+**** Building d2
+
+This would require =npx= and [[https://github.com/terrastruct/d2/blob/7269d3000feeb8745f3952edb2edea3048742590/make.sh#L19][playwright]] to run the tests. Although it seems
+=CGO_ENABLED=0= is set in the [[https://github.com/terrastruct/d2/blob/7269d3000feeb8745f3952edb2edea3048742590/ci/release/_build.sh#L17-L19][d2 ci/release/_build.sh script]], the binary is not
+static and, on arch, requires these shared libs:
+
+#+begin_src sh :results output table
+ldd `which d2` | tr '	' ' ' |\
+    sed -e 's/(.*)//' |\
+    sed -e 's/^.*\([-a-zA-Z0-9./]+\)/\1/' |\
+    sed -e 's/.=>./ /' |\
+    sed -e 's/^ +//'
+#+end_src
+
+#+RESULTS:
+| linux-vdso.so.1             |                                 |
+| libresolv.so.2              | /usr/lib/libresolv.so.2         |
+| libc.so.6                   | /usr/lib/libc.so.6              |
+| /lib64/ld-linux-x86-64.so.2 | /usr/lib64/ld-linux-x86-64.so.2 |
+
+
+*** Builds
+**** vDSO issues in a dynamically linked Go program (patched)
+
+I've rolled the =step-kms-plugin= binary into a Guix package and used the
+Nonguix =binary-build-system= to call =patchelf= in order to fix the =rpath= (I
+think). I've done this on other binaries and it's worked just fine after some
+testing. However, nothing I do with =step-kms-plugin= gets me any closer to
+figuring out the problems.
+
+Both =step= and =step-ca= are statically linked. I've checked that all the
+dependencies are covered, though =linux-vdso= is a virtual shared library
+injected into most (all?) processes. According to the [[https://marcan.st/2017/12/debugging-an-evil-go-runtime-bug/][Debugging an evil Go
+runtime bug]], Go handles this differently.
+
+Here are the dynamically linked libraries and they all seem to be
+covered. However, I get the feeling that I'm having an issue with
+=vDSO=. Running =ltrace -tt -e '*@*'= or with any of the libraries specified
+returns nothing ... at least not before the segfault. =strace= doesn't really
+net any useful information.
+
+#+begin_example
+ldd `which step-kms-plugin`
+
+  linux-vdso.so.1 (0x00007ffd65d9a000)
+	libresolv.so.2 => /gnu/store/8ykrm18fj12jsi340iybf9sj14bljlpn-gcc-toolchain-11.3.0/lib/libresolv.so.2 (0x00007640cf659000)
+	libpcsclite.so.1 => /gnu/store/ndlpdjw9kjdx1rglfjka8v6ix57g964z-pcsc-lite-1.9.8/lib/libpcsclite.so.1 (0x00007640cf64c000)
+	libdl.so.2 => /gnu/store/8ykrm18fj12jsi340iybf9sj14bljlpn-gcc-toolchain-11.3.0/lib/libdl.so.2 (0x00007640cf647000)
+	libpthread.so.0 => /gnu/store/8ykrm18fj12jsi340iybf9sj14bljlpn-gcc-toolchain-11.3.0/lib/libpthread.so.0 (0x00007640cf642000)
+	libc.so.6 => /gnu/store/8ykrm18fj12jsi340iybf9sj14bljlpn-gcc-toolchain-11.3.0/lib/libc.so.6 (0x00007640cf446000)
+	libgcc_s.so.1 => /gnu/store/6ncav55lbk5kqvwwflrzcr41hp5jbq0c-gcc-11.3.0-lib/lib/libgcc_s.so.1 (0x00007640cf42a000)
+	/gnu/store/ln6hxqjvz6m9gdd9s97pivlqck7hzs99-glibc-2.35/lib/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007640cf66e000)
+#+end_example
+
+And the =ldd= output for the original release:
+
+#+begin_example
+linux-vdso.so.1 (0x000075abcd32f000)
+libresolv.so.2 => /usr/lib/libresolv.so.2 (0x000075abcd2c8000)
+libpcsclite.so.1 => /usr/lib/libpcsclite.so.1 (0x000075abcd2bc000)
+libdl.so.2 => /usr/lib/libdl.so.2 (0x000075abcd2b7000)
+libpthread.so.0 => /usr/lib/libpthread.so.0 (0x000075abcd2b2000)
+libc.so.6 => /usr/lib/libc.so.6 (0x000075abcd0d0000)
+/lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x000075abcd331000)
+#+end_example
+
+
+I'm not sure I need =libgcc_s.so.1= but I believe the =patchelf= output was
+failing without it.
+
+***** Next steps
+
++ This may be an issue with how =CGO= links dependencies.
++ Apparently, Go typically links dependencies statically. Using =delve= to debug
+  may not be straightfoward if it's =CGO=.
++ Review [[https://git.sr.ht/~andir/nixpkgs/tree/master/item/pkgs/tools/security/step-kms-plugin/default.nix][nixpkgs build for step-kms-plugin]]
+
+Actually, I can get the binary to work by downloading the Step KMS Plugin build
+and manually using =patchelf --set-rpath $PCSC_LITE_RPATH
+./step-kms-plugin=. Running =ldd= shows that everything just falls through to
+the =glib= shared libs on my system.
+
+***** Incompatible glibc interpreter
+
+It seems that if the Nonguix =binary-build-system= patches the interpreter (or
+maybe something else), then I get the segfault.
+
++ On Arch, I have =glib2 2.80.0-2= which has recently caused problems with
+  =shared-mime-info=
+
++ Guix will package =glibc 2.35=, but the nonguix =binary-build-system= will
+  ultimately point the =ld-linux-x86-64= to =/usr/lib64/ld-linux-x86-64.so.2=
+
+The article [[https://medium.com/obscure-system/rpath-vs-runpath-883029b17c45][rpath vs runpath]] shows how to debug the =LD_LIBRARY_PATH= search
+
++ Running =env LD_LIBRARY_PATH=/gnu/store/a1b2c3 ldd `which step-kms-plugin`=
+  doesn't seem to work
+
+I don't have time at the moment, but I'm fairly sure the tool will work from
+within my =usb-gpg-tools= system.
+
 
 * Roam
 + [[id:4cdfd5a2-08db-4816-ab24-c044f2ff1dd9][Programming]]
