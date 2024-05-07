@@ -9,9 +9,194 @@
 
 * Resources
 
-* Topics
 
-* Issues
+* Topics
+** Cross Compilation
+
+Architectures (from ko-build/ko)
+
+| amd64 | arm64 | i386 | mips64le | ppc64le | riscv64 | s390x |
+
+** Ecosystem
+
+*** Dependencies
+
++ go list -m -json all :: list all modules (direct & indirect) in JSON
++ go mod graph :: output the dependency graph in text ([[https://go.dev/ref/mod#go-mod-graph][docs]])
++ go list -m -u all :: list info about
++ [[https://go.dev/doc/modules/gomod-ref][go.mod format reference]]
+
+**** go mod
+
++ go mod tidy :: adds missing deps, removes unreferenced requirements
+
+***** Formatting =go list= output
+
+The =go list= output can be formatted using Go Templates for both modules and
+packages.
+
+#+begin_src sh :dir (identity go-d2)
+go list -m -f '{{.Path}} {{.Version}}' all | head -n11
+#+end_src
+
+#+RESULTS:
+| oss.terrastruct.com/d2         |                                      |
+| cdr.dev/slog                   | v1.4.2-0.20221206192828-e4803b10ae17 |
+| cloud.google.com/go            | v0.26.0                              |
+| gioui.org                      | v0.2.0                               |
+| gioui.org/cpu                  | v0.0.0-20220412190645-f1e9e8c3b1f7   |
+| gioui.org/shader               | v1.0.6                               |
+| gioui.org/x                    | v0.2.0                               |
+| git.sr.ht/~sbinet/gg           | v0.5.0                               |
+| github.com/BurntSushi/toml     | v0.3.1                               |
+| github.com/PuerkitoBio/goquery | v1.8.1                               |
+| github.com/ajstarks/svgo       | v0.0.0-20211024235047-1546f124cd8b   |
+
+From =go help list= output, the =Module= struct is below. There are other
+similar structs for Package, Context, etc.
+
+#+begin_src go
+type Module struct {
+	Path       string        // module path
+	Query      string        // version query corresponding to this version
+	Version    string        // module version
+	Versions   []string      // available module versions
+	Replace    *Module       // replaced by this module
+	Time       *time.Time    // time version was created
+	Update     *Module       // available update (with -u)
+	Main       bool          // is this the main module?
+	Indirect   bool          // module is only indirectly needed by main module
+	Dir        string        // directory holding local copy of files, if any
+	GoMod      string        // path to go.mod file describing module, if any
+	GoVersion  string        // go version used in module
+	Retracted  []string      // retraction information, if any (with -retracted or -u)
+	Deprecated string        // deprecation message, if any (with -u)
+	Error      *ModuleError  // error loading module
+	Origin     any           // provenance of module
+	Reuse      bool          // reuse of old module info is safe
+}
+#+end_src
+
+
+**** Misc
+
++ Gist: [[https://gist.github.com/mehmetron/2e21703a9942ff66552ad87772ac26e5][Transform go.mod into input for a go program]] there's probably a better
+  way to do this, skipping the JSON, using the [[https://pkg.go.dev/golang.org/x/mod/modfile][golang.org/x/mod/modfile]] package
+
+**** [[https://github.com/kisielk/godepgraph][kisielk/godepgraph]]
+
+Outputs the dependency graph, whether it's a go modules project or not.
+
+** Tooling
+
+*** From [[https://wiki.archlinux.org/title/Go#Tools][Archwiki]]
+
+Main
+
+| AUR    | Tool | Desc                  | URL |
+|--------+------+-----------------------+-----|
+| go     |      |                       |     |
+| gccgo  |      | produce "faster" bins |     |
+| tinygo |      | produce small bins    |     |
+
+Tools
+
+| AUR         | Tool        | Desc                                                                                | URL                                         |
+|-------------+-------------+-------------------------------------------------------------------------------------+---------------------------------------------|
+| go-tools    | Go tools    | Various tools and Go packages mostly for static analysis of Go programs             | https://cs.opensource.google/go/x/tools     |
+| gopls       | gopls       | The official Go language server                                                     | https://pkg.go.dev/golang.org/x/tools/gopls |
+| delve       | Delve       | A debugger for the Go programming language                                          | https://github.com/go-delve/delve           |
+| goreleaser  | GoReleaser  | A release automation tool for Go projects                                           | https://goreleaser.com/                     |
+| gox         | gox         | A tool for Go cross compilation that will parallelize builds for multiple platforms | https://github.com/mitchellh/gox            |
+| ko          | ko          | A container image builder for Go applications                                       | https://github.com/ko-build/ko              |
+| revive      | revive      | A fast, configurable, extensible, flexible, and beautiful linter for Go             | https://revive.run/                         |
+| staticcheck | Staticcheck | A state of the art linter for the Go programming language                           | https://staticcheck.io/                     |
+| yaegi       | Yaegi       | A Go interpreter. Includes the yaegi command-line interpreter/REPL                  | https://github.com/traefik/yaegi            |
+
+** System Setup
+
+*** Arch
+
+Run =yay -Syu go go-tools gopls ko delve=
+
+** Builds
+
++ [[https://wiki.archlinux.org/title/Go_package_guidelines#Flags_and_build_options][Arch Go Packaging Guidelines]]: indicates "most makefiles for Go projects don't
+  respect the build flags ... along with overwriting =GOFLAGS=", which doesn't
+  yield ELF bins with RELRO (other notes on [[https://groups.google.com/g/golang-nuts/c/cXhRsmNsMwo][Golang and PIE]], though it doesn't
+  quite disambiguate reliance on CGO)
+
+*** Build Flags
+
+**** buildmode=pie
+
++ build position-independent code; enables address-space layout randomization,
+  almost entirely relevant for =CGO= builds.
++ See [[https://dubo-dubon-duponey.medium.com/a-beginners-guide-to-cross-compiling-static-cgo-pie-binaries-golang-1-16-792eea92d5aa][Beginner's Guide to Cross-Compiling static CGO PIE bins]]
+
+**** ldflags
+
+Linker flags
+
+*** Cross Compilation
+
+
+** Project Setup
+
+*** Dependencies
+
+*** Environment
+
+Run =go env= to autodiscover environment...
+
+**** From [[https://medium.com/@souravchoudhary0306/go-your-own-way-customizing-go-with-environment-variables-3e47c880fe34][Go Your Own Way: Customizing Go with Environment Variables]]
+
+| var         | default | values               | desc                                   |
+|-------------+---------+----------------------+----------------------------------------|
+| GOOS        |         | linux,windows,darwin |                                        |
+| GOARCH      | amd64   | $arch                |                                        |
+|-------------+---------+----------------------+----------------------------------------|
+| GO111MODULE | auto    | on,off,auto          | enable/disable go modules              |
+| GOPATH      |         | $path                | used in non-module projects            |
+|-------------+---------+----------------------+----------------------------------------|
+| GOCACHE     |         | $path                | build cache for intermediate artifacts |
+| GOTMPDIR    |         | $path                | temp storage for build artifacts       |
+|-------------+---------+----------------------+----------------------------------------|
+| GOBIN       |         | $path                | where to =go install=                  |
+| GOPROXY     |         | $url                 | go module proxy server                 |
+|-------------+---------+----------------------+----------------------------------------|
+| CGO_ENABLED | 0       |                      | enable dynamic linking                 |
+| GOFLAGS     |         |                      | default flags for =go=                 |
+| GOENV       |         | $path                |                                        |
+|-------------+---------+----------------------+----------------------------------------|
+| GOTRACEBACK |         | all                  | panic detail for =go run=              |
+| GODEBUG     |         | $caps                | debug capabilities for =go run=        |
+
++ set =GOOS= and =GOARCH= to crosscompile
+
+Useful =GOFLAGS= (from above article)
+
+| flag                       | desc                                            |
+|----------------------------+-------------------------------------------------|
+| -v                         | verbose output                                  |
+| -o $dir                    | output directory                                |
+| -tags=mytag                | enable/disable build tags (c-macros, in effect) |
+| -ldflags '-s -w' -trimpath | LDFLAGS to pass to =ld= or linker.              |
+| -buildmode=shared          | produce a shared library                        |
+| -p 2                       | set number of processes for =go test=           |
+| GOARCH=arm64 GOOS=linux    | set environment variables for =go build=        |
+
+Go Debug
+
+| cap              | desc                                |
+|------------------+-------------------------------------|
+| gctrace=1        | GC tracing                          |
+| allocfreetrace=1 | track memory allocations            |
+| gctraceback=1    | show goroutine stack frame on crash |
+| 1                | enable CPU profiling                |
+
+****
+
 ** CGO
 *** On Nix
 
@@ -41,7 +226,8 @@ ldd `which d2` | tr '	' ' ' |\
 | libc.so.6                   | /usr/lib/libc.so.6              |
 | /lib64/ld-linux-x86-64.so.2 | /usr/lib64/ld-linux-x86-64.so.2 |
 
-
+* Issues
+** CGO
 *** Builds
 **** vDSO issues in a dynamically linked Go program (patched)
 

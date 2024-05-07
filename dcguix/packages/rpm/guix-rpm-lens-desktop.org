@@ -1,0 +1,478 @@
+:PROPERTIES:
+:ID:       73afe181-fd6c-493e-ba32-0adf0bebdaf2
+:END:
+#+TITLE:     Guix RPM: Lens Desktop
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+.......and nonguix will absolutely unpack debians........
+
+Nice app, but I think I'm just going to run it in a VM. besides all the
+potential patching that needs to happen, it's the =lens://= protocol handler
+that kinda makes this obtuse:
+
++ The =lens-desktop= binary must always be available in =PATH= ... to complete
+  the "standing in line at the register-checkout to show my receipt again" flow
+  (the authentication flow)
++ And the =./usr/share/applications/lens-desktop.desktop= must always be in the
+  =XDG_DATA_DIRS= loaded by your window manager shell
+
+* Resources
+
++ [[https://developers.redhat.com/articles/2022/10/07/whats-inside-rpm-repo-file#][What's inside an RPM .repo file?]]
+
+Examples of extracting from RPM:
+
++ [[https://gitlab.inria.fr/guix-hpc/guix-hpc-non-free/-/blob/master/non-free/mkl.scm][guix-hpc-non-free channel's Intel MKL package]]
++ [[https://gitlab.com/nonguix/nonguix/-/blob/4094f7ae475a4f767fb407520ed1cc8c699ff29e/nongnu/packages/scanner.scm][nonguix brscan4]]
+
+* Package
+** Metadata
+
+#+name: bin-version
+#+begin_src emacs-lisp :noweb-ref bin-version
+"2024.4.230844"
+#+end_src
+
+#+name: bin-platform
+#+begin_src emacs-lisp :noweb-ref bin-platform
+;; rpm/appimage: "x86_64"
+"amd64"
+#+end_src
+
+#+name: bin-name
+#+headers: :var bin-platform=bin-platform bin-version=bin-version
+#+begin_src emacs-lisp :noweb-ref bin-name
+;; rpm/appimage: (concat (string-join (list "Lens" bin-version "latest") "-") "_" bin-platform)
+(concat (string-join (list "Lens" bin-version "latest") "-") "_" bin-platform)
+#+end_src
+
+#+RESULTS: bin-name
+: Lens-2024.4.230844-latest.x86_64.rpm
+
+*** Deb URL
+
+[[https://downloads.k8slens.dev/apt/index.html][Lens debian repository]] the root path gives XML that lists all objects.
+
+#+name: debbaseurl
+#+begin_src emacs-lisp
+"https://downloads.k8slens.dev/apt/debian/pool/stable/main"
+#+end_src
+
+#+RESULTS: debbaseurl
+: https://downloads.k8slens.dev/apt/debian/pool/stable/main
+
+#+name: debpkgurl
+#+headers: :var bin-name=bin-name debbaseurl=debbaseurl
+#+begin_src emacs-lisp
+(concat (string-join (list debbaseurl bin-name) "/") ".deb")
+#+end_src
+
+#+name: debpkghash
+#+begin_src sh :var debpkgurl=debpkgurl :eval once
+guix download $debpkgurl 2>/dev/null | tail -n1
+#+end_src
+
+#+RESULTS: debpkghash
+: 062ac44svwhvqac17gm43yc7hv38k4pcqfrw9pd25p55ykax283h
+
+*** RPM URL
+
+#+name: rpmbaseurl
+#+begin_src emacs-lisp
+"https://downloads.k8slens.dev/rpm/packages"
+#+end_src
+
+#+name: rpmpkgurl
+#+headers: :var bin-name=bin-name rpmbaseurl=rpmbaseurl
+#+begin_src emacs-lisp
+(concat (string-join (list rpmbaseurl bin-name) "/") ".rpm")
+#+end_src
+
+#+RESULTS: rpmpkgurl
+: https://downloads.k8slens.dev/rpm/packages/Lens-2024.4.230844-latest.x86_64.rpm
+
+https://downloads.k8slens.dev/rpm/packages/Lens-2024.4.230844-latest-x86_64.rpm
+To precalc hash (i still haven't figure this out.........)
+
+#+name: rpmpkghash
+#+begin_src sh :var rpmpkgurl=rpmpkgurl :eval once
+guix download $rpmpkgurl 2>/dev/null | tail -n1
+#+end_src
+
+#+RESULTS:
+: 1d0iiwnqzb2zd6k0vaxv3ymrf6mlwmn2han2bx32hq85rbnk0pkq
+
+
+** Source
+
+#+begin_src scheme :tangle lens-desktop.scm :noweb yes
+(define-module (dcguix packages rpm lens-desktop)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix gexp)
+  #:use-module (guix utils)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
+  #:use-module (guix packages)
+
+  #:use-module (nonguix build-system binary)
+  #:use-module (nonguix build-system chromium-binary)
+
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages gcc)
+  #:use-module (gnu packages commencement)
+  #:use-module (gnu packages golang)
+
+  #:use-module (gnu packages tls)
+  #:use-module (gnu packages security-token)
+  ;; #:use-module (gnu packages gcc)
+
+  #:use-module (gnu packages cpio)
+  #:use-module (gnu packages gcc)
+  #:use-module (gnu packages glib)
+  #:use-module (gnu packages gtk)
+  #:use-module (gnu packages package-management)
+  #:use-module (srfi srfi-1))
+
+(define-public lens-desktop
+  (package
+    (name "lens-desktop")
+    (version <<bin-version>>)
+    (source (origin
+              (method url-fetch)
+              (uri (string-append "<<debpkgurl()>>"))
+              (sha256
+               (base32 "<<debpkghash()>>"))))
+    ;; maybe chromium build system (which wraps binary-build-system & is used for electron)
+    (build-system chromium-binary-build-system)
+
+    (arguments
+     (list
+      ;; #:validate-runpath? #f
+      )))
+    (home-page "")
+    (synopsis "")
+    (description "")
+    ;; umm that's literally what the github says
+    (license license:expat))
+#+end_src
+
+This fails for now,
+
+*** From RPM
+
+To unpack from RPM. This fails in the =unpack-binary= step, which has a case for
+deb, but not RPM.
+
+#+begin_example scheme
+    (native-inputs
+     `(("rpm" ,rpm)
+       ("cpio" ,cpio)))
+
+    (arguments
+     (list
+      ;; #:validate-runpath? #f
+      #:phases
+      #~(modify-phases %standard-phases
+          (replace 'unpack
+            (lambda* (#:key inputs #:allow-other-keys)
+              ;; this rpm uses XZ compression
+              (system (format #f "rpm2cpio ~a | xzcat | cpio -idmv" (assoc-ref inputs "source")))
+              ;; mkl has other error handling code
+              #t)))))
+#+end_example
+
+* Notes
+** Lens
+*** Shared Libs
+
+**** Lens
+
+This is starting to look increasingly unlikely. The =host-inputs= from
+=chromium-binary-build-system= provide most of the dependencies, but not all of
+them. Reversing the =ldd= output to find the actual package/project names is a
+bit tough.
+
+#+begin_src sh :dir /tmp/Lens-2024.4.230844-latest :results output table
+ldd opt/Lens/lens-desktop | tr '	' ' ' | cut -f2,4 -d' '
+#+end_src
+
+#+RESULTS:
+| linux-vdso.so.1             |                                                      |
+| libffmpeg.so                | /tmp/Lens-2024.4.230844-latest/opt/Lens/libffmpeg.so |
+| libdl.so.2                  | /usr/lib/libdl.so.2                                  |
+| libpthread.so.0             | /usr/lib/libpthread.so.0                             |
+| libgobject-2.0.so.0         | /usr/lib/libgobject-2.0.so.0                         |
+| libglib-2.0.so.0            | /usr/lib/libglib-2.0.so.0                            |
+| libgio-2.0.so.0             | /usr/lib/libgio-2.0.so.0                             |
+| libnss3.so                  | /usr/lib/libnss3.so                                  |
+| libnssutil3.so              | /usr/lib/libnssutil3.so                              |
+| libsmime3.so                | /usr/lib/libsmime3.so                                |
+| libnspr4.so                 | /usr/lib/libnspr4.so                                 |
+| libatk-1.0.so.0             | /usr/lib/libatk-1.0.so.0                             |
+| libatk-bridge-2.0.so.0      | /usr/lib/libatk-bridge-2.0.so.0                      |
+| libcups.so.2                | /usr/lib/libcups.so.2                                |
+| libdbus-1.so.3              | /usr/lib/libdbus-1.so.3                              |
+| libdrm.so.2                 | /usr/lib/libdrm.so.2                                 |
+| libgtk-3.so.0               | /usr/lib/libgtk-3.so.0                               |
+| libpango-1.0.so.0           | /usr/lib/libpango-1.0.so.0                           |
+| libcairo.so.2               | /usr/lib/libcairo.so.2                               |
+| libX11.so.6                 | /usr/lib/libX11.so.6                                 |
+| libXcomposite.so.1          | /usr/lib/libXcomposite.so.1                          |
+| libXdamage.so.1             | /usr/lib/libXdamage.so.1                             |
+| libXext.so.6                | /usr/lib/libXext.so.6                                |
+| libXfixes.so.3              | /usr/lib/libXfixes.so.3                              |
+| libXrandr.so.2              | /usr/lib/libXrandr.so.2                              |
+| libgbm.so.1                 | /usr/lib/libgbm.so.1                                 |
+| libexpat.so.1               | /usr/lib/libexpat.so.1                               |
+| libxcb.so.1                 | /usr/lib/libxcb.so.1                                 |
+| libxkbcommon.so.0           | /usr/lib/libxkbcommon.so.0                           |
+| libasound.so.2              | /usr/lib/libasound.so.2                              |
+| libatspi.so.0               | /usr/lib/libatspi.so.0                               |
+| libm.so.6                   | /usr/lib/libm.so.6                                   |
+| libgcc_s.so.1               | /usr/lib/libgcc_s.so.1                               |
+| libc.so.6                   | /usr/lib/libc.so.6                                   |
+| /lib64/ld-linux-x86-64.so.2 | /usr/lib64/ld-linux-x86-64.so.2                      |
+| libffi.so.8                 | /usr/lib/libffi.so.8                                 |
+| libpcre2-8.so.0             | /usr/lib/libpcre2-8.so.0                             |
+| libgmodule-2.0.so.0         | /usr/lib/libgmodule-2.0.so.0                         |
+| libz.so.1                   | /usr/lib/libz.so.1                                   |
+| libmount.so.1               | /usr/lib/libmount.so.1                               |
+| libplds4.so                 | /usr/lib/libplds4.so                                 |
+| libplc4.so                  | /usr/lib/libplc4.so                                  |
+| libavahi-common.so.3        | /usr/lib/libavahi-common.so.3                        |
+| libavahi-client.so.3        | /usr/lib/libavahi-client.so.3                        |
+| libgnutls.so.30             | /usr/lib/libgnutls.so.30                             |
+| libsystemd.so.0             | /usr/lib/libsystemd.so.0                             |
+| libgdk-3.so.0               | /usr/lib/libgdk-3.so.0                               |
+| libpangocairo-1.0.so.0      | /usr/lib/libpangocairo-1.0.so.0                      |
+| libharfbuzz.so.0            | /usr/lib/libharfbuzz.so.0                            |
+| libpangoft2-1.0.so.0        | /usr/lib/libpangoft2-1.0.so.0                        |
+| libfontconfig.so.1          | /usr/lib/libfontconfig.so.1                          |
+| libfribidi.so.0             | /usr/lib/libfribidi.so.0                             |
+| libcairo-gobject.so.2       | /usr/lib/libcairo-gobject.so.2                       |
+| libgdk_pixbuf-2.0.so.0      | /usr/lib/libgdk_pixbuf-2.0.so.0                      |
+| libepoxy.so.0               | /usr/lib/libepoxy.so.0                               |
+| libXi.so.6                  | /usr/lib/libXi.so.6                                  |
+| libcloudproviders.so.0      | /usr/lib/libcloudproviders.so.0                      |
+| libtracker-sparql-3.0.so.0  | /usr/lib/libtracker-sparql-3.0.so.0                  |
+| libthai.so.0                | /usr/lib/libthai.so.0                                |
+| libpng16.so.16              | /usr/lib/libpng16.so.16                              |
+| libfreetype.so.6            | /usr/lib/libfreetype.so.6                            |
+| libXrender.so.1             | /usr/lib/libXrender.so.1                             |
+| libxcb-render.so.0          | /usr/lib/libxcb-render.so.0                          |
+| libxcb-shm.so.0             | /usr/lib/libxcb-shm.so.0                             |
+| libpixman-1.so.0            | /usr/lib/libpixman-1.so.0                            |
+| libwayland-server.so.0      | /usr/lib/libwayland-server.so.0                      |
+| libxcb-randr.so.0           | /usr/lib/libxcb-randr.so.0                           |
+| libXau.so.6                 | /usr/lib/libXau.so.6                                 |
+| libXdmcp.so.6               | /usr/lib/libXdmcp.so.6                               |
+| libblkid.so.1               | /usr/lib/libblkid.so.1                               |
+| libp11-kit.so.0             | /usr/lib/libp11-kit.so.0                             |
+| libidn2.so.0                | /usr/lib/libidn2.so.0                                |
+| libunistring.so.5           | /usr/lib/libunistring.so.5                           |
+| libtasn1.so.6               | /usr/lib/libtasn1.so.6                               |
+| libnettle.so.8              | /usr/lib/libnettle.so.8                              |
+| libhogweed.so.6             | /usr/lib/libhogweed.so.6                             |
+| libgmp.so.10                | /usr/lib/libgmp.so.10                                |
+| libcap.so.2                 | /usr/lib/libcap.so.2                                 |
+| libgcrypt.so.20             | /usr/lib/libgcrypt.so.20                             |
+| liblz4.so.1                 | /usr/lib/liblz4.so.1                                 |
+| liblzma.so.5                | /usr/lib/liblzma.so.5                                |
+| libzstd.so.1                | /usr/lib/libzstd.so.1                                |
+| libwayland-client.so.0      | /usr/lib/libwayland-client.so.0                      |
+| libwayland-cursor.so.0      | /usr/lib/libwayland-cursor.so.0                      |
+| libwayland-egl.so.1         | /usr/lib/libwayland-egl.so.1                         |
+| libXcursor.so.1             | /usr/lib/libXcursor.so.1                             |
+| libXinerama.so.1            | /usr/lib/libXinerama.so.1                            |
+| libgraphite2.so.3           | /usr/lib/libgraphite2.so.3                           |
+| libjpeg.so.8                | /usr/lib/libjpeg.so.8                                |
+| libtiff.so.6                | /usr/lib/libtiff.so.6                                |
+| libjson-glib-1.0.so.0       | /usr/lib/libjson-glib-1.0.so.0                       |
+| libxml2.so.2                | /usr/lib/libxml2.so.2                                |
+| libsqlite3.so.0             | /usr/lib/libsqlite3.so.0                             |
+| libdatrie.so.1              | /usr/lib/libdatrie.so.1                              |
+| libbz2.so.1.0               | /usr/lib/libbz2.so.1.0                               |
+| libbrotlidec.so.1           | /usr/lib/libbrotlidec.so.1                           |
+| libgpg-error.so.0           | /usr/lib/libgpg-error.so.0                           |
+| libjbig.so.2.1              | /usr/lib/libjbig.so.2.1                              |
+| libicuuc.so.74              | /usr/lib/libicuuc.so.74                              |
+| libbrotlicommon.so.1        | /usr/lib/libbrotlicommon.so.1                        |
+| libicudata.so.74            | /usr/lib/libicudata.so.74                            |
+| libstdc++.so.6              | /usr/lib/libstdc++.so.6                              |
+
+**** Element-Desktop
+
+This is a nonguix electron app that gets built similarly
+
+#+begin_example sh :results output file :file /tmp/electron-shared.txt
+guix shell electron-desktop
+
+# this shows yet another wrapper script
+cat $GUIX_ENVIRONMENT/bin/.electron-desktop-real
+
+
+#+end_example
+
+***** Prep ldd output
+
+#+name: shared-electron
+#+headers: :dir /tmp/Lens-2024.4.230844-latest
+#+begin_src sh :results output file :file /tmp/shared-electron.txt
+el_real=/gnu/store/p0pczzhqgih0z5dcmr5hhmcc22vcns9x-element-desktop-1.11.64/lib/Element/.element-desktop-real
+ldd $el_real | tr '	' ' ' | cut -f2,4 -d' ' | sort
+#+end_src
+
+#+RESULTS: shared-electron
+[[file:../../../../../../tmp/shared-lens.txt]]
+
+#+name: shared-lens
+#+headers: :dir /tmp/Lens-2024.4.230844-latest
+#+begin_src sh :results output file :file /tmp/shared-lens.txt
+ldd opt/Lens/lens-desktop | tr '	' ' ' | cut -f2,4 -d' ' | sort
+#+end_src
+
+#+RESULTS: shared-lens
+[[file:../../../../../../tmp/shared-lens.txt]]
+
+***** Diff
+
+just the first column.
+
+#+headers:  :var f1=shared-electron f2=shared-lens
+#+begin_src sh :results output code :wrap src diff
+diff <(cat $f1 | cut -f1 -d' ') \
+     <(cat $f2 | cut -f2 -d' ' | sed -e 's/\/usr\/lib\///g' | sort)
+
+#/usr/lib is removed so it matches
+echo
+#+end_src
+
+#+RESULTS:
+#+begin_src diff
+1,4d0
+< /gnu/store/ln6hxqjvz6m9gdd9s97pivlqck7hzs99-glibc-2.35/lib/ld-linux-x86-64.so.2
+< /gnu/store/ln6hxqjvz6m9gdd9s97pivlqck7hzs99-glibc-2.35/lib/libc.so.6:
+< /gnu/store/ln6hxqjvz6m9gdd9s97pivlqck7hzs99-glibc-2.35/lib/libc.so.6:
+< /gnu/store/ln6hxqjvz6m9gdd9s97pivlqck7hzs99-glibc-2.35/lib/libc.so.6:
+11a8,9
+> libbrotlicommon.so.1
+> libbrotlidec.so.1
+14a13
+> libcap.so.2
+16d14
+< libcrypt.so.1
+26d23
+< libffmpeg.so
+31a29
+> libgcrypt.so.20
+39a38
+> libgpg-error.so.0
+43a43,44
+> libicudata.so.74
+> libicuuc.so.74
+45c46,50
+< libjpeg.so.62
+---
+> libjbig.so.2.1
+> libjpeg.so.8
+> libjson-glib-1.0.so.0
+> liblz4.so.1
+> liblzma.so.5
+63c68,70
+< libssp.so.0
+---
+> libsqlite3.so.0
+> libstdc++.so.6
+> libsystemd.so.0
+66c73,75
+< libunistring.so.2
+---
+> libtiff.so.6
+> libtracker-sparql-3.0.so.0
+> libunistring.so.5
+85a95
+> libxml2.so.2
+88a99
+> libzstd.so.1
+89a101,102
+> /tmp/Lens-2024.4.230844-latest/opt/Lens/libffmpeg.so
+> /usr/lib64/ld-linux-x86-64.so.2
+
+#+end_src
+
+*** Shebangs
+
+Expects python3 ... and bundles it. It also bundles:
+
++ npm
++ npx
++ qemu
++ helm
++ kubectl
++ limactl
++ codesign
++ trivy (it wouldn't pass)
+
+#+begin_src sh :dir /tmp/Lens-2024.4.230844-latest
+find . -type f -executable ! -name "*.js" ! -name "*.py"
+#+end_src
+
+#+RESULTS:
+| ./opt/Lens/chrome-sandbox                                                                                                     |
+| ./opt/Lens/chrome_crashpad_handler                                                                                            |
+| ./opt/Lens/lens-desktop                                                                                                       |
+| ./opt/Lens/libEGL.so                                                                                                          |
+| ./opt/Lens/libGLESv2.so                                                                                                       |
+| ./opt/Lens/libffmpeg.so                                                                                                       |
+| ./opt/Lens/libvk_swiftshader.so                                                                                               |
+| ./opt/Lens/libvulkan.so.1                                                                                                     |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/cli-lens-extension/cli/bin/lens-cli-darwin-amd64                 |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/cli-lens-extension/cli/bin/lens-cli-darwin-arm64                 |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/cli-lens-extension/cli/bin/lens-cli-linux-amd64                  |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/cli-lens-extension/dist/cli/bin/lens-cli-darwin-amd64            |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/cli-lens-extension/dist/cli/bin/lens-cli-darwin-arm64            |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/cli-lens-extension/dist/cli/bin/lens-cli-linux-amd64             |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/lens-desktop-kube-lens-extension/lima/x64/bin/limactl            |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/lens-desktop-kube-lens-extension/lima/x64/bin/qemu-img           |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/lens-desktop-kube-lens-extension/lima/x64/bin/qemu-system-x86_64 |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/lens-desktop-kube-lens-extension/scripts/codesign                |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/@lensapp/oci-image-lens-extension/bin/trivy-amd64                         |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/chrome-sandbox                                              |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/chrome_crashpad_handler                                     |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/electron                                                    |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/libEGL.so                                                   |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/libGLESv2.so                                                |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/libffmpeg.so                                                |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/libvk_swiftshader.so                                        |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/electron/dist/libvulkan.so.1                                              |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/node-pty/build/Release/pty.node                                           |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/bin/npm                                                               |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/bin/npm.cmd                                                           |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/bin/npx                                                               |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/bin/npx.cmd                                                           |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/lib/utils/completion.sh                                               |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/@npmcli/run-script/lib/node-gyp-bin/node-gyp             |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/@npmcli/run-script/lib/node-gyp-bin/node-gyp.cmd         |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/cross-spawn/node_modules/which/bin/node-which            |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/cssesc/bin/cssesc                                        |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/node-gyp/gyp/gyp                                         |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/node-gyp/gyp/gyp.bat                                     |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/node-gyp/gyp/tools/emacs/run-unit-tests.sh               |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/node-gyp/node_modules/which/bin/node-which               |
+| ./opt/Lens/resources/app.asar.unpacked/node_modules/npm/node_modules/wide-align/LICENSE                                       |
+| ./opt/Lens/resources/x64/helm                                                                                                 |
+| ./opt/Lens/resources/x64/kubectl                                                                                              |
+| ./opt/Lens/resources/x64/lens-k8s-proxy                                                                                       |
+| ./opt/Lens/resources/cli/bin/lens-cli-linux-amd64                                                                             |
+
+** Electron
+
+ [[https://www.electronjs.org/docs/latest/tutorial/tutorial-prerequisites][Electron Prerequisites]] Electron finagles it's own node.
+
+#+begin_quote
+Meanwhile, the rest of us can't quite do with out it. How am I supposed to patch
+all these shebangs? There's are so many files in npm packages that globbing on
+a node binary is a serious performance issue.
+#+end_quote
