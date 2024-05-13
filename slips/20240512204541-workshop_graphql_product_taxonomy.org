@@ -1,0 +1,264 @@
+:PROPERTIES:
+:ID:       d2aff89f-548f-4d12-9d41-a02fa2669eb0
+:END:
+#+TITLE: Workshop: GraphQL Product Taxonomy
+#+CATEGORY: slips
+#+TAGS:
+
+I'm like literally trying to organize MY personal inventory using a system of
+categorization which I know to be well-tested and which has some kind of
+consensus (so maybe other people may be implicitly familiar with the system).
+
+I don't actually care to reinvent the wheel here... and no, I don't have a
+million dollars for labeling tape or the time to re-re-re-re-reorganize for the
+50,000th time.
+
+Why is it that: /OUR/ DATA IS /THEIR/ COMMODITY, YET WE CREATE IT AND MAY NEVER
+BENEFIT FROM IT. This is ridiculous.
+
+* Taxonomy
+
+** Lowes
+JQuery is apparently busted on Lowes website, but I would like to extract their
+product taxonomy. Of course, no matter what I want to learn -- mechatronics,
+CAD, art, workshop, website -- literally the first thing I want to do is extract
+data to organize my thought, visualize it, design some creative endeavor or
+otherwise utilize the data.
+
+These corporations are all based on data, but they (and esp. social media) do
+not make available to you the same tools or resources that they use to be
+efficient. Quite the opposite, they expect you to be dumb/helpless forever
+because you're more profitable that way (this isn't really /about/ lowe's per
+se, so I'm not arguing that this accusation applies to them).
+
+However! I would like to organize my own hardware at home, but I mostly know
+nothing about it. Reasoning about the ontologies or taxonomies of things helps
+me learn quite quickly. Here, I would like to know that I'm printing labels that
+organize products descriptively & succinctly while dividing things i've *ahem*
+purchased so that I can make the most efficient usage of what I have ... without
+needing shop class.
+
+For businesses like these, the optimization of their own taxonomies allows their
+products to be discoverable, inventoried, analyzed and reported on. So it does
+provide some level of competitive advantage. I don't want to compete, but if I
+can make more efficient usage of what I have, then maybe I would purchase more.
+
+** Home Depot
+
+However, Home Depot has a GraphQL API
+
+#+hdUserId
+#+begin_src emacs-lisp
+"4705be5b-25e7-579a-6bca-401d9040deeb"
+#+end_src
+
+#+hdParentTraceId
+#+begin_src emacs-lisp
+"ca32ca601707e12f12925ebb4b4c4390/10179048065165938418"
+#+end_src
+
+#+hdCookie
+#+begin_src emacs-lisp
+"HD_DC=origin; _abck=1D2494FCB68AE4B81A1B608EF48FF357~0~YAAQhGjcFxld21mPAQAApIFhbwvOnHbIjgOGxR5hIpvVWWnOQXXSjflF/4pEmQIG0Su5bAUiwYzm2NXuKP8ks9erMr/8Q2Ppyr4VHwcc4sbcTYus4faVBv62EF6zU8yUuoZKmtFDMlGxOB7cWTZQ8FPQWtC7XQx3WJB/ySdPxzyzL+1OuQM5EC86LJMemvbGFMsSXMWxxJ8EiUKi8qvEaKefh8JgGNE9CYtJqCAqXMURL03OWws1X/SLjIaIn2WduF40PhBXlaqTeM2e6RwEUM8+7Y/qWxPfAZewiu0jblIFQUsX8ORRi4eap6bHsXNUxM60o/1pdTmM0TCJbbRsOD+TayEYkkqtx3VG+7BE5GFQfeUKopgGu+w1EIIfpAuBxILcHIhN9A19Kxw5BvT7qMaVlA6RZBpwzMaE2Uq93t1XunRcZFk=~-1~||0||~-1; at_chec…M1yXFQ7UygKVL1pXhoXFq3XoF6elFEEKylAgSC1k/HlJ+H9YfvnrcTbaPP4j8MAGvj79lQsWvP1npq6FW19QBmNQe7fu8Pu41Q==~1; THD_NR=1; mbox=session#46ca09a8239442c78d527bbd80a02ac4#1715562497; THD_SESSION=; THD_CACHE_NAV_SESSION=; bm_sv=0B4BECF840EC9CAA0659EEFB35B6A518~YAAQhGjcF6uy21mPAQAAqXVibxcAFEmdVC9Ssz4ld60tSB6kxYMlOF7Cbb+TFdFZlZhmUQTdZ/340KJd9yjkJflogS7jQK7y0nJuekkBW9yHIY+9u8T6jI1PBK9jMk7wUhErMJ/8/nxBYxg03kecBvEnz0ocSAtJfSmj8IdI22QhRPAbR04CzsaIgXrqIJ18u4+zLgLhOtLHNwpYiGg0r7tta/rGKcObJ+H5BRiU2maqK0uvlqQU3i1Ztd4jl+RKnjQr~1"
+#+end_src
+
+#+hdCloudTraceContext
+#+begin_src emacs-lisp
+"5d521515ded8484d9a6ac1af906fd22b/1;o=1"
+#+end_src
+
+*** Main Categories
+
+To process the result with =jq=, include =:jq .= in the headers.
+
+... Now i'm getting "forbidden" again. My cookies probably expired. This is
+seriously exhausting. It's probably faster just to:
+
++ record the responses in a web session
++ then save HAR file, then unpack the archive
++ delete all files except those corresponding to =/graphql= endpoint requests.
++ extract the HTTP/2 Response data from those requests.
++ compare to the category ID's i've saved here
++ reconstruct the tree from GraphQL ID references.
+
+#+name: hdL2
+#+begin_src restclient :results output  :cache yes :jq .
+POST https://apionline.homedepot.com/federation-gateway/graphql?opname=headers
+Content-Type: application/json
+Host: apionline.homedepot.com
+Origin: https://www.homedepot.com
+Pragma: no-cache
+Referer: https://www.homedepot.com
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0
+Cookie: <<hdCookie()>>
+X-Api-Cookies: {"x-user-id":"<<hdUserId()>>"}
+X-Cloud-Trace-Context: <<hdCloudTraceContext()>
+X-Parent-Trace-Id: <<hdParentTraceId()>>
+
+{
+	"operationName": "headers",
+	"query": "query headers($id: String!, $componentClass: HeaderComponents!) {\n  headers(id: $id, componentClass: $componentClass) {\n    ... on PrimaryNavigationL1 {\n      id\n      componentName\n      title\n      subtitle\n      link\n      icon\n      previewImage {\n        damDownloadedContent {\n          url\n          __typename\n        }\n        __typename\n      }\n      level {\n        id\n        componentName\n        primaryNavigation {\n          id\n          componentName\n          title\n          subtitle\n          link\n          icon\n          previewImage {\n            damDownloadedContent {\n              url\n              __typename\n            }\n            __typename\n          }\n          level {\n            id\n            componentName\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    ... on PrimaryNavigationL2 {\n      id\n      componentName\n      title\n      subtitle\n      link\n      icon\n      previewImage {\n        damDownloadedContent {\n          url\n          __typename\n        }\n        __typename\n      }\n      level {\n        id\n        componentName\n        primaryNavigation {\n          id\n          componentName\n          title\n          subtitle\n          link\n          icon\n          previewImage {\n            damDownloadedContent {\n              url\n              __typename\n            }\n            __typename\n          }\n          level {\n            id\n            componentName\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    ... on PrimaryNavigationL3 {\n      id\n      componentName\n      title\n      subtitle\n      link\n      icon\n      previewImage {\n        damDownloadedContent {\n          url\n          __typename\n        }\n        __typename\n      }\n      level {\n        id\n        componentName\n        primaryNavigation {\n          id\n          componentName\n          title\n          subtitle\n          link\n          icon\n          previewImage {\n            damDownloadedContent {\n              url\n              __typename\n            }\n            __typename\n          }\n          level {\n            id\n            componentName\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    ... on PrimaryNavigationL4 {\n      id\n      componentName\n      title\n      subtitle\n      link\n      icon\n      previewImage {\n        damDownloadedContent {\n          url\n          __typename\n        }\n        __typename\n      }\n      level {\n        id\n        componentName\n        primaryNavigation {\n          id\n          componentName\n          title\n          subtitle\n          link\n          icon\n          previewImage {\n            damDownloadedContent {\n              url\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    ... on PrimaryNavigationL5 {\n      id\n      componentName\n      title\n      subtitle\n      link\n      icon\n      previewImage {\n        damDownloadedContent {\n          url\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}",
+	"variables": {
+		"componentClass": "PrimaryNavigationL2",
+		"id": "1BDh5E1pOmmWNMc7CHdLxj"
+	}
+}
+#+end_src
+
+#+RESULTS[904f4aa19073d6a9b2328dbd876c60ac353bba6b]: hdL2
+#+BEGIN_SRC js
+{
+  "timestamp": "2024-05-13T01:25:25.490+00:00",
+  "path": "/federation-gateway/graphql",
+  "status": 403,
+  "error": "Forbidden",
+  "requestId": "45a54b0c-20163468"
+}
+#+END_SRC
+
+Rework API response
+
+# +headers: :results output code :wrap src json  :in-file /tmp/hdL2.json
+
+#+name: hdL2jq
+#+headers: :results output code :wrap src json
+#+begin_src jq :stdin hdL2 :cmd-line "-rj"
+.data.headers.level.primaryNavigation[]
+  | {id,title,levelId: .level.id,levelComponentName: .level.componentName}
+#  | [.id, .title, .level.id, .level.componentName]
+
+#+end_src
+
+#+RESULTS: hdL2jq
+#+begin_src json
+{
+  "id": "1WzEG1m6Q4uGb1Sl04qQOk",
+  "title": "Appliances",
+  "levelId": "LFRJg6tOOaoNSi4liQ4d0",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "5SR1tzHpMCDvGf0aI8cuMV",
+  "title": "Bath & Faucets",
+  "levelId": "4pfnGWeGXdoFtSfAZxHg0U",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "73RUuOeOISPkLs7lWDVPMs",
+  "title": "Blinds & Window Treatments",
+  "levelId": "1ZPT3nfks9XepwBC0jZA0c",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "2i48VKFIG9IWLII4NV86da",
+  "title": "Building Materials",
+  "levelId": "5wbPosBMQ3HdwWW0dkSaXY",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "3Zva9p8g8IhuZTXLfiwCwU",
+  "title": "Cleaning",
+  "levelId": "7Gc5hMj0YPEvr7W4RQteed",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "1yoyI5hxsyRUI0ZKq98Dmr",
+  "title": "Decor & Furniture",
+  "levelId": "7xGz0jmSeuxMJDiD5tAa0S",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "1SSKzoX1ch30sQ47RPpufU",
+  "title": "Doors & Windows",
+  "levelId": "79OhpsJAo5wOCONf1Z6Cw4",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "7GFzJm7aBiwYoCBiPaXTGx",
+  "title": "Electrical",
+  "levelId": "50REX1FmpUrreHZdkskJGb",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "1zfe1oFPnejOInfWvqrLpE",
+  "title": "Flooring, Tile, & Rugs",
+  "levelId": "4Yku2UQ8LGyTFgC3iQ2K99",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "ACHM3q1CBGGwSo3MquohG",
+  "title": "Hardware",
+  "levelId": "5UB0ywkGWEZ0DEps9A8BBO",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "5mTrtGpYeRGQNyXudbwaVY",
+  "title": "Heating, Cooling, & Air Quality",
+  "levelId": "3sfneadH9yZgM77enqVLbZ",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "3sxkf1DQAepQr5Adci8AMq",
+  "title": "Holiday Decorations",
+  "levelId": "5czhsseD4jNz5m1lKPZ1y2",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "6wZ5GqwsMKZDNby6AJQcZu",
+  "title": "Kitchen & Kitchenware",
+  "levelId": "5JbwKP97kZOCP4PDAnR4pl",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "6rqVaG34UukNJAl1V9gIq0",
+  "title": "Lawn & Garden",
+  "levelId": "1HjiKAijdoRCYIE9BBocJb",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "79l6fibZ2wajSf4w2oEYWR",
+  "title": "Lighting & Ceiling Fans",
+  "levelId": "1lEdCMTh1fY4c5wr9SOsiv",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "7MrekgRZ4TOI0xAAY3Vwkf",
+  "title": "Outdoor Living & Patio",
+  "levelId": "4JczPBCCVJsBgAEsnTolFS",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "67ZimwQYnTW1rmUeYp5OzU",
+  "title": "Paint",
+  "levelId": "3VJx94pElndvZg0v1Kxvcx",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "5u78hRRCgWXHgXUVW3ekno",
+  "title": "Plumbing",
+  "levelId": "1dwfLX93OslwzGmfyhQiVb",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "6ytt058YntqWJ3RxVXm79q",
+  "title": "Smart Home",
+  "levelId": "zbNTjSepqGyY64RLCO1fs",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "vFHNb2SnyF6paCABpN5Dc",
+  "title": "Storage & Organization",
+  "levelId": "6vsytUXv2XF9wqbG93s7jz",
+  "levelComponentName": "Level4"
+}
+{
+  "id": "4LnjbM4InXNfHjmkuKLnUw",
+  "title": "Tools",
+  "levelId": "4e05QUPN1h0Fu6VlsOZBHR",
+  "levelComponentName": "Level4"
+}
+#+end_src
+
+* Roam
++ [[id:aa3cc128-ef8a-47e0-afbd-b3afa93c366a][Workshop]]
++ [[id:7a4a7eea-5795-44e5-86e8-eec2afebf110][GraphQL]]

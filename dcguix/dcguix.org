@@ -33,6 +33,65 @@ These will be found in the =./dcguix/packages= directory.
 
 ** Build Systems
 
+*** GNU
+
+**** Phases
+
+ | set-SOURCE-DATE-EPOCH           | _                                                                                                                                |
+ | set-paths                       | #:key target inputs native-inputs search-paths native-search-paths                                                               |
+ | install-locale                  | #:key locale locale-category                                                                                                     |
+ | unpack                          | #:key source                                                                                                                     |
+ | bootstrap                       | #:key bootstrap-scripts                                                                                                          |
+ | patch-usr-bin-file              | #:key native-inputs inputs patch-/usr/bin/file?                                                                                  |
+ | patch-source-shebangs           | #:key source                                                                                                                     |
+ | configure                       | #:key build target native-inputs inputs outputs configure-flags out-of-source?                                                   |
+ | patch-generated-file-shebangs   | rest                                                                                                                             |
+ | build                           | #:key make-flags parallel-build?                                                                                                 |
+ | check                           | #:key target make-flags tests? test-target parallel-tests? test-suite-log-regexp                                                 |
+ | install                         | #:key make-flags                                                                                                                 |
+ | patch-shebangs                  | #:key inputs outputs patch-shebangs?                                                                                             |
+ | strip                           | #:key target outputs strip-binaries? strip-command objcopy-command strip-flags strip-directories                                 |
+ | validate-runpath                | #:key validate-runpath? elf-directories outputs                                                                                  |
+ | validate-documentation-location | #:key outputs                                                                                                                    |
+ | delete-info-dir-file            | #:key outputs                                                                                                                    |
+ | patch-dot-desktop-files         | #:key outputs inputs                                                                                                             |
+ | make-dynamic-linker-cache       | #:key outputs make-dynamic-linker-cache?                                                                                         |
+ | install-license-files           | #:key outputs license-file-regexp out-of-source?                                                                                 |
+ | reset-gzip-timestamps           | #:key outputs                                                                                                                    |
+ | compress-documentation          | #:key outputs compress-documentation? documentation-compressor documentation-compressor-flags compressed-documentation-extension |
+
+This extracts the arguments from each phase
+
+#+begin_src scheme
+(use-modules ((guix build gnu-build-system) :prefix gnu:)
+             (ice-9 session) ; contains procedure-arguments
+             ;; (ice-9 vlist)
+             (ice-9 pretty-print))
+
+gnu:%standard-phases
+
+;; to list phases
+;; (map (lambda (ph) (car ph)) gnu:%standard-phases)
+
+;; this may be preferable to `program-arguments`
+;; program-code -> find-program-arities -> arity-arguments-alist
+
+(define (phase-arguments phases)
+  (map (lambda (ph)
+         (let* ((proc (cdr ph))
+                (phname (procedure-name proc))
+                (phargs (procedure-arguments proc)))
+           ;; `((keyword ,(map car (assoc-ref phargs 'keyword)))
+           ;;   (rest ,(assoc-ref phargs 'rest)))
+
+           ;; the dot does crazy things here
+           ;; (list phname . (map car (assoc-ref phargs 'keyword)))
+           (list phname (map (lambda (ks) (car ks)) (assoc-ref phargs 'keyword)))))
+       phases))
+
+(phase-arguments gnu:%standard-phases)
+#+end_src
+
 *** RPM
 
 
