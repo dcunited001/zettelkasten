@@ -27,6 +27,123 @@ So don't expect for much information here to be correct ad infinitum.
   =$dotfiles/ellipsis=, then I may move them into =dcguix/packages/$lang.scm=
   which would have its own org file.
 
+* Example
+
+** GoogleCloudPlatform/proto-gen-md-diagrams
+
+***** TODO move this to a zettel
+
+This package was designed to be very flat with minimal dependencies. As such,
+it's a good example of getting =guix import= to generate code.
+
++ There is also kinow/protobuf-uml-diagram
+
+*** Import
+
+run =guix import go =
+
+*** Test
+
+Grab a repo with protobufs
+
+#+begin_example shell
+# creating arbitrary data in =/tmp= does come with some caveats
+testdir=/tmp/ondatra
+mychan=$HOME/.dotfiles
+
+# other repos in the openconfig organization have protos, but this repo
+# has models for fairly generic routing protocols
+git clone https://github.com/openconfig/ondatra $testdir
+cd $testdir
+
+guix shell -L $mychan pandoc proto-gen-md-diagrams
+#+end_example
+
+Test generation
+
+#+begin_example shell
+mkdir $testdir/pb2doc
+
+proto-gen-md-diagrams --help
+proto-gen-md-diagrams -d ./proto -o ./pb2doc
+#+end_example
+
+Now you should be able to convert the markdown to html with a mermaid plugin
+active to get the svg's.
+
+I would like a bit more control over how the generated images are named and how
+the content is structured. So, pandoc helps the initial conversion, though it
+could be a bit messy. Either way, the file can be processed in emacs using
+=C-M-%= to run =query-replace-regexp=.
+
+**** Test conversion to org
+
+#+begin_src shell
+# markdown_mmd may work (unsure)
+panFrom=markdown
+panTo=org
+
+# Pandoc converts fairly easily, but it requires looping, =xargs=, etc
+find $testdir/pb2doc -type f -name "*.md" -print \
+    | xargs -I '{}' pandoc -f $panFrom -t $panTo -o {}.org {}
+#+end_src
+
+**** TODO follow up and finish notes
+
+This converts to org, but it's still unclear to me how =proto-gen-md-diagrams=
+culled out the graphs to produce the =mermaid= code.
+
++ Several proto definitions are duplicated across various diagrams. I'll need to
+  look at either the docs or pb2 files to see why. It's either simplifying the
+  graphs (perhaps missing references) or its search for potential references is
+  not exhaustive or the output is based on the pb2 & directory structure.
++ Also, there were a few protobufs with duplicated identifiers. When Go
+  processes pb2 files for codegen, it prefixes them to avoid namespace
+  collisions.
++ Doxygen will construct diagrams, but AFAIK the output/complexity is controlled
+  by fairly straightforward distance metric (max # of edges from current node)
+
+The specification of args to pandoc presents a potential source of friction.
+
++ It doesn't make sense to use tree traversal & typelifting from
+  =proto-gen-md-diagrams= just to reprocess the =md/org= output with =org-element=
+  or =awk=
++ With control over the input/output to group related models in the same
+  diagrams, the results could potentially be valuable enough to justify the
+  overhead. There are than enough data domains that have been translated into
+  =pb2= and it's implicitly a filter to weed out crap -- if it's been done,
+  there's reason /and/ experience.
+
+Also, where OpenAPI also models domains (for the stateless REST paradigm),
+Protobuf is used for the "RPC paradigm" of network-interaction.
+
++ Thus, the way your proto objects are modeled expects them to be interacting
+  together. That is, the objects will be loaded into a runtime where the interact
+  with morecontinuity than with REST -- i.e. the caller often expects the RPC
+  runtime to synchronously process on the other end and coordinating response to
+  the caller can be difficult.
++ With OpenAPI's REST, the =POST= and =PUT= actions don't necessarily specify
+  the expected JSON format for models & data. Much of this is left to the
+  providing service or to the API consumer.
+
+*** Why Protobufs?
+
+Well ... why now?
+
+RFC 4880 and the OpenPGP Standard contain descriptions of the data format which
+is binary and doesn't segment data along byte boundaries ... if you didn't just
+read wire protocol, you probably maybe suck. (hey, I said "maybe")
+
+It's easy to convert these data structures to other languages, which lends
+itself to code generation... but also diagrams. So, to prepare
+content/cheatsheets for a presentation on GnuPG, I would like to produce
+diagrams that describe:
+
++ data structures for OpenPGP and Yubikey Object Storage
++ wierd things like =scd apdu= bytes that are impossible to remember
++ but mainly the configuration surface for such applications (i.e. what secrets
+  do you need, what data points are available to =gpg --card-edit=)
+
 * Packages
 
 These will be found in the =./dcguix/packages= directory.
