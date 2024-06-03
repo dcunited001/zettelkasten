@@ -3,9 +3,6 @@
 :END:
 #+title: Linux
 
-* Roam
-+ [[id:90c681e3-7748-4039-abf1-69755e14c918][selinux]]
-
 * Docs
 
 ** [[https://www.kernel.org/doc/html/latest/kbuild/index.html][Builds]]
@@ -219,6 +216,76 @@ several of them.
 + zwap/zram go here
 
 ** Virtual File System (VFS)
+*** SysFS
+
+Why use Linux?
+
+Because you can turn the =sysfs= filetree into json & pipe into =jq= ... etc
+
+#+begin_src sh :results output
+tree -L 2 \
+     --prune --matchdirs \
+     -P '[aeiou]*' /sys \
+    | head -n42
+
+# tree --json # to get json
+#+end_src
+
+#+RESULTS:
+#+begin_example
+/sys
+├── bus
+│   ├── acpi
+│   ├── auxiliary
+│   ├── edac
+│   ├── event_source
+│   ├── i2c
+│   ├── isa
+│   ├── usb
+│   └── usb-serial
+├── class
+│   ├── accel
+│   ├── ata_device
+│   ├── ata_link
+│   ├── ata_port
+│   ├── extcon
+│   ├── i2c-adapter
+│   ├── i2c-dev
+│   ├── input
+│   ├── intel_scu_ipc
+│   ├── iommu
+│   └── usbmisc
+├── devices
+│   ├── amd_iommu_0
+│   ├── ibs_fetch
+│   ├── ibs_op
+│   ├── isa
+│   └── uprobe
+├── firmware
+│   ├── acpi
+│   └── efi
+├── fs
+│   └── ext4
+├── kernel
+│   ├── address_bits
+│   ├── iommu_groups
+│   ├── irq
+│   ├── oops_count
+│   └── uevent_seqnum
+├── module
+│   ├── acpi
+│   ├── acpi_cpufreq
+#+end_example
+
+#+begin_src sh
+
+tree -L 1 \
+     --prune --matchdirs \
+     -P '[aeiou]*' /sys \
+    | head
+
+# tree --json
+#+end_src
 
 ** Networking Unit =netdev=
 
@@ -234,6 +301,63 @@ several of them.
   - part 2: [[https://blog.gitguardian.com/securing-containers-with-seccomp-part-2/][configuring github actions to automate]]
 
 ** Inter-Process Communication (IPC) Unit
+
+*** Socat
+
+[[https://github.com/StudioEtrange/socat-windows][StudioEtrange/socat-windows]]: =socat= on windows with Cygwin
+
+Ouch. I bet this guy really knows =socat=. Tons of [[https://github.com/StudioEtrange/socat-windows/blob/master/EXAMPLES][examples]] in the repo, but no
+named pipes afaik.
+
+*** Bridging Sockets with socat, nc, ssh
+
+[[https://aweirdimagination.net/2024/04/21/streams-and-socket-and-pipes-oh-my/][Streams and Sockets and Pipes, oh my]] essentially describes using =socat= or
+=ssh= as functor-generators to type-lift a socket to another type. This helps
+you bridge IPC streams between programs that only support a limited set of
+socket types.
+
+e.g. (examples shamelessly copied from A Weird Imagination's blog)
+
+#+begin_src sh
+# Bridge a pair of named pipes to a Unix socket
+socat UNIX-LISTEN:test.sock 'PIPE:pipe_in!!PIPE:pipe_out'
+
+# Connect to Unix socket HTTP server via TCP
+socat TCP-LISTEN:8042,fork,bind=localhost \
+    UNIX-CONNECT:http.sock
+
+# Forward a Unix socket over an SSH connection (two options)
+# 1
+socat EXEC:"ssh remote 'socat UNIX-CLIENT:service.sock -'" \
+    UNIX-LISTEN:proxy-to-remote.sock
+
+# 2 (in newer versions, ssh can forward Unix sockets)
+ssh -N -L ./proxy-to-remote.sock:./service.sock remote
+#+end_src
+
+The author has several other good articles on sockets:
+
++ [[https://aweirdimagination.net/2024/04/07/http-over-unix-sockets/][HTTP over Unix Sockets]]: PoC script in python (handy in general). Also
+  describes setting =umask= for socket permissions
++ [[https://aweirdimagination.net/2024/03/24/scripting-control-of-web-browser/][Scripting Control of Web Browser]]: use Firefox Marionette via python's
+  =marionette_driver= for remote control of the browser (enumerate window
+  placement, enumerate tabs, move windows, etc)
+
+*** IPC Performance
+
+Named pipes are fast at very low block sizes
+
+Results (data From Baeldung's [[https://www.baeldung.com/linux/ipc-performance-comparison][Linux IPC Performance Comparison]]...)
+
+|           |   Anon Pipe |  Named Pipe |  Unix Socket |   TCP Socket |
+|-----------+-------------+-------------+--------------+--------------|
+| 100 B     |  278.062607 |  318.413648 |   245.992742 |   269.562354 |
+| 500 B     | 1270.474921 | 1475.198028 |  1184.959553 |  1284.184400 |
+| 10000 B   | 8070.641040 | 8843.554059 | 15885.902502 | 14798.750616 |
+| 1000000 B | 9039.146532 | 9699.212714 | 41334.862565 | 36208.454080 |
+
+
+
 
 ** udev
 + what subsystem?
@@ -499,6 +623,11 @@ scripting language's VM).
 *** Reverse Engineering
 
 *** Linking
+
+* Roam
++ [[id:90c681e3-7748-4039-abf1-69755e14c918][selinux]]
+
+
 
 * Unix
 :PROPERTIES:
