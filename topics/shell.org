@@ -55,6 +55,87 @@
 
 ** Topics
 
+*** Pros/Cons
+
+For modern programming/devops workflows, =direnv= is one of those hard & early
+decisions you should make because it will resolve a lot of complexity later on
+-- viz. probably don't use it!
+
+I really like the tool, but it's a bit sad that i only started using it around
+the time that i became unemployed (2014ish)
+
+Direnv was gold back in the day, but now you have:
+
++ Docker/Compose :: already 12-factor; better management of volumes, tons of
+  reference images & Containerfiles. Cons: ship-in-a-bottle.
++ Local K8S :: good. but cons: ship in a bottle; still works-on-my-machine &
+  also what-about-that-cluster.
++ KubeVirt :: better VM orchestration, volume/disk management;
++ Guix/Nix :: direnv will usually create these as one-off profiles, unless you
+  put some work into it. This can cause your SSD to accumulate wear (req. running =guix gc=)
++ The =.envrc= for =direnv= can't easily be distributed via =git=, since it's
+  usually fairly personal.
++ Terminal Profiles ::  This is basically the same thing, but with less
+  portability (& longevity of personal project configuration)
++ Screen/TMux Profiles :: Also basically identical.
+
+*Direnv and VSCode are like oil and water.* The issue is mainly environment setup
+and Process invocation in VSCode (which actually gives you an empty bash shell
+instead of the default process that inherits environment)
+
++ VSCode designed to be multiplatform and run on Windows, with or without WSL2
++ implemented in electron/node and must run in a browser (and no one cares about
+  BSD or Nix)
++ difficult to get LSP to run on host when project runs on Container/VM (and
+  vice versa)
++ VSCode prefers to avoid =pyenv= (read above at "empty bash") and similar tools
+
+*Direnv caveats you should know AoT:*
+
++ transferability of =.envrc= between paths/hosts
++ you should not evaluate/configure secrets to be available in its environment:
+  env. vars, functions, logs and other implementation details (not vulns.)
++ does not do aliases; will not run under another user
++ The =.envrc= may go stale, but not via updates to Direnv plugins (it seems
+  well thought out and maintained) ... you actually need to solve this same
+  problem on your =~/.config/direnv= scripts -- when you change/alter a script,
+  others may break
+
+**** When to use direnv?
+
+On traditional Linux distros, using =direnv= with tools like =pyenv= is fairly
+easy. But Fedora/Arch may require different parameters than Nix/Guix or entirely
+different implementations in your =~/.config/direnv= ... (see above for why to
+not make arbitrary changes here)
+
+Basically, use it when you need:
+
++ light automation/setup :: you could also
++ native performance or NUMA :: you don't
++ IPC :: just easier than forwarding sockets, esp if you need a repeatable
+  process to be quick/dirty.
++ bare-metal hardware :: much easier, definitely simpler, but actually less
+  reproducible than isolated devices (virsh + xml) with proper labeling (mgmt of
+  content)
++ bare-metal networking :: you shouldn't, but they just don't give you SR-IOV in
+  consumer anything
++ management of processes :: i'm not sure how the runtime for Kind is set up to
+  fork processes (or whatever) from inside the container
+
+Easier but sometimes more difficult to manage:
+
++ permissions
++ sprawl (files, data)
++ services & service management
+
+Usually more complex
+
++ SELinux/AppArmor
+
+PITA
+
++ namespacing
+
 ** Issues
 
 

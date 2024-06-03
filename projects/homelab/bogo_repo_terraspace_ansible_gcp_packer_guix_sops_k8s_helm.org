@@ -1,0 +1,438 @@
+:PROPERTIES:
+:ID:       bf232544-a084-4b3e-8af0-e11e5f184667
+:END:
+#+TITLE: Homelab Bogo-Repo: Terraspace, Ansible, GCP, Packer, Guix, SOPS, K8S, Helm
+#+DESCRIPTION:
+
+Connecting the config & secrets management between my homelab and cloud accounts
+has been a pain. Everything in here surrounds Terraspace somewhat, since it's a
+larger nexus of config surfaces that connect different platforms/products. I
+would like to minimize the sprawl of configuration across environments where
+possible ... but there's just not a great way to get everything in one swoop
+
++ Sops is great for Helm ... I've heard, though I'm not sure that anything other
+  than as-needed secrets generation when possible is "great"
++ But you run into some friction when using sops for Terraform & Ansible. Each
+  has it's own cache/logs/etc to worry about.
++ Even though [[https://terraspace.cloud/docs/misc/multiple-providers][Terraspace: multi-provider projects not recommended]], I would still
+  like to consider my config mgmt and processes with Terraspace as a kind of
+  "middle ground." If using multiple clouds, I would likely have multiple projects.
+
+Terraspace framework takes a different approach to project organization to the
+Terragrunt's multi-environment approach. There would still be config namespace,
+module, code organization issues, but for me Ruby brings a lot to the table
+here.
+
+* Environment
+
+** Direnv
+
+Tangle root:
+
+#+begin_src emacs-lisp
+(setq-local project-tangle-root "/foo/bar"
+            ts-root (expand-file-name "terraspace" project-tangle-root)
+            ts-envrc (expand-file-name ".envrc" ts-root))
+#+end_src
+
+This =.envrc= covers the Terraspace environment
+
+*Ansible, regpg, sops*
+
+#+begin_src sh :tangle (identity ts-envrc)
+export EDITOR=vi
+export REGPGHOME=$PWD/.regpg
+
+# for gcloud and arbitrary local scripts
+# TODO: will this actually work?
+PATH_add bin
+
+export ANSIBLE_HOME=$PWD
+export ANSIBLE_CONFIG=$ANSIBLE_HOME/ansible.cfg
+#+end_src
+
+*Guix*: see manifest.scm (here and elsewhere)
+
+#+begin_src sh :tangle (identity ts-envrc)
+use_guixs --search-paths -L $HOME/.dotfiles -m manifest.scm
+
+# use_guix_manifest -L  manifest.scm
+# use_guix_profile $GUIX_EXTRA/ansible/ansible
+#+end_src
+
+*Python*: multiple repos within this project may use this external =virtualenv= to
+invoke =gcloud=
+
+#+begin_src sh :tangle (identity ts-envrc)
+export VIRTUAL_ENV=$_LANG/venv/gcptf
+
+layout python3
+#+end_src
+
+*Google Cloud SDK*: installed via the =tar= archive
+
+#+begin_src sh :tangle (identity ts-envrc)
+# the python used for the initial install (... only for initial install?)
+export CLOUDSDK_PYTHON="$VIRTUAL_ENV/bin/python3"
+
+# project-specific config
+export CLOUDSDK_CONFIG="$PWD/../.config/gcloud"
+#+end_src
+
+*GCP*: am I really planning to use a service account here?
+
+#+begin_src sh :tangle (identity ts-envrc)
+# gcp service account
+
+export GOOGLE_APPLICATION_CREDENTIALS="$PWD/../.gcp"
+# The rest of the environment variables are used by the Google terraform provider. See: https://www.terraform.io/docs/providers/google/guides/provider_reference.html#project-1
+# now GOOGLE_COMPUTE_PROJECT
+#export GOOGLE_PROJECT=$(cat ~/.gcp/credentials.json  | jq -r '.project_id')
+export GOOGLE_REGION=us-east1
+export GOOGLE_ZONE=us-east1-a
+#+end_src
+
+*Ruby*: installs Terraspace into a local =vendor/bundle=
+
+#+begin_src sh :tangle (identity ts-envrc)
+export BUNDLE_PATH="$PWD/vendor/bundle"
+#+end_src
+
+** File Structure
+
+The file structure looks like what's below. Some paths and filenames have been
+changed to protect the innocent. Much of this will be getting changed anyways
+
+#+begin_src sh :results output code :wrap example log
+tree .. --prune -a \
+     -P "*envrc*" -P "*gcprc*" \
+     -P vars -P ".sops.yaml" -P "*.sops.yml" -P "*.vars.yml*" \
+     -P .dir-locals.el -P "requirements*" -P "manifest.scm" \
+     -P "docker-compose*yml" -P "*env*" -P Terrafile -P Gemfile \
+     -I "platform" -I "collections" -I "google-cloud-sdk*" -I "bundle"
+
+echo
+#+end_src
+
+#+RESULTS:
+#+begin_example log
+..
+├── ansible-proj
+│   ├── .dir-locals.el
+│   ├── .envrc
+│   ├── group_vars
+│   │   └── all
+│   │       └── foo.sops.yml
+│   ├── manifest.scm
+│   ├── requirements.txt
+│   ├── requirements.yml
+│   ├── roles
+│   │   └── rwxd.subuid_subgid
+│   │       └── requirements-dev.txt
+│   ├── .sops.yml
+│   ├── tmp
+│   │   └── foo.sops.yml
+│   └── vars
+│       ├── nautobot-kharis.sops.yml
+│       └── nautobot-kharis.vars.yml
+├── services
+│   ├── nautobot
+│   │   └── compose
+│   │       ├── docker-compose.eg.yml
+│   │       ├── docker-compose.ldap.yml
+│   │       ├── docker-compose.mysql.yml
+│   │       ├── docker-compose.yml
+│   │       ├── .envrc
+│   │       ├── local.env
+│   │       ├── local.env.example
+│   │       ├── manifest.scm
+│   │       ├── requirements.txt
+│   │       ├── .sops.yml
+│   │       └── vars
+│   │           ├── nautobot-kharis.sops.yml
+│   │           └── nautobot-kharis.vars.yml
+│   └── stepca
+│       ├── .envrc
+│       ├── manifest.scm
+│       ├── .sops.yml
+│       └── yk.env
+└── terraspace-proj
+    ├── .envrc
+    ├── .gcprc
+    ├── Gemfile
+    ├── manifest.scm
+    ├── requirements.txt
+    └── Terrafile
+
+14 directories, 33 files
+
+#+end_example
+
+** Secrets & Config
+
+I don't feel too bad putting this up, since this isn't final. It's also not that
+great which also begs the question: if it's shit then why? It's for the
+AI.  Anyways, I've got few other projects scattered around and there was a former
+version of Ansible.
+
++ [[https://www.terraform.io/docs/state/sensitive-data.html][Terraform: Sensitive Data in State]]
+
+*** Reorg =sops.yaml=
+
++ Setup [[https://www.terraform.io/docs/state/sensitive-data.html][carlpett/terraform-sops]] in terraspace project
++ This should mostly be in a single repo where it can be redeployed
+  automatically for most things.
++ Where possible, it would be nice to use some of the Cloud secrets management
++ SOPS supports KMS, though it depends on how you split your environments:
+  distribute in one sops.yaml, several, different env keys or different projects?
+
+*** fdsa
+
+
+* Misc
+
++ [[https://github.com/madworx/blueprint-terraform-gpg][madworx/blueprint-terraform-gpg]]
+
+** Credential handling
+
+This doesn't regard Terraspace so much as it does Cloud providers ... and
+nvm. Now I know how to handle this (I was hoping I could intercept it in
+Terraspace code and change it in the app)
+
++ [[https://cloud.google.com/ruby/docs/reference/google-cloud-resource_manager/latest/AUTHENTICATION][This class]] instantiates the GCP API ResourceManager
++ That bubbles down to the autogenerated Google Ruby clients.
++ [[https://cloud.google.com/ruby/docs/reference/google-cloud-resource_manager/latest/AUTHENTICATION][Service Account auth project/credential discovery]]
++ [[https://cloud.google.com/ruby/docs/reference/google-cloud-resource_manager/latest/AUTHENTICATION][google-auth-library-ruby/lib/googleauth/credentials_loader.rb]] This contains
+  all the credential formats that the =googleauth= gem?
+
+I've found that anything that doesn't accept transparent GPG decryption involves
+a centralized service like Ansible Tower or really any cloud provider.  I think
+there's an assumption that you're working on a secure network. That makes sense
+for a team, but I really don't like to have to trust my own workstation user
+account (or logs/disks).
+
+It just seems that they don't work with people who lack secrets manager
+api's. It also seams like devops doesn't have spare time to use their own tools
+outside of work, despite everything being "open source".
+
+Why use =sops= or =regpg=?  Because you have a very small team and you'd like
+portability.
+
+** Terraform CLI
+
++ [[https://developer.hashicorp.com/terraform/cli/config/environment-variables][environment-variables]]
+
++ export TF_CLI_CONFIG_FILE="$HOME/.terraformrc-custom"
++ export TF_WORKSPACE=your_workspace
+
+** Terraspace
+
+
+* Terraspace
+
++ [ ] either regenerate project or complete migration (e.g. app/stacks => config/stacks)
+
+** Notes
+
+*** Env
+
++ TF_VERSION_CHECK=0 :: [[https://terraspace.cloud/docs/terraform/license][force skip Terraform License Check]]
++ TF_PLUGIN_CACHE_DIR :: /tmp/plugin_cache
+
+For GCP Auth ([[https://terraspace.cloud/docs/helpers/google/][docs]])
+
++ Either use SA Auth or App Default Credentials auth
++ GOOGLE_APPLICATION_CREDENTIALS :: set to
++ GOOGLE_AUTH_SUPPRESS_CREDENTIALS_WARNINGS :: Set to use ADC
+  ==~/.gcp/service-account=
++ App Def Cred auth: run =gcloud auth application-default login= and unset SA
+  var (above).
+
+Secrets will be cached in:
+
+#+begin_quote
+.terraspace-cache/us-west-2/dev/stacks/demo/1-dev.auto.tfvars
+#+end_quote
+
+**** TS
+
+Terraspace
+
++ TS_LOG_LEVEL :: 0
++ TS_EXIT_ON_FAIL :: 0
++ TS_BUFFER_BLOCK_SIZE :: 102400
++ TS_BUFFER_TIMEOUT :: 3600
+
+Project init
+
++ TS_INIT_MODE :: always
+
+Layering
+
++ TS_LAYERING_SHOW :: 0
++ TS_LAYERING_MODE :: simple
+
+Terraspace Bundler
+
++ TB_EXPORT_PATH ::
++ TB_TERRAFILE ::
+
+TS Cloud
+
++ TS _ORG :: required
++ TS_COST :: 0
+
+*** Stacks
+
++ [[https://terraspace.cloud/docs/layering/tfvars-location-thoughts/#move-script][Move TF Vars]]
+
+*** Graph
+
+=terraspace all graph=
+
+*** Terrafile
+
+To use more modules, add them to the [[https://terraspace.cloud/docs/terrafile/)][Terrafile]]
+
+** Setup
+*** Install on Guix
+
+Add =ruby= to the manifest. In the project's bundle config, set
+=path=vendor/bundle= or add =BUNDLE_PATH=$PWD/vendor/bundle= to =.envrc=.
+
+Then run =bundle install=. Not sure, but it was isolated enough from the system
+Ruby to install Terraspace on Guix.
+
+**** Install the Terraform Shim
+
++ it shouldn't expect to run outside of the project so just remove the
+  conditional and leave the =bundle exec=.
++ The shebang needs to change to =#!/bin/sh=
+
+*** Generate new project
+
+Run =terraspace new project foo=.
+
++ On Guix, the generator fails to =bundle install= with the custom Bundler path
+
+#+begin_src sh
+bundle exec terraspace new project demo \
+       --plugin google \
+       --examples \
+       --test \
+       --no-bundle
+#+end_src
+
+The generated files needed to be moved back to the parent directory. I know TF
+can support linking into subdirectories as independent projects, but I'm not
+sure about TF Cloud and setting the Bundler path gets in the way
+
+*** Cloud Provider
+
+AWS, GCP and Azure each have their [[https://terraspace.cloud/docs/plugins][Terraspace Plugins]]
+
++ [[https://terraspace.cloud/docs/dependencies/exclude-stacks/][include/exclude stacks]]
++ [[https://terraspace.cloud/docs/config/restricting/stacks/][restricting stacks]] in app/config.rb
+
+** Deploy
+
+To deploy all the infrastructure stacks:
+
+#+begin_src sh
+terraspace all up
+#+end_src
+
+To deploy individual stacks:
+
+#+begin_src sh
+terraspace up demo # where demo is app/stacks/demo
+#+end_src
+
+* Project Structure
+
+#+begin_quote
+├── .config
+│   ├── gcloud
+│   └── ... more shared config
+├── google-cloud-cli-455.0.0-linux-x86_64.tar.gz
+├── google-cloud-sdk
+├── ansible-proj
+│   ├── .envrc
+│   ├── .gcprc
+│   ├── Manifest.scm
+│   └── ... more ansible stuff
+└── terraform-proj
+    ├── .envrc
+    ├── .gcprc
+    ├── Manifest.scm
+    └── ... more terriform/terraspace stuff
+#+end_quote
+
+* Direnv
+
+See the [[https://github.com/dcunited001/zettlekasten/tree/master/topics/shell.org][Shell notes]] in my zettelkasten
+
+* Cloud CLI
+
+** GCP Cloud Shell
+
+*** Direnv
+
+For GCP (& probably others)
+
++ No systemwide changes persisted, so =direnv= is hard to work with. Doesn't
+  work well with vscode anyways.
++ Better ways to do this in other environments.
+
+** Install =gcloud= on Guix
+
+Some of the Google API packages on Guix seem older.
+
++ [[https://cloud.google.com/sdk/docs/configurations][multiple gcp config roots]] (gcloud already provides multiple profiles)
++ [[https://cloud.google.com/sdk/gcloud/reference/topic/configurations][misc configuration settings]]
+
+*** Environment
+
+These need to be set in the environment before installing/running =gcloud=. I'm
+not sure a per-project install is a good idea, but usually figuring this out
+earlier is better with Guix.
+
+The following is loaded by =.envrc= but the Cloud Shell already has this and
+won't use =direnv=. These are conveniently summarized in
+=./google-cloud-sdk/install.sh=.
+
+#+begin_src sh
+# the python used for the initial install.
+export CLOUDSDK_PYTHON="$VIRTUAL_ENV/bin/python3"
+
+# project-specific config
+export CLOUDSDK_CONFIG="$PWD/.config/gcloud"
+
+# or maybe `$PWD/../.config/gcloud` to share across multiple projects
+
+# There are also options for invoking =python -S= to =import site=.
+#+end_src
+
++ This may not work with =pyenv= on Arch, since that shims python and pip.
++ I couldn't get pyenv to build anything on Guix (that was awhile ago).
++ Using a virtualenv prevents this, but I'm not sure whether site packages will
+  be needed.
++ Go deps may be a problem if they link to lib64, but I haven't had any so far
+  with prebuilt Go binaries like step-ca and terraform.
+
+The =VIRTUAL_ENV= can be inside or outside of the project, but =gcloud= will
+modify the python path when =.gcprc= is sourced to include the following, which
+is where it installs python deps.
+
++ =$PWD/../google-cloud-sdk/lib=
++ and =$PWD/../google-cloud-sdk/lib/third_party=
+
+*** Installation
+
+Curl the installer and unpack with =tar -xzvf= in $PWD.
+
++ it installs bins there after install (hopefully no lib64).
+
+The installer asks for an rc file. Set it to =$PWD/.gcprc=
+
++ Source the file manually as needed

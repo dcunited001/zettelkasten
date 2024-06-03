@@ -6,7 +6,10 @@
 #+TAGS:
 
 I got the proprietary =vscode= running in Guix, but it's just way easier this
-way. Apparently getting Intellij to run goes a little like this.
+way.
+
+I forgot that I've already done this, more or less: [[id:fbcba632-7805-4acc-af08-10ba7ff3c8cd][Firewall: Run OPNSense in
+KVM Alongside Baremetal PFSense]]....
 
 * Resources
 
@@ -16,14 +19,263 @@ way. Apparently getting Intellij to run goes a little like this.
   graphviz which is super useful
 + [[https://linuxconfig.org/how-to-use-bridged-networking-with-libvirt-and-kvm][How to use bridged networking with libvirt and KVM]]
 + Guix Cookbook: [[https://guix.gnu.org/cookbook/en/html_node/Routed-network-for-libvirt.html][Routed network for libvirt]]
++ [[https://jamielinux.com/docs/libvirt-networking-handbook][jamielinux.com/docs/libvirt-networking-handbook]]
 + [[enp0s29u1u1][docs.bisdn.de]] More comprehensive docs on linux bridges
++ [[https://docs.kernel.org/networking/ipvlan.html][kernel.org: ipvlan]]
 
-* Notes
+** Red Hat
 
-+ Using Fedora i3 spin
-+ May need to adjust the bridge later
+[[https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/configuring_and_managing_virtualization/configuring-virtual-machine-network-connections_configuring-and-managing-virtualization][RHEL Conf/Manage Virtualization: 16 Networking]]
 
-* Networking
++ includes info on configuring filter chains in libvirt XML
++ this seems about as useful as YANG or "nice things we like to have"
+
+[[https://access.redhat.com/documentation/en-us/red_hat_virtualization/4.4/html/administration_guide/chap-logical_networks#sect-Hosts_and_Networking][Red Hat Virtualization Admin Guide: 4.4.4 nmstatectl]]
+
++ Really curious: who actually has the scale to have some of these problems?
++ Oh, probably people who also have device mapper problems.
+
+* macvtap
+
+** KVM config for a management network
+
+[[https://wiki.libvirt.org/TroubleshootMacvtapHostFail.html][LibVirt: Troubleshooting macvtap]]
+
+** Setup
+
+*** Create Host Device
+
+#+begin_src sh
+device=eth0
+vtap=macvtap0
+ip link add link $device name $vtap type macvtap0
+#+end_src
+
+*** Create networks
+
+Bridge network =brnet0=. The addressing here is shared by the host.
+
+#+begin_src xml
+<network>
+  <name>brnet0</name>
+  <forward mode='bridge'>
+    <interface dev='eth0'/>
+  </forward>
+</network>
+#+end_src
+
+Isolated network =vmnet0=. The addressing here may conflict with other virtual
+networks, but it shouldn't be externally routable.
+
+#+begin_src xml
+<network>
+  <name>vmnet0</name>
+  <uuid>d1ff8fcb-de08-4ae3-8f3b-2b22e7203abc</uuid>
+  <bridge name="vmnet0" stp="on" delay="0"/>
+  <mac address="ab:cd:ef:15:cd:32"/>
+  <domain name="vmnet0"/>
+  <ip address="192.168.100.1" netmask="255.255.255.0">
+    <dhcp>
+      <range start="192.168.100.128" end="192.168.100.254"/>
+    </dhcp>
+  </ip>
+</network>
+#+end_src
+
+Create managed networks
+
+#+begin_src sh
+virsh net-define brnet0.xml
+# virsh net-autostart brnet0
+virsh net-start brnet0
+
+virsh net-define vmnet0.xml
+virsh net-autostart vmnet
+virsh net-start vmnet0
+#+end_src
+
+*** Create Guest Devices
+
+Device in bridged network:
+
+#+begin_src xml
+<interface type="direct">
+  <mac address="ab:cd:ef:23:dc:51"/>
+  <source dev="eth0" mode="bridge"/>
+  <model type="virtio"/>
+</interface>
+#+end_src
+
+
+Device in isolated network
+
+#+begin_src xml
+<interface type="network">
+  <mac address="ab:cd:ef:15:cd:32"/>
+  <source network="vmnet0"/>
+  <model type="virtio"/>
+</interface>
+#+end_src
+
+This should work, but i haven't tested yet...
+
+** Isolated networks
+
+I totally had an incorrect understanding of "isolated". I thought these were
+something specifically for cybersecurity or for virtualization of services with
+complex networking requirements ... I didn't think to use it as a management
+network. The underlying protocols are what I understand (kinda).
+
+Semantic mappings, eh?  The higher level tools like Proxmox and Virt-Manager
+blend terminology a bit. This is one of those places where "it's not the things
+you don't know that slow your progress, but the things you think you know."
+That's one reason i lost /some/ interest in proxmox. It's great, but I didn't
+have a cluster and I couldn't match the proxmox networking magic to the actual
+networking protocols and/or abstraction names (VRF on proxmox was hard ... and
+kinda pointless: it's already doing VRF!)  I encounter these semantic mismatch
+issues frequently, though I imagine it's not such an impediment for most
+people. Finding the answers piece by piece and cargo culting does you no favors.
+
+And generally, it's not really the semantics that's the problem -- these docs
+are actually very useful -- but rather that I go for so long without feedback
+from other people. If you misunderstand the semantics, people may mention things
+or make suggestions, but you're just talking past each other.
+
+The source code on the other hand doesn't really leave much ambiguity. Does
+anyone opt into source pkgs? If you could deliver source as git by default, then
+you can also deliever source deltas to minimize bandwidth later. If they are
+bare git repos, then you can clone/pull from them off your own machine.
+
+* Basic NAT
+
+** Networking
+
+source environment
+
+#+begin_src sh
+_br=vmbr0
+_if=eth0
+_tap=tap0
+#+end_src
+
+Create bridge and add devices
+
+#+begin_src sh
+brctl add $_br
+# tunctl -t $_tap
+# brctl addif $_br $_tap
+brctl addif $_br $_if
+#+end_src
+
+Create Network XML
+
+#+begin_src xml :tangle /tmp/vmbr0.xml
+<network>
+  <name>vmbr0</name>
+  <forward mode="nat" dev="vmbr0"/>
+  <domain name="network"/>
+  <ip address="192.168.100.1" netmask="255.255.255.0">
+    <dhcp>
+      <range start="192.168.100.128" end="192.168.100.254"/>
+    </dhcp>
+  </ip>
+</network>
+#+end_src
+
+Create Device XML
+
+#+begin_src xml :tangle /tmp/vm-eth0.xml
+<interface type="ethernet">
+  <mac address="01:02:03:0a:0b:ff"/>
+  <target dev="vmbr0" managed="no"/>
+  <model type="virtio"/>
+</interface>
+#+end_src
+
+But that's not so great.
+
+* ipvtap 
+
+** L3
+
+Source environment
+
+#+begin_src sh
+vtap=ipvtap0
+device=eth0
+ipguest=172.20.20.200/24
+#+end_src
+
+*** Setup
+
++ l3s :: layer-3 symmetric. it has connection tracking.
+
+Flags define the switching/routing between VM's
+
++ bridge :: VM's can crosstalk without jumping out (direct connection via
+  virtual bridge)
++ private :: VM's can't communicate. no hairpin on external switch: must be
+  routed back in from external L3 device (unsure on this last one; no time for
+  =netns= scripts)
++ vepa :: uses 801.Qbg if you're a fan of acronyms
+
+#+begin_src sh
+ip link add name $vtap link $device type ipvtap mode l3s bridge
+ip link set up $vtap
+
+# configure address on host
+ip addr add 10.8.16.81/24 dev ipvtap0
+#+end_src
+
++ You do have to =ip link set up= the =ipvap=. I'm seeing =/32= addresses on the
+  host and =/24= addresses on the guest, so I guess technically it gets treated
+  as its own singleton network.
++ The =netns= stuff gets handled by libvirtd (the =net0= below is added after VM
+start)
+
+The livbirt XML:
+
+#+begin_src xml
+<!-- it's not clear this is actually the ipvtap l3 -->
+<interface type="ethernet">
+  <mac address="ab:dc:fe:99:a3:4c"/>
+  <target dev="ipvtap0" managed="no"/>
+  <model type="virtio"/>
+  <alias name="net0"/>
+  <address type="pci" domain="0x0000" bus="0x01" slot="0x00" function="0x0"/>
+</interface>
+#+end_src
+
+*** Tear down
+
+And it doesn't work. The parent interface needs to be on its own network
+
++ Now if you were clever enough to carve your =/24= network into at least a
+=/25= with route summarization on the router -- i.e. your external router sends
+all traffic back to your Dev LAN =/24= -- then you can avoid the need to set up
+routes each time you use ipvtap.
+
+#+begin_src sh
+ip addr del 10.8.16.81/24 dev ipvtap0
+ip link set down $vtap
+ip link del name $vtap link $device
+#+end_src
+
+**** macvlan vs ipvlan
+
+According to [[https://hicu.be/macvlan-vs-ipvlan][hicu.be/macvlan-vs-ipvlan]], other than advanced use cases, the one
+case where =ipvlan= makes sense is with a wireless card ... but now that I
+reread that: it's =macvlan vs ipvlan=
+
+|-------+---------------------------------------------------|
+| mac-  | different MACs                                    |
+| ip-   | shares MACs                                       |
+|-------+---------------------------------------------------|
+| -vlan | lacks a TAP character device                      |
+| -vtap | gets a TAP device, can directly plug into libvirt |
+|-------+---------------------------------------------------|
+
+** L2
 
 For the L2 Bridge method, basic networking works inside the guest. Since
 everything is in the same namespace (see the gist comments), sessions which
@@ -39,9 +291,9 @@ $guestip= shows =ntp= traffic from guest, i'm not sure how move further.
 These macvtap/ipvtap devices are extremely useful, but there are very few
 examples online.
 
-** Using ipvtap (L2 bridge)
+*** Using ipvtap (L2 bridge)
 
-See [[https://gist.github.com/gdamjan/ed095763b8c322ee5bed17e11bbaed6d][this gist]]. Use the nettree command to verify the =ipvtap0= topology.
+See [[https://gist.github.com/gdamjan/ed095763b8c322ee5bed17e11bbaed6d][this gist]]. Use the =nettree= command to verify the =ipvtap0= topology.
 
 #+begin_src sh
 device=wlan0
@@ -84,7 +336,7 @@ And in guest: =nmcli conn up "Not-Wired Connection 1"=
 After this, ping something and you should be connected on the same network. Then
 run =dnf install NetworkManager-tui= so you have basic quality of life tools.
 
-*** Teardown
+**** Teardown
 
 #+begin_src sh
 vtap=ipvtap0
@@ -94,7 +346,7 @@ ip link set down $vtap
 ip link delete dev $vtap type ipvtap
 #+end_src
 
-*** Ensure stable MAC address
+**** Ensure stable MAC address
 
 The quickest fix for me was to specify an address in an nmcli connection profile
 using =nmtui=. This would need to be updated on a per-connection basis, but it
@@ -116,11 +368,7 @@ inherited by the attached =ipvtap0= device.
 + Also tried =wpa_gui= with guix shell and I got it to run, but it may not have
   had the right environment for the sstem dbus or something.
 
-
-
-
-
-** Using bridge
+*** Using bridge
 Because I haven't messed around with libvirt in Guix much (certificate paranoia)
 and I don't have time to customize the system config... then a script needs to
 configure the network temporarily:
@@ -131,7 +379,7 @@ Nothing shows in guix for this:
 sudo virsh net-list --all
 #+end_src
 
-*** Virtual Bridge
+**** Virtual Bridge
 
 So I followed the Guix cookbook instructions on setting up the bridged
 network. It doesn't autostart:
@@ -149,7 +397,7 @@ complex config. I won't have control over the gateway's static routes.
 virsh net-destroy virbr0
 #+end_src
 
-*** Bridge
+**** Bridge
 
 Add a bridge device. it will need a master device later
 

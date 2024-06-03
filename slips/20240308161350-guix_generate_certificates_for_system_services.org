@@ -1,0 +1,90 @@
+:PROPERTIES:
+:ID:       27bd6035-e341-4756-ab90-a7364043cc68
+:END:
+#+TITLE: Guix: generate certificates for system services
+#+CATEGORY: slips
+#+TAGS:  
+
+* Docs
+
++ Certtool: [[https://gnutls.com/manual/gnutls.html][gnutls.com/manual/gnutls.html]]
+
+** Libvirt
+
++ tls
+
+
+* Resources
+
+* TLS
+
+** GnuTLS
+
+The guix =gnutls= package for this will provide these binaries
+
+In addition, there are the =guile-gnutls= bindings, though I'm not sure how to
+generally access the file system for a system from within =your-guix-system.scm=
+build script. 
+
+* Guix
+
+** Libvirt
+
+The =libvirt-configuration= record type has a few fields that specify a path for
+keys and certs. They should receive a path for =.pem= files.
+
+* Testing
+
+** Smallstep
+
+
+
+* Secrets in Guix
+
+** Guix derivations
+
+To learn more about +docker image layers+ derivations and store objects,
+=guix.el= is one of the easier options.
+
+All of this should be done with some caution. Generating the wrong files at the
+wrong time and you'll run into the same issues as you would using =docker= or
+=vm= build scripts: the secrets will end up in a somewhat readable build cache
+layer. For guix, this would be in =/gnu/store=.
+
+#+begin_quote
+It's not clear whether the =guix system shepherd-graph= and =guix system
+extension-graph= support options like =--type=derivation=. The =--list-types=
+command doesn't work here and I haven't searched through the =guix system=
+command source.
+
+However, they are derivations, so you can find them in =/gnu/store= and
+=guix.el= can help navigate their derivations.
+#+end_quote
+
+** Handling Secrets
+
++ If your Guix system builds are automated, then with some additional scripting,
+  you can frequently rotate secrets. This limits your exposure time to the
+  length between updates -- or how quickly you cycle the "cattle".
++ If the secrets are contained as files, then swap them out before shepherd
+  restarts the services on a running system.
++ Otherwise, the state needs to be in place before Shepherd tries to read it.
+
+I'm not an expert here ... but you should pass file paths where the libvirt
+service can expect to find the =PEM= files and etc. In this case:
+
++ The file path reference is sufficient, so the generation of these keys can be
+  totally separate from your build scripts.
++ For a system which does not power-cycle, then in simpler cases, you can assume
+  the keys to have been read into memory. This would allow you to swap out the
+  files in a shell script before you run =guix system reconfigure=.  However,
+  when supporting a larger scale, this may not work out.
+
+Additionally, it appears that a Guix system running in a VM can make use of
+=secret-service= in =virtualization.scm= to retrieve keys/secrets over a TCP
+connection.
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:cf2bd101-8e99-4a31-bbdc-a67949389b40][Virtualization]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
