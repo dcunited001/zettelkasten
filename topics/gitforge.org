@@ -46,6 +46,64 @@ Kafka launches treesitter workers.
 *** GraphQL
 
 
+** Issues
+
+*** Master & Main
+
+**** Determine master/main ref without Github API
+
+This would work if the branch is renamed, but maybe not if there are two
+concurrently maintained branches.
+
+#+begin_src sh
+head_sha="$(git ls-remote https://github.com/tensorflow/tensorflow --patterns HEAD | cut -f1)"
+git ls-remote https://github.com/tensorflow/tensorflow | grep "$head_sha"
+echo $head_sha
+#+end_src
+
+#+RESULTS:
+| 9dab91d727cc604a7a25253c94b2997f93b5b894	HEAD                 |
+| 9dab91d727cc604a7a25253c94b2997f93b5b894	refs/heads/master    |
+| 9dab91d727cc604a7a25253c94b2997f93b5b894	refs/pull/69097/head |
+| 9dab91d727cc604a7a25253c94b2997f93b5b894                       |
+
+*** Clone Bundle
+
+**** Get Clone Bundle Size
+
+There doesn't seem to be a way to do this with =graphql= or =curl=.
+
+***** Using Git
+
+There is with git (see [[https://stackoverflow.com/questions/8185276/find-size-of-git-repository][stack overflow]]) using =git-count-objects= or
+=git-gc=... but it looks like you have to clone. If it's a bare repository, that
+may work, but it's unclear whether it needs the content to be fetched locally.
+
+
+
+***** Using Curl
+
+This should work, but it returns =Content-Length: 0= and doesn't output in JSON
+anyways.
+
+#+begin_src sh :results output table
+# the clone zip for the wiki pathways database and their like SVG assets
+wikipathways_db=https://github.com/wikipathways/wikipathways-database/archive/refs/heads/main.zip
+wikipathways_assets=https://github.com/wikipathways/wikipathways-assets/archive/refs/heads/main.zip
+
+# the repo for the assets is 4GB
+#curl -sLI -w "%{header_json}" -o /dev/null $wikipathways_db
+#curl -sLI -w "%{header_json}" -o /dev/null $wikipathways_assets
+
+curl -sLI $wikipathways_db | grep "content-length"
+curl -sLI $wikipathways_assets | grep "content-length"
+printf ""
+#+end_src
+
+#+RESULTS:
+| content-length: | 0 |
+| content-length: | 0 |
+
 * Github Actions
 
 ** Docs
