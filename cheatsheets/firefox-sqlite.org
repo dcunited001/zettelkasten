@@ -1,0 +1,180 @@
+#+TITLE:     Firefox SQLite Schemas
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+* FF Vars                                                          :noexport:
+
+Clone [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][Screwtapello/sqlite-schema-diagram]] to =/tmp/=
+
+#+begin_src emacs-lisp
+(setq-local firefox-profile "foobar-baz.default")
+#+end_src
+
+#+name: ffroot
+#+begin_src emacs-lisp
+(expand-file-name ".mozilla/firefox" (getenv "HOME"))
+#+end_src
+
+#+name: sqliteSchemaTool
+#+begin_src emacs-lisp
+"/tmp/sqlite-schema-diagram"
+#+end_src
+
+#+name: ffdbfiles
+#+headers: :results output table :var ffroot=ffroot ffprofile=(identity firefox-profile)
+#+begin_src bash
+ffprofile=$ffroot/$ffprofile
+find $ffprofile -name "*.sqlite" ! -wholename '*+++*' ! -wholename '*idb*' \
+    | sed -e 's/\/home.*default-release\///g' \
+    | sort
+#+end_src
+
+#+RESULTS: ffdbfiles
+| content-prefs.sqlite        |
+| cookies.sqlite              |
+| credentialstate.sqlite      |
+| domain_to_categories.sqlite |
+| favicons.sqlite             |
+| formhistory.sqlite          |
+| permissions.sqlite          |
+| places.sqlite               |
+| protections.sqlite          |
+| storage/ls-archive.sqlite   |
+| storage.sqlite              |
+| storage-sync-v2.sqlite      |
+| weave/bookmarks.sqlite      |
+| webappsstore.sqlite         |
+
+#+name: ffSchemaDiagram
+#+headers: :var ffroot=ffroot ffprofile=(identity firefox-profile) ffdb="bookmarks.sqlite" sqltool=sqliteSchemaTool
+#+begin_src sh :results output file link
+## (f-dirname "/tmp/bookmarks.svg")
+ffprofile=$ffroot/$ffprofile
+
+# TODO: two of these are located in a subdirectory
+#
+# - the produced files should be relative to that
+#
+# - each database requires rendering the schema to a file relative to that
+dbDot="${ffprofile}/$ffdb.dot"
+dbDiagram="${ffprofile}/$ffdb.svg"
+# dbSql="${ffprofile}/$ffdb.sql"
+
+sqlite3 "$ffprofile/$ffdb" -init "$sqltool/sqlite-schema-diagram.sql" "" > $dbDot 2>/dev/null
+dot -Tsvg -Kdot -G"rankdir='LR'" $dbDot > $dbDiagram
+
+# cat $dbDiagram
+# echo $dbDiagram
+
+output="img/firefox-$(basename $dbDiagram)"
+cp $dbDiagram $output
+echo -n $output
+#+end_src
+
+#+RESULTS: ffSchemaDiagram
+[[file:img/firefox-bookmarks.sqlite.svg]]
+
+* Firefox
+
+** Schemas
+
+*** bookmarks
+
+The =bookmarks.sqlite= database returns an empty result for me.
+
+#+call: ffSchemaDiagram(ffdb="bookmarks.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-bookmarks.sqlite.svg]]
+
+*** content-prefs
+
+#+call: ffSchemaDiagram(ffdb="content-prefs.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-content-prefs.sqlite.svg]]
+
+*** cookies
+
+#+call: ffSchemaDiagram(ffdb="cookies.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-cookies.sqlite.svg]]
+
+*** credentialstate
+
+#+call: ffSchemaDiagram(ffdb="credentialstate.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-credentialstate.sqlite.svg]]
+
+*** domain_to_categories
+
+#+call: ffSchemaDiagram(ffdb="domain_to_categories.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-domain_to_categories.sqlite.svg]]
+
+*** favicons
+
+#+call: ffSchemaDiagram(ffdb="favicons.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-favicons.sqlite.svg]]
+
+*** formhistory
+
+#+call: ffSchemaDiagram(ffdb="formhistory.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-formhistory.sqlite.svg]]
+
+*** ls-archive
+
+#+call: ffSchemaDiagram(ffdb="storage/ls-archive.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-ls-archive.sqlite.svg]]
+
+*** permissions
+
+#+call: ffSchemaDiagram(ffdb="permissions.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-permissions.sqlite.svg]]
+
+*** places
+
+#+call: ffSchemaDiagram(ffdb="places.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-places.sqlite.svg]]
+
+*** protections
+
+#+call: ffSchemaDiagram(ffdb="protections.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-protections.sqlite.svg]]
+
+*** storage
+
+#+call: ffSchemaDiagram(ffdb="storage.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-storage.sqlite.svg]]
+
+*** storage-sync-v2
+
+#+call: ffSchemaDiagram(ffdb="storage-sync-v2.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-storage-sync-v2.sqlite.svg]]
+
+*** webappsstore
+
+#+call: ffSchemaDiagram(ffdb="webappsstore.sqlite")
+
+#+RESULTS:
+[[file:img/firefox-webappsstore.sqlite.svg]]
