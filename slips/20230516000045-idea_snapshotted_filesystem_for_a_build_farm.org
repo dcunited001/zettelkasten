@@ -5,10 +5,11 @@
 #+CATEGORY: slips
 #+TAGS:
 
-* Roam
-+ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
-+ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
-+ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
+#+begin_quote
+I kinda wish I had a red pen for about half of this one...
+
+I swear there was more to this
+#+end_quote
 
 Snapshotting filesystem specifically for building from sources (and bringing
 sources closer to your C/C++ project (as mentioned in these notes)
@@ -16,38 +17,13 @@ sources closer to your C/C++ project (as mentioned in these notes)
 This could save quite a bit on disk consumption for build farms ... but I may
 end up simply proprosing what is essentially Docker.
 
-* Process
-
-Set up a package mirror containing your sources/libs. This is where your
-versioned build artifacts will go and where your sources/dylibs come from.
-
-Extract sets packages into a layered file system where read-only mounts to
-snapshots are available. The difficulty here is deciding how to structure the
-project metadata so that it can benefit from consolidated snapshots while its
-dependencies/versions deviate where necessary. The snapshots need to be isolated
-from each others' changesets in order to save on storage. The file system needs
-to support reading from "image layers" without the need to compute
-reconstruction of the layers...
-
-Instantiate your projects' code into an arbitrary directory inside of a FHS path
-hierarchy that itself is within another root file system. So like:
-
-+ /opt/projects/project-a1b2c3 :: this has its own FHS
-  - ./usr[/local]/src/project-a1b2c3 :: this contains the actual source
-  - ./usr/lib :: /something like this/ contains the extracted libs
-    - this is a mount to the unpacked libs (on the read-only snapshot/image)
-  - ./usr/src :: and pkg sources go somewhere around here
-    - similarly, here are your unpacked sources (read-only snapshot/image)
-
-Then you chroot or specify the configure options and build.
-
 * Benefits/etc
 
 ** Advantages:
 
 + less total storage (many versions of many libraries, perhaps with specific
   configure options)
-+ less network/fil transfer (goal: files move less)
++ less network/file transfer (goal: files move less)
 + perhaps significantly less I/O, espcially if you can regulate disk access (to
   the mounted snapshots
 + potential reduction in power consumption
@@ -62,11 +38,72 @@ Then you chroot or specify the configure options and build.
 Even if the compilation isn't optimal, then you can tune some of the build
 artifacts later.
 
+#+begin_quote
+"That's an Overlaid file system" - Red Pen
+
+... At the time, I thought there would be more possibilities to refine the
+"differential build artifacts" aspects to "know" the results of many builds
+based on how parts of various layers interact with lower layers...
+
+i.e.
+
++ decompose a function $f$ that represents a single build stage
++ $f$ is decomposed into $f_1,f_2,... ,f_n$ which represent separable
+  deterministic (?) deltas that can be composed into the final delta for the
+  layer
++ then you pullback from $f$ to parameterize the deltas to make them more useful
++ then you change the package or container image's source input
+  layers... applying the composition of /mostly somewhat kinda maybe unrelated/
+  $f_i$ but after their transformation by some parameterized functor $G$ into
+  $g_1, g_2, ... g_m$
+
+On the surface sounds, this like _an_ Overlay FS (it basically is)
+
+... i donno. i don't think it's generally practical enough to be useful if it's
+even possible more than 2% of the time. My writing style here underscores the
+change in my enthusiasm.
+#+end_quote
+
 ** Reality Check
 
-This is a little lofty and might just essentially be Docker/containers --
+This is a little lofty /and may just essentially be Docker/containers/ --
 especially if you can extract useful artifacts from existing intermediate image
 layers and compose them into others.  It's unlikely to produce significant
 benefits, especially considering the cost/time along with increased
 complexity/constraints on builds. (you also need to rewrite existing
 automake/configure scripts)
+
+* Process
+
+#+begin_quote
+"This is just chrooting and building" - Red Pen
+#+end_quote
+
+Set up a package mirror containing your fetched sources & built libs/packages.
+This is where your versioned build artifacts will go and where your
+sources/dylibs come from.
+
+Extract sets packages into a layered file system where read-only mounts to
+snapshots are available. The difficulty here is deciding how to structure the
+project metadata so that it can benefit from consolidated snapshots while its
+dependencies/versions deviate where necessary. The snapshots need to be isolated
+from each others' changesets in order to save on storage. The file system needs
+to support reading from "image layers" without the need to compute
+reconstruction of the layers...
+
+Instantiate your projects' code into an arbitrary directory inside of a FHS
+chroot within another root FHS system. So like:
+
++ /opt/projects/project-a1b2c3 :: this has its own FHS
+  - ./usr[/local]/src/project-a1b2c3 :: this contains the actual source
+  - ./usr/lib :: /something like this/ contains the extracted libs
+    - this is a mount to the unpacked libs (on the read-only snapshot/image)
+  - ./usr/src :: and pkg sources go somewhere around here
+    - similarly, here are your unpacked sources (read-only snapshot/image)
+
+Then you chroot or specify the configure options and build.
+
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
++ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
