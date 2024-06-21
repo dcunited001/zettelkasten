@@ -14,13 +14,6 @@ Clone [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][Screwtapello/sqli
 (setq-local firefox-profile "foobar-baz.default")
 #+end_src
 
-If you accidentally commit the firefox profile id:
-
-+ Find the files referencing profiles with: ~grep --exclude="*.json" -Ire "$ff_profile_id" ~/.mozilla/firefox~
-+ Completely close firefox, update references to new profile ID, then move the directory
-+ Or probably just nuke your FF directory and resync. There are a few FF
-  extensions for which I need to backup data.
-
 #+name: firefoxProfile
 #+begin_src emacs-lisp :results value silent
 ;; OOOOF (one of the +rare?+ times i meant to NOT commit something)
@@ -104,12 +97,16 @@ The =bookmarks.sqlite= database returns an empty result for me.
 #+RESULTS: ffBookmarks
 [[file:img/firefox-bookmarks.sqlite.png]]
 
+[[file:img/firefox-bookmarks.sqlite.png]]
+
 *** content-prefs.sqlite
 
 #+name: ffContentPrefs
 #+call: ffSchemaDiagram(ffdb="content-prefs.sqlite") :results output file link :exports both
 
 #+RESULTS: ffContentPrefs
+[[file:img/firefox-content-prefs.sqlite.png]]
+
 [[file:img/firefox-content-prefs.sqlite.png]]
 
 *** cookies.sqlite
@@ -120,12 +117,16 @@ The =bookmarks.sqlite= database returns an empty result for me.
 #+RESULTS: ffCookies
 [[file:img/firefox-cookies.sqlite.png]]
 
+[[file:img/firefox-cookies.sqlite.png]]
+
 *** credentialstate.sqlite
 
 #+name: ffCredentialState
 #+call: ffSchemaDiagram(ffdb="credentialstate.sqlite") :results output file link :exports both
 
 #+RESULTS: ffCredentialState
+[[file:img/firefox-credentialstate.sqlite.png]]
+
 [[file:img/firefox-credentialstate.sqlite.png]]
 
 *** domain_to_categories.sqlite
@@ -152,7 +153,7 @@ The =bookmarks.sqlite= database returns an empty result for me.
 #+RESULTS: ffFormHistory
 [[file:img/firefox-formhistory.sqlite.png]]
 
-*** strorage/ls-archive.sqlite
+*** storage/ls-archive.sqlite
 
 #+name: ffLsArchive
 #+call: ffSchemaDiagram(ffdb="storage/ls-archive.sqlite") :results output file link :exports both
@@ -207,3 +208,86 @@ The =bookmarks.sqlite= database returns an empty result for me.
 
 #+RESULTS: ffWebAppsStore
 [[file:img/firefox-webappsstore.sqlite.png]]
+
+** Extension Schemas
+
+*** ¯\_(ツ)_/¯.sqlite
+
+The schema for the =ffMozExtension=
+
+# +name: ffMozExtension
+# +call: ffSchemaDiagram(ffdb="storage/default/moz-extension/idb/bpla.sqlite") :results output file link :exports both
+
+#+RESULTS: ffMozExtension
+[[file:img/firefox-bpla.sqlite.png]]
+
+And the actual schema:
+
+#+begin_src sh :results output code :wrap src sql :var firefoxProfile=firefoxProfile
+ffExtensionDb='moz-extension+++ ... /idb/ ... bpla.sqlite'
+ffdb=~/.mozilla/firefox/$firefoxProfile/storage/default/$ffExtensionDb.sqlite
+sqlite3 $ffdb '.schema'
+#+end_src
+
+#+RESULTS:
+#+begin_src sql
+CREATE TABLE database( name TEXT PRIMARY KEY, origin TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 0, last_vacuum_time INTEGER NOT NULL DEFAULT 0, last_analyze_time INTEGER NOT NULL DEFAULT 0, last_vacuum_size INTEGER NOT NULL DEFAULT 0) WITHOUT ROWID;
+CREATE TABLE object_store( id INTEGER PRIMARY KEY, auto_increment INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL, key_path TEXT);
+CREATE TABLE object_store_index( id INTEGER PRIMARY KEY, object_store_id INTEGER NOT NULL, name TEXT NOT NULL, key_path TEXT NOT NULL, unique_index INTEGER NOT NULL, multientry INTEGER NOT NULL, locale TEXT, is_auto_locale BOOLEAN NOT NULL, FOREIGN KEY (object_store_id) REFERENCES object_store(id) );
+CREATE TABLE object_data( object_store_id INTEGER NOT NULL, key BLOB NOT NULL, index_data_values BLOB DEFAULT NULL, file_ids TEXT, data BLOB NOT NULL, PRIMARY KEY (object_store_id, key), FOREIGN KEY (object_store_id) REFERENCES object_store(id) ) WITHOUT ROWID;
+CREATE TABLE index_data( index_id INTEGER NOT NULL, value BLOB NOT NULL, object_data_key BLOB NOT NULL, object_store_id INTEGER NOT NULL, value_locale BLOB, PRIMARY KEY (index_id, value, object_data_key), FOREIGN KEY (index_id) REFERENCES object_store_index(id) , FOREIGN KEY (object_store_id, object_data_key) REFERENCES object_data(object_store_id, key) ) WITHOUT ROWID;
+CREATE TABLE unique_index_data( index_id INTEGER NOT NULL, value BLOB NOT NULL, object_store_id INTEGER NOT NULL, object_data_key BLOB NOT NULL, value_locale BLOB, PRIMARY KEY (index_id, value), FOREIGN KEY (index_id) REFERENCES object_store_index(id) , FOREIGN KEY (object_store_id, object_data_key) REFERENCES object_data(object_store_id, key) ) WITHOUT ROWID;
+CREATE TABLE file (id INTEGER PRIMARY KEY, refcount INTEGER NOT NULL);
+CREATE INDEX index_data_value_locale_index ON index_data (index_id, value_locale, object_data_key, value) WHERE value_locale IS NOT NULL;
+CREATE INDEX unique_index_data_value_locale_index ON unique_index_data (index_id, value_locale, object_data_key, value) WHERE value_locale IS NOT NULL;
+CREATE TRIGGER object_data_insert_trigger AFTER INSERT ON object_data FOR EACH ROW WHEN NEW.file_ids IS NOT NULL BEGIN SELECT update_refcount(NULL, NEW.file_ids); END;
+CREATE TRIGGER object_data_update_trigger AFTER UPDATE OF file_ids ON object_data FOR EACH ROW WHEN OLD.file_ids IS NOT NULL OR NEW.file_ids IS NOT NULL BEGIN SELECT update_refcount(OLD.file_ids, NEW.file_ids); END;
+CREATE TRIGGER object_data_delete_trigger AFTER DELETE ON object_data FOR EACH ROW WHEN OLD.file_ids IS NOT NULL BEGIN SELECT update_refcount(OLD.file_ids, NULL); END;
+CREATE TRIGGER file_update_trigger AFTER UPDATE ON file FOR EACH ROW WHEN NEW.refcount = 0 BEGIN DELETE FROM file WHERE id = OLD.id; END;
+#+end_src
+
+* Cleanup                                                          :noexport:
+
+** Accidentally Commited the FF Profile?
+
+If you accidentally commit the firefox profile id, probably just nuke your FF
+directory and resync, but you may need to backup data for FF extensions.
+
+Find files referencing profiles:
+
+#+begin_src sh
+grep --exclude="*.json" -Ire "$ff_profile_id" ~/.mozilla/firefox
+#+end_src
+
+*** Update Profile References
+
+Completely close firefox, update references to new profile ID, then move the
+directory. Update =extensions.json= with references to the new =$ff_profile_id=
+
+#+begin_src sh
+ff_root=~/.mozilla/firefox
+ff_extensions=$ff_root/$ff_profile_id/extensions.json
+
+sed -e "s/$oldProfile/$newProfile/g" $ff_extensions > $ff_extensions.2
+cp $ff_extensions.2 $ff_extensions
+#+end_src
+
+.... which was still not sufficient.
+
+*** Update the SQLite References
+
+Binary matches from =grep= also include some sqlite databases
+
+|---------------------------------------------------+--------------------------------------------|
+| Profile                                           | Database                                   |
+|---------------------------------------------------+--------------------------------------------|
+| ~/.mozilla/firefox/$ff_profile_id                 | permissions.sqlite                         |
+|                                                   | places.sqlite                              |
+|                                                   | favicons.sqlite                            |
+|---------------------------------------------------+--------------------------------------------|
+| ~/.mozilla/firefox/$ff_profile_id/storage/default | moz-extension+++ ... /idb/ ... bpla.sqlite |
+|---------------------------------------------------+--------------------------------------------|
+
+* Roam
++ [[id:38638b3e-e023-460e-9670-84776e61468e][Browser]]
++ [[id:45b0ba21-fb20-44dc-9ee9-c4fed32aba9c][Forensics]]
