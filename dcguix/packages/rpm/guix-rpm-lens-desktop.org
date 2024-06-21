@@ -107,6 +107,10 @@ guix download $rpmpkgurl 2>/dev/null | tail -n1
 
 ** Source
 
+#+begin_quote
+2024-06-21 ... no idea what state this is in. I've moved on
+#+end_quote
+
 #+begin_src scheme :tangle lens-desktop.scm :noweb yes
 (define-module (dcguix packages rpm lens-desktop)
   #:use-module ((guix licenses) #:prefix license:)
@@ -136,26 +140,36 @@ guix download $rpmpkgurl 2>/dev/null | tail -n1
   #:use-module (srfi srfi-1))
 
 (define-public lens-desktop
+  (let* ((bin-platform "<<bin-platform>>")
+         (bin-version "<<bin-version>>")
+         (bin-name "<<bin-name()>>")
+         (deb-pkg-url "<<debpkgurl()>>")
+         (deb-pkg-hash "<<debpkghash()>>"))
   (package
     (name "lens-desktop")
-    (version <<bin-version>>)
+    (version bin-version)
     (source (origin
               (method url-fetch)
-              (uri (string-append "<<debpkgurl()>>"))
+              (uri (string-append deb-pkg-url))
               (sha256
-               (base32 "<<debpkghash()>>"))))
+               (base32 deb-pkg-hash))))
     ;; maybe chromium build system (which wraps binary-build-system & is used for electron)
     (build-system chromium-binary-build-system)
 
     (arguments
      (list
-      ;; #:validate-runpath? #f
+      #:substitutable? #f
+      #:validate-runpath? #f
+
+      #:install-plan
+      #~'(("opt/" "/share")
+          ("usr/share/" "/share"))
       )))
     (home-page "")
     (synopsis "")
     (description "")
     ;; umm that's literally what the github says
-    (license license:expat))
+    (license license:expat)))
 #+end_src
 
 This fails for now,

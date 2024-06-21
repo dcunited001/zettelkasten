@@ -251,5 +251,68 @@ implement support: inside the =---=
 
 ** Issues
 
+
+* Modeling Subjects
+** Sqlite schema
+
+***** TODO How to convert to postgres or mysql?
+
+*** [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][Screwtapello/sqlite-schema-diagram]]
+
+** Protobuf
+
+*** GoogleCloudPlatform/proto-gen-ui-diagrams
+
+This generates markdown docs with mermaid diagrams, but it takes some munging to
+produce balanced mermaid output.
+
++ You can recursively traverse the files and (assuming the file system comports
+  with the protobuf module namespaces) quickly determine how isolated the
+  namespaces are. More precisely are they isolated subgraphs or are there import
+  references between protobuf namespaces.
++ Converting to =org-mode= via =pandoc= opens up more options (for me), but this
+  assumes fairly error-free input (not consistent for metastable projects &
+  branches). However ... this requires using =org-element= and/or =org-ql=, as
+  well as tweaking the =pandoc= params a bit (i've never done that)
+
+**** Markdown Methods
+
+***** For a project with isolated namespaces and few files
+
+When a project or proto namespace sets up isolated subgraphs and there are few
+files, then concat the output markdown files together and process with =awk= to
+leave only content within =```mermaid= code blocks.
+
+#+begin_quote
+For =awk=, use a simple =state-machine= since you're either in a block or you're
+not ... this fits into a case statement (basically the same can parse =jq=
+streams which are concat)
+#+end_quote
+
+***** For a complicated project where....
+
++ Namespaces contain many files
++ Each file contains many proto models
++ Or the graph is messy. (more precisely, *the minimum edge cut* is relatively
+  high for /most/ parts of the proto dependency graph (as it is in the mermaid
+  output)
+
+When the project or proto branch has many interdependent files, the challenge
+becomes determining how much detail is too much and what detail is germaine to
+each output markdown file.
+
+Assuming that =proto-gen-ui-diagrams= reads input and does not repeat mermaid
+diagrams -- viz. the models contained in =*.proto= are only defined in one file
+to be imported in other files -- then one could extract the mermaid blocks and,
+with AST (maybe CST) then reorder the list of blocks to construct a graph.
+
+From here either =(1)= take the Doxygen approach of limiting diagrams to n˚ or
+=(2)= identify clusters through various methods (cutting all inbound/outbound
+edges matching some spec; or... hmmm), then rebuild one graph per "idea-cluster"
+which is then expanded by one-degree of connections. The latter method produces
+M number of diagrams where each has the either the level of detail you'd like or
+only deletions are required.
+
+
 * Roam
 + [[id:bb8bbe7c-6d49-4088-9161-2ae2edb4abd6][Ontology]]

@@ -54,3 +54,174 @@ flatpak enter $(flatpak ps | grep freecad | cut -f1) /bin/bash
 #+end_src
 
 ** Connect FreeCAD to the REPL
+
+
+* FreeCAD and Org Babel
+
+See SQLite support further below (/note: i think this moved to a new roam/)
+
+#+begin_quote
+NOT A BENE:
+
+... latin puns aside, this section needs a ton of rework. I'm not sure what
+interface to use. The main problem is getting a consistent set of symbols (for
+parameters) into emacs blocks for multiple langages.
+
++ SQLite works with org-babel ... but is better suited for other tasks,
+  especially those where the schema is clearcut. But requires some
+  metaprogramming in order to use it. 
++ CSV would establish "autodesk excel-parameters equivalence." Using CSV the
+  data can be read with column names inferred (afaik) ... with minimal
+  gymnastics to convert pascal to snake case. CSV can be trivially imported into
+  org files.
+
+FreeCAD is trivial to script, since it potentially records your every
+interaction into a script you can rerun in its terminal later. It's also very
+simple to Copy/Paste executed params, insert a few variables, add a form with
+Python and BOOM, you have a plugin (like a gear-generator or
+automated-metadata-updater)
+
+Why use =org-babel= or even programming at all? Ok, the first one seems iffy to
+most, but the latter is actually very helpful when:
+
++ producing simple parts with a file-based naming scheme to import into
+  (Free)CAD
++ you want to control the metadata associated to those parts or export them to
+  many formats in batch
++ you have designed something at least once (like programming Programming
+  Conway's Game of Life many times.) and you want to maintain a set of models
+  where small changes are reflected across all the highest-level assemblies
+  .... this is at least a good exercise (if potentially a failure).
+#+end_quote
+
+But no, I never finished this.
+
+** Docs
+
+Org Tables
+
++ [[https://orgmode.org/manual/Advanced-features.html][Advanced Features]] (row metadata)
++ [[https://orgmode.org/manual/Column-Groups.html][Column Groups]]
+
+Org Tables
+
+|------+-------------------------|
+| Char | Desc                    |
+|------+-------------------------|
+| !    | ID columns              |
+| ^    | ID fields for row above |
+| _    | ID fields for row below |
+| $    | Params                  |
+| #    |                         |
+|------+-------------------------|
+
+** Dimensions
+
+Origin
+
+#+name: origin
+|---+-------+-------+---------|
+|   | name  | value |    conv |
+|---+-------+-------+---------|
+| # | OZ    | 5.375 | 136.525 |
+| # | OX    | 1.525 |  38.735 |
+| # | OYmin |     0 |      0. |
+| # | OYmax |     0 |      0. |
+|---+-------+-------+---------|
+#+TBLFM: $4=25.4*$3
+
+Dimensions
+
+#+name: dim
+|---+----------+-------+--------|
+| ! | name     | value |   conv |
+|---+----------+-------+--------|
+| # | w3q      |  0.75 |  19.05 |
+| # | diamPipe | 0.525 | 13.335 |
+|---+----------+-------+--------|
+#+TBLFM: $4=25.4*$3
+
+Params
+
+6.375 - 2.875
+
+#+name: params
+|   | name   | dim     | i      | j      | k        | l      |
+| ! | name   | dim     | i      | j      | k        | l      |
+|---+--------+---------+--------+--------+----------+--------|
+|   | origin | v       | -1.525 | -2.875 | -6.125   |        |
+| ^ | O      | dimO    | OX     | OY     | OZ       |        |
+|   | height | y       |        |        |          |        |
+| ^ | H      | dimH    | h0     | h1     |          |        |
+|   | width  | x       |        |        |          |        |
+| ^ | W      | dimW    | w0     | w1     |          |        |
+|   | depth  | z       | 6.625  | 6.8125 |          |        |
+| ^ | D      | dimD    | d0     | d1     |          |        |
+|   | shelf  | xz      | 9.125  | 21.125 | 9.125    | 21.125 |
+| ^ | s      | dimS    | s00    | s01    | s10      | s11    |
+|   | pipe   | xy      |        |        |          |        |
+| ^ | p      | dimPipe | p00    | p01    | p10      | p11    |
+|---+--------+---------+--------+--------+----------+--------|
+| # | oInset | xyz     |        |        |          |        |
+| ^ |        | dimOI   | OIX    | OIY    | OIZ      |        |
+| # | wInset |         |        |        |          |        |
+| ^ |        |         |        |        |          |        |
+| # | misc   | 0       | 0.75   |        | 0.525    |        |
+| ^ |        |         | w3q    |        | diamPipe |        |
+
+
+Technically, the pipe may not be vertical. i've made some egregious mistakes in
+measuring ... it's been quite a while. projects that "I pause because poor"
+become projects that are inefficient to resume later.
+
+#+name: filter-table
+#+begin_src emacs-lisp :var params=params select='() :results value table :rownames yes :colnames no
+(let ((select (or select (mapcar (lambda (r) r) params))))
+  select)
+#+end_src
+
+#+RESULTS: filter-table
+| name   | dim     | i      | j      | k        | l      |
+| name   | dim     | i      | j      | k        | l      |
+| origin | v       | -1.525 | -2.875 | -6.125   |        |
+| O      | dimO    | OX     | OY     | OZ       |        |
+| height | y       |        |        |          |        |
+| H      | dimH    | h0     | h1     |          |        |
+| width  | x       |        |        |          |        |
+| W      | dimW    | w0     | w1     |          |        |
+| depth  | z       | 6.625  | 6.8125 |          |        |
+| D      | dimD    | d0     | d1     |          |        |
+| shelf  | xz      | 9.125  | 21.125 | 9.125    | 21.125 |
+| s      | dimS    | s00    | s01    | s10      | s11    |
+| pipe   | xy      |        |        |          |        |
+| p      | dimPipe | p00    | p01    | p10      | p11    |
+| oInset | xyz     |        |        |          |        |
+|        | dimOI   | OIX    | OIY    | OIZ      |        |
+| wInset |         |        |        |          |        |
+|        |         |        |        |          |        |
+| misc   | 0       | 0.75   |        | 0.525    |        |
+|        |         | w3q    |        | diamPipe |        |
+
+
+#+name: params2
+| name   | dim |      i |      j |      k |      l |
+|--------+-----+--------+--------+--------+--------|
+| origin | v   | -1.525 | -2.875 | -6.125 |        |
+| height | y   |        |        |        |        |
+| width  | x   |        |        |        |        |
+| depth  | z   |  6.625 | 6.8125 |        |        |
+| shelf  | xz  |  9.125 | 21.125 |  9.125 | 21.125 |
+| pipe   | xy  |        |        |        |        |
+|--------+-----+--------+--------+--------+--------|
+| oInset | xyz |        |        |        |        |
+| wInset |     |        |        |        |        |
+| misc   | 0   |   0.75 |        |  0.525 |        |
+
+#+begin_src python :var params=params2 :colnames no :results value
+#'("i" "j")
+import sys
+"fds"
+#+end_src
+
+#+RESULTS:
+: None
