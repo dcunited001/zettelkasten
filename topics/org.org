@@ -35,6 +35,65 @@
 ** Babel
 + [[https://howardism.org/Technical/Emacs/literate-programming-tutorial.html][Literate Devops]] (there is also a youtube video)
 
+*** Blocks
+
+**** Identity
+
+***** Connecting org-babel lines to process output
+
++ jkitchin's video [[https://www.youtube.com/watch?v=m4vCXM7_p_o][Better Asynchronous Python Blocks in Org Mode]] also shows how
+  org-babel tracks blocks under the hood, though actually... his code is
+  generating the =md5= hashes that track the blocks.
+
+  also, the function that runs =pylint= on a block retains the block's start/end
+  via =eop=. the line numbers from pylint are added from the babel block. an
+  =emacs-lisp= link is used to jump to the =ob-python= block
+
+
+
+*** Header Args
+
++ dfeich/org-babel-examples: [[https://github.com/dfeich/org-babel-examples/blob/d424f6f939501ccbb84a6cb9050ab63b6a964a7b/README.org?plain=1#L132-L141][#+property vs :PROPERTIES:]]
+
+**** File
+
++ Header args in =#+PROPERTY:= will be evaluated on =C-c C-c=
+
+**** Subtree
+
+**** Initial values and caching
+
++ Header args are recursively merged and the values cached.
++ The value of header args is cached with each block (I think), retaining the
+  value of the last invocation.
++ It seems that if no value is found and, if Babel seems to think a value is
+  needed, that it runs the =emacs-lisp= code will run inside =#+PROPERTY:= lines.
+
+This shows a notification any time it runs, but only changes the value of
+=ecto-path= when it runs:
+
++ in a fresh emacs session (or maybe in a fresh buffer)
++ and only when the babel variable =ecto-path= doesn't have a value
+
+#+begin_example org
+#+PROPERTY: header-args:emacs-lisp+ :var ecto-path=(or (alert "foobarbaz") "a b c d" "d e f" (bound-and-true-p dc/ecto-path) dc/ecto-path)
+
+#+name: foo
+#+begin_src emacs-lisp
+ecto-path
+#+end_src
+
+#+RESULTS: foo
+: "a b c d"
+#+end_example
+
+It detects whether there is any cached value for =:var ecto-path= in the
+block. A checksum for each block persists the identity of the block throughout
+your emacs session:
+
+*** Input/Output
+**** Formatting
++ [[https://github.com/dfeich/org-babel-examples/blob/d424f6f939501ccbb84a6cb9050ab63b6a964a7b/lisp/lisp-babel.org?plain=1#L419-L420][using :post function in src blocks]] to format multiple tables & exec =TBLFM=
 
 ** Publishing
 + For a summary of options: =org-export-dispatch=
@@ -287,7 +346,7 @@ guix graph --type=reverse-package python-fido2 | dot -Tpng
 #+end_example
 
 
-** Org-Babel & Tangling
+** Header Args
 
 This is a quick self-reference for me, while I'm focusing on this tangle-heavy project.
 

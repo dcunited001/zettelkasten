@@ -19,56 +19,181 @@
 
 **** TODO maybe add support for the =nyxt:= url protocol, at least within emacs.
 
-* Nyxt
+* Archetecture
+** Modes
 
-** Useful Functionality
+** Classes
+
+*** Buffers
+
+
+#+begin_src dot :file img/nyxt-buffer-classes.svg :cmdline "-Tsvg -Kdot -Grankdir=BT"
+digraph G {
+  "buffer" -> "renderer-buffer" -> "gtk-buffer" -> "standard-object"
+
+  // buffer =========================
+  "context-buffer" -> "buffer"
+  "document-buffer" -> "buffer"
+  "input-buffer" -> "buffer"
+  "modable-buffer" -> "buffer"
+  "network-buffer" -> "buffer"
+
+  // input bufffer
+  edge [color=blue];
+  "editor-buffer" -> "input-buffer"
+  "panel-buffer" -> "input-buffer"
+  "prompt-buffer" -> "input-buffer"
+  "status-buffer" -> "input-buffer"
+  "web-buffer" -> "input-buffer"
+
+  // network buffer
+  edge [color=cyan];
+  "web-buffer" -> "network-buffer"
+  "editor-buffer" -> "network-buffer"
+  "panel-buffer" -> "network-buffer"
+  "prompt-buffer" -> "network-buffer"
+
+  // modable buffer
+  edge [color=red];
+  "web-buffer" -> "modable-buffer"
+  "editor-buffer" -> "modable-buffer"
+  "panel-buffer" -> "modable-buffer"
+  "prompt-buffer" -> "modable-buffer"
+
+  // document buffer
+  edge [color=purple];
+  "web-buffer" -> "document-buffer"
+  "editor-buffer" -> "document-buffer"
+  "panel-buffer" -> "document-buffer"
+
+  // context buffer
+  edge [color=green];
+  "web-buffer" -> "context-buffer"
+  "editor-buffer" -> "context-buffer"
+
+  // editorBuffer
+  // panelBuffer
+  // statusBuffer
+  // promptBuffer
+
+  // webBuffer
+  edge [color=black];
+  "background-buffer" -> "web-buffer"
+  "nosave-buffer" -> "web-buffer"
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/nyxt-buffer-classes.svg]]
+
+
+**** Buffers Mermaid                                             :noexport:
+
+This would look better, but I'm not sure how to rebalance the graph
+
+#+begin_src mermaid :file img/nyxt-buffer-mermaid.png
+graph BT;
+
+buffer --> rendererBuffer[renderer-buffer] --> gtkBuffer[gtk-buffer] --> standardObject[standard-object]
+inputBuffer[input-buffer] --> buffer
+
+%% buffer =========================
+contextBuffer[context-buffer] --> buffer
+documentBuffer[document-buffer] --> buffer
+inputBuffer[input-buffer] --> buffer
+modableBuffer[modable-buffer] --> buffer
+networkBuffer[network-buffer] --> buffer
+
+%% input bufffer
+editorBuffer[editor-buffer] --> inputBuffer[input-buffer]
+panelBuffer[panel-buffer] --> inputBuffer[input-buffer]
+promptBuffer[prompt-buffer] --> inputBuffer[input-buffer]
+statusBuffer[status-buffer] --> inputBuffer[input-buffer]
+webBuffer[web-buffer] --> inputBuffer[input-buffer]
+
+%% network buffer
+webBuffer[web-buffer] --> networkBuffer[network-buffer]
+editorBuffer[editor-buffer] --> networkBuffer[network-buffer]
+panelBuffer[panel-buffer] --> networkBuffer[network-buffer]
+promptBuffer[prompt-buffer] --> networkBuffer[network-buffer]
+
+%% modable buffer
+webBuffer[web-buffer] --> modableBuffer[modable-buffer]
+editorBuffer[editor-buffer] --> modableBuffer[modable-buffer]
+panelBuffer[panel-buffer] --> modableBuffer[modable-buffer]
+promptBuffer[prompt-buffer] --> modableBuffer[modable-buffer]
+
+%% document buffer
+webBuffer[web-buffer] --> documentBuffer[document-buffer]
+editorBuffer[editor-buffer] --> documentBuffer[document-buffer]
+panelBuffer[panel-buffer] --> documentBuffer[document-buffer]
+
+%% context buffer
+webBuffer[web-buffer] --> contextBuffer[context-buffer]
+editorBuffer[editor-buffer] --> contextBuffer[context-buffer]
+
+%% editorBuffer
+%% panelBuffer
+%% statusBuffer
+%% promptBuffer
+
+%% webBuffer
+backgroundBuffer[background-buffer] --> webBuffer[web-buffer]
+nosaveBuffer[nosave-buffer] --> webBuffer[web-buffer]
+
+#+end_src
+
+#+RESULTS:
+[[file:img/nyxt-buffer-classes.png]]
+
+* Useful Functionality
 
 (besides the obvious)
 
-*** The Essentials
+** The Essentials
 
 I was going to title this section "Indoor Plumbing"
 
-**** Hinting
+*** Hinting
 
 Jump to hints avy-style
 
 + =bookmark-hint=
 
-**** Panels
+*** Panels
 
 Custom side panels
 
 + =headings-panel=
 + =buffers-panel=
 
-**** Navigation
+*** Navigation
 
 next/previous-heading with =M-{= and =M-}=
 
 + jump-to-heading-buffers :: use =C-M-h= to jump to headers across a set (?) of buffers
 + jump-to-heading ::
 
-**** User Scripts
+*** User Scripts
 
 The docs include examples for [[https://nyxt.atlas.engineer/documentation#user-scripts][running GreaseMonkey scripts]]
 
-*** Extras
+** Extras
 
 Some of these are good examaples of custom scripts
 
-**** Macros
+*** Macros
 
 + edit-macro :: no-code interface to record macros (or to discover function names)
 
-**** Passthrough
+*** Passthrough
 
 
 Useful for games, apps or editors that have keybinding conflicts
 
 + =passthrough-mode= =C-M-z=
 
-**** Cruise Control
+*** Cruise Control
 
 Autoscroll the content. Keys:
 
@@ -77,11 +202,11 @@ Autoscroll the content. Keys:
 + =0= zero the velocity
 + =escape= exit the mode
 
-**** Watch Mode
+*** Watch Mode
 
 Refresh page every 5 seconds.
 
-**** [[nyxt:describe-package?package=%1Bnyxt%2Fmode%2Fprocess%3A%3Anyxt%2Fmode%2Fprocess][Process Mode]]
+*** [[nyxt:describe-package?package=%1Bnyxt%2Fmode%2Fprocess%3A%3Anyxt%2Fmode%2Fprocess][Process Mode]]
 
 In addition to what's listed below, this can be used for things like:
 
@@ -101,11 +226,11 @@ The mode itself should not be used directly. Rather, it should be subclassed and
 extended with custom logic.
 #+end_quote
 
-***** TODO how to use process mode while avoiding the possibility of command injection?
+**** TODO how to use process mode while avoiding the possibility of command injection?
 
 Generally I need to find out
 
-**** No Script Mode
+*** No Script Mode
 
 Disable javascript (needs to be disabled per-host)
 

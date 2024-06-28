@@ -35,7 +35,88 @@ feedback.
 
 *** [[https://orgmode.org/worg/org-contrib/babel/languages/ob-doc-sqlite.html][ob-sqlite]]
 
+*** Shell Scripting
+
+**** Input handling
+
+***** sqlitepipe
+
+[[https://github.com/icetan/sqlitepipe][icetan/sqlitepipe]], a dynamic extension to allow you run commands from within
+sqlite3. Nice to use occasionally, but not worth it if the dynamic extension is
+always loaded/loadable. Build configuration is needed to enable/disable.. A
+nix/guix custom environment
+
+*** Extensions
+
+**** Loading
+
++ run-time loadable :: compiles into SQL
++ persistent loadable :: the extension remains in process memory, but isn't
+  automatically loaded by new db connections from the same process (which is a
+  lot of subtle distinctions for a DB that doesn't do connection
+  management/pooling)
++ statically linked :: run-time
+
+*** Connections
+
+See [[https://sqlite.org/uri.html][docs on Connection URI's]]. The CLI interface options don't quite line up with
+the query parameter names.
+
+**** ATTACH
+
+Command used to manage connections within the REPL.
+
+**** Multiplexing in scripts
+
+***** TODO determine whether mkfifo or sockets allow circumventing locks
+
+Attempting to use pipes still requires splitting lines. This would maybe work with =mkfifo=
+
+#+begin_example sh
+sqlite3 $qdb .tables \
+  | sed -E 's/\s+\b/\n/g' \
+  | xargs -I'{}' sqlite3 $qdb 'select * from {};'
+  | grep $astring
+#+end_example
+
+To circumvent locks while piping
+
++ for simple & one-shot queries, with easy logical flow, just concat a sql query
++ [ ] does =mkfifo= work? how do you send to the =STDIN= otherwise?
++ [ ] for simple filtering from all tables (without care for schema), can i
+
+
+
+*** Locking
+
+**** WAL: write-ahead logging
+
+See [[https://sqlite.org/wal.html][sqlite WAL docs]] and [[https://sqlite.org/walformat.html][WAL Format docs]]
+
+Used instead of a rollback journal to manage atomicity (transactions, rollbacks
+& locking)
+
+***** VACUUM
+
+This is needed to clean up physical arrangement of data (defrag)
+
+*** In-Memory Database
+
+[[https://sqlite.org/inmemorydb.html][Docs]]
+
+**** Shared Cache
+
+A shared cache is mostly deprecated elsewhere ([[https://sqlite.org/sharedcache.html][doc]], includes overview on
+locking), but AFAIK is used when the same process opens two connections that
+either should/not share the cache
+
+Either run via =sqlite.h= specified functions or the =ATTACH= command
+
++ =file::memory:?cache=shared"= :: shared cache
++ =file:memdb1?mode=memory&cache=shared= :: non-shared cache
+
 *** Prepared Statements
+
 
 A [[https://www.sqlite.org/c3ref/stmt.html][Prepared Statement Object]] or =sqlite3_stmt= "... represents a single SQL statement that has been
 compiled into binary form and is ready to be evaluated."
@@ -143,8 +224,20 @@ Some interesting note at the end of the [[https://sqlite.org/c3ref/set_authorize
 
 *** Virtual File System
 
-[[https://www.sqlite.org/vfs.html][VFS]]: SQLite OS Interface, which enables transparent encryption/compression in
- the underlying filestore.
+See [[https://sqlite.org/vfs.html][sqlite VPS docs]]
+
+SQLite's interface to the OS (& file system).
+
++ This is SQLite's bottom turtle
++ Establishes how it expects to manage access, connections, locking
++ May handle specific aspects during failure of database/process/system
++ VFS Shims just wrap some other VFS
++ See VFS Examples for tests of various failure modes, etc.
+
+**** Encryption
+
+Custom VFS implementations of this enable transparent encryption/compression in
+the underlying filestore.
 
 + [[https://github.com/techrah/sqlite3-compression-encryption-vfs][CEVFS]], [[https://www.sqlite.org/zipvfs/doc/trunk/www/howitworks.wiki][ZIPVFS]] and [[http://www.sqlite.org/cerod/doc/trunk/www/index.wiki][CEROD]] are examples. It's not clear whether all of these
   encrypt along actual page boundaries, though that's what the SQLIte docs

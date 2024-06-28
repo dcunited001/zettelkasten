@@ -22,7 +22,7 @@ Clone [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][Screwtapello/sqli
 ;;
 ;; - firefox/chrome make this a bit hard get via scripting ... for a reason!
 
-"foobar-baz.default"
+firefox-profile
 #+end_src
 
 #+name: ffroot
@@ -82,6 +82,20 @@ echo -n $output
 
 #+RESULTS: ffSchemaDiagram
 [[file:img/firefox-bookmarks.sqlite.svg]]
+
+* Summary                                                          :noexport:
+
+** Resources
+
+I'm mostly curious about the digital footprint left behind by a browser.
+
++ [[https://mozilla.github.io/firefox-browser-architecture/text/0010-firefox-data-stores.html][This post]] links to a Firefox Data Stores repository from 2017 which has better
+  images of the schemas. It's somewhat old, but these data models should be
+  fairly fixed, since so much code rides on top (& migrations are hard to
+  maintain with such extensive application adoption)
++ [[https://github.com/obsidianforensics/hindsight][obsidianforensics/hindsight]] is faster for quick analysis of common tasks, but
+  is otherwise somewhat limited.
++ This [[https://www.sans.org/blog/google-chrome-forensics/][SANS blog]] covers the equivalent sqlite databases for Chrome sqlite
 
 * Firefox
 
@@ -318,8 +332,62 @@ Binary matches from =grep= also include some sqlite databases
 
 **** Search sqlite refs
 
+Check row count (not my usual profile stats here)
+
+#+headers: :results output table :var ffroot=ffroot ffprofile=firefoxProfile ffdb="places.sqlite"
+#+begin_src sh
+ffprofile=$ffroot/$ffprofile
+
+tablecount() {
+  local db=$1
+  local table=$2
+  local qcount="select count(*) from $table;"
+ sqlite3 "$db" "$qcount"
+}
+
+# could also use '.tables' to avoid the pipes, but sqlite3 can only have one client, so pipes don't work
+sqlite3 $ffprofile/$ffdb '.schema' | grep TABLE | cut -f3 -d' ' | grep -ve '(.*);$' | while read tbl; do
+   nrows=$(tablecount $ffprofile/$ffdb $tbl)
+   echo $tbl,$nrows
+done
+#+end_src
+
+#+RESULTS:
+| moz_origins                        | 103 |
+| moz_places                         | 829 |
+| moz_historyvisits                  | 972 |
+| moz_inputhistory                   |   0 |
+| moz_bookmarks                      |  23 |
+| moz_bookmarks_deleted              |   0 |
+| moz_keywords                       |   0 |
+| moz_anno_attributes                |   2 |
+| moz_annos                          |   4 |
+| moz_items_annos                    |   0 |
+| moz_meta                           |   4 |
+| moz_places_metadata                | 558 |
+| moz_places_metadata_search_queries |   0 |
+| moz_previews_tombstones            |   0 |
+| moz_places_extra                   |   0 |
+| moz_historyvisits_extra            |   0 |
+
 **** Update sqlite refs
 
+#+begin_example sh
+cd ~/.mozilla/firefox/$ff_profile_id
+
+# get id's with:
+sqlite3 $ff_profile_id "select * from moz_perms where origin like '$oldProfile';"
+#+end_example
+
+#+begin_example sh
+cd ~/.mozilla/firefox/$ff_profile_id
+
+# for id in ids...
+sqlite3 $ff_profile_id/permissions.sqlite "update moz_perms set origin='file:///home/dc/.mozilla/firefox/$newProfile/' where id = 7922;"
+sqlite3 $ff_profile_id/permissions.sqlite "update moz_perms set origin='file:///home/dc/.mozilla/firefox/$newProfile/bookmarks.sqlite.svg' where id = 7923;"
+
+# ok yeh, that's an svg i just generated
+#+end_example
 
 * Roam                                                             :noexport:
 + [[id:38638b3e-e023-460e-9670-84776e61468e][Browser]]
