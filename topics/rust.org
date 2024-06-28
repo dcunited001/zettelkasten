@@ -198,12 +198,26 @@ There have only been one or two resources which ever recommended looking at the
 =*.jq= file. It's entire documentation is basically out-moded once you look at
 the source.
 
+But =jq= is still not a "ready-at-hand" for me.
+
 #+name: categoriesSlugs
 #+begin_src jq
-walk( if type=="object" and has("categories") then (.categories | keys) else . end)
-#+end_src
+# walk( if type=="object" and has("categories") then (.categories | keys) else . end)
 
-but =jq= is still not a "ready-at-hand" for me.
+# corrected (at least works in my shell) but there is still no_free_lunch
+to_entries
+  | map(del(.value.name,.value.description))
+  | map(if .value.categories
+        then (.value |= (.categories | keys))
+        else (. |= {key: .key, value: .key})
+        end)
+  | map(if (.value | type)=="array"
+        then (.key as $k | {key: $k, value: .value | map("\($k).\(.)")})
+        else .
+        end)
+  | from_entries
+  | flatten
+#+end_src
 
 ***** 404 on curl
 
