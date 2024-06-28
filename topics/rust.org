@@ -189,16 +189,9 @@ tree $dirp | tr ' ' ' ' #| sed -e 's/\[ \]+/ /g'
 
 ***** From JQ
 
-if I could just recall traversal quickly enough to adapt it to the situation at
-hand, then =jq= would be pretty simple. The secret to that of course is to purge
-blogs/etc from the internet and reach for the source code first
-
-There have only been one or two resources which ever recommended looking at the
-=jq= implementation in its own source code ... and none of them mentioned any
-=*.jq= file. It's entire documentation is basically out-moded once you look at
-the source.
-
-But =jq= is still not a "ready-at-hand" for me.
+=jq= is still not a "ready-at-hand" for me. Some of JQ's traversal objects
+like =walk= or =..= or =recurse= would be preferable here ... but each has it's
+own purpose and potential pitfalls.
 
 #+name: categoriesSlugs
 #+begin_src jq
@@ -208,16 +201,21 @@ But =jq= is still not a "ready-at-hand" for me.
 to_entries
   | map(del(.value.name,.value.description))
   | map(if .value.categories
+        # if there are additional layers, collect the categories' keys as names
         then (.value |= (.categories | keys))
+        # otherwise make it a string (and not an object)
         else (. |= {key: .key, value: .key})
         end)
   | map(if (.value | type)=="array"
+        # prefix the parent category names onto the subcategories
         then (.key as $k | {key: $k, value: .value | map("\($k).\(.)")})
+        # do nothing
         else .
         end)
   | from_entries
   | flatten
 #+end_src
+
 
 ***** 404 on curl
 

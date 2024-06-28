@@ -255,6 +255,90 @@ xq  -y '
 
 ** Issues
 
+*** Workflow
+
+**** Slow Down
+
+The real issue I find that my workflow, whether =org-babel= or in KDE =konsole=,
+is usually ad hoc. I just happen to find myself using it in a situation where
+=awk/sed= are just overkill (viz. where data structure is well-defined)
+
++ I'm either half-in a bash shell or in an org-babel block.
++ Esp in bash, it's not plain to see how changes to the query correspond to the
+  output -- or stack trace, which is /not/ colorized (and I swear I have
+  dyslexia when some content lacks syntax coloring).
++ Worst of all, things like LSP doen't easily work in mixed-mode buffers like
+  =org-mode= ... and emacs is single threaded[fn:1].
+
+So learning =jq= has been slow. I encountered many similar problems with
+=graphql=
+
+***** Ways to alleviate the "workflowitis"
+
+I don't slow down to ensure that the the environment is set up for quick
+feedback loops. It's usually on some short wistful excusion (i.e. a
+distraction), but one that's irritated me for so long already. Thus, I'm always
+conflicted between "should already know this and & tired of it" and "I should
+get back to what I was working on". I judge the time investment as being 10
+minutes, but then never actually set up a quick environment so that tools are
+efficient. Next thing I know, 45 minutes or 2 hours later...
+
+****** Decide on a common process
+
+If some single process worked, it would be to create a script that sets up a
+temporary directory (or something) where you can place each stage into =*.json=
+and =*.jq= files, where =inotifywait= runs tasks on demand.
+
+This doesn't really work well, since it's just useful wherever you encounter
+=json= or =yaml= and now =toml/xml= to some extent. This isn't easy because of
+the subtleties of eliciting is from sources like:
+
++ The =tree= command's output of the =/proc= or =/sys= filetree
++ Or other commands like =loginctl=, the LVM CLI tools, =ip= tools
++ Some =curl=, particularly if the output structure is affected by query
+  parameters or is for some other reason non-deterministic (or something)
++ Configuration in =yaml= or =toml= for the paths (or potential relative paths
+  between them) for which can't be guaranteed to be retained across systems
++ Devops configs specifically. To ensure the sensitive data isn't
+  unintentionally littered everywhere, these may require setting specific
+  constraints or configs on environment (generally making determinations about
+  how to ensure Future Self doesn't forget)
++ Yaml from something like =ansible=
+
+It's not really clear that there is some single such tool to invoke =jq=
+
+****** Break problem into pieces
+
+Why not just send to tmp file? Or break process into pieces?
+
+While this is usually simple enough, usually requires deciding where data will
+live should I need to set it aside.
+
++ Org-mode usually helps these facilitate either deciding on these data points
+  or avoiding the need to do so entirely
++ Bash is helpful, since you kinda want the data to be ephemeral (esp. if long).
++ It may already be half-processed and in some in-between state. And
+  with each stage of transformation, it's not immediately clear that pulling the
+  =jq= query bac into the rest of your pipeline will simply "just work."
+
+*** Learning
+
+**** Recommend the =jq= source!
+
+The secret to learning =jq= without a Sith Master is, of course, is to purge
+blogs/etc from the internet and reach for the source code first.
+
+There have only been one or two resources which ever recommended looking at the
+=jq= implementation in its own source code ... and none of them mentioned any
+=*.jq= file. It's entire documentation is basically out-moded once you look at
+the source.
+
+**** Nuance, there's so much niched nuance =</ryan-reynolds>=
+
+If I could just recall tree traversal quickly enough to adapt it to the
+situation at hand, then =jq= would be pretty simple for almost every situation I
+need it.
+
 
 *** XQ not attributing
 
@@ -304,3 +388,14 @@ the above header args are for reference but would set defaults
 
 * Roam
 + [[id:c99b63b3-e18f-4b4b-8424-dbbac937b596][Serialization]]
+
+* Footnotes
+
+[fn:1] Not that multi-threaded ish would help much since an editor (regardless
+of whether the treesitter language support is statically compiled, dynamically
+loaded, or using the process model) ... though I guess it's possible for sockets
+to manage the treesitter results. But then you would have serious
+synchronization problems (regardless of whether multi-process or
+multi-thread). Tree-sitter should be capable of reporting its results in a
+fairly compact format (like maybe this [[https://web.archive.org/web/20220527003730/https://tools.ietf.org/doc/tcllib/html/rcs.html][RCS format]] mentioned by Apheleia). Still,
+It would be interesting to see how Zed implements its tree-sitter functionality
