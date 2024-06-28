@@ -5,6 +5,10 @@
 #+DESCRIPTION: The Rust Language
 #+TAGS:
 
+#+PROPERTY: header-args+ :var ectoRoot=(expand-file-name "rust" (or (bound-and-true-p dc/ecto-path) "/data/ecto"))
+#+PROPERTY: header-args+ :var repoRoot=(expand-file-name "rust" (or (bound-and-true-p dc/repo-path) "/data/repo"))
+
+
 * Docs
 
 * Resources
@@ -27,6 +31,209 @@
 
 *** Depgraph
 
+*** Categories
+
+**** Extract Category from =Cargo.toml=
+
+Let's say there's this project [[github:rayon/rayon-rs][rayon/rayon-rs]] which is used in [[github:neo4j-labs/graph][neo4j-labs/graph]].
+I think the later is probably important -- given that it demonstrates solving
+graphs in 100 ways -- and so also the former is also useful.
+
+Let's also say that I don't know Rust, so it's dangerously close to a waste of
+time, but that I know that, but want a way to consistently find it in the future
+... on my machine (not on Github or Google).
+
+How would I do that for a new language? The most information-minimial way is to
+latch onto whatever system the language uses to organize itself or uses for
+package discover. That already exists!
+
+#+begin_src sh
+forge=github
+project=rayon-rs/rayon
+
+# it's a tragedy that this URL is dependent on the default branch name
+raw_cargo=https://raw.githubusercontent.com/rayon-rs/rayon/main/Cargo.toml
+
+# just assume the first category is authoritative
+curl -sL $raw_cargo | tomlq '.package.categories | first'
+#+end_src
+
+#+RESULTS:
+: concurrency
+
+Now I don't have to care... I guess until one of these changes the order of
+their categories... dammit. Well I would see that in a XML commit anyways.
+
+**** Extract cargo category slugs from =https://crates.io=
+
+I totally forgot I had the the Crates.io source on my machine... dumbass.
+
+And that was the fastest way to find the answer, really. It's an ember app and
+the slugs are keys in =./boot/categories.toml=
+
+#+name: categories
+#+begin_src sh :results output silent
+f=src/boot/categories.toml
+project=$ectoRoot/cargo/crates.io
+cat $project/$f \
+    | grep -e '^\[' \
+    | sed -e 's/\.categories//g' \
+    | sed -e 's/^\[\(.*\)\]/\1/g' \
+    | sed -e 's/\./\//g'
+#+end_src
+
+#+name: categoriesDirp
+#+headers: :var cats=categories
+#+begin_src sh :results output verbatim
+dirp=$(mktemp -d)
+
+echo -n $cats | while read -r -d' ' c; do
+                   mkdir -p $dirp/$c
+             done
+
+tree $dirp | tr ' ' ' ' #| sed -e 's/\[ \]+/ /g'
+#+end_src
+
+#+RESULTS: categoriesDirp
+#+begin_example
+/tmp/tmp.jnckn8BGEp
+├── accessibility
+├── aerospace
+│     ├── drones
+│     ├── protocols
+│     ├── simulation
+│     ├── space-protocols
+│     └── unmanned-aerial-vehicles
+├── algorithms
+├── api-bindings
+├── asynchronous
+├── authentication
+├── caching
+├── command-line-interface
+├── command-line-utilities
+├── compilers
+├── compression
+├── computer-vision
+├── concurrency
+├── config
+├── cryptography
+│     └── cryptocurrencies
+├── database
+├── database-implementations
+├── data-structures
+├── date-and-time
+├── development-tools
+│     ├── build-utils
+│     ├── cargo-plugins
+│     ├── debugging
+│     ├── ffi
+│     ├── procedural-macro-helpers
+│     ├── profiling
+│     └── testing
+├── email
+├── embedded
+├── emulators
+├── encoding
+├── external-ffi-bindings
+├── filesystem
+├── finance
+├── game-development
+├── game-engines
+├── games
+├── graphics
+├── gui
+├── hardware-support
+├── internationalization
+├── localization
+├── mathematics
+├── memory-management
+├── multimedia
+│     ├── audio
+│     ├── encoding
+│     ├── images
+│     └── video
+├── network-programming
+├── no-std
+│     └── no-alloc
+├── os
+│     ├── freebsd-apis
+│     ├── linux-apis
+│     ├── macos-apis
+│     ├── unix-apis
+│     └── windows-apis
+├── parser-implementations
+├── parsing
+├── rendering
+│     ├── data-formats
+│     ├── engine
+│     └── graphics-api
+├── rust-patterns
+├── science
+│     ├── geo
+│     ├── neuroscience
+│     └── robotics
+├── simulation
+├── template-engine
+├── text-editors
+├── text-processing
+├── value-formatting
+├── virtualization
+├── visualization
+├── wasm
+└── web-programming
+    ├── http-client
+    └── http-server
+
+87 directories, 0 files
+#+end_example
+
+***** From JQ
+
+if I could just recall traversal quickly enough to adapt it to the situation at
+hand, then =jq= would be pretty simple. The secret to that of course is to purge
+blogs/etc from the internet and reach for the source code first
+
+There have only been one or two resources which ever recommended looking at the
+=jq= implementation in its own source code ... and none of them mentioned any
+=*.jq= file. It's entire documentation is basically out-moded once you look at
+the source.
+
+#+name: categoriesSlugs
+#+begin_src jq
+walk( if type=="object" and has("categories") then (.categories | keys) else . end)
+#+end_src
+
+but =jq= is still not a "ready-at-hand" for me.
+
+***** 404 on curl
+
+On the =category_slugs= URL, curl gets =404= since the site is managed by a
+webpack app. After the app is loaded, it's =category-slugs= URL within the
+javascript app that manages the ... yeh it's a PITA
+
+#+begin_src sh
+curl -s -H "User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:58.0) Gecko/20100101 Firefox/58.0" \
+     -H "Content-Type: application/json" \
+   https://crates.io/category_slugs
+
+# --output /dev/null --write-out "%{http_code} %{url.path}\n"
+#+end_src
+
+#+RESULTS:
+
+***** Via browser console
+
+This [[https://gist.github.com/YoshiTheChinchilla/25f7db1668efef48289c2ee5e6128c40][gist]] grabs the slugs from the page.
+
+#+begin_src js
+const rows = [...document.querySelector('.white-rows').firstElementChild.children]
+const data = {lastUpdateAt: new Date().toJSON()}
+const categoryChunks = []
+while (rows.length > 0) categoryChunks.push(rows.splice(0, 2))
+const categories = categoryChunks.map(([n, d]) => ({name: n.textContent, description: d.textContent}))
+data.list = categories
+console.info('All categories on crates.io', data)
+#+end_src
 
 
 
