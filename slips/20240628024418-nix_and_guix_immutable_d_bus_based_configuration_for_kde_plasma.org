@@ -1,0 +1,113 @@
+:PROPERTIES:
+:ID:       ec051f1b-67fa-4e36-89c7-1a4e53d30a80
+:END:
+#+TITLE: Nix and Guix: Immutable D-Bus based configuration for KDE Plasma
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+* Resources
+
+* Overview
+
+** State of KDE in Home Manager
+
+See the files in [[https://github.com/NixOS/nixpkgs/pull/286522/files][nixpkgs#286522]], merging plasma & KDE into =nixpkgs=, to get a
+brief overview of what's required for +Guix Home or Nix Home Manager+
+... nevermind, these are just the Plasma/KDE packages.
+
+
+***** TODO finish comparing Nix Home & Guix Home
+
+i haven't quite finished looking into all this. basically, i found the home
+manager source and ... no, it doesn't exec =qdbus= except maybe once.
+
+No one does!
+
+The closest I can find to configuration automation for KDE is [[https://www.qt.io/product/quality-assurance/squish/platform-qt-gui-test-automation][Squish for Qt
+Applications]] which is marketed for testing Industrial Control Systems -- BUT NOT
+PLASMA DESKTOP. It's not that big of a deal, but another fantastic example of
+corporations /using/ open source and then /forgetting/ to make a Linux desktop
+viable. When Google, Microsoft et alias do it, it's a much bigger problem.
+
+
+* Comparison
+
+The primary distinction: Nix organizes modules into
+
+** Programs Vs Services
+
+With [[https://github.com/nix-community/home-manager][Nix Home Manager]], you configure programs as a separate abstraction
+
++ see [[https://nixos.wiki/wiki/Home_Manager][docs]] for references to =programs.bash= and =programs.git= and
+  =programs.dconf=, the source for which is found within
+  [[https://github.com/nix-community/home-manager/tree/1a4f12ae0bda877ec4099b429cf439aad897d7e9/modules/programs][./modules/programs]] in the home-manager source
+
+With Guix Home, there is really no difference between the packages/services
+abstractions.
+
+  =programs.dconf=
+
+*** File-based configuration vs =qdbus=
+
+Guarantees on a system's current state (both before and after upgrade) are much
+harder to make for serveral reasons:
+
++ Can't use files OR =qdbus= to assume state (or state to-be-restored in a new
+  desktop/wm session). The tree-like structure of Plasma/KDE's D-Bus services
+  are a bit confusing.
+
+Plasma, KDE and (to a large extent) QT use Qt for current system state, which
+allows for faster communication between programs of state/config changes.
+
+***
+
+** KDE Setup
+
+*** Basic Support
+
+I'm not really concerned with Guix support of KDE, but instead:
+
++ the ability to have Guix Home spit out a shell profile for a Foreign
+  distribution that's mostly compatible
++ maybe some limited automation of =qdbus=
+
+**** NixOS
+
+The NixOS wiki has a [[https://nixos.wiki/wiki/KDE][KDE Guide]].
+
+**** Guix
+
+Guix doesn't really support KDE yet, unless someone has started a channel to
+manage the packages & services.
+
+Installing KDE on Guix would be as simple as:
+
++ Identifying paths within =/var= that need to persist data between updates or
+  system restarts
++ Potentially identifying a necessary map "function" to translate some =/var=
+  paths into =/gnu/store= paths.
++ Packaging the majority of the required KDE/Plasma packages, which should be
+  fairly easy (at first) as they are mostly =cmake= builds and, I think,
+  straightforward to build in isolation.
++ Deciding to maintain the KDE/Plasma packages, regardless of what happens in
+  the ecosystem.
++ Convert SystemD services to Shepherd services. Until someone does this for
+  Guix Home, the user would need to ensure this works. If KDE/Plasma have hard
+  dependencies on SystemD, its APIs or its tools (like journalctl) then wompwomp
+  it's not happening.
++ Configure SDDM so it launches Plasma/KDE
+
+I probably missed a few things here.
+
+
+
+
+* Roam
++ Nix
++ Guix
++ KDE
++ Plasma
++ Bash
++ D-Bus
