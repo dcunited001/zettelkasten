@@ -342,7 +342,7 @@ tablecount() {
   local db=$1
   local table=$2
   local qcount="select count(*) from $table;"
- sqlite3 "$db" "$qcount"
+  sqlite3 "$db" "$qcount"
 }
 
 # could also use '.tables' to avoid the pipes, but sqlite3 can only have one client, so pipes don't work
@@ -369,6 +369,30 @@ done
 | moz_previews_tombstones            |   0 |
 | moz_places_extra                   |   0 |
 | moz_historyvisits_extra            |   0 |
+Check content for profile name
+
+#+headers: :results output table :var ffroot=ffroot ffprofile=firefoxProfile ffdb="favicons.sqlite"
+#+begin_src sh
+ffprofilepath=$ffroot/$ffprofile
+ffold=old.default
+
+tablecount() {
+  local db=$1
+  local table=$2
+  local qcount="select * from $table;"
+  sqlite3 "$db" "$qcount"
+}
+
+# could also use '.tables' to avoid the pipes, but sqlite3 can only have one client, so pipes don't work
+sqlite3 $ffprofilepath/$ffdb '.schema' | grep TABLE | cut -f3 -d' ' | grep -ve '(.*);$' | while read tbl; do
+   # nrows=$(tablecount $ffprofilepath/$ffdb $tbl | grep $ffold | wc -l)
+   echo $tbl
+   tablecount $ffprofilepath/$ffdb $tbl | grep $ffold
+   # echo $tbl,$nrows
+done
+echo
+#echo $ffprofile
+#+end_src
 
 **** Update sqlite refs
 
