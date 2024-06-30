@@ -1,0 +1,191 @@
+:PROPERTIES:
+:ID:       c6b21554-fd0e-461e-bc5a-2f27f0b6fb65
+:END:
+#+TITLE: Language Learning: Mining Workflows
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:0ba05af8-317a-43f3-b978-aec27f17b5b2][Language Learning]]
++ [[id:092144e0-651b-4cfe-93e4-ac3e6eedf290][OCR]]
+
+* Resources
+
+* Apps
+** Anki
+
+These have varying degrees of automation, but usually require multiple software
+pieces.
+
++ [[https://arbyste.github.io/jp-mining-note/setupeverythingelse/][jp-mining-note]] Lots of notes about specific software or workflows
+
+** jidoujisho
+Android app that promises to combine many OCR-based "mining workflows"
+
++ Media: videos, images, games
++ Exports:
++ Reader: [[https://github.com/ttu-ttu/ebook-reader][ttu-ttu/ebook-reader]] an embedded svelte+tailwind app
+
+| subtitles | [[+ Media via: ][kitsunekko.net]] |
+
+*** Source
+
+source: [[https://github.com/lrorpilla/jidoujisho][lrorpilla/jidoujishou]]
+
++ The main app lightweight wrapper around Fastlane, which runs a Flutter (or
+  webapp) within a single app activity. Builds to iOS (I think?)
++ The bulk of the code is a mix of Flutter/Dart
++ includes [[https://github.com/lrorpilla/jidoujisho/tree/main/yuuna/windows/runner][windows runner]] that CMake builds, but requires Visual Studio?  idk
+
+** Why?
+
+Besides being similar to a lot of workflows for processing ML data...
+
+In the past, I've wanted to play Visual Novels like Stein's Gate & Chaos Head or
+JRPGs in the original language, but translation gets in the way. Games also have
+awful interfaces for this.
+
+So... basically to make it easier to learn a language using games/media where:
+
++ the experiences are rich (high dimensional data)
++ words and concepts are more persistent and you can easily cause the game to
+  force you to reencounter them
++ the varied & sometimes specific vocabulary forces you to use the context to
+  resolve ambiguity (this is like introducing additional variables to a system
+  of equations)
+
+#+begin_quote
+Only Americans and some Europeans understand 99% of what they hear, most the
+rest of the world is not monolingual. So, to fill any gaps in understanding,
+people speaking a second language or living in polylingual areas are constantly
+forced to leverage context, surroundings and other "features" (to use the
+language of Machine Learning)
+
+They thus strenghten the aspects of their mind that extract information from
+sources that are not written/spoken.
+
+I would have liked to have tried learning languages as a kind of "Cognitive
+Behavioral Therapy" ... but everyone just treated me like crazy
+garbage. Whenever I tried to explain something technical (regardless of the
+level of difficulty), It was like I wasn't speaking english
+
+See [[https://te.xel.io/posts/2015-01-28-language-therapy-for-asd-and-tbi.html][Language Therapy for Autism and Traumatic Brain Injury]] (CBT should always be
+specifically tailored to the condition and individual)
+#+end_quote
+
+*** Integrate OCR with OBS
+
+By integrating OCR with OBS, it would be nice to play pretty much any game on
+Steam with translations, and pipe the video output to OCR. After preprocessing,
+extract the coords for singular text objects (+ maybe translate) then present an
+overlay with boxes/etc onto a separate video. From here, you could click on
+objects to queue tasks like: translation, forward to chat (if broadcasting),
+
+*** Sidenote
+
+These workflows and highly customized OBS Streaming setups would benefit a ton
+from Nix/Guix Home.
+
+But these specialized workflows require brittle configuration that isn't
+declarative. If you've moved a directory, bought a new phone, reinstalled
+Windows, forgot to upgrade each piece or just haven't tested it recently, it
+falls apart.
+
+That's not a criticism... since I've configured maybe 1,000 things like this
+just to gradually have it fall apart or not function when I check on it.
+
++ Keyboard configs with xkb (Linux) or karabiner (MacOS)
++ Site-specific browsers
++ Plugins for various applications like Blender/FreeCAD/etc
+
+It's like literally why I obsess about "immutable/declarative" configuration
+
+* Programs
+These are small components to the pipelines
+
+** subs2srs
+
+| [[https://subs2srs.sourceforge.net/][Docs]] | [[https://sourceforge.net/projects/subs2srs/files/][Sourceforge]] | [[https://github.com/nihil-admirari/subs2srs-net48-builds][.NET 4.8 distribution]], used by the AUR package |
+
+Given two =srt= subtitles files, to an output directory this extracts:
+
++ corresponding timeslices of audio from video.
++ a thumbnail to place in an Anki card
++ optionally, a video clip
++ A =tsv= file that Anki expects to import
+
+** mpvacious
++ [[github:Ajatt-Tools/mpvacious][mpvacious]] integrates UI/UX with other programs to extract from subtitles
++ also is a legitimately interesting customization of =mpv=.  intended to have
+  standalone configs/plugins. This basically makes it its own app.
++ the mpvacious blog lists resources for finding [[https://tatsumoto-ren.github.io/blog/resources.html#immersion-material][legal Japanese video]]
+
+* Scripts
+
+
+** Extracting Anime Subtitles
+
+#+name: konosubarashii
+#+begin_src sh :results output :exports code
+srt_file=/tmp/kono-subarashii.srt
+
+cat $srt_file \
+    | sed -e 's/\r$//g' \
+    | grep -ve " --> " \
+    | grep -ve '^[0-9]' \
+    | grep -P '[^[:ascii:]]+' \
+    | head -n30
+#+end_src
+
+#+RESULTS: konosubarashii
+| 1                                 |
+| ♬～                              |
+| ギイィ…　グオオォ…。                |
+| ♬～                              |
+| ♬～                              |
+| （ウォルバク）大丈夫？　ケガはない？   |
+| （めぐみん）どうしたら               |
+| お姉さんみたいになれますか？          |
+| お嬢さん　お名前は？                |
+| めぐみんです。                      |
+| ＜紅い爆焔の焔が                    |
+| 少女を照らし続けた。                |
+| その熱さと輝きが                    |
+| 彼女の心に焼きついた。               |
+| これは後に                         |
+| 稀代の大魔法使いとも→               |
+| 極めて　頭がおかしい                |
+| 爆裂魔法使いとも呼ばれる→            |
+| 一人の少女の物語。                  |
+| 彼女が故郷から旅立ち→               |
+| 真の仲間たちと                      |
+| 出会うまでの物語＞                  |
+| （鳥のさえずり）                    |
+| （川の音）                         |
+| （地響き）                         |
+| ((ウォルバク：めぐみん？             |
+| あだ名かしら？                      |
+| 本名です。                         |
+| （ウォルバク）あぁ　そう…。          |
+| （ウォルバク）いったい誰が　私の封印を |
+
+*** Extract Uniq Characters
+
+Probably better ways to do this
+
+#+begin_src sh :var text=konosubarashii
+extractchars() {
+  echo "$1" | sed -e 's/\(.\)/\1\n/g' | sort | uniq
+}
+
+extractchars "$text" | head -n25 | tail -n10 | tr '\n' '|'
+echo
+extractchars "$text" | tail -n-10 | tr '\n' '|'
+#+end_src
+
+#+RESULTS:
+| ぁ | あ | い | ィ | イ | う | ウ | え | お | ォ |
+| 語 | 誰 | 輝 | 郷 | 間 | 音 | 響 | 頭 | 魔 | 鳥 |
+
+
+* Issues

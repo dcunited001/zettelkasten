@@ -29,6 +29,102 @@ Rust book: [[https://doc.rust-lang.org/book/ch07-00-managing-growing-projects-wi
 
 Rust book: [[https://doc.rust-lang.org/book/appendix-03-derivable-traits.html][Appendix C]]
 
+** Challenges
+
+*** [[https://manishearth.github.io/blog/2021/03/15/arenas-in-rust/][Arenas In Rust]]
+
+This blog covers something similar to what I realized would be needed for a
+performant graphics library: Arenas, apparantly.
+
+What I had been thinking of (in 2016) was a way to manually manage "garbage
+collection" of buffers used for vertices/textures/data without deallocating
+them. But I didn't know there was a name for it until 2024.......
+
+That's not to say that I intended to implement arenas in Swift. I basically just
+conceived of the need for something like it... I knew it was way over my
+head. My goal had been to a framework for flexible, ad-hoc render pipelines in a
+functional language. design of types was an issue... but eventually reference
+tracking and object/state coherency would be issues.
+
+Part of your program needs to manage memory access in specialized ways. It
+should do [[https://en.wikipedia.org/wiki/Bin_packing_problem][bin-packing]] and a kind of reference counting, but not for
+alloc/dealloc costs alone....
+
+This is needed to enable computed copies of =C= objects with extended attributes
+to be tracked.
+
+Here:
+
++ A :: is a memory region
++ A_n :: derivative memory region
++ CPU_n :: means CPU task =n=
+
+#+begin_src dot :file img/graph-compute.svg
+digraph GG {
+A -> B
+B -> B_1
+B -> B_2
+B -> CPU_1 -> GPU_1
+CPU_1 -> E
+B -> D -> GPU_1 -> E
+E -> B
+E -> F -> CPU_2 -> G
+G -> GPU_2 -> A
+CPU_2 -> A
+B_2 -> CPU_2
+B_1 -> GPU_2
+}
+
+#+end_src
+
+#+RESULTS:
+[[file:img/graph-compute.svg]]
+
+So if you have essentially the same object (for a CPU /and/ GPU
+intensive problem), but some attributes aren't needed for some types of
+calculations, then you can copy the object to a new region of RAM... provided
+they don't become out of sync. Simple loops in the graph are /okay/ if you don't
+need to check on derivative copies of buffers later.
+
+Vulkan & Metal offered compute shaders using buffers/textures with a
+VertexBufferArray layout that enables custome object attributes. For the most
+part, no one in gaming touches the render pipeline (e.g. to do things like:
+
++ a particle shader for a "social physics" simulation where particles have a
+  discrete state (affecting "emotions" of other particles around them, rendered
+  as unicode smilies) or
++ solving graph problems on the GPU, using graphs in textures with custom
+  attributes. Only the /structure/ of a graph is a 2D matrix, but you usually
+  need more dimensions than that, the structure for which can be preprocessed by
+  a vertex shader.
+
+
+**** Design problems via type constraints
+
+OOP helps to implicitly track object life cycles for some relationships (though
+so do the immutable objects from clojure). For some hardware API like OpenGL,
+Vulkan or CUDA, the higher level objects you build from resource descriptors are
+generally long-lasting. If you don't design the resource management well, it
+ends up being a trainwreck.
+
+Performance is at odds with:
+
++ the game design: the world, its rules, what's possible
++ and game programming: how the design translates to code.
+
+Besides everything else, event driven interactions between game objects uses a
+lot of event bubbling (what makes some javascript frameworks slow). The scopes
+for game state, game objects, events, etc can't magically avoid type constraints
+from the language ...
+
+One design challenge to enable flexible render pipeline code that allows
+framework for simulations (not games) to retain flexbility
+
+The safe bet for almost always reduces performance, which is find for video
+games that need to run on older hardware, many resolutions, framerates, various
+graphics profiles ... they only /look/ like they're high performance.
+
+
 * Issues
 
 
