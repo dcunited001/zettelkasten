@@ -43,7 +43,44 @@
 + hmmm
 
 ** Topics
-*** System Calls
+*** Redirection
+**** Descriptor Usage
+
+***** Enumerating With =strace=
+
+#+begin_quote
+TODO: here, I had planned to use multiple FD's or mkfifo
+#+end_quote
+
+This is a bit troublesome, since there are special considerations for strace's
+own input/output redirection.
+
++ How to pipe to process =strace= invokes, but not =strace= itself? No idea
++ How to redirect =strace= subprocess output? Use =stderr= since it's own
+  =stdout= produces the logged events
+
+it's always irritated me that +there's no good way+ to write these desktop files.
+
+#+begin_src sh
+strace -f -e trace=write,dup2,read,openat man --where xdg-desktop-menu 2>/dev/null
+#+end_src
+
+
+
+I was looking for an a missing man page listing a CLI tool (maybe one )apropos
+to the format description) ... and if not, then I thought to create one by
+extract its keys. I guess these KDE and XDG files are modified =ini= format or
+something.
+
++ You just need sed/awk or to expand templates like =*.erb= or =*.jinja=.
++ These are necessary to really get our of a Linux WM what you can't get through
+  Win or Mac.
++ Managing these with some idempotentence or immutability would be helpful. It's
+  not such a great fit for Ansible though (too much custom config, hard to keep
+  in git)
+
+
+*** System  Calls
 **** Comparing =Bash= and =ShinyMcLang=
 
 There is little difference between what Bash offers and the standard set of
@@ -252,14 +289,29 @@ tree -I "vendor"
 
 ** Awk
 
+*** Docs
++ [[https://www.grymoire.com/Unix/Awk.html][Bruce Barnett's Awk Tutorial]]
+
 *** Resources
 + [[https://jherrlin.github.io/posts/learn-awk/][Learn AWK with Emacs]]
++ [[https://themouseless.dev/posts/awk-guide-examples-mouseless/][Mouseless Dev: Awk Guide Examples]]:
+
+**** Style Guides
++ [[https://github.com/mbbx6spp/styleguides/tree/master/awk][mbbx6spp/styleguides]] suggests snake_case vars
 
 *** Issues
+**** Variables
++ Vars don't use ="$DOLLA"= because it makes shell interpolation complicated,
+  especially for one-liners using =awk -v my_var=myvalue=
+
+**** Org Babel
+
++ Org Babel: call awk with loop?
+**** Output Redirection
+
 + [[https://stackoverflow.com/questions/26343823/writing-to-multiple-files-with-awk][Writing to multiple files]]: Awk supports redirection with =>= and =>>= ... just
   track state with a filename var.
 
-+ Org Babel: call awk with loop?
 
 * Bash
 
@@ -310,6 +362,8 @@ important, but it is not necessarily the most valuable product of a question.
 ** Topics
 *** Misc Helpful Things
 
+**** Magic Variables
+
 **** [[https://gist.github.com/wcarhart/23008155c0699b497879595c84294296][wcarhart/bash_tidbits.md]] (gist)
 
 |------------------+------------------------------+-------------------------------------------------------|
@@ -317,7 +371,10 @@ important, but it is not necessarily the most valuable product of a question.
 |------------------+------------------------------+-------------------------------------------------------|
 | check filetype   | ~if [[ "$1" == *$2]]; then~  | a glob?                                               |
 | ~script~ command | pipe to: ~script 'screen -'~ | invoke without attached term (also records a session) |
-| ~!! !^ !:2 !:3~ | nth args                     | i always forget the chars for nth args                |
+| ~!! !^ !:2 !:3~  | nth args                     | i always forget the chars for nth args                |
+| ~!!:2-4~         | nth args from =2= to =4=     |                                                       |
+| ~!!:-4~          | nth args from =0= up to =4=  | includes the command                                  |
+| ~!!:0-~          | nth args, except the last    | if you want the last, just use =!!=                   |
 
 ****** TODO look at other scripts (convert to snippets?)
 + [ ] helpful_array_manipulation

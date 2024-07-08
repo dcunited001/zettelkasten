@@ -9,11 +9,444 @@
 
 * Notes
 
+** On Native Comp
+
+*** Guix
+
+***** TODO move awk script to a command
+
+The [[https://www.gnu.org/software/gawk/manual/html_node/ARGC-and-ARGV.html][gawk manual]] helps.
+
++ [ ] change separator
++ i swear there's a command that does this (the command is dual to =cut=)
+
+#+name: wrapEveryN
+#+begin_example awk
+(NR % nlines == 0) {print $0}
+(NF > 0) {printf "%s,", $0}
+#+end_example
+
+**** Native Comp
+
+#+name: listElnCache
+#+begin_src sh :var awkprog=wrapEveryN elnCache=(expand-file-name ".emacs.d/eln-cache" (getenv "HOME"))
+ls $elnCache | grep -ve 'subr.*' | awk -v nlines=10 "$awkprog"
+#+end_src
+
+#+begin_src emacs-lisp :results vector value table
+native-comp-eln-load-path
+#+end_src
+
+#+RESULTS:
+| /home/dc/.emacs.g/eln-cache/ | /home/dc/.emacs.d/eln-cache/ | /gnu/store/kqny94qgfaji1yhydrb1zxfjjmc6k56r-profile/lib/emacs/native-site-lisp | /gnu/store/fs3npmab0psi1iy1xd210ngdqpi61s7v-emacs-pgtk-29.4/lib/emacs/29.4/native-lisp/ |
+
+So Guix does get you =native-comp= for free (for some packages: see below). I
+had just checked and came to the exact opposite conclusion. Unfortunately, this
+means mixing with other package sources like =straight.el=, =use-package= or
+=package.el= may cause problems (which may not be immediately apparent)
+
+Guix collects the emacs build's =eln= files here:
+#+call: listElnCache(elnCache="/gnu/store/fs3npmab0psi1iy1xd210ngdqpi61s7v-emacs-pgtk-29.4/lib/emacs/29.4/native-lisp/29.4-46e5bcbe")
+
+#+RESULTS:
+| align.eln            | allout.eln                        | allout-widgets.eln       | ansi-color.eln  | ansi-osc.eln      | apropos.eln    | arc-mode.eln            | array.eln      | auth-source.eln | auth-source-pass.eln |                    |
+| auth-source-pass.eln | autoinsert.eln                    | autorevert.eln           | avoid.eln       | battery.eln       | bookmark.eln   | bs.eln                  | calc           | calculator.eln  | calendar             | cdl.eln            |
+| cdl.eln              | cedet                             | char-fold.eln            | chistory.eln    | cmuscheme.eln     | color.eln      | comint.eln              | completion.eln | cus-dep.eln     | cus-edit.eln         | cus-theme.eln      |
+| cus-theme.eln        | dabbrev.eln                       | delim-col.eln            | delsel.eln      | descr-text.eln    | desktop.eln    | dframe.eln              | dired-aux.eln  | dired.eln       | dired-x.eln          | dirtrack.eln       |
+| dirtrack.eln         | display-fill-column-indicator.eln | display-line-numbers.eln | doc-view.eln    | dom.eln           | double.eln     | ebuff-menu.eln          | echistory.eln  | ecomplete.eln   | edmacro.eln          | ehelp.eln          |
+| ehelp.eln            | elec-pair.eln                     | elide-head.eln           | emacs-lisp      | emacs-lock.eln    | emulation      | epa-dired.eln           | epa.eln        | epa-file.eln    | epa-ks.eln           | epa-mail.eln       |
+| epa-mail.eln         | epg-config.eln                    | epg.eln                  | erc             | eshell            | expand.eln     | external-completion.eln | ezimage.eln    | facemenu.eln    | face-remap.eln       | ffap.eln           |
+| ffap.eln             | filecache.eln                     | fileloop.eln             | filenotify.eln  | filesets.eln      | files-x.eln    | find-cmd.eln            | find-dired.eln | finder.eln      | find-file.eln        | find-lisp.eln      |
+| find-lisp.eln        | flow-ctrl.eln                     | foldout.eln              | follow.eln      | format-spec.eln   | forms.eln      | frameset.eln            | generic-x.eln  | gnus            | help-at-pt.eln       | help-fns.eln       |
+| help-fns.eln         | help-macro.eln                    | help-mode.eln            | hexl.eln        | hex-util.eln      | hfy-cmap.eln   | hilit-chg.eln           | hi-lock.eln    | hippie-exp.eln  | hl-line.eln          | htmlfontify.eln    |
+| htmlfontify.eln      | ibuf-ext.eln                      | ibuffer.eln              | ibuf-macs.eln   | icomplete.eln     | ido.eln        | ielm.eln                | iimage.eln     | image           | image-file.eln       | image-mode.eln     |
+| image-mode.eln       | imenu.eln                         | info.eln                 | info-look.eln   | informat.eln      | info-xref.eln  | international           | isearchb.eln   | jka-compr.eln   | json.eln             | jsonrpc.eln        |
+| jsonrpc.eln          | kermit.eln                        | kmacro.eln               | language        | leim              | loadhist.eln   | locate.eln              | lpr.eln        | macros.eln      | mail                 | man.eln            |
+| man.eln              | master.eln                        | mb-depth.eln             | md4.eln         | mh-e              | midnight.eln   | minibuf-eldef.eln       | misc.eln       | misearch.eln    | mouse-copy.eln       | mouse-drag.eln     |
+| mouse-drag.eln       | mpc.eln                           | msb.eln                  | net             | notifications.eln | novice.eln     | nxml                    | obsolete       | org             | outline.eln          | password-cache.eln |
+| password-cache.eln   | pcmpl-cvs.eln                     | pcmpl-git.eln            | pcmpl-gnu.eln   | pcmpl-linux.eln   | pcmpl-rpm.eln  | pcmpl-unix.eln          | pcmpl-x.eln    | pcomplete.eln   | pixel-scroll.eln     | play               |
+| play                 | plstore.eln                       | preloaded                | printing.eln    | proced.eln        | profiler.eln   | progmodes               | ps-bdf.eln     | ps-mule.eln     | ps-print.eln         | ps-samp.eln        |
+| ps-samp.eln          | recentf.eln                       | rect.eln                 | registry.eln    | repeat.eln        | reposition.eln | reveal.eln              | rot13.eln      | rtree.eln       | ruler-mode.eln       | savehist.eln       |
+| savehist.eln         | saveplace.eln                     | scroll-all.eln           | scroll-lock.eln | server.eln        | ses.eln        | shadowfile.eln          | shell.eln      | skeleton.eln    | so-long.eln          | sort.eln           |
+| sort.eln             | soundex.eln                       | speedbar.eln             | sqlite.eln      | sqlite-mode.eln   | strokes.eln    | svg.eln                 | tabify.eln     | tab-line.eln    | talk.eln             | tar-mode.eln       |
+| tar-mode.eln         | tempo.eln                         | term                     | term.eln        | textmodes         | thingatpt.eln  | thread.eln              | time.eln       | time-stamp.eln  | timezone.eln         | tmm.eln            |
+| tmm.eln              | t-mouse.eln                       | transient.eln            | treesit.eln     | tree-widget.eln   | tutorial.eln   | type-break.eln          | url            | use-package     | userlock.eln         | vc                 |
+| vc                   | vcursor.eln                       | view.eln                 | wdired.eln      | whitespace.eln    | wid-browse.eln | wid-edit.eln            | windmove.eln   | winner.eln      | woman.eln            | xdg.eln            |
+| xdg.eln              | xml.eln                           | xt-mouse.eln             | xwidget.eln     | yank-media.eln    |                |                         |                |                 |                      |                    |
+
+Guix collects the profile's emacs-lisp dependences here
+
+#+call: listElnCache(elnCache="/gnu/store/kqny94qgfaji1yhydrb1zxfjjmc6k56r-profile/lib/emacs/native-site-lisp/29.3-62809b9a")
+
+#+RESULTS:
+| auctex.eln        | bib-cite.eln         | context.eln           | context-en.eln     | context-nl.eln     | esxml.eln                | esxml-query.eln     | font-latex.eln     | latex.eln               | latex-flymake.eln |                   |
+| latex-flymake.eln | lsp-actionscript.eln | lsp-ada.eln           | lsp-angular.eln    | lsp-ansible.eln    | lsp-asm.eln              | lsp-astro.eln       | lsp-autotools.eln  | lsp-awk.eln             | lsp-bash.eln      | lsp-beancount.eln |
+| lsp-beancount.eln | lsp-bufls.eln        | lsp-camel.eln         | lsp-clangd.eln     | lsp-clojure.eln    | lsp-cmake.eln            | lsp-cobol.eln       | lsp-completion.eln | lsp-credo.eln           | lsp-crystal.eln   | lsp-csharp.eln    |
+| lsp-csharp.eln    | lsp-css.eln          | lsp-cucumber.eln      | lsp-cypher.eln     | lsp-d.eln          | lsp-dhall.eln            | lsp-diagnostics.eln | lsp-dired.eln      | lsp-dockerfile.eln      | lsp-dot.eln       | lsp-elixir.eln    |
+| lsp-elixir.eln    | lsp-elm.eln          | lsp.eln               | lsp-emmet.eln      | lsp-erlang.eln     | lsp-eslint.eln           | lsp-fortran.eln     | lsp-fsharp.eln     | lsp-gdscript.eln        | lsp-gleam.eln     | lsp-glsl.eln      |
+| lsp-glsl.eln      | lsp-go.eln           | lsp-golangci-lint.eln | lsp-graphql.eln    | lsp-groovy.eln     | lsp-hack.eln             | lsp-haxe.eln        | lsp-headerline.eln | lsp-html.eln            | lsp-hy.eln        | lsp-icons.eln     |
+| lsp-icons.eln     | lsp-ido.eln          | lsp-idris.eln         | lsp-iedit.eln      | lsp-javascript.eln | lsp-jq.eln               | lsp-json.eln        | lsp-jsonnet.eln    | lsp-kotlin.eln          | lsp-lens.eln      | lsp-lisp.eln      |
+| lsp-lisp.eln      | lsp-lua.eln          | lsp-magik.eln         | lsp-markdown.eln   | lsp-marksman.eln   | lsp-mdx.eln              | lsp-mint.eln        | lsp-mode.eln       | lsp-modeline.eln        | lsp-mojo.eln      | lsp-move.eln      |
+| lsp-move.eln      | lsp-nginx.eln        | lsp-nim.eln           | lsp-nix.eln        | lsp-nushell.eln    | lsp-ocaml.eln            | lsp-openscad.eln    | lsp-perl.eln       | lsp-perlnavigator.eln   | lsp-php.eln       | lsp-pls.eln       |
+| lsp-pls.eln       | lsp-prolog.eln       | lsp-protocol.eln      | lsp-purescript.eln | lsp-pwsh.eln       | lsp-pyls.eln             | lsp-pylsp.eln       | lsp-qml.eln        | lsp-racket.eln          | lsp-r.eln         | lsp-remark.eln    |
+| lsp-remark.eln    | lsp-rf.eln           | lsp-rpm-spec.eln      | lsp-rubocop.eln    | lsp-ruby-lsp.eln   | lsp-ruby-syntax-tree.eln | lsp-ruff-lsp.eln    | lsp-rust.eln       | lsp-semantic-tokens.eln | lsp-semgrep.eln   | lsp-sml.eln       |
+| lsp-sml.eln       | lsp-solargraph.eln   | lsp-solidity.eln      | lsp-sorbet.eln     | lsp-sqls.eln       | lsp-steep.eln            | lsp-svelte.eln      | lsp-terraform.eln  | lsp-tex.eln             | lsp-tilt.eln      | lsp-toml.eln      |
+| lsp-toml.eln      | lsp-trunk.eln        | lsp-ttcn3.eln         | lsp-typeprof.eln   | lsp-vala.eln       | lsp-v.eln                | lsp-verilog.eln     | lsp-vetur.eln      | lsp-vhdl.eln            | lsp-vimscript.eln | lsp-volar.eln     |
+| lsp-volar.eln     | lsp-wgsl.eln         | lsp-xml.eln           | lsp-yaml.eln       | lsp-yang.eln       | lsp-zig.eln              | multi-prompt.eln    | plain-tex.eln      | posframe-benchmark.eln  | posframe.eln      | preview.eln       |
+| preview.eln       | shorten.eln          | tex-bar.eln           | tex.eln            | tex-fold.eln       | tex-font.eln             | tex-info.eln        | tex-ispell.eln     | tex-jp.eln              | texmathp.eln      | tex-mik.eln       |
+| tex-mik.eln       | tex-site.eln         | tex-style.eln         | tex-wizard.eln     | toolbar-x.eln      | tracking.eln             |                     |                    |                         |                   |                   |
+
+There shouldn't be anything in =.emacs.d= for me (I think this is hard-coded in the Guix build or from previous profiles)
+
+#+call: listElnCache(elnCache=(expand-file-name ".emacs.d/eln-cache/29.4-46e5bcbe" (getenv "HOME")))
+#+RESULTS:
+| a.eln | emacs-lisp | guix-emacs.eln | straight.eln | straight-ert-print-hack.eln | straight-x.eln | tex-site.eln |
+
+And =~/.emacs.g/eln-cache= should contain what straight is building (I had been searching inside =~/.emacs.g/straight=)
+
+#+call: listElnCache(elnCache=(expand-file-name ".emacs.g/eln-cache/29.4-46e5bcbe" (getenv "HOME")))
+
+#+RESULTS:
+| 0x0.eln                      | ace-window.eln                  | ace-window-posframe.eln        | activities.eln               | activities-list.eln          | activities-tabs.eln           | aio.eln                         | alert.eln                    | all.eln                        | all-the-icons-completion.eln     |                            |
+| all-the-icons-completion.eln | all-the-icons-dired.eln         | all-the-icons.eln              | all-the-icons-gnus.eln       | all-the-icons-nerd-fonts.eln | ansible.eln                   | apheleia-dp.eln                 | apheleia.eln                 | apheleia-formatter-context.eln | apheleia-formatters.eln          | apheleia-log.eln           |
+| apheleia-log.eln             | apheleia-rcs.eln                | apheleia-utils.eln             | archive-cpio.eln             | archive-rpm.eln              | archive-rpm-pkg.eln           | arei-client.eln                 | arei-completion.eln          | arei-eldoc.eln                 | arei.eln                         | arei-nrepl.eln             |
+| arei-nrepl.eln               | arei-spinner.eln                | arei-xref.eln                  | astro-ts-mode.eln            | async-bytecomp.eln           | async.eln                     | aurel.eln                       | avy.eln                      | biblio-arxiv.eln               | biblio-core.eln                  | biblio-crossref.eln        |
+| biblio-crossref.eln          | biblio-dblp.eln                 | biblio-dissemin.eln            | biblio-doi.eln               | biblio-download.eln          | biblio.eln                    | biblio-hal.eln                  | biblio-ieee.eln              | biblio-pkg.eln                 | bibtex-completion.eln            | bind-key.eln               |
+| bind-key.eln                 | buck.eln                        | buffer-move.eln                | bufler.eln                   | bufler-group-tree.eln        | bufler-workspace.eln          | bufler-workspace-tabs.eln       | bui-button.eln               | bui-core.eln                   | bui.eln                          | bui-entry.eln              |
+| bui-entry.eln                | bui-history.eln                 | bui-info.eln                   | bui-list.eln                 | bui-utils.eln                | burly.eln                     | burly-tabs.eln                  | cape.eln                     | casual-avy.eln                 | casual-avy-version.eln           | casual-calc-algebra.eln    |
+| casual-calc-algebra.eln      | casual-calc-angle-measure.eln   | casual-calc-binary.eln         | casual-calc--calc.eln        | casual-calc-complex.eln      | casual-calc-conversion.eln    | casual-calc.eln                 | casual-calc-fileio.eln       | casual-calc-financial.eln      | casual-calc-graphics.eln         | casual-calc-labels.eln     |
+| casual-calc-labels.eln       | casual-calc-logarithmic.eln     | casual-calc-predicates.eln     | casual-calc-radix.eln        | casual-calc-random.eln       | casual-calc-rounding.eln      | casual-calc-settings.eln        | casual-calc-stack.eln        | casual-calc-symbolic.eln       | casual-calc-time.eln             | casual-calc-trail.eln      |
+| casual-calc-trail.eln        | casual-calc-trigonometric.eln   | casual-calc-units.eln          | casual-calc-utils.eln        | casual-calc-variables.eln    | casual-calc-vector.eln        | casual-calc-version.eln         | casual-info.eln              | casual-info-settings.eln       | casual-info-utils.eln            | casual-info-variables.eln  |
+| casual-info-variables.eln    | casual-info-version.eln         | casual-isearch.eln             | casual-lib.eln               | casual-lib-version.eln       | cdlatex.eln                   | cider-apropos.eln               | cider-browse-ns.eln          | cider-browse-spec.eln          | cider-cheatsheet.eln             | cider-classpath.eln        |
+| cider-classpath.eln          | cider-client.eln                | cider-clojuredocs.eln          | cider-common.eln             | cider-completion-context.eln | cider-completion.eln          | cider-connection.eln            | cider-debug.eln              | cider-doc.eln                  | cider-docstring.eln              | cider-eldoc.eln            |
+| cider-eldoc.eln              | cider.eln                       | cider-eval.eln                 | cider-find.eln               | cider-format.eln             | cider-inspector.eln           | cider-jar.eln                   | cider-log.eln                | cider-macroexpansion.eln       | cider-mode.eln                   | cider-ns.eln               |
+| cider-ns.eln                 | cider-overlays.eln              | cider-popup.eln                | cider-profile.eln            | cider-repl.eln               | cider-repl-history.eln        | cider-resolve.eln               | cider-scratch.eln            | cider-selector.eln             | cider-stacktrace.eln             | cider-test.eln             |
+| cider-test.eln               | cider-tracing.eln               | cider-util.eln                 | cider-xref-backend.eln       | cider-xref.eln               | citar-cache.eln               | citar-capf.eln                  | citar-citeproc.eln           | citar.eln                      | citar-embark.eln                 | citar-file.eln             |
+| citar-file.eln               | citar-format.eln                | citar-latex.eln                | citar-markdown.eln           | citar-org.eln                | citar-org-roam.eln            | citeproc-biblatex.eln           | citeproc-bibtex.eln          | citeproc-choose.eln            | citeproc-cite.eln                | citeproc-context.eln       |
+| citeproc-context.eln         | citeproc-date.eln               | citeproc-disamb.eln            | citeproc.eln                 | citeproc-formatters.eln      | citeproc-generic-elements.eln | citeproc-itemdata.eln           | citeproc-itemgetters.eln     | citeproc-lib.eln               | citeproc-locale.eln              | citeproc-macro.eln         |
+| citeproc-macro.eln           | citeproc-name.eln               | citeproc-number.eln            | citeproc-prange.eln          | citeproc-proc.eln            | citeproc-rt.eln               | citeproc-s.eln                  | citeproc-sort.eln            | citeproc-style.eln             | citeproc-subbibs.eln             | citeproc-term.eln          |
+| citeproc-term.eln            | citeproc-test-human.eln         | clj-refactor.eln               | clojure-mode.eln             | clojure-ts-mode.eln          | closql.eln                    | colir.eln                       | combobulate-contrib.eln      | combobulate-css.eln            | combobulate-debug.eln            | combobulate-display.eln    |
+| combobulate-display.eln      | combobulate.eln                 | combobulate-envelope.eln       | combobulate-html.eln         | combobulate-interface.eln    | combobulate-json.eln          | combobulate-js-ts.eln           | combobulate-manipulation.eln | combobulate-misc.eln           | combobulate-navigation.eln       | combobulate-procedure.eln  |
+| combobulate-procedure.eln    | combobulate-python.eln          | combobulate-query.eln          | combobulate-rules.eln        | combobulate-settings.eln     | combobulate-ui.eln            | combobulate-yaml.eln            | combobulate-ztree.eln        | consult-dir.eln                | consult-eglot.eln                | consult.eln                |
+| consult.eln                  | consult-flycheck.eln            | consult-flymake.eln            | consult-git-log-grep.eln     | consult-imenu.eln            | consult-info.eln              | consult-org-roam-buffer.eln     | consult-org-roam.eln         | consult-xref.eln               | consult-yasnippet.eln            | contrib.eln                |
+| contrib.eln                  | corfu.eln                       | corfu-popupinfo.eln            | corfu-quick.eln              | crontab-mode.eln             | d2-mode.eln                   | dash.eln                        | debbugs-browse.eln           | dired-async.eln                | dired-hacks-utils.eln            | dired-rainbow.eln          |
+| dired-rainbow.eln            | docker-compose.eln              | docker-container.eln           | docker-context.eln           | docker-core.eln              | dockerfile-mode.eln           | docker-image.eln                | docker-network.eln           | docker-process.eln             | docker-utils.eln                 | docker-volume.eln          |
+| docker-volume.eln            | doi-utils.eln                   | edit-indirect.eln              | editorconfig-core.eln        | editorconfig-core-handle.eln | editorconfig.eln              | editorconfig-fnmatch.eln        | ef-themes.eln                | eglot.eln                      | eldoc.eln                        | elfeed-csv.eln             |
+| elfeed-csv.eln               | elfeed-curl.eln                 | elfeed-db.eln                  | elfeed.eln                   | elfeed-lib.eln               | elfeed-link.eln               | elfeed-log.eln                  | elfeed-org.eln               | elfeed-search.eln              | elfeed-show.eln                  | elisp-depmap.eln           |
+| elisp-depmap.eln             | elisp-depmap-exec.eln           | elisp-depmap-graph.eln         | elisp-depmap-parse.eln       | elisp-depmap-secondhelp.eln  | elpa.eln                      | emacs-lisp                      | emacsql-compiler.eln         | emacsql.eln                    | emacsql-mysql.eln                | emacsql-pg.eln             |
+| emacsql-pg.eln               | emacsql-psql.eln                | emacsql-sqlite-builtin.eln     | emacsql-sqlite-common.eln    | emacsql-sqlite.eln           | emacsql-sqlite-module.eln     | embark-consult.eln              | embark.eln                   | embark-org.eln                 | emmet-mode.eln                   | engrave-faces-ansi.eln     |
+| engrave-faces-ansi.eln       | engrave-faces.eln               | engrave-faces-html.eln         | engrave-faces-latex.eln      | envrc.eln                    | eros.eln                      | esxml.eln                       | esxml-query.eln              | external-completion.eln        | f.eln                            | firestarter.eln            |
+| firestarter.eln              | flycheck.eln                    | flycheck-guile.eln             | flycheck-package.eln         | flymake.eln                  | forge-bitbucket.eln           | forge-commands.eln              | forge-core.eln               | forge-db.eln                   | forge.eln                        | forge-gitea.eln            |
+| forge-gitea.eln              | forge-github.eln                | forge-gitlab.eln               | forge-gogs.eln               | forge-issue.eln              | forge-notify.eln              | forge-pkg.eln                   | forge-post.eln               | forge-pullreq.eln              | forge-repo.eln                   | forge-repos.eln            |
+| forge-repos.eln              | forge-revnote.eln               | forge-semi.eln                 | forge-tablist.eln            | forge-topic.eln              | forge-topics.eln              | fsm.eln                         | gcmh.eln                     | geiser-autodoc.eln             | geiser-base.eln                  | geiser-capf.eln            |
+| geiser-capf.eln              | geiser-compile.eln              | geiser-completion.eln          | geiser-connection.eln        | geiser-custom.eln            | geiser-debug.eln              | geiser-doc.eln                  | geiser-edit.eln              | geiser-eval.eln                | geiser-guile.eln                 | geiser-image.eln           |
+| geiser-image.eln             | geiser-impl.eln                 | geiser-log.eln                 | geiser-menu.eln              | geiser-mode.eln              | geiser-popup.eln              | geiser-repl.eln                 | geiser-syntax.eln            | geiser-xref.eln                | general.eln                      | ghub.eln                   |
+| ghub.eln                     | ghub-graphql.eln                | ghub-pkg.eln                   | git-commit.eln               | git-commit-pkg.eln           | git-link.eln                  | git-rebase.eln                  | git-timemachine.eln          | glab.eln                       | gntp.eln                         | gnuplot-context.eln        |
+| gnuplot-context.eln          | gnuplot.eln                     | gogs.eln                       | google-translate-backend.eln | google-translate-core.eln    | google-translate-core-ui.eln  | google-translate-default-ui.eln | google-translate.eln         | google-translate-smooth-ui.eln | graphql.eln                      | graphql-examples.eln       |
+| graphql-examples.eln         | graphql-mode.eln                | groovy-electric.eln            | groovy-mode.eln              | gsexp.eln                    | gtea.eln                      | guix-about.eln                  | guix-build-log.eln           | guix-command.eln               | guix-config.eln                  | guix-devel.eln             |
+| guix-devel.eln               | guix-external.eln               | guix-geiser.eln                | guix-graph.eln               | guix-guile.eln               | guix-help.eln                 | guix-license.eln                | guix-location.eln            | guix-misc.eln                  | guix-package.eln                 | guix-popup.eln             |
+| guix-popup.eln               | guix-profiles.eln               | guix-read.eln                  | guix-repl.eln                | guix-ui.eln                  | guix-ui-generation.eln        | guix-ui-messages.eln            | guix-ui-package.eln          | guix-ui-profile.eln            | guix-ui-service.eln              | guix-ui-store-item.eln     |
+| guix-ui-store-item.eln       | guix-utils.eln                  | highlight-indent-guides.eln    | highlight-symbol.eln         | hl-todo.eln                  | ht.eln                        | htmlize.eln                     | html-ts-mode.eln             | hydra.eln                      | i-ching.eln                      | iedit.eln                  |
+| iedit.eln                    | iedit-lib.eln                   | iedit-rect.eln                 | inf-groovy.eln               | inflections.eln              | info+.eln                     | inheritenv.eln                  | ivy.eln                      | ivy-faces.eln                  | ivy-overlay.eln                  | journalctl-mode.eln        |
+| journalctl-mode.eln          | jq-mode.eln                     | json-mode.eln                  | jsonrpc.eln                  | json-snatcher.eln            | jupyter-base.eln              | jupyter-c++.eln                 | jupyter-channel.eln          | jupyter-channel-ioloop.eln     | jupyter-client.eln               | jupyter.eln                |
+| jupyter.eln                  | jupyter-env.eln                 | jupyter-ioloop.eln             | jupyter-javascript.eln       | jupyter-julia.eln            | jupyter-kernel.eln            | jupyter-kernel-process.eln      | jupyter-kernelspec.eln       | jupyter-messages.eln           | jupyter-mime.eln                 | jupyter-monads.eln         |
+| jupyter-monads.eln           | jupyter-org-client.eln          | jupyter-org-extensions.eln     | jupyter-python.eln           | jupyter-R.eln                | jupyter-repl.eln              | jupyter-rest-api.eln            | jupyter-server.eln           | jupyter-server-kernel.eln      | jupyter-tramp.eln                | jupyter-widget-client.eln  |
+| jupyter-widget-client.eln    | jupyter-zmq-channel.eln         | jupyter-zmq-channel-ioloop.eln | kind-icon.eln                | latex.eln                    | latex-flymake.eln             | le-clojure.eln                  | le-hy.eln                    | le-julia.eln                   | le-lisp.eln                      | le-python.eln              |
+| le-python.eln                | le-racket.eln                   | le-scheme.eln                  | let-alist.eln                | lib                          | lispy.eln                     | lispy-inline.eln                | lispy-occur.eln              | lispy-pkg.eln                  | lispy-tags.eln                   | log4e.eln                  |
+| log4e.eln                    | lv.eln                          | macrostep-c.eln                | macrostep.eln                | magit-apply.eln              | magit-autorevert.eln          | magit-base.eln                  | magit-bisect.eln             | magit-blame.eln                | magit-bookmark.eln               | magit-branch.eln           |
+| magit-branch.eln             | magit-bundle.eln                | magit-clone.eln                | magit-commit.eln             | magit-core.eln               | magit-diff.eln                | magit-ediff.eln                 | magit.eln                    | magit-extras.eln               | magit-fetch.eln                  | magit-files.eln            |
+| magit-files.eln              | magit-git.eln                   | magit-gitignore.eln            | magit-log.eln                | magit-margin.eln             | magit-merge.eln               | magit-mode.eln                  | magit-notes.eln              | magit-patch.eln                | magit-pkg.eln                    | magit-popup.eln            |
+| magit-popup.eln              | magit-process.eln               | magit-pull.eln                 | magit-push.eln               | magit-reflog.eln             | magit-refs.eln                | magit-remote.eln                | magit-repos.eln              | magit-reset.eln                | magit-section.eln                | magit-section-pkg.eln      |
+| magit-section-pkg.eln        | magit-sequence.eln              | magit-sparse-checkout.eln      | magit-stash.eln              | magit-status.eln             | magit-submodule.eln           | magit-subtree.eln               | magit-tag.eln                | magit-tbdiff.eln               | magit-todos.eln                  | magit-transient.eln        |
+| magit-transient.eln          | magit-wip.eln                   | magit-worktree.eln             | makefile-executor.eln        | map.eln                      | marginalia.eln                | markdown-mode.eln               | mc-cycle-cursors.eln         | mc-edit-lines.eln              | mc-hide-unmatched-lines-mode.eln | mc-mark-more.eln           |
+| mc-mark-more.eln             | mc-mark-pop.eln                 | mc-separate-operations.eln     | mermaid-mode.eln             | minions.eln                  | multiple-cursors-core.eln     | multiple-cursors.eln            | multiple-cursors-pkg.eln     | net                            | nist-webbook.eln                 | no-littering.eln           |
+| no-littering.eln             | nrepl-client.eln                | nrepl-dict.eln                 | ob-abc.eln                   | ob-awk.eln                   | ob-calc.eln                   | ob-C.eln                        | ob-clojure.eln               | ob-comint.eln                  | ob-coq.eln                       | ob-core.eln                |
+| ob-core.eln                  | ob-csharp.eln                   | ob-css.eln                     | ob-ditaa.eln                 | ob-dot.eln                   | ob-ebnf.eln                   | ob-emacs-lisp.eln               | ob-eshell.eln                | ob-eukleides.eln               | ob-eval.eln                      | ob-exp.eln                 |
+| ob-exp.eln                   | ob-fomus.eln                    | ob-forth.eln                   | ob-fortran.eln               | ob-gnuplot.eln               | ob-graphql.eln                | ob-groovy.eln                   | ob-haskell.eln               | ob-hledger.eln                 | ob-io.eln                        | ob-java.eln                |
+| ob-java.eln                  | ob-J.eln                        | ob-jq.eln                      | ob-js.eln                    | ob-julia.eln                 | ob-jupyter.eln                | ob-latex.eln                    | ob-ledger.eln                | ob-lilypond.eln                | ob-lisp.eln                      | ob-lob.eln                 |
+| ob-lob.eln                   | ob-lua.eln                      | ob-makefile.eln                | ob-mathomatic.eln            | ob-maxima.eln                | ob-mermaid.eln                | ob-mscgen.eln                   | ob-ocaml.eln                 | ob-octave.eln                  | ob-org.eln                       | ob-oz.eln                  |
+| ob-oz.eln                    | ob-perl.eln                     | ob-picolisp.eln                | ob-plantuml.eln              | ob-processing.eln            | ob-python.eln                 | ob-rec.eln                      | ob-ref.eln                   | ob-R.eln                       | ob-restclient.eln                | ob-ruby.eln                |
+| ob-ruby.eln                  | ob-sass.eln                     | ob-scheme.eln                  | ob-screen.eln                | ob-sed.eln                   | ob-shell.eln                  | ob-shen.eln                     | ob-sql.eln                   | ob-sqlite.eln                  | ob-table.eln                     | ob-tangle.eln              |
+| ob-tangle.eln                | ob-tcl.eln                      | ob-vala.eln                    | ob-vbnet.eln                 | oc-basic.eln                 | oc-csl.eln                    | oc.eln                          | ol-bibtex.eln                | ol-bookmark.eln                | ol-doi.eln                       | ol.eln                     |
+| ol.eln                       | ol-gnus.eln                     | ol-info.eln                    | ol-man.eln                   | openalex.eln                 | openwith.eln                  | orderless.eln                   | org-agenda.eln               | org-appear.eln                 | org-archive.eln                  | org-attach.eln             |
+| org-attach.eln               | org-capture.eln                 | org-checklist.eln              | org-clock.eln                | org-collector.eln            | org-colview.eln               | org-compat.eln                  | org-crypt.eln                | org-ctags.eln                  | org-cycle.eln                    | org-duration.eln           |
+| org-duration.eln             | org-eldoc.eln                   | org-element-ast.eln            | org-element.eln              | org.eln                      | org-entities.eln              | org-expiry.eln                  | org-faces.eln                | org-fold-core.eln              | org-fold.eln                     | org-footnote.eln           |
+| org-footnote.eln             | org-goto.eln                    | org-habit.eln                  | org-id.eln                   | org-indent.eln               | org-invoice.eln               | org-keys.eln                    | org-learn.eln                | org-list.eln                   | org-macro.eln                    | org-macs.eln               |
+| org-macs.eln                 | org-mairix.eln                  | org-mouse.eln                  | org-noter-citar.eln          | org-noter-core.eln           | org-noter-djvu.eln            | org-noter.eln                   | org-noter-nov.eln            | org-noter-org-roam.eln         | org-noter-pdf.eln                | org-pcomplete.eln          |
+| org-pcomplete.eln            | org-persist.eln                 | org-plot.eln                   | org-protocol.eln             | org-ql.eln                   | org-ql-search.eln             | org-ql-view.eln                 | org-ref-arxiv.eln            | org-ref-bibliography-links.eln | org-ref-bibtex.eln               | org-ref-citation-links.eln |
+| org-ref-citation-links.eln   | org-ref-compat.eln              | org-ref-core.eln               | org-ref.eln                  | org-ref-export.eln           | org-ref-extract.eln           | org-ref-glossary.eln            | org-refile.eln               | org-ref-isbn.eln               | org-ref-label-link.eln           | org-ref-misc-links.eln     |
+| org-ref-misc-links.eln       | org-ref-natbib-bbl-citeproc.eln | org-ref-pdf.eln                | org-ref-publish.eln          | org-ref-pubmed.eln           | org-ref-ref-links.eln         | org-ref-refproc.eln             | org-ref-scifinder.eln        | org-ref-sci-id.eln             | org-ref-scopus.eln               | org-ref-url-utils.eln      |
+| org-ref-url-utils.eln        | org-ref-utils.eln               | org-ref-worldcat.eln           | org-ref-wos.eln              | org-roam-capture.eln         | org-roam-compat.eln           | org-roam-dailies.eln            | org-roam-db.eln              | org-roam.eln                   | org-roam-export.eln              | org-roam-graph.eln         |
+| org-roam-graph.eln           | org-roam-id.eln                 | org-roam-log.eln               | org-roam-migrate.eln         | org-roam-mode.eln            | org-roam-node.eln             | org-roam-overlay.eln            | org-roam-protocol.eln        | org-roam-utils.eln             | org-sidebar.eln                  | org-src.eln                |
+| org-src.eln                  | org-super-agenda.eln            | org-table.eln                  | org-toc.eln                  | ov.eln                       | ox-ascii.eln                  | ox-bibtex.eln                   | ox.eln                       | ox-extra.eln                   | ox-html.eln                      | ox-icalendar.eln           |
+| ox-icalendar.eln             | ox-latex.eln                    | ox-man.eln                     | ox-md.eln                    | ox-odt.eln                   | ox-org.eln                    | ox-pandoc.eln                   | ox-publish.eln               | ox-texinfo.eln                 | package-lint.eln                 | pandoc-mode-utils.eln      |
+| pandoc-mode-utils.eln        | paredit.eln                     | parsebib.eln                   | parseclj-alist.eln           | parseclj-ast.eln             | parseclj.eln                  | parseclj-lex.eln                | parseclj-parser.eln          | parseedn.eln                   | pcre2el.eln                      | pdf-annot.eln              |
+| pdf-annot.eln                | pdf-cache.eln                   | pdf-history.eln                | pdf-info.eln                 | pdf-isearch.eln              | pdf-links.eln                 | pdf-misc.eln                    | pdf-occur.eln                | pdf-outline.eln                | pdf-sync.eln                     | pdf-tools.eln              |
+| pdf-tools.eln                | pdf-util.eln                    | pdf-view.eln                   | peg.eln                      | persist.eln                  | pomm.eln                      | pomm-third-time.eln             | popper.eln                   | popup.eln                      | pretty-hydra.eln                 | project-cmake-api.eln      |
+| project-cmake-api.eln        | project-cmake.eln               | project.eln                    | projectile.eln               | project-local.eln            | pulsar.eln                    | queue.eln                       | rainbow-delimiters.eln       | rainbow-mode.eln               | rectangular-region-mode.eln      | reformatter.eln            |
+| reformatter.eln              | repo.eln                        | request.eln                    | restclient.eln               | sbt-mode-buffer.eln          | sbt-mode-comint.eln           | sbt-mode.eln                    | sbt-mode-hydra.eln           | sbt-mode-project.eln           | sbt-mode-rgrep.eln               | sbt-mode-vars.eln          |
+| sbt-mode-vars.eln            | scala-compile.eln               | scala-mode.eln                 | scala-mode-fontlock.eln      | scala-mode-imenu.eln         | scala-mode-indent.eln         | scala-mode-lib.eln              | scala-mode-map.eln           | scala-mode-paragraph.eln       | scala-mode-prettify-symbols.eln  | scala-mode-syntax.eln      |
+| scala-mode-syntax.eln        | scala-organise.eln              | s.eln                          | seq-24.eln                   | seq-25.eln                   | seq.eln                       | sesman-browser.eln              | sesman.eln                   | setup.eln                      | simple-httpd.eln                 | sly.eln                    |
+| sly.eln                      | smartparens.eln                 | smartparens-latex.eln          | smartparens-markdown.eln     | smartparens-org.eln          | smartparens-python.eln        | smartparens-text.eln            | smiles-mode.eln              | smtpmail-async.eln             | snippets                         | spinner.eln                |
+| spinner.eln                  | straight.eln                    | straight-ert-print-hack.eln    | straight-x.eln               | string-inflection.eln        | super-save.eln                | svg-lib-demo.eln                | svg-lib.eln                  | swagg.eln                      | swiper.eln                       | synosaurus.eln             |
+| synosaurus.eln               | synosaurus-wordnet.eln          | tablist.eln                    | tablist-filter.eln           | tabspaces.eln                | test                          | tests                           | tex.eln                      | texmathp.eln                   | track-changes.eln                | transient.eln              |
+| transient.eln                | treepy.eln                      | ts.eln                         | undo-tree.eln                | use-package-bind-key.eln     | use-package-core.eln          | use-package-delight.eln         | use-package-diminish.eln     | use-package.eln                | use-package-ensure.eln           | use-package-jump.eln       |
+| use-package-jump.eln         | use-package-lint.eln            | vertico-buffer.eln             | vertico-directory.eln        | vertico.eln                  | vertico-flat.eln              | vertico-grid.eln                | vertico-indexed.eln          | vertico-mouse.eln              | vertico-multiform.eln            | vertico-reverse.eln        |
+| vertico-reverse.eln          | websocket.eln                   | wgrep.eln                      | which-key.eln                | with-editor.eln              | ws-butler.eln                 | x2bib.eln                       | xml-format.eln               | xml-query.eln                  | xref.eln                         | xterm-color.eln            |
+| xterm-color.eln              | yaml.eln                        | yaml-mode.eln                  | yasnippet.eln                | yasnippet-snippets.eln       | zmq.eln                       | zoutline.eln                    |                              |                                |                                  |                            |
+
+*** Emacs
+
+
+*** Straight
+
+*** Use Package
+
+**** TODO maybe move elsewhere
+[[file:img/straight-use-package.jpg]]
+
+These notes really only apply to my own configuration which is based on Guix
+packages, but also uses =straight.el= to pull in packages. I had thought that
+this was separate from =use-package= I hadn't yet looked deeply into it.
+
+But it turns out that migrating to =use-package= would've been easier than I
+thought. It still leaves me with basically the same problem where however
+straight is configured for me seems to be eagerly building =*.elc= for internal
+packages.
+
+Some of these release updates on MELPA: xref, eglot, etc ... but once I saw
+=seq= is getting built... yeh. The hint that indicates something's wrong is when
+=help-mode= can't find the sources and sends me to my emacs profile.
+
+... I knew it was risky, but I needed to get away from Doom Emacs because of
+Guile environment issues ... which were probabaly relatively quickly fixed (or
+idk). So this was the fastest way at the time.
+
+
+** Packages
+
+I'm not sure if this generally happens with other configs or emacs-distros that
+use =straight-use-package=. I just assumed that was an integration you needed to
+configure separately
+
+
+*** Straight dependencies
+
+Straight mostly ignores anything in =straight-built-in-pseudo-packages=. After
+reviewing its docs, which are extremely informative, I may be running into some
+of these [[https://github.com/radian-software/straight.el/blob/b3760f5829dba37e855add7323304561eb57a3d4/straight.el#L3655-L3705][potential issues]].
+
++ i'm definitely calling =straight-rebuild-all= from a new emacs session
+
+I think I may need to specify =:flavor melpa= or
+
+(dc/straight-flatten-dependencies "consult")
+
+*** Builds
+
+#+begin_src sh
+cd $HOME/.emacs.g/straight && find . -name '*.elc' | grep seq
+#+end_src
+
+#+RESULTS:
+| ./build/seq/tests/seq-tests.elc  |
+| ./build/seq/seq-24.elc           |
+| ./build/seq/seq-25.elc           |
+| ./build/seq/seq.elc              |
+| ./build/magit/magit-sequence.elc |
+
+#+begin_src sh
+cd $HOME/.emacs.g/straight && find . -name '*.elc' | grep seq
+#+end_src
+
+#+RESULTS:
+| ./build/seq/tests/seq-tests.elc  |
+| ./build/seq/seq-24.elc           |
+| ./build/seq/seq-25.elc           |
+| ./build/seq/seq.elc              |
+| ./build/magit/magit-sequence.elc |
+
+*** Guix Packages
+
+**** Migrating
+
+So I decided
+
++ identify the most core dependencies (highest in-degree to higher out-degree),
+  and use =with-graft= for packages that need updates (like =magit=)
++ track feature symbols emacs loads (via =define-package= and elsewhere)
++ load =straight= and =use-package= from Guix packages, check config
++ attempt to load most packages from guix and have better tools
+
+The drawbacks for Guix:
+
++ updating: to avoid restart, requires monkey-patching the =load-path= and then
+  requiring/reloading files
++ There's more friction to jumping in on a project to contribute (straight has
+  pull-req functionality and facilitates multi-package hacking). I could /maybe/
+  pass =--with-source=$pkg_path= through to my =update-emacs-g= script...
++ All the =mypkg-autoload= modules are loaded as =features= by the time emacs is
+  up (I think, they're set almost before you would expect it possible for them
+  to be). The nativecomp is more deterministic, but I'm not sure of a simple way
+  to unload a Guix dependency (esp. if widely used like magit) to have it loaded
+  by straight. (complications: e.g. =straight.el= has a =git= dependency and has
+  its =/bin/git= patched)
+
+Immediate Benefits
+
++ This should get me to a halfway point where I can decide on =use-package=
+  because the surface area of code that needs to be touched/checked is basically
+  the same.
++ Learning a bit about Guix grafts/transforms on a larger project, which may
+  involve graph traversals
++ Hopefully some good scripts/etc to come out of that.
+
+Advantages:
+
++ Straight should always have up-to-date =straight.eln= to match the emacs that
+  built it (my mistake, but still). I also have more guarantees over what's
+  native comp and what's not.
+
+**** Emacs/Guix
+
+***** Run =guix refresh= on the manifest
+
+This gives useful output. As the Guix checkout in =/gnu/store= is read only, you
+need a second checkout, which is how you set up to build and contribute anyways.
+
+#+begin_src sh
+guix refresh -L ~/.dotfiles -m ~/.emacs.g/emacs-g.scm --type=elpa,generic-git,github
+#+end_src
+
+There may be some way of using dummy packages on a large manifest to hack it
+into working. This will cause problems, since it dramatically changes your
+source tree and would need dependency rewritng for anything besides leaf nodes.
+
+#+begin_src scheme
+(define emacs-magit-Refresh
+  (package emacs-magit
+           (inherit "emacs-magit")))
+#+end_src
+
+***** Operate on groups of packages
+
+Emacs has three ways to use shell in general buffer. Using =C-u= they dump
+output into a buffer, but the last one will use the contents as input to pipe to
+the command
+
+| M-!         | shell-command           |
+| M-&         | async-shell-command     |
+| M-\(\vert\) | shell-command-on-region |
+
+So using =C-u M-|= and =tr ' ' '\n'= with this input:
+
+#+name: pkgText
+#+begin_example
+nss-certs emacs-setup emacs-straight.el emacs-rec-mode tidy-html shellcheck dtach guile-ares-rs aspell aspell-dict-en aspell-dict-grc aspell-dict-es aspell-dict-fr aspell-dict-it aspell-dict-de
+#+end_example
+
+I get these lines for additional commands. I can select how I want for
+subsequent processing.
+
+#+name: emacsSystem
+| emacs-vertico                        |
+| emacs-corfu                          |
+| emacs-orderless                      |
+| emacs-consult                        |
+| emacs-consult-yasnippet              |
+| emacs-consult-org-roam               |
+| emacs-consult-xdg-recent-files       |
+| emacs-consult-dir                    |
+| emacs-consult-bibtex                 |
+| emacs-cape                           |
+| emacs-wgrep                          |
+| emacs-marginalia                     |
+| emacs-embark                         |
+
+Selecting them all and using this command ... with parens, which is a nice trick
+i found some good dotfiles, then running this =shell-command-on-region= gives me
+plain text package names that I can again highlight to run =sort | uniq=. It's
+messy to keep track of, maybe.
+
+#+name: pkgCount
+#+begin_src sh :stdin emacsSystem
+# recsel -R to get plain text
+
+# using :std in will automagically wrap the block (e.g. a plain "cat" will
+# output stdin raw)
+
+# the while needs to be a one-liner for M-|
+while read pkg; do (guix search "^$pkg\$"| recsel -R dependencies); done \
+    | sed -E 's/\s+/\n/g' | sort | uniq -c
+#+end_src
+
+#+RESULTS: pkgCount
+| 5 | emacs-compat@29.1.4.5          |
+| 5 | emacs-consult@1.7              |
+| 1 | emacs-dash@2.19.1              |
+| 1 | emacs-embark@1.1               |
+| 1 | emacs-org-roam@2.2.2-0.74422df |
+| 1 | emacs-org-roam-bibtex@0.6.2    |
+| 1 | emacs-s@1.13.0                 |
+| 1 | emacs-yasnippet@0.14.1         |
+| 6 | texinfo@6.8                    |
+
+** Feature Loading
+
+[[file:img/pseudopackages-20240702.diff][Emacs Features Diff]]: compares sorted output of =(-uniq (-sort #'string< (mapcar #'symbol-name
+features)))= from a running session and a fresh =gmacs -- -q= session
+
+*** Configs
+
+For two instances of emacs =a1= and =b2=
+
+#+name: aaa
+#+begin_src emacs-lisp
+"aaa"
+#+end_src
+
+#+name: bbb
+#+begin_src emacs-lisp
+"bbb"
+#+end_src
+
+Note: I'm paraphrasing the commands I ran earlier... mostly so I can better
+understand it later. Or grep for keywords.
+
+*** Autoloads features
+
+When I first got into Emacs (2012-2015ish, though I lightly used it),
+autoloading seemed to be a cause of confusion. I kinda knew what it did, but not
+the details.
+
+These magic packages are registered as features when emacs starts. Depending on
+how Emacs and your packages are built, then for autoloaded packages, only the
+=$pkg-autoloads= features are visible, which contain headers to functions that
+should be visible to other packages as well (without the cost of loading them.)
+
+#+begin_src sh :var aaa=aaa bbb=bbb
+cat "$aaa.feat" | sed -e 's/-autoloads//' | sort | uniq -c | sort -r | head -n10
+#+end_src
+
+#+RESULTS:
+| 2 | zoutline           |
+| 2 | yasnippet-snippets |
+| 2 | yasnippet          |
+| 2 | xterm-color        |
+| 2 | xref               |
+| 2 | xml-format         |
+| 2 | ws-butler          |
+| 2 | with-editor        |
+| 2 | which-key          |
+| 2 | wgrep              |
+
+
+* Old Notes
+
 Until recently, I haven't had many problems with combining Guix and Straight
 packages, although it's important to define 'straight-built-in-pseudo-packages
 for any conflicts. The way that Guix sets things up, the load-path is
 constructed before =init.el= runs and contains everything
-
 
 This has been a fairly good way to load packages for me, but it's definitely
 non-standard. It's definitely not correct, per se. The Guix packages are always
@@ -26,10 +459,9 @@ You will need to manually run things like:
 + straight-pull-packages
 + straight-build-packages
 
+** Issues
 
-* Issues
-
-** Straight uses vc-mode
+*** Straight uses vc-mode
 
 If you use forge to manage pull requests ... well straight uses =vc-mode= so you
 may run into issues when updating your straight packages. I haven't fully
@@ -47,14 +479,14 @@ hedging against complexity. I wish there was a complexity broker to offer me
 profitable "emacs-config" futures ... but there's not. Maybe there is i donno.
 #+end_quote
 
-** Fonts don't load
+*** Fonts don't load
 
 For me, this has been a good indicator that init.el doesn't finish loading or
 that blocks from =(with-eval-after-load 'apkg' ...)= aren't running.
 
 However, the fonts aren't a great indicator not entirely clear.
 
-** Something can't find 'compat
+*** Something can't find 'compat
 
 This just popped up, but I can't find what's prompting the message. I searched
 the straight source, but i haven't searched the emacs =site-lisp=
@@ -62,7 +494,7 @@ the straight source, but i haven't searched the emacs =site-lisp=
 There don't immediately appear to be any consequences, but I'm worried something
 is lurking or that my =init.el= will stop fully loading.
 
-*** Problem
+**** Problem
 
 Can't seem to silence these warnings on init:
 
@@ -403,7 +835,7 @@ Wrote /data/org/roam/slips/20230916212950-emacs_combining_emacs_packages_from_st
 
 #+end_example
 
-*** Solution?
+**** Solution?
 
 alot of warnings like this when loading ghub
 
