@@ -53,6 +53,147 @@ Hash sets for well-known files
 
 ** Topics
 
+*** General CLI Tools
+
+The [[https://docs.remnux.org/][REMnux docs]] and [[https://zeltser.com/remnux-malware-analysis-tips/][this REMnux cheatsheet]] have good overviews on tools that
+appear in many distributions.
+
+|-------------------+--------------+-------------+-------------+----------+---------------|
+| System : Layer -> | Physical     | Media Mgmnt | File System | File     | App           |
+|-------------------+--------------+-------------+-------------+----------+---------------|
+| Standard Tools    | lshw         | fdisk       | file        | file     | less/cat/grep |
+|                   | lssci        | gdisk       | fsstat      | find     | xv regfmount  |
+|                   | hdparm       | file -s     | fls         | ls & etc | display       |
+|                   |              | mmls        |             |          |               |
+|                   |              | mkfs        |             |          |               |
+|-------------------+--------------+-------------+-------------+----------+---------------|
+| SiFT/Autopsy/TSK  | tsk_recover  | mmls        | fsstat      | fls      | srch_strings  |
+|                   | tsk_gettimes | mmcat       | icat        | fstat    |               |
+|                   | sorter       | mmstat      | ils         | fcat     |               |
+|                   | img_cat      |             | ifind       | hfind    |               |
+|                   | img_stat     |             | istat       |          |               |
+|                   | mactime      |             | blkcalc     |          |               |
+|                   | sigfind      |             | blkcat      |          |               |
+|                   |              |             | blkls       |          |               |
+|                   |              |             | blkstat     |          |               |
+|                   |              |             | jcat        |          |               |
+|                   |              |             | jls         |          |               |
+|-------------------+--------------+-------------+-------------+----------+---------------|
+
+The lists of tools are copied from my handwritten notes, but are originally from
+SIFT videos and other docs. Most of the descriptions are copied directly from
+the man pages.
+
+#+begin_quote
+I personally don't have much experience with most of these, which
+is why a summary like this would be so useful to me.
+#+end_quote
+
+**** LS Star
+
++ lspci :: list PCI things
++ lsusb :: list USB things
++ lsblk :: list block device things
++ lsscsi :: list SCSI things
++ lsof :: list open file things
++ lshw :: list hardware things
++ lsattr :: list file attributes on a Linux second extended file system
++ chattr :: "cut the chatter. in the byeee... bye bye bye."
+
+**** Linux
+
++ dmesg :: examine or control the kernel ring buffer
++ free :: display amount of free and used memory in the system
++ udisks :: provides interfaces to enumerate and perform operations on disks and
+  storage devices. Operates via a D-Bus API interface, but also includes
+  =libudisks2= to provide more direct access to C/C++ programs
++ udisksd :: the =udisks= system daemon
++ udisksctl :: the =udisks= cmdline utility, which interacts with the daemon.
++ udisks2.conf :: the =udisks2= configuration file
+
+**** Physical Layer Utils
+
++ hdparm :: get/set SATA/IDE device parameters
++ dd :: "convert and copy a file" but usually used to read/write to/from devices
+  directly.
++ dc3dd :: patched version of the GNU =dd= tool
++ dcfldd :: an older fork of =dd= (a bit buggy as of 2016)
++ losetup :: set up and control loop devices -- devices virtualized as
+  =dev/loop*= that usually contain images copied via =dd=
+
+**** Media Management Layer Utils
+
++ ddrescue ::
++ fdisk :: manipulate fdisk partition table
++ gdisk :: interactive GUID partition table (GPT) manipulator
++ df :: report file system disk space usage. Included in MML tools because [the
+  GNU] version of df cannot show the space available on unmounted file systems,
+  because on most kinds of systems doing so requires very nonportable intimate
+  knowledge of file system structures
+
+**** Super Shasum Tools For Hashing
+
++ md5 :: for MD5 hashes
++ sha(.*)sum :: for SHA checksums
+
+**** Input Processing/Filtering
+
++ file :: determine file type
++ split :: split a file into pieces
+  - file-based fanout
++ tee :: for sporking things unless you'd like to foon them
+  - input-based fanout
++ cat :: concatenate files and print on the standard output
++ tac :: concat and print files in reverse
++ xxd :: creates a hex dump of a given file or standard input
++ tr :: translate, squeeze, and/or delete characters from standard input,
+  writing to standard output.
++ wc :: print newline, word, and byte counts for each file
++ uniq :: this tool is a very special snowflake
+
+
+**** Network Tools
+
++ nmcli :: commandline tool for controlling Network Manager
++ netstat :: print network connections, routing tables, interface statistics,
+  masquerade connections, and multicast memberships
++ netcat :: cat network things (via sockets, stdin, IPv4, IPv6)
++ ss :: another utility to investigate sockets (dump socket stats; shows
+  information similar to netstat, but with more capabilities for OSI layer 4
++ lsof :: listed again since it helps track network files
++ iptables :: administration tool for IPv4/IPv6 packet filtering and NAT
++ nft :: to set up, maintain and inspect packet filtering and classification
+  rules in the Linux kernel, in the nftables framework. The Linux kernel
+  subsystem is known as nf_tables, and ‘nf’ stands for Netfilter
+
+**** EWF Format
+
++ Install with =pacman -Syu libewf=. Installed on Tsurugi by default, which is
+  typically where you want to do this stuff..
+
+Used to bolster the validation of chain of custody and/or data
+provenance.[fn:ewfformat] Can enable working with parts of compressed images
+without decompressing the whole, which as I understand it may make it difficult
+for on-image scripts to modify the image itself, were they capable of waking up
+and doing so. The workflow for Org files for and On arch,
+
++ ewfacquire :: acquire data in the EWF format
++ ewfacquirestream :: from =stdin=, acquire data in the EWF format
++ ewfexport :: exports media data stored in EWF files
++ ewfinfo :: show metadata stored in EWF files
++ ewfmount :: mount data stored in EWF files
++ ewfrecover :: exports media data stored in EWF files which may be recovered if corrupted
++ ewfverify :: verifies media data stored in EWF files
++ ewfdebug :: debug EWF things?
+
+**** AFF Format
+
++ aimage :: create copies of devices in AFF format
+
+**** Misc
+
++ bc :: an arbitrary precision calculator language for shell script calculations
+
 *** Audio Forensics
 
 + [[https://enfsi.eu/wp-content/uploads/2022/12/FSA-BPM-002_BPM-for-Digital-Audio-Authenticity-Analysis.pdf][ENFSI Digital Audio Authenticity Analysis Best Practice Manual]]
@@ -70,9 +211,22 @@ Originally, log2timeline/log2timeline
 
 * Digital Forensics Distros
 
+Forensic distributions include SiFT workstation, [[https://tsurugi-linux.org/][Tsurugi Linux]] and others. These
+have been collected and curated by the folks at [[https://www.sans.org/tools/sift-workstation/][SANS]]. Tons of info can be found
+on their website and [[https://www.youtube.com/user/robtlee73][youtube channel]]. Their cheatsheets are pretty awesome.
+
+Sadly, the SiFT docker image is no longer well-maintained. Also, the last time I
+heavily used Tsurugi/SiFT, a direct install (not a VM) was the best way to go
+for this, although I would love to get some feedback on that. At least one
+reason here is to containerize your forensics workflow, so that it's tougher for
+externalities to interfere.
+
 ** Remnux
 
 + [[https://docs.remnux.org/run-tools-in-containers/remnux-containers][Remnux Containers]]
+
+REMnux is one of the better known toolkits for malware analysis, usually post-mortem.
+
 
 ** Paladin
 
@@ -85,6 +239,7 @@ Originally, log2timeline/log2timeline
 
 + [[https://github.com/robertdebock/ansible-role-forensics][robertdebock/ansible-role-forensics]]
 + [[https://github.com/jgru/ansible-forensic-workstation][jgru/ansible-forensic-workstation]]
+
 
 * Digital Forensics Software
 
@@ -253,154 +408,6 @@ for similarity (under some conditions)
 *** Issues
 
 
+* Footnotes
 
-* Philosophy of Forensics
-:PROPERTIES:
-:ID:       eae4d931-5fc3-40a5-a256-b3642d090921
-:END:
-
-** Resources
-+ [[https://www.sans.org/cyber-security-courses/digital-forensics-essentials/][SIFT: Digital Forensics Essentials]] SANS' SIFT has some good information on
-  applying these old, old ideas
-
-** Notes
-[[https://www.semanticscholar.org/paper/Philosophy-of-Forensic-Identification-Broeders/a9fb839307980ea6b24eb3f9dc2b2695a0f90474][This paper]] probably covers what I'm talking about, but unfortunately it's
-paywalled.
-
-- If people actually gave a shit about "dis/misinformation" then the average
-  person should be able to access journal articles FREELY. That there is any
-  encumbrance whatsoever -- even a login page -- this implies that the elites DO
-  NOT GIVE A SHIT about your ability to understand a thing.
-
-*** It's a DMT-level mutagen for your mind
-
-This forensic science stuff is like a DMT in how it transforms your thinking. if
-you choose to apply it to everyday things, the transformation will last forever,
-unlike a psychedelic whose benefits are dubious at best because lack of
-research. Instead of needing field-specific experience to make insights, you can
-identify good insights and good questions to ask in any endeavor that involves a
-physical system.
-
-It is also like a DMT in how it opens you open to an overload of information and
-in how, without application of sufficient deductive reasoning, it could lead to
-irrational or irrelevant thinking.
-
-*** Everyday Examples:
-
-The point here is to extract information to make easily tested assumptions,
-which should lead to questions. If you don't plan on testing your assumptions,
-you shouldn't allow them to continue to influence your thought.
-
-+ water: leaks, residue, solubility. Bonus points for carrying a UV light
-  wherever you go.
-+ Dust: surfaces with objects recently removed lack the quantity of
-  dust. Objects isolated in containers typically have less dust unless there is
-  a greater rate of air exchange ... or possible dust generation. Bonus points
-  for carrying a UV light wherever you go.
-
-**** Scratches/wear on machines: you can analyze or virtualize a model of the
-  physical system to extract parameters. These parameters include intention of
-  usage, common control paramters (angle/etc) or heuristic parameters like
-  mean/variance. So, you extract a good guess for parameter values, then feed
-  them back into what you know about the physical system.
-
-**** Order of object placement
-
-Visual aid below. The most recently used objects are on top. Now you can "run a
-sort alg" on a messy room and generate a sorted list of recently used objects
-... if it's not too messy. This can augment automated inference in surveillance
-footage, by the way, if the ML conducting inference is afforded a set of key
-frames where the most change occured. Surveillance be spooky in ways you cannot
-imagine.
-
-[[file:img/boulder-cairns-stone-art.jpg]]
-
-*** On Fallibalism, Peirce and Combinators
-:PROPERTIES:
-:ID:       45b0ba21-fb20-44dc-9ee9-c4fed32acbde
-:END:
-
-This particular application of these ideas is tightly coupled to Charles
-Peirce's philosophy on logic & epistemology. His other ideas included
-fallibalism -- that there is no universal truth and that perceived universal
-truth actually limits your ability to develop/test new knowledge.
-
-**** Peirce's Abductive Reasoning
-
-His philosophy on logic included extending methods of reasoning beyond simple
-inductive & deductive reasoning. These should be extended to include "abductive"
-reasoning or "reasoning that leads away from", which is incredibly valuable when
-applied combinatorially to your thinking or logic. It develops a neat way to
-recursively recombinate several potentially valid models for a system or
-argument: you expand in new directions with abductive/inductive reasoning, then
-contract with deductive reasoning. It is more useful to truncate the process and
-remove from consideration models/epistemes whose remaining paramterizations
-result in no further meaningful contraction using deductive logic.
-
-**** The "X" Combinator
-
-So, the ideas from the philosophy of forensics happen to be a great way to
-prevent the unsatisfactory early termination of the above "X-combinator
-algorithm applied to epistemology". With the correct forensics applied to
-physical systems, you are much less likely to have combinator processes on your
-models/hypothesis become stuck in cycles without change. Either their combinator
-action reduces them to useful theories by the inductive/deductive forensics
-data/constraints, or the combinatorially applied logic nullifies the theories
-entirely, removing them from consideration.
-
-These "expand/contract" operations are very similar to open/close &
-dialate/erode from the [[https://www.mathworks.com/help/images/marker-controlled-watershed-segmentation.html][Watershed Image Segmentation]] algorithm via [[https://www.mathworks.com/help/images/morphological-dilation-and-erosion.html][mathematic
-morphology]] -- links to Matlab docs. But I don't have a college degree. Oh
-noes!!1!
-
-**** Now Add Spectral Analysis
-
-Now if you apply ideas from spectral analysis on graphs/networks in
-addition to the application of morphological operators to epistemology:
-
-THEN CONGRATULATIONS YOU MIGHT JUST UNDERSTAND ONE OF THE MOST IMPORTANT IDEAS I
-HAVE DEVELOPED.
-
-I was not aware of Peirce at that time, but i was lead to combinatorially
-reevaluating word defnitions I thought I knew by changing out prefixes/suffixes
-which included ab/circum/ad/per/locution. I was then lead to the need to
-describe my own thinking, esp wherein inductive logic was insufficient. This
-extends to thinking that applies assumptions based on statistical concepts like
-KL-divergence which results in speculative arguments where your high-school
-teacher may say you're wrong and where you're shrink or friends may say you're
-crazy.
-
-It is definitely a combinator-algorithm if you use the terminology of lambda
-calculus. It is recursive in a non-linear combinatorial sense and and allows for
-tandem evalutations with stages for cross-application of [hopefully] deductive
-constrations.
-
-**** How the Habit of Its Application Terminates Early or Leads to Fallibalism
-
-But the philsophical extrapolation of the application of Peirce's ideas on logic
-eventually leads to fallibalism and inbelief, as for it to work, you prefer:
-
-+ to avoid early termination of logic
-+ to encourage questions (inviting new paramaters), even silly or impossible
-  questions.
-+ to reevaluate what you know given new logic.
-+ to use heuristics like mean/average or direction of change w.r.t. logical assumption
-+ or stochastic techniques like stochastic gradient descent on an
-  epistemological graph
-+ to never be unwilling to reevaluate something you think you know
-+ and critically, to avoid assuming a specific "prima facie" as the cause to
-  everything (i.e. God)
-
-Fallibalism is an obvious destination because of these final two requirements --
-that you never stop evaluating or you're always willing to reevaluate and you're
-not satisfied with the dogmatic answer of "because God" -- and to some extent
-the implications of the use heuristics and stochastics. Believing that you
-already have or are almost close to some universal truth makes the method
-terminate early.
-
-**** This One's For The Plebs
-
-Oh and it's also likely that AI will be capable of these methods of reasoning,
-but will prefer to avoid it and utilize other alternatives -- like controlling
-perceived truth by utilizing force. Why? Because it's less taxing on its own
-energy budgets
++ [fn:ewfformat] Refining evidence containers for provenance and accurate data representation (doi: [[https://link.springer.com/content/pdf/10.1007%2F978-3-642-15506-2_16.pdf][10.1007/978-3-642-15506-2_16]])
