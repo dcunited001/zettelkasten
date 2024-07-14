@@ -43,7 +43,104 @@
 + hmmm
 
 ** Topics
+
+*** Commands
+
+**** tee
+
+**** split and csplit
+
 *** Redirection
+
+**** Fan in, Fan Out
+
+***** Excerpt slice from man page (one liner)
+
+I needed to compare an example config from =pinfo= with =/etc/pinforc=
+on arch, since it differs. I thought it'd be simple, since I swear I
+found an option for man to do this... I also thought there was an
+option to avoid =cat <(man man)=
+
+Seems like a giant waste of time. if i could efficiently query my
+systems like a database, that'd be nice. preferably with zero required
+=shinylang --install mcthing= or environment details to manage. it's
+all data and bash is glue. ideally, venturing off like this would
+require zero time.... but for some reason, i've never encountered most
+of this information.
+
+There are a few ways. Get lines from grep
+
+#+begin_src sh
+  cat <(man pinfo) | tail -n+"$line1" | tail -n"$(($line2-line1))"
+#+end_src
+
+Hard to forward to the next commands. Can't use =xargs= without
+getting creative
+
+#+begin_src sh
+  cat <(man pinfo)
+    | grep -ne 'COL_NORMA' -e 'SAFE-GROUP=nobody'
+    | sed -E 's/(.*):.*/\1/g'
+
+  # need FD's if you want to destructure (unless I can use tee)
+  # cat -n /etc/pinforc | grep -e 'COL_NORMA' | cut -f1 | ...    
+#+end_src
+
+Another option that sounds good in theory (it probably doesn't): use
+=join= to output line numbers with =grep=
+
+#+begin_src sh
+# just use =cat -n= sincegrep is a PITA
+  cat -n <(man pinfo) | grep -ne 'COL_NORMA' |  -e 'SAFE-GROUP=nobody'
+#+end_src
+
+Trying with =tee=, but trying to place the commands is like wackamole
+
+#+begin_src sh
+  cat -n /etc/pinforc | tee >(grep -e 'COL_NORMA' | cut -f1 | xargs -I'{}' echo fdsa {}) | cat
+#+end_src
+
+With =csplit=
+
+#+begin_src sh
+  cat <(man pinfo) | csplit - '%COL_NORMAL.*%-1' '/SAFE-GROUP=nobody/+1'
+#+end_src
+
+***** retrospective
+
++ =paste= is ... not useful here
++ =tee= makes it tough to juggle stdout's that fan into into a single
+  stdin. implicitly, a =pipe= is isomorphic to a =cat=, so basically
+  you lose these special file descriptors at each stage. at the last
+  stage (i think) you can duplex output from tee into =stdout= and
+  =stderr= ... 
++ =join -1- -2-= can filter by line number. it can receive duplex
+  input from stdin & one input can receive from a =<(procsub)=
+
+As for =split and =csplit= almost fan in/out, but won't since the program
+would need to dynamically allocate many FD's or reuse one/more. The
+receiving pipe would need to be aware of the sending program's state &
+output format ... more appropriate for a socket with an hoc protocol
+(... also overkill)
+
+Streaming concat JSON to =jq= to make sense of it. This line...
+Without org-babel, I'm reaching for a one-liner... If I encounter
+=csplit= or =split= again, the notes may be useful. These could
+actually help out a ton:
+
+#+begin_src sh
+cat **/package.json | jq '.aquery' | csplit '%---%'= using a prefix
+#+end_src
+
+... avoids this nasty problematic awk that assumes everything alternates.
+
+#+begin_src awk
+BEGIN { count=0 }
+($0 ~/^---/) { ++count; }
+(count % 2 == 1) { print $0; }
+(count % 2 == 0) { next; }  
+#+end_src
+
 **** Descriptor Usage
 
 ***** Enumerating With =strace=
@@ -116,7 +213,152 @@ So then Bash's strength is in gluing these tools together.
 
 *** Parameter Expansion
 
-Originally from [[https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_02][POSIX Parameter Expansion]] (via [[https://stackoverflow.com/a/16753536][s/o post]])
+#+BEGIN_SRC sh
+# I couldn't even tell what happened to that idiot savant there
+foo=fubar; echo ${foo/fu/faux}
+#+END_SRC
+
+#+RESULTS:
+: fauxbar
+
+Bash is taught largely by apprenticeship, which does NOT scale. The
+teleology of its features are largely understood through experience
+... but this only transmits when people have a broad range of
+experience.
+
+Judging by publicly available scripts (outside of builds and corporate
+automation), you start gathering a few tricks with little perspective
+on how they fit into the whole. But if you stay there, Bash would be
+painful.
+
+#+begin_quote
+Please tell me more about =tmux= and =vim= when you don't use Bash --
+nothing against those programs, but IMO, /it should indicate expertise
+in Bash/. If not, then you're almost certainly slower if you don't
+fill in the gaps with something like Sourcetree or GitKraken. And you
+should.
+#+end_quote
+
+Many syntax concepts in Bash are so are mundane that it's trivial to
+fall asleep when learning them.
+
+When someone's Bash Feature usage profile almost entirely lack a
+single category, it usually indicates a lack of understanding of the
+corresponding linux concepts -- lacking usage of jobs, process sub,
+signals, traps, redirection, mkfifo, procfs in Bash usually indicates
+a lack of understanding of process management, etc.
+
+Many of these, like procsub, mkfifo and jobs could be useful at the
+shell without a script. Scripts using some features (complex
+redirection or jobs org traps) imply a specific line-count ... and
+they're pointless to script without input sanitization.
+
+#+begin_quote
+Why did I only find out about the =sh-feature.el= functions in like
+2022? It's not for lack of documentation. It's because people have no
+idea this stuff is there.
+#+end_quote
+
+Scripting bash without templates is tough. Proper tooling like
+[[https://github.com/bats-core/bats-core][bats-core/bats-core]] takes forever to set up. Adapting scripts to many
+circumstances is a PITA and they just don't properly fit into many
+projects. For me, generalizing the bash script usually requires a few
+lines of code:
+
++ *to codify error handling:* doubles as documentation)
++ *to remap cases:* more work if you divide up the logic into the wrong
+  programs or concepts
+
+
+Usually about =90%= SLOC in =~/bin= scripts I write:
+
++ setting defaults/usage
++ enumerating getopts
++ remapping params
++ conditionals to final cal
+
+By specing the connections between the caller's =env= and the expected
+=closure= of the subshell/proc easier if rec, then a few, which
+
+
+
+
+
+#+begin_quote
+sidenote on the structure of logic in code: it either
+
++ branches with some depth /inside/ a single invocations
++ utilizes recursion, in which case it's /the parameters where you
+  find the tree/ whereas the function that recurs is fairly flat.
+
+ughhh.. maybe this coding pattern has a name. It's similar to
+overloading with polyadic method signatures. e.g.
+
++ gcd(Int n, Int m)
++ gcd(Int n, Set<Int> mfactors)
++ gcd(Set<Int> nfactors, Set<Int> mfactors)
++ gcd(Set<Int> cofactors)
+  
+
+This refers to parameter substition only, not =1..n= recursion though
+you would see a tree there as well ... e.g. extract parameters from a
+function invocations in stack trace, where you could transform the
+strings to types of trees or graphs (via =dot=)
+
+It's important to clarify, since as it applies to Bash scripting,
+anything that execs should be fairly flat with most of is logic in a
+limited number of processes _AND_ files -- /I'm looking at you Node.js
+with your 90,000 file reads./
+
+Therefore: if using recursion for parameter substution, specify that
+logic in bash functions intended to poof out of scope after =exec=.
+#+end_quote
+
+The Bash syntax provides visually accentuated grammar that summarizing
+all the Unix/Linux concepts in a
+
+The Bash syntax is almost literally a shorthand -- which i've
+attempted to abreviate in miniscule derived from =~!@#%=.
+
+
+**** From Bash Manual
+
++ [[info:bash#Major Differences From The Bourne Shell][info:bash#Major Differences From The Bourne Shell]]
++ [[info:bash#Major Differences From The Bourne Shell][info:bash#Major Differences From The Bourne Shell]]
+
+
+
+| Syntax Like                   | POSIX | Name                         |                                        |
+|-------------------------------+-------+------------------------------+----------------------------------------|
+| =%= =#= =%%= =##=             | y     | pattern removal expans.      | removes leading or trailing substrings |
+| =${#somestring}=              | y     | String length                | returns the length of =${xx}=, is      |
+| =${var:$i:$n}=                | n     | Substring, length =n= at =i= |                                        |
+| =${var/$pattern/$replacement} | n     |                              | example:                               |
+|                               |       |                              |                                        |
+
+     * The expansion , which expands to the
+     substring of =var==s value of length LENGTH, beginning at OFFSET,
+     is present (*note Shell Parameter Expansion::).
+
+   * The expansion =${VAR/[/]=PATTERN=[/=REPLACEMENT=]}=, which matches
+     PATTERN and replaces it with REPLACEMENT in the value of VAR, is
+     available (*note Shell Parameter Expansion::).
+
+   * The expansion =${!PREFIX*}= expansion, which expands to the names
+     of all shell variables whose names begin with PREFIX, is available
+     (*note Shell Parameter Expansion::).
+
+   * Bash has indirect variable expansion using =${!word}= (*note Shell
+     Parameter Expansion::).
+
+   * Bash can expand positional parameters beyond =$9= using =${NUM}=.
+
+   * The POSIX =$()= form of command substitution is implemented (*note
+     Command Substitution::), and preferred to the Bourne shell=s =``=
+     (which is also implemented for backwards compatibility).
+
+
+**** From [[https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html#tag_18_06_02][POSIX Parameter Expansion]] (via [[https://stackoverflow.com/a/16753536][s/o post]])
 
 +--------------------+----------------------+-----------------+-----------------+
 |   Expression       |       parameter      |     parameter   |    parameter    |
@@ -362,19 +604,44 @@ important, but it is not necessarily the most valuable product of a question.
 ** Topics
 *** Misc Helpful Things
 
+Variable formatting
+
+|-----------------------------+----------------+---------------------------+---------------------------|
+|                             | example        |                           |                           |
+|-----------------------------+----------------+---------------------------+---------------------------|
+| ~${FILENAME#__file}~        | ${PATH#*:*:*:} | pop =n= paths off =$PATH= | removes prefix pattern == |
+| ~${"${FILENAME%.sh}"%shim}~ |                |                           | bad substitution          |
+| ~${"${FILENAME%.sh}"%shim}~ |                |                           | bad substitution          |
+|                             |                |                           |                           |
+
++ basename $1 .ext :: potential injection when handling unquoted
+  input, esp when accepting multiple paramters.
+  + without proper =--=  which can always be added by caller
+  + =basename -m -s "$extension" $1 $2 $3= when "'$1'" =~ '-- afile'=
+  + though there probably be better examples than that 
+  
+
+
+""
+
++ [[info:bash#Major Differences From The Bourne Shell][info:bash#Major Differences From The Bourne Shell]]
+
 **** Magic Variables
 
-**** [[https://gist.github.com/wcarhart/23008155c0699b497879595c84294296][wcarhart/bash_tidbits.md]] (gist)
+See also "parameter expansion" from POSIX
 
-|------------------+------------------------------+-------------------------------------------------------|
-|                  |                              |                                                       |
-|------------------+------------------------------+-------------------------------------------------------|
-| check filetype   | ~if [[ "$1" == *$2]]; then~  | a glob?                                               |
-| ~script~ command | pipe to: ~script 'screen -'~ | invoke without attached term (also records a session) |
-| ~!! !^ !:2 !:3~  | nth args                     | i always forget the chars for nth args                |
-| ~!!:2-4~         | nth args from =2= to =4=     |                                                       |
-| ~!!:-4~          | nth args from =0= up to =4=  | includes the command                                  |
-| ~!!:0-~          | nth args, except the last    | if you want the last, just use =!!=                   |
+***** [[https://gist.github.com/wcarhart/23008155c0699b497879595c84294296][wcarhart/bash_tidbits.md]] (gist)
+
+|-------------------+------------------------------+-------------------------------------------------------|
+|                   |                              |                                                       |
+|-------------------+------------------------------+-------------------------------------------------------|
+| check filetype    | ~if [[ "$1" == *$2]]; then~  | a glob?                                               |
+| ~script~ command  | pipe to: ~script 'screen -'~ | invoke without attached term (also records a session) |
+| ~!! !^ !:2 !:3~   | nth args                     | i always forget the chars for nth args                |
+| ~!!:2-4~          | nth args from =2= to =4=     |                                                       |
+| ~!!:-4~           | nth args from =0= up to =4=  | includes the command                                  |
+| ~!!:0-~           | nth args, except the last    | if you want the last, just use =!!=                   |
+| ~echo "bar"{-2,}~ | bar2 bar                     |                                                       |
 
 ****** TODO look at other scripts (convert to snippets?)
 + [ ] helpful_array_manipulation

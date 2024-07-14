@@ -5,26 +5,308 @@
 #+CATEGORY: slips
 #+TAGS:
 
+These notes really only apply to my own configuration which is based on Guix
+packages, but also uses =straight.el= to pull in packages. I had thought that
+this was separate from =use-package= I hadn't yet looked deeply into it.
+
+But it turns out that migrating to =use-package= would've been easier than I
+thought. It still leaves me with basically the same problem where however
+straight is configured for me seems to be eagerly building =*.elc= for internal
+packages.
+
+Some of these release updates on MELPA: xref, eglot, etc ... but once I saw
+=seq= is getting built... yeh. The hint that indicates something's wrong is when
+=help-mode= can't find the sources and sends me to my emacs profile.
+
+... I knew it was risky, but I needed to get away from Doom Emacs because of
+Guile environment issues ... which were probabaly relatively quickly fixed (or
+idk). So this was the fastest way at the time.
+
 * Resources
+** Straight
+Most issues related to the topic mention =:built-in= and =:local-repo=, but not
+=straight-built-in-pseudo-packages=
+
++ Issues [[https://github.com/radian-software/straight.el/issues/1146][1146]] and [[https://github.com/radian-software/straight.el/issues/1148][1148]]
++ Issue [[https://github.com/radian-software/straight.el/issues/943][943]]
 
 * Notes
+** Babel
 
-** On Native Comp
+Script that summarizes dependencies for a set of Guix packages. Intended to eat
+an org-table and return the number of times each dependency is required. Doesn't
+differentiate between types of Guix package inputs
 
-*** Guix
++ TODO: this is dropping the last line in the table
+# +begin_src sh :var pkgList=emacsSystem
 
-***** TODO move awk script to a command
+#+name: pkgCount
+#+begin_src sh :var pkgList=emacsSystem
+# recsel -R to get plain text
 
-The [[https://www.gnu.org/software/gawk/manual/html_node/ARGC-and-ARGV.html][gawk manual]] helps.
+# using :stdin will automagically wrap the block
+# (e.g. a plain "cat" will output stdin raw)
+# ... but then it drops the last newline
 
-+ [ ] change separator
-+ i swear there's a command that does this (the command is dual to =cut=)
+while read pkg; do
+    (guix search "^$pkg\$"| recsel -R dependencies);
+done <<< ${pkgList[*]} \
+    | sed -E 's/\s+/\n/g' | sort | uniq -c
+
+# whether stdin or var, everything wants to skip the last record
+#while read pkg; do (guix search "^$pkg\$"| recsel -R dependencies); done \
+#while read -e pkg; do (guix search "^$pkg\$"| recsel -R dependencies); done
+#   | sed -E 's/\s+/\n/g' | sort | uniq -c
+#+end_src
+
+#+RESULTS: pkgCount
+| 1 | emacs-avy@0.5.0                |
+| 5 | emacs-compat@29.1.4.5          |
+| 6 | emacs-consult@1.7              |
+| 1 | emacs-dash@2.19.1              |
+| 1 | emacs-embark@1.1               |
+| 1 | emacs-org-roam@2.2.2-0.74422df |
+| 1 | emacs-org-roam-bibtex@0.6.2    |
+| 1 | emacs-s@1.13.0                 |
+| 1 | emacs-yasnippet@0.14.1         |
+| 7 | texinfo@6.8                    |
+
+Awk script to wrap lines (so org tables are reasonable)
 
 #+name: wrapEveryN
 #+begin_example awk
 (NR % nlines == 0) {print $0}
 (NF > 0) {printf "%s,", $0}
 #+end_example
+
+The [[https://www.gnu.org/software/gawk/manual/html_node/ARGC-and-ARGV.html][gawk manual]] helps.
+
++ [ ] change separator
++ i swear there's a command that does this (the command is dual to =cut=)
+
+** Straight From Guix
+
+*** Unfortunately...
+
+This isn't going to work. No other packages depend on it (bad sign). I needed to
+customize the installer script, where I discovered that I could =(require
+'install)= meaning the package had included the wrong files into the build (I
+think ... IDK).
+
+... oh well. I can just install as normal anyways.
+
+Running wth =guix shell emacs-pgtk emacs-straight-el -- emacs --init-directory
+~/.emacs.straight/=
+
+#+begin_example emacs-lisp
+;; when disabled, straight will not eval straight--log functions
+(setq straight-log t
+)
+;; (getenv "GUIX_ENVIRONMENT")
+;; "/gnu/store/x99chgbw6xlrkw59wdsak1jn83lvj09y-profile"
+
+;; (find-library-name "straight")
+;; "/gnu/store/zlb2c8qasrigyly5rkn1nsmg1yk9rvfk-emacs-straight-el-0-3.b3760f5/share/emacs/site-lisp/straight-el-0-3.b3760f5/straight.el"
+
+(let* ((--straight-base-dir
+	(or (bound-and-true-p straight-base-dir)
+            user-emacs-directory))
+	(--straight-installed
+	 (file-exists-p
+	  (expand-file-name ".straight-installed"
+			    --straight-base-dir)))
+	(--straight-guix (file-name-directory (find-library-name "straight")))
+	(--straight-bootstrap (expand-file-name "bootstrap.el" --straight-guix))
+	(--straight-install (expand-file-name "install.el" --straight-guix)))
+
+  ;; this fails bc it tries to download it anyways
+  (unless --straight-installed
+    (load-file --straight-install))
+  (load-file --straight-bootstrap))
+
+;; (require 'straight)
+;; (straight--reset-caches)
+;; (setq straight-recipe-repositories nil)
+
+;; (let ((deps-from-guix
+;;        '(magit compat dash transient with-editor async)))
+;;   (mapc (apply-partially #'add-to-list 'straight-built-in-pseudo-packages)
+;;         deps-from-guix))
+
+;; (straight-use-package 'use-package)
+;; (use-package company :straight t)
+#+end_example
+
+
+** Use Package
+:PROPERTIES:
+:header-args:sh+: :dir (expand-file-name ".emacs.g" (getenv "HOME"))
+:END:
+
+.... =grep -l=
+
+#+name: grepReqDC
+#+begin_src sh
+grep -nre "^(require 'dc" ./init.el ./modules/ | cut -d':' -f1-2 #\
+#    | sed -E 's/\.\/(.*\.el):([0-9]+):.*\(require (.dc-.*)\)/\1 \2 \3/g'
+#    | sed -E 's/\.\/(.*\.el):(\[0-9\]+):/\1 \2 /g'
+#+end_src
+
+#+RESULTS: grepReqDC
+| cut: | invalid | field      | range  |      |              |   |   |
+| Try  | 'cut    | --help'    | for    | more | information. |   |   |
+| [    | Babel   | evaluation | exited | with | code         | 1 | ] |
+
+
+** The Final Boss
+
+=2024/07/07= after deciding to move packages to straight...
+
+The emacs-guix package which is more/less what pushed me away from Doom Emacs
+itself pulls in several other packages. For most anything touching Guile, I'd
+mostly prefer that it remain the same -- the config is confusing and there are a
+few =.dir-locals.el= customizations.
+
+*** Geiser Load Path
+
+I believe that if the path gets set by =.dir-locals.el= then everything should
+be simple.
+
+**** Arch
+
+#+begin_src sh :results output verbatim :dir "/home/dc/.dotfiles/ellipsis"
+echo $GUILE_LOAD_PATH
+#+end_src
+
+#+RESULTS:
+: /home/dc/.guix-profile/share/guile/site/3.0
+
+#+begin_src sh :results output verbatim :dir "/home/dc/.dotfiles/ellipsis"
+guix repl <(echo '(use-modules (ice-9 pretty-print)) (pretty-print %load-path)')
+#+end_src
+
+#+RESULTS:
+: ("/gnu/store/9rbmxkgfwrvlv6jg36cgv8zlgmcgp8y1-guix-module-union/share/guile/site/3.0"
+:  "/gnu/store/1gd9nsy4cps8fnrd1avkc9l01l7ywiai-guile-3.0.9/share/guile/3.0"
+:  "/gnu/store/1gd9nsy4cps8fnrd1avkc9l01l7ywiai-guile-3.0.9/share/guile/3.0"
+:  "/gnu/store/1gd9nsy4cps8fnrd1avkc9l01l7ywiai-guile-3.0.9/share/guile/site/3.0"
+:  "/gnu/store/1gd9nsy4cps8fnrd1avkc9l01l7ywiai-guile-3.0.9/share/guile/site"
+:  "/gnu/store/1gd9nsy4cps8fnrd1avkc9l01l7ywiai-guile-3.0.9/share/guile"
+:  "/home/dc/.guix-profile/share/guile/site/3.0")
+
+At some point or another, when I was trying to trouble shoot Geiser on Doom
+Emacs, i was needing to start a repl from =guix.el=, then set each =scheme-mode=
+buffer's repl as needed. Something like this, but using =setq-local=
+
+#+begin_src emacs-lisp
+;; after (use-modules (ice-9 pretty-print))
+(let* ((-geiser-buffers (seq-filter (lambda (b) (string-match "\\*Geiser Guile REPL: \\.dotfiles" (buffer-name b))) (buffer-list)))
+       (geiser-repl--repl (car -geiser-buffers)))
+  ;; keys: error, output, debug
+  (->> geiser-repl--repl
+       (geiser-eval--send/wait "(pretty-print %load-path)" 600)
+       (alist-get 'output)))
+#+end_src
+
+#+RESULTS:
+: ("/gnu/store/jnpgd3gs4jhg0axv6kj1p1y25wjdxnji-emacs-geiser-guile-0.28.1/share/emacs/site-lisp/geiser-guile-0.28.1/src"
+:  "/home/dc/.dotfiles"
+:  "/home/dc/.config/guix/current/lib/guile/3.0/site-ccache"
+:  "/home/dc/.config/guix/current/share/guile/site/3.0"
+:  "/home/dc/.guix-profile/share/guile/site/3.0"
+:  "/gnu/store/bhynhk0c6ssq3fqqc59fvhxjzwywsjbb-guile-3.0.9/share/guile/3.0"
+:  "/gnu/store/bhynhk0c6ssq3fqqc59fvhxjzwywsjbb-guile-3.0.9/share/guile/site/3.0"
+:  "/gnu/store/bhynhk0c6ssq3fqqc59fvhxjzwywsjbb-guile-3.0.9/share/guile/site"
+:  "/gnu/store/bhynhk0c6ssq3fqqc59fvhxjzwywsjbb-guile-3.0.9/share/guile")
+
+Mixing Lisps demonstrates one strength of homoiconicity ... though it's probably
+better if code not intended to run ends up failing faster.
+
+="LSP-Lisp. Since 1989."=
+
+*** Geiser Packages
+
+#+name: pkgEmacsGuix
+| emacs-guix         |
+| emacs-geiser       |
+| emacs-geiser-guile |
+
+And these dependencies actually aren't so bad.
+
+#+call: pkgCount() :var pkgList=pkgEmacsGuix
+
+#+RESULTS:
+| 2 |                               |
+| 2 | autoconf@2.69                 |
+| 2 | automake@1.16.5               |
+| 2 | emacs-bui@1.2.1               |
+| 2 | emacs-dash@2.19.1             |
+| 2 | emacs-edit-indirect@0.1.13    |
+| 1 | emacs-geiser                  |
+| 1 | emacs-geiser@0.28.2-1.bd12f2d |
+| 1 | emacs-geiser@0.31             |
+| 2 | emacs-geiser-guile@0.28.1     |
+| 1 | emacs-guix                    |
+| 2 | emacs-magit-popup@2.13.3      |
+| 2 | emacs-minimal@29.3            |
+| 2 | guile@3.0.9                   |
+| 2 | guile-gcrypt@0.4.0            |
+| 2 | guix@1.4.0-22.1a34b9b         |
+| 2 | pkg-config@0.29.2             |
+| 4 | texinfo@6.8                   |
+
+Since that's fairly flat, the consequences of each additional dep are simple to
+grok in guix graph.
+
+#+begin_src sh :results output verbatim file :file img/emacs-guix-geiser-deps.svg
+guix graph -M 2 emacs-guix 2>/dev/null | dot -Tsvg
+#+end_src
+
+#+RESULTS:
+[[file:img/emacs-guix-geiser-deps.svg]]
+
+
+#+name: pkgEmacsPkg
+| emacs-use-package |
+| emacs-straight-el |
+
+And these dependencies actually aren't so bad.
+
+#+call: pkgCount() :var pkgList=pkgEmacsPkg
+
+#+RESULTS:
+| 1 | emacs-diminish@0.46-1.fd486ef |
+| 1 | emacs-magit@3.3.0-7.dda332b   |
+| 1 | git@2.45.2                    |
+| 2 | texinfo@6.8                   |
+
+** On Native Comp
+
+=2024/07/07=
+
+Native comp produces =*.eln= and these are literal ELF files that =readelf= can
+understand. I guess I was expecting something more like the =*.elc= files
+
+#+begin_src sh :results output verbatim file :file img/emacs-native-comp-readelf.txt
+find $HOME/.emacs.g/eln-cache -name 0x0.eln -type f -exec readelf -a \{\} +
+#+end_src
+
+#+RESULTS:
+[[file:img/emacs-native-comp-readelf.txt]]
+
+*** Straight
+
+**** Native Comp
+
+From =straight--build-native-compile=
+
+#+begin_src emacs-lisp
+(let ((pkg "lispy"))
+  (list (straight--build-dir pkg)
+        (gethash pkg straight--build-cache)))
+#+end_src
+
+*** Guix
 
 **** Native Comp
 
@@ -198,199 +480,6 @@ And =~/.emacs.g/eln-cache= should contain what straight is building (I had been 
 *** Emacs
 
 
-*** Straight
-
-*** Use Package
-
-**** TODO maybe move elsewhere
-[[file:img/straight-use-package.jpg]]
-
-These notes really only apply to my own configuration which is based on Guix
-packages, but also uses =straight.el= to pull in packages. I had thought that
-this was separate from =use-package= I hadn't yet looked deeply into it.
-
-But it turns out that migrating to =use-package= would've been easier than I
-thought. It still leaves me with basically the same problem where however
-straight is configured for me seems to be eagerly building =*.elc= for internal
-packages.
-
-Some of these release updates on MELPA: xref, eglot, etc ... but once I saw
-=seq= is getting built... yeh. The hint that indicates something's wrong is when
-=help-mode= can't find the sources and sends me to my emacs profile.
-
-... I knew it was risky, but I needed to get away from Doom Emacs because of
-Guile environment issues ... which were probabaly relatively quickly fixed (or
-idk). So this was the fastest way at the time.
-
-
-** Packages
-
-I'm not sure if this generally happens with other configs or emacs-distros that
-use =straight-use-package=. I just assumed that was an integration you needed to
-configure separately
-
-
-*** Straight dependencies
-
-Straight mostly ignores anything in =straight-built-in-pseudo-packages=. After
-reviewing its docs, which are extremely informative, I may be running into some
-of these [[https://github.com/radian-software/straight.el/blob/b3760f5829dba37e855add7323304561eb57a3d4/straight.el#L3655-L3705][potential issues]].
-
-+ i'm definitely calling =straight-rebuild-all= from a new emacs session
-
-I think I may need to specify =:flavor melpa= or
-
-(dc/straight-flatten-dependencies "consult")
-
-*** Builds
-
-#+begin_src sh
-cd $HOME/.emacs.g/straight && find . -name '*.elc' | grep seq
-#+end_src
-
-#+RESULTS:
-| ./build/seq/tests/seq-tests.elc  |
-| ./build/seq/seq-24.elc           |
-| ./build/seq/seq-25.elc           |
-| ./build/seq/seq.elc              |
-| ./build/magit/magit-sequence.elc |
-
-#+begin_src sh
-cd $HOME/.emacs.g/straight && find . -name '*.elc' | grep seq
-#+end_src
-
-#+RESULTS:
-| ./build/seq/tests/seq-tests.elc  |
-| ./build/seq/seq-24.elc           |
-| ./build/seq/seq-25.elc           |
-| ./build/seq/seq.elc              |
-| ./build/magit/magit-sequence.elc |
-
-*** Guix Packages
-
-**** Migrating
-
-So I decided
-
-+ identify the most core dependencies (highest in-degree to higher out-degree),
-  and use =with-graft= for packages that need updates (like =magit=)
-+ track feature symbols emacs loads (via =define-package= and elsewhere)
-+ load =straight= and =use-package= from Guix packages, check config
-+ attempt to load most packages from guix and have better tools
-
-The drawbacks for Guix:
-
-+ updating: to avoid restart, requires monkey-patching the =load-path= and then
-  requiring/reloading files
-+ There's more friction to jumping in on a project to contribute (straight has
-  pull-req functionality and facilitates multi-package hacking). I could /maybe/
-  pass =--with-source=$pkg_path= through to my =update-emacs-g= script...
-+ All the =mypkg-autoload= modules are loaded as =features= by the time emacs is
-  up (I think, they're set almost before you would expect it possible for them
-  to be). The nativecomp is more deterministic, but I'm not sure of a simple way
-  to unload a Guix dependency (esp. if widely used like magit) to have it loaded
-  by straight. (complications: e.g. =straight.el= has a =git= dependency and has
-  its =/bin/git= patched)
-
-Immediate Benefits
-
-+ This should get me to a halfway point where I can decide on =use-package=
-  because the surface area of code that needs to be touched/checked is basically
-  the same.
-+ Learning a bit about Guix grafts/transforms on a larger project, which may
-  involve graph traversals
-+ Hopefully some good scripts/etc to come out of that.
-
-Advantages:
-
-+ Straight should always have up-to-date =straight.eln= to match the emacs that
-  built it (my mistake, but still). I also have more guarantees over what's
-  native comp and what's not.
-
-**** Emacs/Guix
-
-***** Run =guix refresh= on the manifest
-
-This gives useful output. As the Guix checkout in =/gnu/store= is read only, you
-need a second checkout, which is how you set up to build and contribute anyways.
-
-#+begin_src sh
-guix refresh -L ~/.dotfiles -m ~/.emacs.g/emacs-g.scm --type=elpa,generic-git,github
-#+end_src
-
-There may be some way of using dummy packages on a large manifest to hack it
-into working. This will cause problems, since it dramatically changes your
-source tree and would need dependency rewritng for anything besides leaf nodes.
-
-#+begin_src scheme
-(define emacs-magit-Refresh
-  (package emacs-magit
-           (inherit "emacs-magit")))
-#+end_src
-
-***** Operate on groups of packages
-
-Emacs has three ways to use shell in general buffer. Using =C-u= they dump
-output into a buffer, but the last one will use the contents as input to pipe to
-the command
-
-| M-!         | shell-command           |
-| M-&         | async-shell-command     |
-| M-\(\vert\) | shell-command-on-region |
-
-So using =C-u M-|= and =tr ' ' '\n'= with this input:
-
-#+name: pkgText
-#+begin_example
-nss-certs emacs-setup emacs-straight.el emacs-rec-mode tidy-html shellcheck dtach guile-ares-rs aspell aspell-dict-en aspell-dict-grc aspell-dict-es aspell-dict-fr aspell-dict-it aspell-dict-de
-#+end_example
-
-I get these lines for additional commands. I can select how I want for
-subsequent processing.
-
-#+name: emacsSystem
-| emacs-vertico                        |
-| emacs-corfu                          |
-| emacs-orderless                      |
-| emacs-consult                        |
-| emacs-consult-yasnippet              |
-| emacs-consult-org-roam               |
-| emacs-consult-xdg-recent-files       |
-| emacs-consult-dir                    |
-| emacs-consult-bibtex                 |
-| emacs-cape                           |
-| emacs-wgrep                          |
-| emacs-marginalia                     |
-| emacs-embark                         |
-
-Selecting them all and using this command ... with parens, which is a nice trick
-i found some good dotfiles, then running this =shell-command-on-region= gives me
-plain text package names that I can again highlight to run =sort | uniq=. It's
-messy to keep track of, maybe.
-
-#+name: pkgCount
-#+begin_src sh :stdin emacsSystem
-# recsel -R to get plain text
-
-# using :std in will automagically wrap the block (e.g. a plain "cat" will
-# output stdin raw)
-
-# the while needs to be a one-liner for M-|
-while read pkg; do (guix search "^$pkg\$"| recsel -R dependencies); done \
-    | sed -E 's/\s+/\n/g' | sort | uniq -c
-#+end_src
-
-#+RESULTS: pkgCount
-| 5 | emacs-compat@29.1.4.5          |
-| 5 | emacs-consult@1.7              |
-| 1 | emacs-dash@2.19.1              |
-| 1 | emacs-embark@1.1               |
-| 1 | emacs-org-roam@2.2.2-0.74422df |
-| 1 | emacs-org-roam-bibtex@0.6.2    |
-| 1 | emacs-s@1.13.0                 |
-| 1 | emacs-yasnippet@0.14.1         |
-| 6 | texinfo@6.8                    |
-
 ** Feature Loading
 
 [[file:img/pseudopackages-20240702.diff][Emacs Features Diff]]: compares sorted output of =(-uniq (-sort #'string< (mapcar #'symbol-name
@@ -440,6 +529,184 @@ cat "$aaa.feat" | sed -e 's/-autoloads//' | sort | uniq -c | sort -r | head -n10
 | 2 | which-key          |
 | 2 | wgrep              |
 
+* Reconciling Straight & Guix (2024/07/01)
+
+#+begin_quote
+Attempt, The Second...
+
+I had assumed that emacs packages via guix were doing more straight compilation
+than they actually were.
+
+Instead, from Guix, I believe I'll source straight.el, use-package and then
+include those in =straight-built-in-pseudo-packages=.
+
+Another option not included below is to set =:type built-in= or =:type nil
+:local-repo pkg-checkout=, which prevents straight from managing the source
+repository.
+
+2024/07/07
+#+end_quote
+
+I'm not sure if this generally happens with other configs or emacs-distros that
+use =straight-use-package=. I just assumed that was an integration you needed to
+configure separately
+
+
+** Straight dependencies
+
+Straight mostly ignores anything in =straight-built-in-pseudo-packages=. After
+reviewing its docs, which are extremely informative, I may be running into some
+of these [[https://github.com/radian-software/straight.el/blob/b3760f5829dba37e855add7323304561eb57a3d4/straight.el#L3655-L3705][potential issues]].
+
++ i'm definitely calling =straight-rebuild-all= from a new emacs session
+
+I think I may need to specify =:flavor melpa= or
+
+(dc/straight-flatten-dependencies "consult")
+
+** Builds
+
+#+begin_src sh
+cd $HOME/.emacs.g/straight && find . -name '*.elc' | grep seq
+#+end_src
+
+#+RESULTS:
+| ./build/seq/tests/seq-tests.elc  |
+| ./build/seq/seq-24.elc           |
+| ./build/seq/seq-25.elc           |
+| ./build/seq/seq.elc              |
+| ./build/magit/magit-sequence.elc |
+
+#+begin_src sh
+cd $HOME/.emacs.g/straight && find . -name '*.elc' | grep seq
+#+end_src
+
+#+RESULTS:
+| ./build/seq/tests/seq-tests.elc  |
+| ./build/seq/seq-24.elc           |
+| ./build/seq/seq-25.elc           |
+| ./build/seq/seq.elc              |
+| ./build/magit/magit-sequence.elc |
+
+** Guix Packages
+
+*** Migrating
+
+So I decided
+
++ identify the most core dependencies (highest in-degree to higher out-degree),
+  and use =with-graft= for packages that need updates (like =magit=)
++ track feature symbols emacs loads (via =define-package= and elsewhere)
++ load =straight= and =use-package= from Guix packages, check config
++ attempt to load most packages from guix and have better tools
+
+The drawbacks for Guix:
+
++ updating: to avoid restart, requires monkey-patching the =load-path= and then
+  requiring/reloading files
++ There's more friction to jumping in on a project to contribute (straight has
+  pull-req functionality and facilitates multi-package hacking). I could /maybe/
+  pass =--with-source=$pkg_path= through to my =update-emacs-g= script...
++ All the =mypkg-autoload= modules are loaded as =features= by the time emacs is
+  up (I think, they're set almost before you would expect it possible for them
+  to be). The nativecomp is more deterministic, but I'm not sure of a simple way
+  to unload a Guix dependency (esp. if widely used like magit) to have it loaded
+  by straight. (complications: e.g. =straight.el= has a =git= dependency and has
+  its =/bin/git= patched)
+
+Immediate Benefits
+
++ This should get me to a halfway point where I can decide on =use-package=
+  because the surface area of code that needs to be touched/checked is basically
+  the same.
++ Learning a bit about Guix grafts/transforms on a larger project, which may
+  involve graph traversals
++ Hopefully some good scripts/etc to come out of that.
+
+Advantages:
+
++ Straight should always have up-to-date =straight.eln= to match the emacs that
+  built it (my mistake, but still). I also have more guarantees over what's
+  native comp and what's not.
+
+*** Emacs/Guix
+
+**** Run =guix refresh= on the manifest
+
+This gives useful output. As the Guix checkout in =/gnu/store= is read only, you
+need a second checkout, which is how you set up to build and contribute anyways.
+
+#+begin_src sh
+guix refresh -L ~/.dotfiles -m ~/.emacs.g/emacs-g.scm --type=elpa,generic-git,github
+#+end_src
+
+There may be some way of using dummy packages on a large manifest to hack it
+into working. This will cause problems, since it dramatically changes your
+source tree and would need dependency rewritng for anything besides leaf nodes.
+
+#+begin_src scheme
+(define emacs-magit-Refresh
+  (package emacs-magit
+           (inherit "emacs-magit")))
+#+end_src
+
+**** Operate on groups of packages
+
+Emacs has three ways to use shell in general buffer. Using =C-u= they dump
+output into a buffer, but the last one will use the contents as input to pipe to
+the command
+
+| M-!         | shell-command           |
+| M-&         | async-shell-command     |
+| M-\(\vert\) | shell-command-on-region |
+
+So using =C-u M-|= and =tr ' ' '\n'= with this input:
+
+#+name: pkgText
+#+begin_example
+nss-certs emacs-setup emacs-straight.el emacs-rec-mode tidy-html shellcheck dtach guile-ares-rs aspell aspell-dict-en aspell-dict-grc aspell-dict-es aspell-dict-fr aspell-dict-it aspell-dict-de
+#+end_example
+
+I get these lines for additional commands. I can select how I want for
+subsequent processing.
+
+#+name: emacsSystem
+| emacs-vertico                  |
+| emacs-corfu                    |
+| emacs-orderless                |
+| emacs-consult                  |
+| emacs-consult-yasnippet        |
+| emacs-consult-org-roam         |
+| emacs-consult-xdg-recent-files |
+| emacs-consult-dir              |
+| emacs-consult-bibtex           |
+| emacs-cape                     |
+| emacs-wgrep                    |
+| emacs-marginalia               |
+| emacs-embark                   |
+
+Selecting them all and using this command ... with parens, which is a nice trick
+i found some good dotfiles, then running this =shell-command-on-region= gives me
+plain text package names that I can again highlight to run =sort | uniq=. It's
+messy to keep track of, maybe.
+
+#+begin_quote
+I moved the source to =pkgCount= to the top, so I could reuse it with =#+call:=
+#+end_quote
+
+#+call: pkgCount() :var pkgList=emacsSystem
+
+#+RESULTS:
+| 1 | emacs-avy@0.5.0                |
+| 5 | emacs-compat@29.1.4.5          |
+| 6 | emacs-consult@1.7              |
+| 1 | emacs-dash@2.19.1              |
+| 1 | emacs-embark@1.1               |
+| 1 | emacs-org-roam@2.2.2-0.74422df |
+| 1 | emacs-org-roam-bibtex@0.6.2    |
+| 1 | emacs-s@1.13.0                 |
+| 1 | emacs-yasnippet@0.14.1         |
+| 7 | texinfo@6.8                    |
 
 * Old Notes
 
