@@ -1,0 +1,157 @@
+#+TITLE:     Fuzzing
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+* Docs
+
+** Security
+
++ [[https://github.com/AFLplusplus/AFLplusplus/blob/stable/docs/fuzzing_in_depth.md#0-common-sense-risks][Fuzzing in Depth]] (& Common Sense Risks of Fuzzing...)
+
+* Resources
+
+** Tools
+
+*** Build
+
+[[https://github.com/fuzzah/exeptor][fuzzah/exeptor]]
+
+#+begin_quote
+=LD=_PRELOAD= libexeptor to your build-starting command. The library will then
+intercept all calls to exec functions (execve, execl, posix_spawn, etc) and
+replace paths according to yaml configuration file.
+#+end_quote
+
+*** Workflow
+
+* Topics
+
+* Issues
+
+
+* AFL++
+
+** Docs
+
+** Resources
+
+
+
+*** Topics
+
+
+**** [[github:libprotobuf-mutator][google/libprotobuf-mutator]]
+
+This repo connects to several goldmines of info
+
+https://github.com/airbus-seclab/AFLplusplus-blogpost/tree/main/docs
+
+***** Info-Nexus
+
+Here, Google recommends this GH Search:
+[[https://github.com/search?q=repo%3Allvm-mirror%2Fclang+DEFINE_TEXT_PROTO_FUZZER+OR+DEFINE_PROTO_FUZZER+OR+DEFINE_BINARY_PROTO_FUZZER&type=Code][repo:llvm-mirror/clang =DEFINE_TEXT_PROTO_FUZZER= OR =DEFINE_PROTO_FUZZER= OR
+=DEFINE_BINARY_PROTO_FUZZER=]], this this instead searches all of github. This
+is actually very helpful.
+
+#+begin_quote
+Ultimately, it won't make a difference ...
+
+If I had a small budget, I'd hack some Nix or Guix code (either build systems or
+just macros), which would make it easier to fuzz & ltrace code with arbitrary
+depedencies. This way, you could sub out packages in the dep graph for
+istrumented dependencies where needed. (or whatever, i've basically never done
+this)
+
+This idea is 6-12 months old though. Probably not the best workflow for fuzzing,
+but most of what I've seen doesn't direct anyone towards an efficient workflow.
+#+end_quote
+
+
+* oss-fuzz
+
+See [[https://google.github.io/oss-fuzz/][docs]].
+
+** Docs
+
+** Resources
+
++ [[https://github.com/google/oss-fuzz/tree/master/projects][google/oss-fuzz/tree/master/projects/]] this page needed to be truncated at
+  1,000 -- which effectively makes it a database. thanks.
+
+  There are 6 protobufs (they aren't full specifications of protocols), but
+  there's still a ton of distilled information.
+
+** Topics
+
+*** Protos
+
+**** [[https://www.ntop.org/][ntop]]
+
++ [[ntop/ntopng][ntop/ntopng]] contains a proto for pcap. the repo also contains instructions for
+  [[https://github.com/ntop/ntopng/tree/78c0e9c9440bd25b5dbd5be7ca8ecbdd4141d9dc/fuzz#building-with-libfuzzer--libprotobuf-mutator--address-sanitizer][building a fuzzable instance]]. This is a network-based IDS that has some [[https://www.ntop.org/products/netflow/nprobe/][L7
+  visibility]].
+
+#+begin_quote
+I'm not sure whether how well it juggles certs or how much you trust your
+route/switch/firewall and host firewall configs
+
+... why am I so obstinate as to want to develop skill for granular control over
+automated networking and certificate deployment?
+
+Oh, because things like IDS and virtual networks are hard
+#+end_quote
+
+The [[https://github.com/ntop/ntopng/blob/78c0e9c9440bd25b5dbd5be7ca8ecbdd4141d9dc/fuzz/pcap.proto][pcap protos]] were a bit of a letdown though... Though this [[https://github.com/ntop/ntopng/tree/78c0e9c9440bd25b5dbd5be7ca8ecbdd4141d9dc/fuzz/corpus/fuzz_dissect_packet][directory full of
+/sketchy frames/]] is certainly not. Using the libprotobuf mutator on these
+would be tough though: you'd need to recombinate the binary data at layer 3.
+
+#+begin_example protobuf
+syntax = "proto2";
+package ntopng_fuzz;
+
+message Header {
+  required uint32 timestamp = 1;
+  required uint32 micronano_timestamp = 2;
+  required uint32 len = 3;
+}
+
+message Record {
+  required Header header = 1;
+  required bytes data = 2;
+}
+
+message Pcap {
+  repeated Record packets = 2;
+}
+#+end_example
+
+To intelligently mutate the data:
+
++ unmarshall pcap data to unwrap Layer 3. the =.proto= doesn't contain Layer 3
+  headers, just =pcap= data. parse the layer3 protocol ID... and then header.
++ already using protobuf? find a .proto matching your layer 4,5 & 7
++ deserialize layer 7 data, mutate, reserialize reserialize pcap, send.
+
+oh and manage coherent state during your session, but that's the easy part.
+
+** Issues
+
+*** Bug Bounty Checks
+
+TLDR: they ain't cuttin no bugbounty checks down at the google store no more.
+
+#+begin_quote
+"Hey, guys did it make it in time for Ghost in the Shell?"
+
+Nope. just neo-feudalism ruled by robots perpetually keeping you an arms' length
+from your tehnocratic overlords.
+
+See [[https://en.wikipedia.org/wiki/Player_Piano_(novel)][Player Piano]] for more info. Why was I so pissed all the time? Because I knew
+what was coming. I would feel differently, but my social life is like being in
+the event horizon. It is impossible to do anything living in Roanoke (for me),
+since I need access to experience WHICH I'VE BEEN STARVED OF FOR A _DECADE_.
+That practically makes me retarded and it definately makes me unhirable.
+
+SEE [[HTTPS://en.wikipedia.org/wiki/Player_Piano_(novel)][PLAYER PIANO]] FOR MORE INFO. Look at my social metrics in the past decade:
+#+end_quote

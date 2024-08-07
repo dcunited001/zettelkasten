@@ -20,7 +20,6 @@ to be available online.
 + [[https://nixos.mayflower.consulting/blog/2021/09/06/coredumpctl/][Inspecting coredumps like it's 2021]]
 
 ** Emacs
-
 + [[https://emacs.stackexchange.com/questions/14354/how-do-i-debug-an-emacs-crash][How do I debug an emacs crash]] (2015)
 + [[https://www.logikalsolutions.com/wordpress/information-technology/core-dumps-2/][Using your core dumps]] (in Emacs, part two, 2022)
 + [[https://www.reddit.com/r/emacs/comments/rxg6z8/comment/hri3mrs/?utm_source=share&utm_medium=web2x&context=3][What to do when emacs dump core]]
@@ -107,15 +106,38 @@ I'm using =emacs-guix= packages as well as =straight.el=. Using =M-x
 locate-library= along with =embark-collect= or =embark-export= provides the
 package locations with information about where emacs has loaded them from.
 
-* Arch
+* 2024/07/23
+
+** In Bash
+
+With no query on process name
+
+
+
+
+** In Babel
+
+JQ Query
+
+
+* 2024/07/13
+
+On arch again. There are probably better ways to do this. Crashes seem
+to be related to opening emacs from XDG & mimetypes.
+
+Kinda useless, but easier to pick out. Hoping I won't actually need to debug
+
+* 2023/09/21
+
+** Arch
 
 On arch, =systemd-coredump= should be found in =/var/lib/systemd/coredump= and,
 as I was typing in the command to start gdb, it crashed again. So, this will be
 a thinner memory image and I don't need to worry about the =guix shell= profile.
 
-** Coredumpctl
+*** Coredumpctl
 
-*** Start Quickly
+**** Start Quickly
 
 You can inspect the last (or queried) coredump quickly via =sudo coredumpctl
 gdb= and then .... just connect to the root process with emacs lol. You'd need
@@ -123,11 +145,11 @@ to add some flags for the server, which is a bad idea. Otherwise, you'll need to
 export the coredump and unpack it.
 
 
-*** TODO dump from systemd unit on failure
+**** TODO dump from systemd unit on failure
 
 
 
-*** Process coredump
+**** Process coredump
 
 Get info about last coredump
 
@@ -136,6 +158,8 @@ emacspid="$(lastcore | tr -d '\"')"
 
 # ok this is crazy
 nlines="$(coredumpctl info $emacspid --no-pager | cut -d':' -f1 | grep -ne "Message" | cut -d':' -f1)"
+
+# NOTE: may be able to use
 
 coredumpctl info $emacspid --no-pager | head -n$nlines
 
@@ -190,7 +214,7 @@ Check binary for debugging symbols.
 objdump --syms $GUIX_EXTRA/emacs-g/emacs-g/bin/.emacs-29.0.92-real
 #+end_src
 
-**** coredumpctl offers json output
+***** coredumpctl offers json output
 
 Run =lastcore= to fetch the last =pid= or =lastcore .pid .uid ...= to fetch more
 json fields. Maybe not something to leave around (I donno if it's injection
@@ -232,7 +256,7 @@ coredumpctl list --json=short | jq '. | last | @text '"$joinargs"
 # "\(.pid) \(.gid) \(.uid) \('.fdsa)|fdsa) \(|) \(fdsa) \(|) \(@test) \("\(.evil?')"
 #+end_src
 
-**** Encrypt the files
+***** Encrypt the files
 
 i didn't think it was going to work
 
