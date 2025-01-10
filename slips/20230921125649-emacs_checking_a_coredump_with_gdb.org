@@ -112,6 +112,23 @@ package locations with information about where emacs has loaded them from.
 
 With no query on process name
 
+#+begin_example sh
+dumpDir="$(mktemp -d)"
+
+jqDumpPids='map(select(.exe | match("(okular|gdb)"; "g")))
+| map([.pid, "\(.pid)_\(.exe | gsub("^.*\/"; "")).dump"])'
+
+while IFS="," read pid dumpFile; do
+  coredumpctl --output=$dumpDir/$dumpFile dump $pid
+done < <(coredumpctl --json=short list \
+  | jq -r "${jqDumpPids} \
+    | map(@csv) \
+    | join(\"\\n\")")
+
+#+end_example
+
+Using =coredumpctl --file=glob= may be a better way (says interleaved but idk)
+
 
 
 
@@ -119,11 +136,55 @@ With no query on process name
 
 JQ Query
 
+#+name: jqDumpPids
+#+begin_example jq
+map(select(.exe | match("(yourproc|gdb)"; "g")))
+| map([.pid, "\(.pid)_\(.exe | gsub("^.*\/"; "")).dump"])
+#+end_example
+
+Bash
+
+# +begin_src sh :results output table
+#+name: dumpPids
+#+headers: :var jqDumpPids=jqDumpPids :dir (identity dump-dir)
+#+begin_src sh :results output
+coredumpctl --json=short list | jq -r "${jqDumpPids} | map(@tsv) | join(\"\n\")"
+#+end_src
+
+#+begin_src sh :stdin dumpPids
+while read -a row; do
+  echo row | tr '\t' '\n';
+done
+#+end_src
+
+#+RESULTS:
+
+
 
 * 2024/07/13
 
 On arch again. There are probably better ways to do this. Crashes seem
 to be related to opening emacs from XDG & mimetypes.
+
+#+begin_src sh
+epid1=12345
+epid2=43210
+ecore=$(mktemp -d)
+
+gstart1=$(coredumpctl info $epid1 --no-pager | grep -nE ' +Message:' | cut -d: -f1 )
+gstart2=$(coredumpctl info $epid2 --no-pager | grep -nE ' +Message:' | cut -d: -f1 )
+
+nlines=18
+coredumpctl info $epid1 --no-pager \
+  | tail -n"+$nlines" \
+  | sed -E 's/\b0x[0-9a-f]+\b/0x001122/g' > $ecore/c1.info
+coredumpctl info $epid2 --no-pager \
+  | tail -n"+$nlines" \
+  | sed -E 's/\b0x[0-9a-f]+\b/0x001122/g' > $ecore/c2.info
+coredumpctl info $epid2 --no-pager | tail -n"+$nlines" > $ecore/c2.dump
+
+diff /tmp/emacsc*
+#+end_src
 
 Kinda useless, but easier to pick out. Hoping I won't actually need to debug
 

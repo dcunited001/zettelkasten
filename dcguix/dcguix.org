@@ -38,11 +38,13 @@ it's a good example of getting =guix import= to generate code.
 
 + There is also kinow/protobuf-uml-diagram
 
-*** Import
+*** openconfig/ondatra
+
+**** Import
 
 run =guix import go =
 
-*** Test
+**** Test
 
 Grab a repo with protobufs
 
@@ -76,7 +78,7 @@ the content is structured. So, pandoc helps the initial conversion, though it
 could be a bit messy. Either way, the file can be processed in emacs using
 =C-M-%= to run =query-replace-regexp=.
 
-**** Test conversion to org
+***** Test conversion to org
 
 #+begin_src shell
 # markdown_mmd may work (unsure)
@@ -88,7 +90,7 @@ find $testdir/pb2doc -type f -name "*.md" -print \
     | xargs -I '{}' pandoc -f $panFrom -t $panTo -o {}.org {}
 #+end_src
 
-**** TODO follow up and finish notes
+***** TODO follow up and finish notes
 
 This converts to org, but it's still unclear to me how =proto-gen-md-diagrams=
 culled out the graphs to produce the =mermaid= code.
@@ -126,7 +128,7 @@ Protobuf is used for the "RPC paradigm" of network-interaction.
   the expected JSON format for models & data. Much of this is left to the
   providing service or to the API consumer.
 
-*** Why Protobufs?
+**** Why Protobufs?
 
 Well ... why now?
 
@@ -144,9 +146,47 @@ diagrams that describe:
 + but mainly the configuration surface for such applications (i.e. what secrets
   do you need, what data points are available to =gpg --card-edit=)
 
+** smallstep/linkedca
+
+#+begin_src shell
+guix shell -L $mychan pandoc proto-gen-md-diagrams
+
+testdir=linkedca
+git clone https://github.com/smallstep/linkedca $testdir
+
+cd $testdir
+mkdir pb2doc
+
+proto-gen-md-diagrams -d ./spec -o $testdir
+#+end_src
+
+It's easier to just work from the markdown, as it requires some manual
+intervention anyways. Since mermaid doesn't support inline enums, the
+=proto-gen-md-diagrams= must output them as mermaid classes inline. Thus, they
+are all named =Type=. These need to be renamed. Further, there are too many
+relationships included: =--o= (aggregation) includes an additional =-->=
+(assocation).
+
+Javascript proto being what it is, probably ... nevermind. Anyways, to clean up:
+
++ Look at the top of each markdown file to loosely construct a dependency graph. Create a file =linkedca.mmd=
++ Start with the nodes with the least dependencies (it probably constructs a
+  full graph). Copy over the classes, but skip the extra enums. Awk could do this, but ... skip the extra enums.
++ For each class that references =Type=, prepend it to look like =AdminType=.
+  Otherwise, it will continually append to the enum.
++ search for references to =--\(o>\) google\.protobuf.Timestamp= and replace
+  with =Timestamp=.
++ then replace =google\.protobuf\.Timestamp= with =Timestamp=. The lack of dots
+  is magical and greatly simplyflies graph balancing... Actually, it's only necessary to remove the lines corresponding to a relationship with imported types.
+
+#+begin_src shell
+mmdc -i linkedca.mmd -o linkedca.svg
+#+end_src
+
 * Packages
 
 These will be found in the =./dcguix/packages= directory.
+
 
 ** Build Systems
 
