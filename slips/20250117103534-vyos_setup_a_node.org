@@ -1,0 +1,155 @@
+:PROPERTIES:
+:ID:       d300cac8-9823-45a1-a9d4-f01da7df502e
+:END:
+#+TITLE: VyOS: Setup a node
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
+
+* Docs
+
++ [[https://docs.vyos.io/en/sagitta/installation/virtual/libvirt.html][Running VyOS in Virtual Environments]]
++ [[https://docs.vyos.io/en/sagitta/contributing/build-vyos.html#build-vyos][Build VyOS]]
++ [[https://docs.vyos.io/en/sagitta/cli.html#configuration-overview][Configuration Overview]]
+
+* Build
+
+Pull container & start
+
+#+begin_src sh
+docker pull vyos/vyos-build:current && docker run --rm -it \
+  -v "$(pwd)":/vyos \
+  -w /vyos --privileged --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
+  -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
+  vyos/vyos-build:current bash
+
+  # -v "$HOME/.gitconfig":/etc/gitconfig \
+  # -v "$HOME/.bash_aliases":/home/vyos_bld/.bash_aliases \
+  # -v "$HOME/.bashrc":/home/vyos_bld/.bashrc \
+#+end_src
+
+In container:
+
+#+begin_src sh
+sudo make clean
+image=generic # not iso, needs to match the generic.toml
+sudo ./build-vyos-image $image --architecture amd64 --build-by "j.randomhacker@vyos.io"
+#+end_src
+
+*** TODO is =sudo= necessary here (with GOSU_UID)
+
+** Build Target
+
+The build directory should be empty.
+
+* Installation
+** VM
+*** TODO sr-iov interfaces?
+
+** Multiboot
+
+With this config added to =/boot/grub/mbusb.d/vyos.d/install-generic.cfg= and the
+requisite ISO, it boots on bare metal with [[https://github.com/aguslr/multibootusb][aguslr/multibootusb]].
+
+#+begin_src conf
+for isofile in $isopath/vyos-1.5-rolling-2025*.iso; do
+  if [ -e "$isofile" ]; then
+    regexp --set=isoname "$isopath/(.*)" "$isofile"
+    submenu "$isoname ->" "$isofile" {
+      iso_path="$2"
+      loopback loop "$iso_path"
+      menuentry "Live system (vyos) - KVM console" {
+        # linux /live/vmlinuz-6.6.69-vyos
+        # initrd /live/initrd.img-6.6.69-vyos
+        bootoptions="boot=live components hostname=vyos username=live nopersistence noautologin nonetworking union=overlay console=ttyS0,115200 console=tty0 net.ifnames=0 biosdevname=0 findiso=${iso_path}"
+        linux (loop)/live/vmlinuz-6.6.69-vyos $bootoptions
+        initrd (loop)/live/initrd.img
+
+      }
+      menuentry "Live system (vyos fail-safe mode)" {
+        # haven't tested this one
+        bootoptions="live components memtest noapic noapm nodma nomce nolapic nomodeset nosmp nosplash vga=normal console=ttyS0,115200 console=tty0 net.ifnames=0 biosdevname=0"
+        linux (loop)/live/vmlinuz-6.6.69-vyos $bootoptions
+        initrd (loop)/live/initrd.img
+      }
+
+      # - basically the same options as first "Live system (vyos) - KVM console"
+      #   but with the tty & serial switched.
+      # - on ISO, it tries to source `/boot/grub/install_start.cfg` which
+      #   doesn't exist (no-op, grub doesn't source non-existent, see mbusb.d
+      #   entry point)
+
+      # menuentry "Live system (vyos) - Serial console"  {
+      #   bootoptions="boot=live components hostname=vyos username=live nopersistence noautologin nonetworking union=overlay console=tty0 console=ttyS0,115200 net.ifnames=0 biosdevname=0 findiso=${iso_path}"
+      #   linux (loop)/isolinux/vmlinuz $bootoptions
+      #   initrd (loop)/isolinux/initrd.img
+      # }
+    }
+  fi
+done
+#+end_src
+
+Now to test hardware and ensure that it installs.
+
+** Bare Metal
+
+* Configuration
+** TODO dump startup configuration?
+
+The configuration is stored in a slightly different format than the commands
+used to make the configuration.
+
+#+begin_src sh
+show interfaces ethernet eth0 | commands
+#+end_src
+
+This should dump a script that would configure the router, but the combination
+of commands & router state are not necessarily idempotent.
+
+#+begin_src sh
+
+# TODO: test that this works
+configure | commands
+#+end_src
+
+** On Boot
+
+Vyos has CLI options you can pass to the kernel on boot:
+
++  vyos-config  ::  the  default  =/opt/vyatta/etc/config.boot.default=  can  be
+  changed by passing =/boot/vyos/another.config=
+
+** Backup config
+
+* Environment
+
+** Aliases
+
+Specifying =GOSU_UID= will set the UID for the container
+
+Examples:
+
+#+begin_src sh
+alias vybld='docker pull vyos/vyos-build:current && docker run --rm -it \
+    -v "$(pwd)":/vyos \
+    -v "$HOME/.gitconfig":/etc/gitconfig \
+    -v "$HOME/.bash_aliases":/home/vyos_bld/.bash_aliases \
+    -v "$HOME/.bashrc":/home/vyos_bld/.bashrc \
+    -w /vyos --privileged --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
+    -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
+    vyos/vyos-build:current bash'
+
+alias vybld_sagitta='docker pull vyos/vyos-build:sagitta && docker run --rm -it \
+    -v "$(pwd)":/vyos \
+    -v "$HOME/.gitconfig":/etc/gitconfig \
+    -v "$HOME/.bash_aliases":/home/vyos_bld/.bash_aliases \
+    -v "$HOME/.bashrc":/home/vyos_bld/.bashrc \
+    -w /vyos --privileged --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
+    -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
+    vyos/vyos-build:sagitta bash'
+#+end_src
+
+* Issues
+* Projects
