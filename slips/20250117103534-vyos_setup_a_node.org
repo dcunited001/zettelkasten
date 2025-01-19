@@ -44,6 +44,101 @@ sudo ./build-vyos-image $image --architecture amd64 --build-by "j.randomhacker@v
 
 The build directory should be empty.
 
+** Initial Startup Config
+
+In [[https://github.com/vyos/vyos-build/blob/2ab12b7566638996e055054577d33f72cbc2fd5d/scripts/image-build/build-vyos-image#L596][./scripts/image-build/build-vyos-image]], the build script mentions that you
+can load the ISO with a custom config file. You can:
+
++ add a TOML file in =./data/build-flavors/*.toml= and specify that flavor when
+  you run the build script in a container. this will overwrite
+  =opt/vyatta/etc/config.boot.default=, which may not be what you want installed
++ add to (or modify) the list of =includes_chroot= paths to shim in alternative
+  default boot configs. these can be specified at ISO boot time using the
+  [[https://docs.vyos.io/en/latest/operation/boot-options.html][vyos-config=/foo/bar/config.boot.defaults]]
++ apply a light patch to the source tree that modifies files in the
+  config.boot.default paths
+
+*** Default Boot Config
+
+#+begin_src toml
+# A slightly modified ISO image
+
+image_format = "iso"
+
+# The default config
+default_config="""
+system {
+    host-name vyos
+    login {
+        user vyos {
+            authentication {
+                encrypted-password "*"
+                plaintext-password ""
+            }
+            level admin
+        }
+    }
+    syslog {
+        global {
+            facility all {
+                level info
+            }
+            facility protocols {
+                level debug
+            }
+        }
+    }
+    ntp {
+        server "time1.vyos.net"
+        server "time2.vyos.net"
+        server "time3.vyos.net"
+    }
+    console {
+        device ttyS0 {
+            speed 115200
+        }
+    }
+    config-management {
+        commit-revisions 100
+    }
+}
+
+interfaces {
+    loopback lo {
+    }
+"""
+
+#+end_src
+
+*** Setup a basic user with SSH auth
+
+See [[https://docs.vyos.io/en/latest/configuration/system/login.html#local][Key-based authentication in Login]] and [[https://docs.vyos.io/en/latest/configuration/service/ssh.html][SSH Configuration]]
+
++ Not sure if this is 100% correct, but thank god for a plain text DSL.
+
+#+begin_src vyos
+system {
+    login {
+      user asdf {
+          authentication {
+              public-keys pubkeyComment {
+                  key "zebra"
+                  type "frr-bgp-123"
+                  options "from=0.0.0.0"
+              }
+              otp {
+                  // easy button
+              }
+          }
+      }
+    }
+
+    service ssh {
+      // restrict to CA-signed keys here for an expiry
+    }
+}
+#+end_src
+
 * Installation
 ** VM
 *** TODO sr-iov interfaces?
@@ -91,7 +186,8 @@ for isofile in $isopath/vyos-1.5-rolling-2025*.iso; do
 done
 #+end_src
 
-Now to test hardware and ensure that it installs.
+Now to test hardware and ensure that it installs. Definitely hash the ISO with
+=gpg= or something. Probably don't use multiboot to install...
 
 ** Bare Metal
 
