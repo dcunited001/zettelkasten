@@ -50,7 +50,38 @@ VyOS has =nftables= and a decent DSL with fairly good ansible support.
 ** Source
 *** vyos-1x
 
-+ Contains the XML that specifies the VyOS cli
++ Contains the XML that specifies the VyOS cli.
+
+Running =make all= runs these tasks
+
++ clean
++ interface_definitions :: configuration mode commands (via *.xml.in files)
++ op_mode_definitions :: operation mode commands (via *.xml.in files)
++ test
++ j2lint :: run linter for jinja2 files in =data/=
++ vyshim :: run make tasks in =src/{shim,shim/mkjson}/Makefile=
++ generate-configd-include-json :: generates JSON from the results of
+  =interface_definitions= and =op_mode_definitions=
+
+**** VyShim
+
++ vyos-configd-service :: 0MQ server
++ vyshim :: 0MQ client
++ mkjson :: C serializer to lay JSON on the 0MQ wire
+
+[[https://vyos.dev/T6326][vyos.dev/T6326]] explains that API requests are relayed to the core
+vyos-configd-service via 0MQ socket:
+
+#+begin_quote
+1. API(configure)
+2. vyos-http-api-server(.py)
+3. configsession.py
+4. /opt/vyatta/sbin/my_commit(symlinked to: my_cli_bin)
+5. sudo is called here, but I am too code blind when it comes to C to figure out where/how it is called
+6. vyshim (ZMQ client)
+7. vyos-configd-service (ZMQ server)
+8. <py service file>
+#+end_quote
 
 **** XML Spec
 
@@ -68,7 +99,40 @@ XML in the respective subdirs of =./build=. This can be queried with =xq= et ali
 
 + [ ] building these requires having a compatible =libvyosconfig.so=
 
+**** GraphQL API
+
+The API is implemented in python using Ariadne in the vyos-1x repo.
+
+The last task when =make all= generates the JSON versions of the same XML
+
+The file [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/src/services/api/graphql/README.graphql#L3][src/services/api/graphql/README.graphql]] contains example queries
+
++ [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/src/services/api/graphql/graphql/schema/schema.graphql#L17][src/services/api/graphql/graphql/schema/schema.graphql]]
++ [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/src/services/api/graphql/graphql/schema/auth_token.graphql#L1][src/services/api/graphql/graphql/schema/auth_token.graphql]]
++ [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/src/services/api/graphql/graphql/client_op/auth_token.graphql#L3][src/services/api/graphql/graphql/client_op/auth_token.graphql]]
+
+Python generates schemata (in this order, in generate_schema.py)
+
++ [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/src/services/api/graphql/generate/schema_from_op_mode.py#L154][src/services/api/graphql/generate/schema_from_op_mode.py]]
++ [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/src/services/api/graphql/generate/schema_from_config_session.py#L154][src/services/api/graphql/generate/schema_from_config_session.py]]
++ [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/src/services/api/graphql/generate/schema_from_composite.py#L154][src/services/api/graphql/generate/schema_from_composite.py]]
+
+These files use these config values
+
+#+begin_example python
+from vyos.defaults import directories
+
+# ...
+
+OP_MODE_PATH = directories['op_mode'] #
+SCHEMA_PATH = directories['api_schema']
+CLIENT_OP_PATH = directories['api_client_op']
+DATA_DIR = directories['data']
+#+end_example
+
+
 ** Automation
+
 + Ansible is the main tool for configuration. Their ansible code includes
   inventory plugins, but I'm unsure of the discovery mechanisms.
 + Ansible requires paramiko for ssh
