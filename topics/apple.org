@@ -19,31 +19,131 @@
 
 ** Resources
 + [[2011 MacBook Pro & OSX][updating EFI vars to disable a discrete GPU]]
+* Topics
+** App Store
 
-* Macbook Pro 2011
-** Kernel Panic Issues
+*** Categories
+
+... dammit.
+
+# +begin_src restclient :jq "map([.owner.login, .name, .size])[] | @csv" :results table :jq-args "--raw-output"
+#+begin_src restclient
+:api-url-base = https://api.appstoreconnect.apple.com
+:api-path = "v1/appCategories"
+:api-query = "include=subcategories"
+
+# :gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+# Authorization: Bearer :gh-token
+
+:headers = <<
+Accept: application/vnd.github+json
+User-Agent: Emacs
+#
+
+GET :api-url-base/:api-url-path?:api-query
+:headers
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "(.owner.login)")
+#+end_src
+
+#+RESULTS:
+#+BEGIN_SRC js
+{
+  "errors": [
+    {
+      "status": "401",
+      "code": "NOT_AUTHORIZED",
+      "title": "Authentication credentials are missing or invalid.",
+      "detail": "Provide a properly configured and signed bearer token, and make sure that it has not expired. Learn more about Generating Tokens for API Requests https://developer.apple.com/go/?id=api-generating-tokens"
+    }
+  ]
+}
+// GET https://api.appstoreconnect.apple.com/:api-url-path?"include=subcategories"
+// HTTP/1.1 401 Unauthorized
+// Server: daiquiri/5
+// Date: Thu, 23 Jan 2025 17:31:29 GMT
+// Content-Type: application/json
+// Content-Length: 350
+// Connection: keep-alive
+// Strict-Transport-Security: max-age=31536000; includeSubDomains
+// X-Apple-Jingle-Correlation-Key: YN4DGE2AKSTQZFUTTCD75RPIZM
+// x-daiquiri-instance: daiquiri:18493002:mr85p00it-hyhk04114201:7987:24RELEASE242:daiquiri-amp-all-shared-ext-001-mr
+// Request duration: 0.518119s
+#+END_SRC
+
+**** Luckily
+
+The example API request apparently has all the categories. And there are a
+shitton of sticker categories for all you happy ass people to share to each
+other -- meanwhile, most of those features are absolutely meaningless to me:
+I've never used almost any new, non-technical features since about 2015. The
+social features? almost zero.
+
+#+begin_src jq :in-file ./data/appstoreconnect.appCategories.json :results table :cmd-line "-r"
+.data | map(select(.relationships.parent.data == null))
+  | sort_by(.id)
+  | map([.id, (.attributes.platforms | join(","))])
+  | @text
+#+end_src
+
+#+RESULTS:
+| BOOKS                    | IOS,MAC_OS,TV_OS |
+| BUSINESS                 | IOS,MAC_OS,TV_OS |
+| DEVELOPER_TOOLS          | IOS,MAC_OS,TV_OS |
+| EDUCATION                | IOS,MAC_OS,TV_OS |
+| ENTERTAINMENT            | IOS,MAC_OS,TV_OS |
+| FINANCE                  | IOS,MAC_OS,TV_OS |
+| FOOD_AND_DRINK           | IOS,MAC_OS,TV_OS |
+| GAMES                    | IOS,MAC_OS,TV_OS |
+| GRAPHICS_AND_DESIGN      | IOS,MAC_OS,TV_OS |
+| HEALTH_AND_FITNESS       | IOS,MAC_OS,TV_OS |
+| LIFESTYLE                | IOS,MAC_OS,TV_OS |
+| MAGAZINES_AND_NEWSPAPERS | IOS,MAC_OS,TV_OS |
+| MEDICAL                  | IOS,MAC_OS,TV_OS |
+| MUSIC                    | IOS,MAC_OS,TV_OS |
+| NAVIGATION               | IOS,MAC_OS,TV_OS |
+| NEWS                     | IOS,MAC_OS,TV_OS |
+| PHOTO_AND_VIDEO          | IOS,MAC_OS,TV_OS |
+| PRODUCTIVITY             | IOS,MAC_OS,TV_OS |
+| REFERENCE                | IOS,MAC_OS,TV_OS |
+| SHOPPING                 | IOS,MAC_OS,TV_OS |
+| SOCIAL_NETWORKING        | IOS,MAC_OS,TV_OS |
+| SPORTS                   | IOS,MAC_OS,TV_OS |
+| STICKERS                 | IOS              |
+| TRAVEL                   | IOS,MAC_OS,TV_OS |
+| UTILITIES                | IOS,MAC_OS,TV_OS |
+| WEATHER                  | IOS,MAC_OS,TV_OS |
+
+
+
+* Hardware
+
+** Macbook Pro 2011
+*** Kernel Panic Issues
 
 It's probably bad RAM, but it's cost me an unbelievable amount of time. It
 doesn't display the error unless you're in a terminal.
 
-*** SMART Status
+**** SMART Status
 
-**** Where is the SMS (Sudden Motion Sensor)?
+***** Where is the SMS (Sudden Motion Sensor)?
 
 [[https://support.apple.com/en-us/HT201666][Mac notebooks: About the Sudden Motion Sensor]]
 
 - SMS events are logged in smartctl as "Free Fall", which shows more than 4,000
   events ... I've dropped this laptop like twice.
 
-**** High Load_Cycle_Count (857372)
+***** High Load_Cycle_Count (857372)
 
 [[https://unix.stackexchange.com/questions/504245/s-m-a-r-t-shows-high-load-cycle-count-why-and-how-to-prevent-the-number-from][S/O post]] answers that this is results from a technique Western Digital (and
 other manufacturers use).
 
-*** Testing RAM
+**** Testing RAM
 Ram tests fine
 
-* Macbook Pro Late 2013 (fully loaded)
+** Macbook Pro Late 2013 (fully loaded)
 
 Screen is broken. Go figure. The keyboard bounced -- long time ago... lesson
 learned. Anyways . . . It's usable & worth salvaging, but the display damage is
@@ -58,22 +158,22 @@ Options:
   massive surcharge that someone would add for a fully loaded (which mine was)
   - move the logic board to the new body and just use as is.
 
-** Issues
+*** Issues
 
-*** Touchpad on Guix
+**** Touchpad on Guix
 
 Sometimes it's necessary to blacklist the =usbmouse= module because it
 
-*** AHCI SSD
+**** AHCI SSD
 
 So I have a 500GB SSD which is difficult to integrate into any system. (details
 on [[https://forums.macrumors.com/threads/upgrading-2013-2014-macbook-pro-ssd-to-m-2-nvme.2034976/][macrumors]])
 
-*** Linux GPU support is meh on arch
+**** Linux GPU support is meh on arch
 
 - arch briefly had the 4xx nVidia drivers ...
 
-*** Converting the MBP into a slaptop
+**** Converting the MBP into a slaptop
 
 This computer has better hardware than most of what I'm using. Can I convert it
 into a server?
@@ -109,7 +209,7 @@ use it like that, it will run hot from time to time. Also:
 
 ... what else could possibly go wrong?
 
-**** TBD: Does the slaptop server work?
+***** TBD: Does the slaptop server work?
 
 If it works, I know someone who wants to buy 2014/2015 macbooks with broken
 displays ... since these laptops are designed with good hardware that is
