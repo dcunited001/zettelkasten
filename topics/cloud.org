@@ -115,6 +115,87 @@ Add a =.customize_environments= file
 
 *** Topics
 
+**** GCloud Source
+
+The whole point of diving into this is to locate a good data source to enumerate
+the identifiers of roles/permissions of service accounts ... without fucking
+scraping it. I have no idea how people learn all the detail here. I'm guessing
+there isn't as much volume of detail as appears on the docs for
+roles/permissions.
+
+... if only there was a picture. one good picture is worth 10,000,000 tokens.
+
+So I'm trying to suss out the ontology here, for other reasons. Not the actual
+ontology, but just what's actually been reified. The OWL & OASIS docs are always
+too abstract.
+
+***** Core
+
+core/resources.py
+
++ [[https://github.com/twistedpair/google-cloud-sdk/blob/13bc428984e99113b8df45f674cdff0686335402/google-cloud-sdk/lib/googlecloudsdk/core/resources.py#L345][Resource]] :: registry, collection_info, subcolletion, ...
++ _ResourceParser ::
++ Registry :: "Keep a list of all the resource collections and their parsing
+  functions." organizes parsers by collection (api name, api version, and
+  collection name).
++ GRI :: A google resource identifier (i think?), parsed from path. GRIs can be
+  disabled. idk
+
+The Registry class is instantiated as a singleton: =REGISTRY = Registry()=, which
+is accessed like =Registry.REGISTRY.parse()=.
+
+****** CLI
+
+The CLI subcommands & options are defined in
+[[https://github.com/twistedpair/google-cloud-sdk/blob/13bc428984e99113b8df45f674cdff0686335402/google-cloud-sdk/lib/googlecloudsdk/command_lib/][google-cloud-sdk/lib/googlecloudsdk/command_lib/**.*.yaml]]
+
+****** Resource Map
+
++ ./lib/googlecloudsdk/command_lib/util/resource_map.py: "Default Resource map
+  for universally common resource metadata"
++ [[https://github.com/twistedpair/google-cloud-sdk/blob/13bc428984e99113b8df45f674cdff0686335402/google-cloud-sdk/lib/googlecloudsdk/command_lib/util/resource_map/resource_map.yaml#L20][./lib/googlecloudsdk/command_lib/util/resource_map/resource_map.yaml]], along
+  with an adjacent schema file defines these resources.
++ and resource_map/declarative_map.py: "Utility for retrieving and parsing the
+  Resource Map."
+
+****** regen_api.py
+
+In [[https://github.com/twistedpair/google-cloud-sdk/blob/13bc428984e99113b8df45f674cdff0686335402/google-cloud-sdk/lib/googlecloudsdk/generated_clients/regen_apis_config.yaml#L16][regen_apis_config.yaml]] notes:
+
+#+begin_quote
+It is configuration for regen_apis.py script, which needs to be rerun
+everytime some input discovery doc is added/updated or apitools generation
+code has been changed.
+#+end_quote
+
+Tracing the YAML description for [[https://github.com/twistedpair/google-cloud-sdk/blob/13bc428984e99113b8df45f674cdff0686335402/google-cloud-sdk/lib/googlecloudsdk/generated_clients/regen_apis_config.yaml#L822][gkehub]] leads to
+[[https://github.com/twistedpair/google-cloud-sdk/blob/13bc428984e99113b8df45f674cdff0686335402/google-cloud-sdk/lib/googlecloudsdk/third_party/apis/gkehub_v1.json#L54][lib/googlecloudsdk/third_party/apis/gkehub_v1.json]], which corresponds to the [[https://cloud.google.com/kubernetes-engine/fleet-management/docs/reference/rest][GKE
+Hub API]].
+
+#+begin_quote
+Apparently, this is for "Fleet Management", a subject of interest on many a
+podcast I've listened to. It basically coordinates the lifecycle for K8S nodes
+in a large cluster of clusters ... so like Chick-fil-a has fleet management
+problems because they have resources corresponding to each store that need to
+map to shared resources (shared between stores, for a region or for the entire
+corporation). There are benefits to doing it this way, including fault tolerance
+(data flow can endure disruptions in connections) and migration to new versions
+(of applications or k8s things)
+
+no, seriously, there's a fucking [[https://github.com/chick-fil-a/gitops][chick-fil-a/gitops]] demo repository that says
+"Managing Fleets of Kubernetes Clusters w/GitOps". probably not GKE ... but it
+was the subject of a podcast episode.
+#+end_quote
+
+These API clients have generated code in the =third_party= directory (I think)
+
+***** IAM
+
+
+
+
+
+
 **** Enabling API's
 
 API's need to be enabled on a service account before using something like
@@ -158,9 +239,6 @@ roles need access to them.
 | storage-component.googleapis.com   |   |
 | storage.googleapis.com             |   |
 |------------------------------------+---|
-
-
-
 ** OpenShift
 
 *** Docs
