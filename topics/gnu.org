@@ -32,9 +32,32 @@ docs. Most projects provide the =texinfo= manuals, but it seems difficult to shi
 the =@example= or =@lisp= to get simple syntax highlighting. This is completed in
 the HTML manuals.
 
+hide most of the chapters by adding inline ~style="{display:none;}"~ to print
+chapters individually:
+
+#+begin_src js
+document.querySelectorAll('div.chapter').forEach(el => el.setAttribute('style','display:none;'))
+// and do the same for TOC's top-level list elements
+document.querySelectorAll('div.contents > ul > li').forEach(el => el.setAttribute('style','display:none;'))
+#+end_src
+
+Remove some of the extraneous web elements
+
 #+begin_src js
 document.querySelectorAll('.nav-panel').forEach(el => el.remove())
-document.querySelector('#GNU-Free-Documentation-License').remove()
+document.querySelectorAll('.header').forEach(el => el.remove())
+
+// this usually contains the GNU GPLv2/3 License content, i think
+document.querySelector('div.appendix').forEach(el => el.remove())
+document.querySelector('div.unnumbered').forEach(el => el.remove())
+document.querySelector('div.footnote').forEach(el => el.remove())
+
+// to remove the unnumbered sections:
+document.querySelectorAll('div.unnumbered').forEach(el => el.remove())
+
+// unless removing the unnumbered sections:
+//
+// (i.e. to format concepts/functions/variables)
 
 ['.fn-letters-header-printindex',
  '.fn-letters-footer-printindex',
@@ -47,7 +70,129 @@ document.querySelectorAll('tr > .entries-header-printindex').
 #+end_src
 
 I also customized some of the CSS to remove spacing. There were some other DOM
-nodes I manually removed.
+nodes I manually removed. Typically, I print two sheets per page, front/back, so
+that 4 pages of the document can be visible at once, when in a notebook or
+bound. The font here is a bit small.
+
+#+begin_src css
+h2 { margin: 0 }
+h3 { margin: 0.3em 0 0.3em 0; }
+h4 { margin: 0.2em 0 0.2em 0; }   /* margin: 1.8em 0 0.88em 0; */
+
+html { background-color: white;  }
+
+@media (min-width: 45em) {
+  body { padding: .2em 1em .2em 1em; }     /* padding: .5em 2em 1em 2em; */
+}
+
+body {
+  padding: .2em .2em;
+  max-width: none;
+  margin: 0;
+  border: 0;
+}
+
+ol li { margin: 0.3em 0; } /* margin: .5em 0 .5em 1em; */
+ul li { margin: .20em; } /* margin: .5em 0 .5em 1em; */
+
+pre[class^="example"], pre[class^="lisp"], pre[class^="display"] {
+  /* padding: 1em 2.5%; */
+  padding: 0.3em 0.3em;
+}
+
+dt { margin: .2em 0; }  /* margin: .5em 0; */
+dd { margin: .2em 0 0.2em 3%; }  /* margin: .5em 0 1em 3%; */
+dd p { margin: .1em 0; } /* margin: .5em 0; */
+dl { margin: 0.2em 0; } /* margin: 1em 0; */
+
+hr { margin: 0.5em 0; } /* margin: 2em 0; */
+p, pre { margin: 0.3em 0; }   /* margin: 1em 0; */
+
+div[class*="example"], div[class*="lisp"], div[class*="display"], table.cartouche {
+  /* margin: 1.2em 0 1.5em; */
+  margin: 0.3em 0 0.3em;
+}
+
+/* Inline #4 | https://guix.gnu.org/manual/devel/en/guix.html#Home-Configuration */
+
+code { line-height: 1.0em; }
+
+pre { line-height: 1.4em; }
+
+/* manual.css | https://www.gnu.org/software/gnulib/manual.css */
+
+p, pre, li, dt, dd, table, code, address { line-height: 1.0em; }  /* line-height: 1.5em; */
+
+/* userContent.css | file:///home/dc/.mozilla/firefox/agb7m7p6.default-release/chrome/userContent.css */
+
+domain("guix.gnu.org") {
+  dl.def p code {
+    /* color: orange; */
+    color: purple;
+  }
+}
+
+domain("guix.gnu.org") {
+  dl.def dt span > code {
+    /* color: orange; */
+    color: green;
+  }
+}
+
+/* manual.css | https://guix.gnu.org/themes/initial/css/manual.css */
+
+div.settitle, div.top, div.chapter, div.section, div.subsection, div.subsubsection, div.unnumberedsec, div.unnumberedsubsec {
+  font-size: 12px;   /* font-size: 18px; */
+}
+
+div.lisp > pre.lisp { padding: 0 0 0.3em; }   /* padding: 0 0 .4em; */
+div.lisp, pre.lisp { margin: 0.1em 0 0.1em 0; }  /* margin: 1em 0 1em 3%; */
+div.lisp { padding: 0.2em 0.5em .2em; }  /* padding: .8em 1.2em .4em; */
+
+/* code.css | https://guix.gnu.org/themes/initial/css/code.css */
+
+.symbol-definition + dd { padding: .1em 0% 0.1em 1%; }  /* padding: .5em 3% 1em 3%; */
+
+  /* padding: .5em 0; */
+.symbol-definition { padding: .1em 0; }
+.lisp { line-height: 1.25em; }
+samp { color: indianred; }
+
+/*   background-color: papayawhip; */
+pre.example { background-color: lavender; }
+#+end_src
+
+**** Make manpage HTML exports more printable
+
+Can render the page directly to the browser with =man -H= or to pdf with =man
+-Tpdf=. It's easier with a file. If you want to use emacs/etc to quickly edit,
+save it to =htmlout=$(mktemp)=.
+
+Generate with the following, which eliminates some quick stuff.
+
+#+begin_src sh
+manhtml() {
+    [[ -z "$1" ]] && echo "Requires man page name" && return 1
+    man -Thtml "$1" \
+        | sed -e 's/margin-top: 1em//g' \
+        | sed -E 's/(<br>|<hr>)//g' \
+        | sed -E 's/<a href="#.*>//g'
+}
+#+end_src
+
+Then add the following rules to the inline CSS:
+
+#+begin_src css
+h2 { font-size: 1.0em; }
+h1 { font-size: 1.2em; }
+h2 { margin: 0.2em; }
+h3 { font-size: 0.9em; margin: 0.1em; }
+b { color: darkgreen; }
+i { color: indigo; }
+p { font-size: 0.9em; line-height: 1.1em; }
+#+end_src
+
+Edit the DOM a bit and print
 
 * Projects
 

@@ -36,13 +36,476 @@ parsers
 visualization
 
 + [[https://github.com/schlothauer-wauer/jsoncodegen][schlothauer-wauer/jsoncodegen]] (groovy; generates plantuml)
-+ [[https://github.com/OkieOth/yacg][OkieOth/yacg]] (python; generates plantuml/protobuf)
++ [[https://github.com/OkieOth/yacg][OkieOth/yacg]] (python; generates plantuml/protobuf) and [[github:OkieOth/nibelheim_ts][OkieOth/nibelheim_ts]],
+  which demonstrates generation using yacg
 + example of [[https://jsitor.com/BBMYqTkZ3][jsonschema -> mermaid]]
 + [[https://github.com/atlassian-labs/json-schema-viewer][atlassian-labs/json-schema-viewer]] doesn't seem to work
 
+Plantuml will actually [[https://plantuml.com/json][visualize JSON]] (just JSON). For simple stuff, it works
+pretty well. Chokes on JSON Schema though.
+
 ** Editors
 
-[[https://hackolade.com/][Hackolade]]
-
++ [[https://hackolade.com/][Hackolade]]
 + [[https://hackolade.com/help/JSONSchema2.html][JSONSchema2]]
 + [[https://hackolade.com/schemas/bpostAddressFormattingWebservice_-_External_documentation.html][example documentation]]
+
+** Hmmm
+
+*** =$id= and =$ref=
+
+The =$id= property and =$ref= meta-property-thingy both seem to be a hard constraint
+on inter-dependent schemata.
+
++ These can't easily change and client libraries that process the JSON Schema
+  must simultaneously handle (& functionally translate) multiple versions of the
+  schema. So, if there's a schema with =$ref(...)= to external schemata specified
+  according to another version of JSON Schema, then your client needs to know
+  what to do with that.
++ Your VS Code extensions will only survive as long as their schemas can update
+  when either =$id= or =$ref(...)= change. If the content of those URLs changes,
+  then the functionality of your application will change (after its cache
+  clears).
++ It is safer to stovepipe the JSON Schemata that you create, reducing external
+  dependencies, potentially outside your control.
+
+Questions
+
++ Is there a mechanism for hashing the =$id= and =$ref= of a schema? It's nice to
+  just infer =$ref= as =$id=, but this doesn't easily permit versioning. No pressure.
++ Otherwise, you would need either: (1) query parameter parsing and now you
+  can't simply serve static files. (2) URI conventions, like the =/doi/= in
+  =doi.org/doi/10.123/muhdoi456=
+
+So, hashing would help enforce guarantees about consistency of versions... idc
+really, but it really seems like "they" only wanted people with aphantasia to
+work on JSON Schema, so i have no idea wut 2 do with all this. I'm here for the
+"schemas"
+
+** Root Schemata
+
+The Draft-07 is by far the most commonly used.
+
+*** In Yaml
+
+After saving, diff to check interpretation with
+
+#+begin_src sh
+diff <(cat $ORG_DIRECTORY/roam/topics/data/draft-07.schema.yaml | yq -y) \
+    <(cat $ORG_DIRECTORY/roam/topics/data/draft-07.schema.yaml | sed -e "s/\"/'/g" | yq -y)
+#+end_src
+
+**** draft-07
+
+Started with the wrong version (pulled URL from the =ansible-rulebook= schema),
+but later versions of schema need to establish compatibility. Most of the
+ansible schemata seem to be referring to the =draft-07= JSON Schema spec.
+
+#+begin_example yaml
+$schema: http://json-schema.org/draft-07/schema#
+$id: http://json-schema.org/draft-07/schema#
+title: Core schema meta-schema
+# description: "none"
+default: true
+type: ["object", "boolean"]
+
+definitions:
+  simpleTypes: {enum: [array, boolean, integer, 'null', number, object, string]}
+  schemaArray: {type: array, items: {$ref: '#'},      minItems: 1}
+  stringArray: {type: array, items: {type: string}, uniqueItems: true, default: []}
+  nonNegativeInteger: {type: integer, minimum: 0}
+  nonNegativeIntegerDefault0: {allOf: [{$ref: '#/definitions/nonNegativeInteger'}, {default: 0}]}
+
+properties:
+  $id:      {type: string, format: uri-reference}
+  $schema:  {type: string, format: uri}
+  $ref:     {type: string, format: uri-reference}
+  $comment: {type: string}
+
+  title:       {type: string}
+  description: {type: string}
+  examples:    {type: array, items: true}
+
+  default:   true
+  const:     true
+  readOnly:  {type: boolean, default: false}
+  writeOnly: {type: boolean, default: false}
+
+  contains: {$ref: '#'}
+  required: {$ref: '#/definitions/stringArray'}
+  format:   {type: string}
+  pattern:  {type: string, format: regex}
+  enum:     {type: array, items: true, minItems: 1,  uniqueItems: true}
+
+  # content properties
+  contentMediaType: {type: string}
+  contentEncoding: {type: string}
+
+  # integer property validation
+  minimum: {type: number}
+  maximum: {type: number}
+  exclusiveMinimum: {type: number}
+  exclusiveMaximum: {type: number}
+  multipleOf: {type: number, exclusiveMinimum: 0}
+
+  minLength: {$ref: '#/definitions/nonNegativeIntegerDefault0'}
+  maxLength: {$ref: '#/definitions/nonNegativeInteger'}
+
+  items:   {default: true, anyOf: [{$ref: '#'}, {$ref: '#/definitions/schemaArray'}]}
+  additionalItems: {$ref: '#'}
+  uniqueItems:  {type: boolean, default: false}
+
+  minItems: {$ref: '#/definitions/nonNegativeIntegerDefault0'}
+  maxItems: {$ref: '#/definitions/nonNegativeInteger'}
+
+  definitions:  {type: object, default: {}, additionalProperties: {$ref: '#'}}
+  dependencies: {type: object, anyOf: [{$ref: '#'}, {$ref: '#/definitions/stringArray'}]}
+
+  properties: {type: object, default: {}, additionalProperties: {$ref: '#'}}
+  propertyNames: {$ref: '#'}
+  additionalProperties: {$ref: '#'}
+  patternProperties: {type: object, default: {}, additionalProperties: {$ref: '#'}, propertyNames: {format: regex}}
+  minProperties:    {$ref: '#/definitions/nonNegativeIntegerDefault0'}
+  maxProperties:    {$ref: '#/definitions/nonNegativeInteger'}
+
+  type:
+    anyOf:
+      - $ref: '#/definitions/simpleTypes'
+      - {type: array, items: {$ref: '#/definitions/simpleTypes',  minItems: 1, uniqueItems: true}}
+
+# boolean
+  if:     {$ref: '#'}
+  then:   {$ref: '#'}
+  else:   {$ref: '#'}
+  allOf:  {$ref: '#/definitions/schemaArray'}
+  anyOf:  {$ref: '#/definitions/schemaArray'}
+  oneOf:  {$ref: '#/definitions/schemaArray'}
+  not:    {$ref: '#'}
+#+end_example
+
+**** 2019-09
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2019-09/schema
+$id: https://json-schema.org/draft/2019-09/schema
+$recursiveAnchor: true
+title: Core and Validation specifications meta-schema
+type: [object, boolean]
+
+$vocabulary:
+  https://json-schema.org/draft/2019-09/vocab/core: true
+  https://json-schema.org/draft/2019-09/vocab/applicator: true
+  https://json-schema.org/draft/2019-09/vocab/validation: true
+  https://json-schema.org/draft/2019-09/vocab/meta-data: true
+  https://json-schema.org/draft/2019-09/vocab/format: false
+  https://json-schema.org/draft/2019-09/vocab/content: true
+
+# in
+allOf:
+  - {$ref: meta/core}
+  - {$ref: meta/applicator}
+  - {$ref: meta/validation}
+  - {$ref: meta/meta-data}
+  - {$ref: meta/format}
+  - {$ref: meta/content}
+
+properties:
+  definitions:
+    type: object
+    default: {}
+    additionalProperties: {$recursiveRef: '#'}
+    $comment: While no longer an official keyword as it is replaced by $defs, this
+      keyword is retained in the meta-schema to prevent incompatible extensions as
+      it remains in common use.
+  dependencies:
+    type: object
+    additionalProperties:
+      anyOf: [$recursiveRef: '#', $ref: meta/validation#/$defs/stringArray]
+    $comment: '"dependencies" is no longer a keyword, but schema authors should avoid
+      redefining it to facilitate a smooth transition to "dependentSchemas" and "dependentRequired"'
+#+end_example
+
+
+**** 2020-12
+
++ The top meta-schama will point to vocabs like =./meta/core=, not =./vocab/core=
++ The 2020-12 updates add =vocab/unevaluated= and change =vocab/format= to
+  =vocab/format-annotation=
+
++ Order matters in =$vocabulary= and in the general evaluation of these files,
+  AFAIK. It seems to evaluate the definition for =$ref= from =vocab/core= before
+  getting to the =allOf= property, which implies that these =$vocabulary= schemata
+  each evaluate to a type ... but one that's not quite handled identically.
+
++ however, for clarity, i've moved the =$defs= section above =properties=. this
+  =$defs= property is actually defined in =properties= inside the same =meta/core=
+  schema vocabulary file
+
++ The =$ref: '#'= needs to resolve locally AFAIK and =$dynamicRef: '#meta'= needs to
+  resolve to a named umm schema namespace.
+
++ After grokking the difference between =properties= and =additionalProperties= ...
+  the [[https://json-schema.org/understanding-json-schema/reference/object#extending][Extending Closed Schemas]] section shows how it affects validation when
+  constraints like =allOf= are specified.
+
++ Pattern properties reserve slices of the effective property keyspace to
+  strings which match the regex. I believe this happens after properties and
+  before additionalProperties. The =properties= map the keyspace domain to schema
+  types.
+
+  #+begin_quote
+The ideas from [[https://en.wikipedia.org/wiki/Free_monoid][free monoids and the Kleene Star]] are relevant. Ranges of key
+space can be reserved to resolve with certainty in dependent/referencing schema
+if the pattern properties are specified with regexps which do not overlap. It's
+likely possible to have regexps which overlap, but from within the validation of
+data consisting of nested types, it's preferable (from a mathematic perspective,
+at least) to specify clear bounds on the regexp. Bounding from the left or from the
+right looks like =/^prefix_.*/= or =/_.*suffix$/=. Bounding on both sides makes it
+simple to ensure no overlapping patterns, but placing a constraint in the middle
+(e.g. =/.*_midfix_.*/=) has subtle implications, including the need for multiply
+sorted data (or the loss of benefits from partial/total orderings).
+
+These problems are moreso mathematic in nature, but ultimately a program is a
+value in binary stringspace that gets unwrapped and which MUST be evaluated from
+the left (i.e. the physical machine executing a program can't know whether the
+input for the bootloader ever terminates, so some properties needs to be
+reserved to formats specified by a prefix, so that the machine can modulate it's
+downstream processing of the binary/asm program instructions without needing to
+first complete the intake of data.)
+
+Kinda irrelevant here, but not entirely, if you really wanted to parse data or
+meaning out of a key.
+  #+end_quote
+
+here's the root file
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/schema
+$dynamicAnchor: meta
+title: Core and Validation specifications meta-schema
+$comment: This meta-schema also defines keywords that have appeared in previous drafts in order to prevent incompatible extensions as they remain in common use.
+type: [object, boolean]
+
+$vocabulary:
+  https://json-schema.org/draft/2020-12/vocab/core: true
+  https://json-schema.org/draft/2020-12/vocab/applicator: true
+  https://json-schema.org/draft/2020-12/vocab/unevaluated: true
+  https://json-schema.org/draft/2020-12/vocab/validation: true
+  https://json-schema.org/draft/2020-12/vocab/meta-data: true
+  https://json-schema.org/draft/2020-12/vocab/format-annotation: true
+  https://json-schema.org/draft/2020-12/vocab/content: true
+
+allOf:
+  - {$ref: meta/core}
+  - {$ref: meta/applicator}
+  - {$ref: meta/unevaluated}
+  - {$ref: meta/validation}
+  - {$ref: meta/meta-data}
+  - {$ref: meta/format-annotation}
+  - {$ref: meta/content}]
+
+properties:
+  definitions:
+    $comment: '"definitions" has been replaced by "$defs".'
+    type: object
+    deprecated: true
+    default: {}
+    additionalProperties: {$dynamicRef: '#meta'}
+  dependencies:
+    $comment: '"dependencies" has been split and replaced by "dependentSchemas" and
+      "dependentRequired" in order to serve their differing semantics.'
+    type: object
+    deprecated: true
+    default: {}
+    additionalProperties:
+      anyOf:
+        - $dynamicRef: '#meta'
+        - $ref: meta/validation#/$defs/stringArray
+  $recursiveAnchor:
+    $comment: '"$recursiveAnchor" has been replaced by "$dynamicAnchor".'
+    deprecated: true
+    $ref: meta/core#/$defs/anchorString
+  $recursiveRef:
+    $comment: '"$recursiveRef" has been replaced by "$dynamicRef".'
+    deprecated: true
+    $ref: meta/core#/$defs/uriReferenceString
+
+#+end_example
+
+***** [[https://json-schema.org/draft/2020-12/meta/core][meta/core]]
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/meta/core
+$dynamicAnchor: meta
+title: Core vocabulary meta-schema
+type: [object, boolean]
+
+$defs:
+  anchorString:       {type: string, pattern: ^[A-Za-z_][-A-Za-z0-9._]*$}
+  uriString:          {type: string, format: uri}
+  uriReferenceString: {type: string, format: uri-reference}
+
+properties:
+  $id: {$ref: '#/$defs/uriReferenceString', pattern: ^[^#]*#?$, $comment: Non-empty fragments not allowed.}
+
+  $schema:        {$ref: '#/$defs/uriString'}
+  $ref:           {$ref: '#/$defs/uriReferenceString'}
+  $anchor:        {$ref: '#/$defs/anchorString'}
+  $dynamicRef:    {$ref: '#/$defs/uriReferenceString'}
+  $dynamicAnchor: {$ref: '#/$defs/anchorString'}
+
+  $comment:    {type: string}
+  $vocabulary: {type: object, propertyNames: {$ref: '#/$defs/uriString'}, additionalProperties: {type: boolean}}
+  $defs:       {type: object, additionalProperties: {$dynamicRef: '#meta'}}
+#+end_example
+
+***** [[https://json-schema.org/draft/2020-12/meta/applicator][meta/applicator]]
+
+mainly for type composition
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/meta/applicator
+$dynamicAnchor: meta
+title: Applicator vocabulary meta-schema
+type: [object, boolean]
+
+$defs:
+  schemaArray: {type: array, minItems: 1, items: {$dynamicRef: '#meta'}}
+
+properties:
+  prefixItems: {$ref: '#/$defs/schemaArray'}
+
+  items:    {$dynamicRef: '#meta'}
+  contains: {$dynamicRef: '#meta'}
+
+  propertyNames:        {$dynamicRef: '#meta'}
+  additionalProperties: {$dynamicRef: '#meta'}
+
+  properties:        {type: object, default: {}, additionalProperties: {$dynamicRef: '#meta' }}
+  patternProperties: {type: object, default: {}, additionalProperties: {$dynamicRef: '#meta'}, propertyNames: {format: regex}}
+  dependentSchemas:  {type: object, default: {}, additionalProperties: {$dynamicRef: '#meta' }}
+
+  if:    {$dynamicRef: '#meta'}
+  then:  {$dynamicRef: '#meta'}
+  else:  {$dynamicRef: '#meta'}
+  not:   {$dynamicRef: '#meta'}
+
+  allOf: {$ref: '#/$defs/schemaArray'}
+  anyOf: {$ref: '#/$defs/schemaArray'}
+  oneOf: {$ref: '#/$defs/schemaArray'}
+#+end_example
+
+***** [[https://json-schema.org/draft/2020-12/meta/unevaluated][meta/unevaluated]]
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/meta/unevaluated
+$dynamicAnchor: meta
+title: Unevaluated applicator vocabulary meta-schema
+type: [object, boolean]
+
+properties:
+  unevaluatedItems:      {$dynamicRef: '#meta'}
+  unevaluatedProperties: {$dynamicRef: '#meta'}
+#+end_example
+
+
+***** [[https://json-schema.org/draft/2020-12/meta/validation][meta/validation]]
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/meta/validation
+$dynamicAnchor: meta
+title: Validation vocabulary meta-schema
+type: [object, boolean]
+
+$defs:
+  nonNegativeInteger: {type: integer, minimum: 0}
+  nonNegativeIntegerDefault0: {default: 0, $ref: '#/$defs/nonNegativeInteger'}
+  simpleTypes: {enum: [array, boolean, integer, 'null', number, object, string]}
+  stringArray: {type: array, default: [], items: {type: string}, uniqueItems: true}
+
+properties:
+  type:
+    anyOf:
+      - $ref: '#/$defs/simpleTypes'
+      - {type: array, items: {$ref: '#/$defs/simpleTypes'}, minItems: 1, uniqueItems: true}
+
+  const: true
+  enum: {type: array, items: true}
+
+  multipleOf: {type: number, exclusiveMinimum: 0}
+  maximum: {type: number}
+  minimum: {type: number}
+  exclusiveMaximum: {type: number}
+  exclusiveMinimum: {type: number}
+
+  maxLength: {$ref: '#/$defs/nonNegativeInteger'}
+  minLength: {$ref: '#/$defs/nonNegativeIntegerDefault0'}
+
+  pattern: {type: string, format: regex}
+  uniqueItems: {type: boolean, default: false}
+
+  maxItems: {$ref: '#/$defs/nonNegativeInteger'}
+  minItems: {$ref: '#/$defs/nonNegativeIntegerDefault0'}
+
+  maxContains: {$ref: '#/$defs/nonNegativeInteger'}
+  minContains: {$ref: '#/$defs/nonNegativeInteger', default: 1}
+
+  maxProperties: {$ref: '#/$defs/nonNegativeInteger'}
+  minProperties: {$ref: '#/$defs/nonNegativeIntegerDefault0'}
+
+  required:          {$ref: '#/$defs/stringArray'}
+  dependentRequired: {type: object, additionalProperties: {$ref: '#/$defs/stringArray'}}
+#+end_example
+
+
+***** [[https://json-schema.org/draft/2020-12/meta/meta-data][meta/meta-data]]
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/meta/meta-data
+$dynamicAnchor: meta
+title: Meta-data vocabulary meta-schema
+type: [object, boolean]
+
+properties:
+  default: true
+  title:       {type: string}
+  description: {type: string}
+  deprecated:  {type: boolean, default: false}
+  readOnly:    {type: boolean, default: false}
+  writeOnly:   {type: boolean, default: false}
+  examples:    {type: array, items: true}
+#+end_example
+
+***** [[https://json-schema.org/draft/2020-12/meta/format-annotation][meta/format-annotation]]
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/meta/format-annotation
+$dynamicAnchor: meta
+title: Format vocabulary meta-schema for annotation results
+type: [object, boolean]
+
+properties:
+  format: {type: string}
+#+end_example
+
+***** [[https://json-schema.org/draft/2020-12/meta/content][meta/content]]
+
+#+begin_example yaml
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://json-schema.org/draft/2020-12/meta/content
+$dynamicAnchor: meta
+title: Content vocabulary meta-schema
+type: [object, boolean]
+
+properties:
+  contentEncoding:  {type: string}
+  contentMediaType: {type: string}
+  contentSchema:    {$dynamicRef: '#meta'}
+#+end_example
