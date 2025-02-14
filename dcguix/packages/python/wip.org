@@ -1,0 +1,250 @@
+:PROPERTIES:
+:ID:       a17cfd62-3236-40d8-91b1-9f16a6cc1ade
+:END:
+#+title: DC Guix: Python: WIP
+
+* Python
+
+** Py PDF Parser
+
+#+begin_src scheme
+(define-public python-py-pdf-parser
+  (package
+    (name "python-py-pdf-parser")
+    (version "0.12.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "py-pdf-parser" version))
+       (sha256
+        (base32 "062y4zinacac9yv2xp9n050w65ccxcdwdwk1l9wb9m3k0p6jdhcw"))))
+    (build-system pyproject-build-system)
+    (propagated-inputs (list python-docopt python-pdfminer.six python-wand))
+    (native-inputs (list python-ddt
+                         python-matplotlib
+                         python-mock
+                         python-nose
+                         python-pillow
+                         python-pyvoronoi
+                         python-recommonmark
+                         python-shapely
+                         python-sphinx
+                         python-sphinx-autobuild
+                         python-sphinx-rtd-theme))
+    (home-page "https://github.com/jstockwin/py-pdf-parser")
+    (synopsis "A tool to help extracting information from structured PDFs.")
+    (description
+     "This package provides a tool to help extracting information from structured
+PDFs.")
+    (license license:bsd-3)))
+#+end_src
+
+* UV
+
+Not going to work without some serious shenanigans
+
+#+begin_src scheme
+
+  ;; #:use-module (gnu packages gcc)
+  ;; #:use-module (nonguix build-system binary)
+
+(define-public uv-bin
+  (let* ((bin-platform "x86_64-unknown-linux-gnu")
+         (bin-version "0.5.24")
+         (bin-name (string-append "uv-" bin-platform)))
+
+    ;; bin-name: k0s-v1.28.4+k0s.0-amd64
+    ;; url: v1.28.4+k0s.0/k0s-v1.28.4+k0s.0-amd64
+
+    (package
+      (name "uv-bin")
+      (version bin-version)
+      (source (origin
+                (method url-fetch)
+                (uri (string-append
+                      "https://github.com/astral-sh/uv/releases/download/"
+                      version "/" bin-name ".tar.gz"))
+                (sha256
+                 (base32
+                  "1qh079kbvc9qms6j3i6kw2w1snc7y7qijj0wxwa6x2n3gx7n3sx0"))))
+
+      (build-system binary-build-system)
+      (arguments
+       (list
+
+        #:patchelf-plan #~`(("uv" ("gcc" "libc"))
+                            ("uvx" ("gcc" "libc")))
+        #:install-plan ''(("." "bin/"
+                           #:include-regexp ("uv.*$")))))
+
+      (inputs `((,gcc "lib")))
+      (propagated-inputs '())
+      (home-page "https://github.com/astral-sh/uv")
+      (synopsis "In which python installs things")
+      (description "... TODO this was never going to work. UV needs to
+understand how to build with the correct paths and things.")
+      (license license:asl2.0))))
+#+end_src
+
+*** astral-sh/python-build-standalone
+
+#+begin_quote
+Oh ye of little faith (in relocatable pythons)
+#+end_quote
+
+ ... the =uv= binary actually may work, if you use it to download pythons.
+
+ + these uv-installed pythons may need some hinting, but if they're used to
+   setup a =VIRTUAL_ENV=, then all of the dependencies that come down are designed
+   to work with a relocatable python
+ + That relocatable python is built using [[https://github.com/astral-sh/python-build-standalone][astral-sh/python-build-standalone]]. as
+   long as that manages to jump over the "lib64 shark" then the deps it
+   downloaded should as well.
+ + If those uv-pulled wheels & dependencies then pull down blobs, then these may
+   not work (... i'm looking at you pytorch). but when has pytorch ever "just
+   worked" outside of cloud
+
+i don't know enough about python, uv, rust, etc. to know whether this works ...
+but
+
+** Scope of Work
+
+Without configuration, =uv= downloads pythons to =uv python dir=
+
+#+begin_src sh
+guix shell -L ~/.dotfiles uv-bin -- uv python dir
+#+end_src
+
+#+RESULTS:
+: /home/dc/.local/share/uv/python
+
+#+begin_src sh :results verbatim :wrap example diff
+diff <(ldd ~/.local/share/uv/python/cpython-3.13.1-linux-x86_64-gnu/bin/python3.13 | sort) \
+    <(ldd `which uv` | sort)
+1,9c1,8 | cat
+#+end_src
+
+#+RESULTS
+#+begin_example diff
+<       /home/dc/.local/share/uv/python/cpython-3.13.1-linux-x86_64-gnu/bin/../lib/libpython3.13.so.1.0 (0x0000723bf5400000)
+<       /lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x0000723bf6c12000)
+<       libc.so.6 => /usr/lib/libc.so.6 (0x0000723bf5120000)
+<       libdl.so.2 => /usr/lib/libdl.so.2 (0x0000723bf6bae000)
+<       libm.so.6 => /usr/lib/libm.so.6 (0x0000723bf5311000)
+<       libpthread.so.0 => /usr/lib/libpthread.so.0 (0x0000723bf6bb3000)
+<       librt.so.1 => /usr/lib/librt.so.1 (0x0000723bf6ba2000)
+<       libutil.so.1 => /usr/lib/libutil.so.1 (0x0000723bf6ba9000)
+<       linux-vdso.so.1 (0x0000723bf6c10000)
+---
+>       /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x000078d12659a000)
+>       libc.so.6 => /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/libc.so.6 (0x000078d123b33000)
+>       libdl.so.2 => /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/libdl.so.2 (0x000078d123d11000)
+>       libgcc_s.so.1 => /gnu/store/3jy5l9i59f14k5xyfriw636gkyb6zqf8-gcc-11.4.0-lib/lib/libgcc_s.so.1 (0x000078d126578000)
+>       libm.so.6 => /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/libm.so.6 (0x000078d123d16000)
+>       libpthread.so.0 => /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/libpthread.so.0 (0x000078d123df6000)
+>       librt.so.1 => /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/librt.so.1 (0x000078d123dfb000)
+>       linux-vdso.so.1 (0x000078d126598000)
+#+end_example
+
+So above, you see that the uv binary links to mainly the same binaries (just in
+different locations). There are mostly linux libs:
+
++ libpthread, libm, librt and linux vdso :: These are all (or mostly) virtual
+  libraries that are essentially to the linux kernal core functionality. For at
+  least some of these, their names are retained, but the functions have been
+  bundled into a smaller number of actual implementations
++ libc, libdl :: are not so easy to deal with, but are common enough. i know
+  that libc is just the glibc (WHY YOU NO STATIC)
++ lib64 :: is actually easy to deal with when Guix is installed on a foreign
+  distribution. It's actually not so difficult to deal with anymore anyways.
+  This can be done with a link or a container.
++ libpython3.13.so :: i have no idea whether this is tough to deal with
+
+The python that =uv= pulled should have some configuration bundled with it.
+However, since =uv= will not pull many different variants of pip "wheels" -- i.e.
+it's hard to imagine that the python build configuration is appended to the URL
+queries to artifacts on PyPi & elsewhere -- then =uv= should pull mostly libraries
+that are compatible with the relocatable python binary.
+
+So it should be a matter of patching this one binary and fucking throwing it
+into Mt Doom .... ahem, I mean launching an ipykernel.
+
+The Guix build system utilities already patch =#!/bin/shebangs= for many variety
+of different languages. Getting this to work with a Guix profile (IN THEORY)
+should be a matter of patching the below executable files ... and others, I'm
+sure.
+
+... hmmm. well maybe not: the imagemagick wheel is going want python to know how
+to bind via FFI to memory regions allocated by a dynamic library named
+=libMagick.so=. It's probably going to ask for this by using a common path name.
+unless python was built on the system (like via =pyenv=), then it's usually
+installed by rpm/deb package, where the standard locations for libraries on
+these systems is decided by their respective greybeard package authors.
+
+#+begin_quote
+i really hate the "try and see approach" because that ends up being a confusing
+mess. if nothing else, you can just pack that shit in a docker container & run
+=uv do it=
+#+end_quote
+
+*** Executable files in =uv= downloaded pythons
+
+So these are the executable files in the downloaded python
+
+#+begin_src sh
+uv_py_dir=$HOME/.local/share/uv/python
+
+find $uv_py_dir -type f -executable -print | sed -e 's/.*gnu\//.\//g'
+#+end_src
+
+#+RESULTS:
+| ./bin/idle3.13                                  |
+| ./bin/pip                                       |
+| ./bin/pip3                                      |
+| ./bin/pip3.13                                   |
+| ./bin/pydoc3.13                                 |
+| ./bin/python3.13                                |
+| ./bin/python3.13-config                         |
+| ./lib/libpython3.13.so.1.0                      |
+| ./lib/libpython3.so                             |
+| ./lib/python3.13/base64.py                      |
+| ./lib/python3.13/cProfile.py                    |
+| ./install-sh                                    |
+| ./makesetup                                     |
+| ./python-config.py                              |
+| ./lib/python3.13/ctypes/macholib/fetch_macholib |
+| ./lib/python3.13/encodings/rot_13.py            |
+| ./lib/python3.13/idlelib/pyshell.py             |
+| ./lib/python3.13/pdb.py                         |
+| ./lib/python3.13/platform.py                    |
+| ./lib/python3.13/profile.py                     |
+| ./lib/python3.13/pydoc.py                       |
+| ./lib/python3.13/quopri.py                      |
+| ./lib/python3.13/smtplib.py                     |
+| ./lib/python3.13/tabnanny.py                    |
+| ./lib/python3.13/tarfile.py                     |
+| ./lib/python3.13/timeit.py                      |
+| ./lib/python3.13/trace.py                       |
+| ./lib/python3.13/turtledemo/__main__.py         |
+| ./lib/python3.13/turtledemo/bytedesign.py       |
+| ./lib/python3.13/turtledemo/clock.py            |
+| ./lib/python3.13/turtledemo/forest.py           |
+| ./lib/python3.13/turtledemo/fractalcurves.py    |
+| ./lib/python3.13/turtledemo/lindenmayer.py      |
+| ./lib/python3.13/turtledemo/minimal_hanoi.py    |
+| ./lib/python3.13/turtledemo/paint.py            |
+| ./lib/python3.13/turtledemo/peace.py            |
+| ./lib/python3.13/turtledemo/penrose.py          |
+| ./lib/python3.13/turtledemo/planet_and_moon.py  |
+| ./lib/python3.13/turtledemo/sorting_animate.py  |
+| ./lib/python3.13/turtledemo/tree.py             |
+| ./lib/python3.13/turtledemo/yinyang.py          |
+| ./lib/python3.13/webbrowser.py                  |
+| ./lib/tk8.6/demos/browse                        |
+| ./lib/tk8.6/demos/hello                         |
+| ./lib/tk8.6/demos/ixset                         |
+| ./lib/tk8.6/demos/rmt                           |
+| ./lib/tk8.6/demos/rolodex                       |
+| ./lib/tk8.6/demos/tcolor                        |
+| ./lib/tk8.6/demos/timer                         |
+| ./lib/tk8.6/demos/widget                        |
