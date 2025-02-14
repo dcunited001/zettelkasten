@@ -136,24 +136,98 @@ else
 fi
 #+end_src
 
-** Topics
+* Topics
 
 Official matlab examples in =$MATLAB_HOME/R2022a/examples= (linked from project)
 
-*** Physics
+** Dotfiles
+
+Installing on Arch may be tough if you want a customized install, multiple
+versions, etc. Also, it can be somewhat difficult to edit the included packages
+after you install
+
+Install on Guix if you like a Nightmare mode challenge (may be impossible
+actually). It's okay though. Their federal funding bought you a flatpak (not).
+Actually, their support for linux is not really so bad, if you don't mind a
+deb/rpm distribution.
+
+Lots of tweaks and security checks like matlab installer is broken if =/bin/pwd=
+doesn't exist
+
++ it accounts for legacy_unix and BSD and 8 levels of links (for continuous
+  integration?)
++ ... and i think it checks for modifications (it does)
++ i tried strace and gdb/disassembly ... nothing
++ the zip file also doesn't unpack correctly
+
+*** Old Dotfiles Setup
+
+Completing the Arch package install is only necessary if you want it installed
+via Pacman. It requires =libxcrypt-compat= and =freetype=
+
+#+begin_src sh :tangle .config/sh/profile.d/matlab.sh :shebang #!/bin/sh
+#alias matlab=
+export MATLAB_HOME=/flatpak/matlab
+#export MATLAB_HOME=$_LANG/matlab
+export MATLAB_VERSION=R2022a
+export MATLAB_ARCH=glnxa64
+export MATLAB_PATH=$MATLAB_HOME/$MATLAB_VERSION/bin
+export MATLAB_JAVA=$MATLAB_HOME/$MATLAB_VERSION/sys/java/jre/glnxa64/jre
+
+export PATH=$MATLAB_PATH:$PATH
+
+function matlab_open() {
+    if [ "${MATLAB_INTEL_OVERRIDE}" = "yes" ] ; then
+        # exec env MESA_LOADER_DRIVER_OVERRIDE=i965 GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop;
+        env MESA_LOADER_DRIVER_OVERRIDE=i965 GTK_PATH=/usr/lib/gtk-2.0 progl matlab -desktop;
+    else
+        # exec env GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop;
+        env GTK_PATH=/usr/lib/gtk-2.0 progl matlab -desktop;
+    fi
+}
+
+function matlab_open_mesa() {
+    if [ "${MATLAB_INTEL_OVERRIDE}" = "yes" ] ; then
+        # exec env MESA_LOADER_DRIVER_OVERRIDE=i965 GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop;
+        env MESA_LOADER_DRIVER_OVERRIDE=i965 GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop;
+    else
+        # exec env GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop;
+        env GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop;
+    fi
+}
+#+end_src
+
+Start with this =mlab= script or preferably a =.desktop= file
+
+#+begin_src sh
+#!/bin/sh
+if [ "${MATLAB_INTEL_OVERRIDE}" = "yes" ] ; then
+    # i965 is a thing i do not have ... maybe one day, it'll come up in trivia
+    # exec env MESA_LOADER_DRIVER_OVERRIDE=i965 GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop;
+    env MESA_LOADER_DRIVER_OVERRIDE=amdgpu-pro-libgl GTK_PATH=/usr/lib/gtk-2.0 progl matlab -desktop "$@"
+else
+    # just always use opengl because why not
+    progl env GTK_PATH=/usr/lib/gtk-2.0 matlab -desktop "$@"
+    # exec env GTK_PATH=/usr/lib/gtk-2.0 TMPDIR=$MATLAB_HOME/tmp matlab -desktop "$@"
+    # env GTK_PATH=/usr/lib/gtk-2.0 progl matlab -desktop;
+fi
+
+#+end_src
+
+
+** Physics
 
 + [[https://www.mathworks.com/help/symbolic/modeling-the-velocity-of-a-paratrooper.html?searchHighlight=physics&s_tid=srchtitle_physics_1][Unit Conversions in Physics]]
 
-**** [[yt:][Simulation the motion of a pendulum]]
+*** [[yt:][Simulation the motion of a pendulum]]
 
   =openExample('symbolic/SimulateThePhysicsOfAPendulumsPeriodicSwingExample')=
-
-*** Engineering
+** Engineering
 
 + [[https://www.mathworks.com/help/sps/ug/torque-motor-parameterization.html][Torque Motor Parameterization]]
 + [[https://www.mathworks.com/help/sps/ug/motor-torque-speed-curves.html?searchHighlight=motor%20torque&s_tid=srchtitle_motor%20torque_1][Motor Torque-Speed Curves]]
 
-*** Geometric Algebra
+** Geometric Algebra
 
 + [[https://www.mathworks.com/matlabcentral/fileexchange/39288-dual-quaternion-toolbox?s_tid=srchtitle][Dual Quaternions]] (library)
   - examples compute the forward kinematics of a robot arm
