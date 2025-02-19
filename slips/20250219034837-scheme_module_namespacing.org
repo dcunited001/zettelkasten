@@ -1,0 +1,1834 @@
+:PROPERTIES:
+:ID:       48c23507-41ef-47af-af7f-ab466fdc6012
+:END:
+#+TITLE: Scheme: Module Namespacing
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:87c43128-92c2-49ed-b76c-0d3c2d6182ec][Scheme]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* Overview
+
+I'm reorganizing my dotfiles and further below, I demostrate comparing file
+trees using =find= and =tree=. There's a one-liner that extracts the guile module
+out of each scheme file.
+
++ Since tree can format it's code as json (and graphviz), this lends itself
+  towards creating quick graphics. The latter =dot= gets messy though..
++ For some simple/constrained cases, you can =diff= the trees.
+
+Anyways, the question I need to answer: do most scheme projects usually place
+all their modules within a subdirectory under the git repo's root dir?
+
++ It appears mostly, no, meaning that =GUILE_LOAD_PATH= would reference the
+  project root directory or =.=
++ Either way, it's a bit confusing. The simpler way is to have everything under
+  the root (doesn't require shimming the path in tooling for dev & build.)
+
+** Problem
+
+One problem with how I've configured the =guile= scheme namespaces in my dotfiles:
+when I experiment with Guix modules/packages/services, I add a lot of crufty
+exploratory scheme files.
+
++ Guile traverses the paths in =GUILE_LOAD_PATH= and finds all the =*.scm= files. If
+  these are imported by other modules, they will be loaded (they may be loaded
+  even if not).
++ When I run commmands like =guix -L system reconfigure= I see a ton of
+  deprecations from the incomplete work. Since I tune them out, this makes it
+  hard for me to spot the active bad habits I should avoid in my code.
++ Also, Guile will throw an error if there's no code after a module declaration.
+  -- i believe this happens as well on empty files but idk. Either way,
+  commenting/uncommenting files is not satisfactory.
++ You could use =git stash= or =git format-patch= formatting tools, but this is ...
+  meh. Working across multiple laptops means stashes can be hard to keep up
+  with. Worse, they hard to manage, whether if they are push remotely as ad-hoc
+  branches.
++ One possibility: a la =.gitignore=, just =mv= them into =.scratch= or maybe change
+  the file extension. This isn't practical
+
+** Anyways
+
+It does seem like adding a degree of separation in my project would make it
+easier to experiment with guix modules/packages/services.
+
++ To experiment with a new pkg/svc in a module file that already exists, you
+  usually may create a new file in a separate "singleton context", evaluate the
+  file (or load in REPL), while passing =-L= to point to the main set of modules.
+  This doesn't work for changesets that extend to multiple files.
+
+Branching is simple enough, but a lot of the experimenation tried involves some
+=go= or =rust= package that either has many deps or is just a one-off patch-elf
+=*-bin= package. So I just usually get stuck at tracing through the changes in
+deps required to build.
+
+* Using find + tree
+
+=find . -maxdepth 3 -name '*.scm' -print | tree --fromfile .=
+
+** Rendering modules
+
+#+begin_quote
+concat =from-left= and =from-right= always affect independent subspaces of string
+space. the free monoid "ish" gives you this.
+
+so, here tree still parses files as files. as long as everything to the right is
+as unique as the filepath (which functions as the means of distinguishing
+identity), then it formats properly.
+#+end_quote
+
+The regex i'm using for =sed= after =find= is probably not hitting everything... oh
+well. Diffing the results from the =tree= method for =/data/ecto/scheme= would make
+that more clear, since it has a few projects from a few schemes.
+
+*** Guix
+
+Most of these channels seem to place their modules 2⁰ under the root. Only: =rde=
+& =guix-crypto=
+
+=rde= handles this by specifying it in build tooling.
+
++ ./Makefile :: sets =guile -L= and runs with =guix time-machine=. specifies make
+  tasks for building =qemu= images to test on.
++ ./examples/Makefile :: specifies tasks that load ares/etc with proper load
+  path. loads make tasks in =profiles.mk=
++ ./.envrc :: sets =$GUIX_PROFILE= that's defined in =profiles.mk=
++ .guix-channel :: sets the channel root to =./src=. This is relevent for guix
+  clients consuming the channel.
+
+#+begin_src  shell :dir /data/ecto/guix/channels :results output verbatim :wrap example text
+find . -maxdepth 4 -name '*.scm' -type f \
+    -exec grep -e '(define-module' \{\} + |\
+  sed -e 's/:(define-module.*(/ (/' |\
+  tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example text
+.
+└── .
+    ├── baulig
+    │   ├── guix
+    │   │   ├── extensions
+    │   │   │   └── secrets.scm (guix extensions secrets)
+    │   │   └── scripts
+    │   │       └── scheduler.scm (guix scripts scheduler)
+    │   └── packages
+    │       └── baulig
+    │           └── multi-fetch.scm (baulig multi-fetch)
+    ├── daviwil
+    │   └── channel-x
+    │       └── packages
+    │           ├── emacs.scm (channel-x packages emacs)
+    │           ├── guile.scm (channel-x packages guile)
+    │           ├── video.scm (channel-x packages video)
+    │           └── xorg.scm (channel-x packages xorg)
+    ├── flatwhatson
+    │   └── flat
+    │       ├── packages
+    │       │   ├── emacs.scm (flat packages emacs)
+    │       │   ├── emacs-xyz.scm (flat packages emacs-xyz)
+    │       │   └── gcc.scm (flat packages gcc)
+    │       └── packages.scm (flat packages)
+    ├── guix-android
+    │   └── android
+    │       ├── build
+    │       │   ├── blueprint.scm (android build blueprint)
+    │       │   ├── java-intellij.scm (android build java-intellij)
+    │       │   ├── soong-build-system.scm (android build soong-build-system)
+    │       │   └── soong.scm (android build soong)
+    │       ├── build-system
+    │       │   └── soong.scm (android build-system soong)
+    │       ├── import
+    │       │   ├── repo.scm (android import repo)
+    │       │   ├── repo.scm (file->module-name filename) ")
+    │       │   └── repo.scm (file->module-name packages-filename) ")
+    │       ├── iri.scm (android iri)
+    │       └── packages
+    │           ├── android-build.scm (android packages android-build)
+    │           ├── android-headers.scm (android packages android-headers)
+    │           ├── android-sdk.scm (android packages android-sdk)
+    │           ├── android-sources.scm (android packages android-sources)
+    │           ├── android-tools.scm (android packages android-tools)
+    │           ├── bison.scm (android packages bison)
+    │           ├── clang.scm (android packages clang)
+    │           ├── intellij.scm (android packages intellij)
+    │           ├── java.scm (android packages java)
+    │           ├── kotlin.scm (android packages kotlin)
+    │           └── scala.scm (android packages scala)
+    ├── guix-crypto
+    │   ├── bin
+    │   │   └── clef-pipe-test.scm (clef-pipe-test)
+    │   ├── src
+    │   │   └── guix-crypto
+    │   │       ├── package-utils.scm (guix-crypto package-utils)
+    │   │       ├── script-utils.scm (guix-crypto script-utils)
+    │   │       ├── service-utils.scm (guix-crypto service-utils)
+    │   │       ├── swarm-utils.scm (guix-crypto swarm-utils)
+    │   │       └── utils.scm (guix-crypto utils)
+    │   └── tests
+    │       └── swarm-tests.scm (swarm-tests)
+    ├── guix-hpc
+    │   ├── amd
+    │   │   └── packages
+    │   │       ├── aocl-libs.scm (amd packages aocl-libs)
+    │   │       ├── logging.scm (amd packages logging)
+    │   │       ├── python-cppheaderparser.scm (amd packages python-cppheaderparser)
+    │   │       ├── rocm-apps.scm (amd packages rocm-apps)
+    │   │       ├── rocm-base.scm (amd packages rocm-base)
+    │   │       ├── rocm-hip.scm (amd packages rocm-hip)
+    │   │       ├── rocm-libs.scm (amd packages rocm-libs)
+    │   │       ├── rocm-origin.scm (amd packages rocm-origin)
+    │   │       └── rocm-tools.scm (amd packages rocm-tools)
+    │   ├── cnrs
+    │   │   └── irit.scm (cnrs irit)
+    │   ├── fau
+    │   │   └── likwid.scm (fau likwid)
+    │   ├── guix-hpc
+    │   │   └── packages
+    │   │       ├── benchmark.scm (guix-hpc packages benchmark)
+    │   │       ├── chemistry.scm (guix-hpc packages chemistry)
+    │   │       ├── composyx.scm (guix-hpc packages composyx)
+    │   │       ├── cpp.scm (guix-hpc packages cpp)
+    │   │       ├── emacs-xyz.scm (guix-hpc packages emacs-xyz)
+    │   │       ├── gysela.scm (guix-hpc packages gysela)
+    │   │       ├── io.scm (guix-hpc packages io)
+    │   │       ├── lsp.scm (guix-hpc packages lsp)
+    │   │       ├── math.scm (guix-hpc packages math)
+    │   │       ├── melissa.scm (guix-hpc packages melissa)
+    │   │       ├── memphis.scm (guix-hpc packages memphis)
+    │   │       ├── mpi.scm (guix-hpc packages mpi)
+    │   │       ├── mumps-variants.scm (guix-hpc packages mumps-variants)
+    │   │       ├── pdi.scm (guix-hpc packages pdi)
+    │   │       ├── python-gcvb.scm (guix-hpc packages python-gcvb)
+    │   │       ├── python-science.scm (guix-hpc packages python-science)
+    │   │       ├── solverstack.scm (guix-hpc packages solverstack)
+    │   │       ├── toolchains.scm (guix-hpc packages toolchains)
+    │   │       ├── traces.scm (guix-hpc packages traces)
+    │   │       └── utils.scm (guix-hpc packages utils)
+    │   ├── inria
+    │   │   ├── bioversiton.scm (inria bioversiton)
+    │   │   ├── concace.scm (inria concace)
+    │   │   ├── datamove.scm (inria datamove)
+    │   │   ├── dtk.scm (inria dtk)
+    │   │   ├── eztrace.scm (inria eztrace)
+    │   │   ├── flowvr.scm (inria flowvr)
+    │   │   ├── hawen.scm (inria hawen)
+    │   │   ├── julia.scm (inria julia)
+    │   │   ├── llvm.scm (inria llvm)
+    │   │   ├── medinria.scm (inria medinria)
+    │   │   ├── mipp.scm (inria mipp)
+    │   │   ├── mpi.scm (inria mpi)
+    │   │   ├── opencoarrays.scm (inria opencoarrays)
+    │   │   ├── pampa.scm (inria pampa)
+    │   │   ├── simgrid.scm (inria simgrid)
+    │   │   ├── staging.scm (inria staging)
+    │   │   ├── storm.scm (inria storm)
+    │   │   └── tadaam.scm (inria tadaam)
+    │   ├── lanl
+    │   │   └── lanl.scm (lanl lanl)
+    │   ├── libnegf
+    │   │   └── libnegf.scm (libnegf libnegf)
+    │   ├── llnl
+    │   │   └── geos.scm (llnl geos)
+    │   ├── lrz
+    │   │   └── librsb.scm (lrz librsb)
+    │   ├── mongoose
+    │   │   └── mongoose.scm (mongoose mongoose)
+    │   ├── teaching
+    │   │   └── nachos.scm (teaching nachos)
+    │   └── ufrgs
+    │       └── ufrgs.scm (ufrgs ufrgs)
+    ├── guix-hpc-non-free
+    │   ├── bsc
+    │   │   ├── alya.scm (bsc alya)
+    │   │   └── slurm17.scm (bsc slurm17)
+    │   ├── guix-hpc-non-free
+    │   │   └── packages
+    │   │       ├── avbp.scm (guix-hpc-non-free packages avbp)
+    │   │       ├── benchmark.scm (guix-hpc-non-free packages benchmark)
+    │   │       ├── cpp.scm (guix-hpc-non-free packages cpp)
+    │   │       ├── gysela.scm (guix-hpc-non-free packages gysela)
+    │   │       ├── solverstack.scm (guix-hpc-non-free packages solverstack)
+    │   │       └── utils.scm (guix-hpc-non-free packages utils)
+    │   ├── hacky
+    │   │   ├── gitlab.scm (hacky gitlab)
+    │   │   ├── mumps-mkl.scm (hacky mumps-mkl)
+    │   │   ├── services-gitlab.scm (hacky services-gitlab)
+    │   │   └── suitesparse-mkl.scm (hacky suitesparse-mkl)
+    │   ├── inrae
+    │   │   └── mse.scm (inrae mse)
+    │   ├── inria
+    │   │   ├── aerosol.scm (inria aerosol)
+    │   │   ├── energy-scope.scm (inria energy-scope)
+    │   │   ├── experimental.scm (inria experimental)
+    │   │   ├── hodins.scm (inria hodins)
+    │   │   ├── makutu.scm (inria makutu)
+    │   │   └── tainted
+    │   │       ├── memphis.scm (inria tainted memphis)
+    │   │       └── storm.scm (inria tainted storm)
+    │   ├── llnl
+    │   │   └── tainted
+    │   │       └── geos.scm (llnl tainted geos)
+    │   ├── non-free
+    │   │   ├── cuda.scm (non-free cuda)
+    │   │   ├── hlibpro.scm (non-free hlibpro)
+    │   │   ├── icc.scm (non-free icc)
+    │   │   ├── medit.scm (non-free medit)
+    │   │   ├── mkl.scm (non-free mkl)
+    │   │   └── parmetis.scm (non-free parmetis)
+    │   └── tainted
+    │       ├── cccl.scm (tainted cccl)
+    │       ├── machine-learning.scm (tainted machine-learning)
+    │       └── python-xyz.scm (tainted python-xyz)
+    ├── guix-manage
+    │   ├── guix-manage
+    │   │   ├── add.scm (guix-manage add)
+    │   │   ├── create.scm (guix-manage create)
+    │   │   ├── delete.scm (guix-manage delete)
+    │   │   ├── errors.scm (guix-manage errors)
+    │   │   ├── gc.scm (guix-manage gc)
+    │   │   ├── manifests.scm (guix-manage manifests)
+    │   │   ├── profiles.scm (guix-manage profiles)
+    │   │   ├── remove.scm (guix-manage remove)
+    │   │   ├── serialize.scm (guix-manage serialize)
+    │   │   ├── upgrade.scm (guix-manage upgrade)
+    │   │   └── utils.scm (guix-manage utils)
+    │   └── tests
+    │       ├── commands.scm (tests commands)
+    │       ├── common.scm (tests common)
+    │       ├── profiles.scm (tests profiles)
+    │       ├── serialize.scm (tests serialize)
+    │       └── utils.scm (tests utils)
+    ├── guixrus
+    │   └── guixrus
+    │       ├── contributors.scm (guixrus contributors)
+    │       ├── licenses.scm (guixrus licenses)
+    │       ├── packages
+    │       │   ├── atf.scm (guixrus packages atf)
+    │       │   ├── babi.scm (guixrus packages babi)
+    │       │   ├── bare.scm (guixrus packages bare)
+    │       │   ├── books.scm (guixrus packages books)
+    │       │   ├── caddy.scm (guixrus packages caddy)
+    │       │   ├── clight.scm (guixrus packages clight)
+    │       │   ├── croc.scm (guixrus packages croc)
+    │       │   ├── css.scm (guixrus packages css)
+    │       │   ├── cyberia.scm (guixrus packages cyberia)
+    │       │   ├── emacs.scm (guixrus packages emacs)
+    │       │   ├── emulators.scm (guixrus packages emulators)
+    │       │   ├── erlang-xyz.scm (guixrus packages erlang-xyz)
+    │       │   ├── gcc.scm (guixrus packages gcc)
+    │       │   ├── gemini-xyz.scm (guixrus packages gemini-xyz)
+    │       │   ├── gimp.scm (guixrus packages gimp)
+    │       │   ├── glad2.scm (guixrus packages glad2)
+    │       │   ├── gomuks.scm (guixrus packages gomuks)
+    │       │   ├── greetd.scm (guixrus packages greetd)
+    │       │   ├── guile.scm (guixrus packages guile)
+    │       │   ├── guixrus-xyz.scm (guixrus packages guixrus-xyz)
+    │       │   ├── guix.scm (guixrus packages guix)
+    │       │   ├── hare.scm (guixrus packages hare)
+    │       │   ├── himitsu.scm (guixrus packages himitsu)
+    │       │   ├── idna.scm (guixrus packages idna)
+    │       │   ├── iredis.scm (guixrus packages iredis)
+    │       │   ├── jrnlc.scm (guixrus packages jrnlc)
+    │       │   ├── jrnl.scm (guixrus packages jrnl)
+    │       │   ├── kvantum.scm (guixrus packages kvantum)
+    │       │   ├── kyua.scm (guixrus packages kyua)
+    │       │   ├── linux-hardware.scm (guixrus packages linux-hardware)
+    │       │   ├── lua.scm (guixrus packages lua)
+    │       │   ├── misc.scm (guixrus packages misc)
+    │       │   ├── moviepy.scm (guixrus packages moviepy)
+    │       │   ├── olive-editor.scm (guixrus packages olive-editor)
+    │       │   ├── org-xyz.scm (guixrus packages org-xyz)
+    │       │   ├── php.scm (guixrus packages php)
+    │       │   ├── pkgconf.scm (guixrus packages pkgconf)
+    │       │   ├── postmarketos.scm (guixrus packages postmarketos)
+    │       │   ├── python.scm (guixrus packages python)
+    │       │   ├── qtile.scm (guixrus packages qtile)
+    │       │   ├── riddim.scm (guixrus packages riddim)
+    │       │   ├── rnr.scm (guixrus packages rnr)
+    │       │   ├── rofi.scm (guixrus packages rofi)
+    │       │   ├── scintilla.scm (guixrus packages scintilla)
+    │       │   ├── slick.scm (guixrus packages slick)
+    │       │   ├── suckless.scm (guixrus packages suckless)
+    │       │   ├── toys.scm (guixrus packages toys)
+    │       │   ├── tree-sitter.scm (guixrus packages tree-sitter)
+    │       │   ├── upterm.scm (guixrus packages upterm)
+    │       │   ├── vim.scm (guixrus packages vim)
+    │       │   ├── vis.scm (guixrus packages vis)
+    │       │   ├── wayfire.scm (guixrus packages wayfire)
+    │       │   ├── wayland-xyz.scm (guixrus packages wayland-xyz)
+    │       │   └── xonsh-xyz.scm (guixrus packages xonsh-xyz)
+    │       ├── patches
+    │       │   └── suckless.scm (guixrus patches suckless)
+    │       └── services
+    │           └── opensmtpd.scm (guixrus services opensmtpd)
+    ├── jrn
+    │   └── jrn
+    │       └── packages
+    │           ├── ats.scm (jrn packages ats)
+    │           ├── chez.scm (jrn packages chez)
+    │           ├── fonts.scm (jrn packages fonts)
+    │           ├── games.scm (jrn packages games)
+    │           ├── haskell-xyz.scm (jrn packages haskell-xyz)
+    │           ├── j.scm (jrn packages j)
+    │           ├── j-xyz.scm (jrn packages j-xyz)
+    │           └── python-xyz.scm (jrn packages python-xyz)
+    ├── juix
+    │   └── juix
+    │       ├── home
+    │       │   └── services.scm (juix home services)
+    │       ├── packages
+    │       │   ├── lexaloffle.scm (juix packages lexaloffle)
+    │       │   ├── utils.scm (juix packages utils)
+    │       │   └── wifi.scm (juix packages wifi)
+    │       └── system
+    │           └── services.scm (juix system services)
+    ├── nonguix
+    │   ├── guix
+    │   │   └── import
+    │   │       └── nvidia.scm (guix import nvidia)
+    │   ├── nongnu
+    │   │   ├── ci.scm (nongnu ci)
+    │   │   ├── packages
+    │   │   │   ├── anydesk.scm (nongnu packages anydesk)
+    │   │   │   ├── benchmark.scm (nongnu packages benchmark)
+    │   │   │   ├── cad.scm (nongnu packages cad)
+    │   │   │   ├── chrome.scm (nongnu packages chrome)
+    │   │   │   ├── chromium.scm (nongnu packages chromium)
+    │   │   │   ├── clojure.scm (nongnu packages clojure)
+    │   │   │   ├── compression.scm (nongnu packages compression)
+    │   │   │   ├── coq.scm (nongnu packages coq)
+    │   │   │   ├── databases.scm (nongnu packages databases)
+    │   │   │   ├── dotnet.scm (nongnu packages dotnet)
+    │   │   │   ├── dyalog.scm (nongnu packages dyalog)
+    │   │   │   ├── editors.scm (nongnu packages editors)
+    │   │   │   ├── electron.scm (nongnu packages electron)
+    │   │   │   ├── emacs.scm (nongnu packages emacs)
+    │   │   │   ├── emulators.scm (nongnu packages emulators)
+    │   │   │   ├── engineering.scm (nongnu packages engineering)
+    │   │   │   ├── firmware.scm (nongnu packages firmware)
+    │   │   │   ├── fonts.scm (nongnu packages fonts)
+    │   │   │   ├── game-client.scm (nongnu packages game-client)
+    │   │   │   ├── game-development.scm (nongnu packages game-development)
+    │   │   │   ├── gog.scm (nongnu packages gog)
+    │   │   │   ├── hugo.scm (nongnu packages hugo)
+    │   │   │   ├── k8s.scm (nongnu packages k8s)
+    │   │   │   ├── linux.scm (nongnu packages linux)
+    │   │   │   ├── lisp.scm (nongnu packages lisp)
+    │   │   │   ├── messaging.scm (nongnu packages messaging)
+    │   │   │   ├── mozilla.scm (nongnu packages mozilla)
+    │   │   │   ├── music.scm (nongnu packages music)
+    │   │   │   ├── ncurses.scm (nongnu packages ncurses)
+    │   │   │   ├── nvidia.scm (nongnu packages nvidia)
+    │   │   │   ├── playonlinux.scm (nongnu packages playonlinux)
+    │   │   │   ├── printers.scm (nongnu packages printers)
+    │   │   │   ├── productivity.scm (nongnu packages productivity)
+    │   │   │   ├── radio.scm (nongnu packages radio)
+    │   │   │   ├── scanner.scm (nongnu packages scanner)
+    │   │   │   ├── version-control.scm (nongnu packages version-control)
+    │   │   │   ├── video.scm (nongnu packages video)
+    │   │   │   ├── vpn.scm (nongnu packages vpn)
+    │   │   │   ├── wasm.scm (nongnu packages wasm)
+    │   │   │   └── wine.scm (nongnu packages wine)
+    │   │   ├── packages.scm (nongnu packages)
+    │   │   ├── services
+    │   │   │   ├── nvidia.scm (nongnu services nvidia)
+    │   │   │   └── vpn.scm (nongnu services vpn)
+    │   │   └── system
+    │   │       ├── install.scm (nongnu system install)
+    │   │       └── linux-initrd.scm (nongnu system linux-initrd)
+    │   └── nonguix
+    │       ├── build
+    │       │   ├── binary-build-system.scm (nonguix build binary-build-system)
+    │       │   ├── chromium-binary-build-system.scm (nonguix build chromium-binary-build-system)
+    │       │   └── utils.scm (nonguix build utils)
+    │       ├── build-system
+    │       │   ├── binary.scm (nonguix build-system binary)
+    │       │   └── chromium-binary.scm (nonguix build-system chromium-binary)
+    │       ├── download.scm (nonguix download)
+    │       ├── licenses.scm (nonguix licenses)
+    │       ├── modules.scm (nonguix modules)
+    │       ├── multiarch-container.scm (nonguix multiarch-container)
+    │       └── utils.scm (nonguix utils)
+    ├── pantherx
+    │   └── px
+    │       ├── hardware
+    │       │   ├── lenovo.scm (px hardware lenovo)
+    │       │   └── raspberrypi.scm (px hardware raspberrypi)
+    │       ├── packages
+    │       │   ├── activitywatch.scm (px packages activitywatch)
+    │       │   ├── aidc.scm (px packages aidc)
+    │       │   ├── atril-thumbnailer.scm (px packages atril-thumbnailer)
+    │       │   ├── backup.scm (px packages backup)
+    │       │   ├── base.scm (px packages base)
+    │       │   ├── bluetooth.scm (px packages bluetooth)
+    │       │   ├── browser.scm (px packages browser)
+    │       │   ├── ci.scm (px packages ci)
+    │       │   ├── common.scm (px packages common)
+    │       │   ├── cpp.scm (px packages cpp)
+    │       │   ├── crates-io.scm (px packages crates-io)
+    │       │   ├── databases.scm (px packages databases)
+    │       │   ├── dav.scm (px packages dav)
+    │       │   ├── desktop.scm (px packages desktop)
+    │       │   ├── desktop-tools.scm (px packages desktop-tools)
+    │       │   ├── device.scm (px packages device)
+    │       │   ├── document.scm (px packages document)
+    │       │   ├── email.scm (px packages email)
+    │       │   ├── etesync.scm (px packages etesync)
+    │       │   ├── finance.scm (px packages finance)
+    │       │   ├── gstreamer.scm (px packages gstreamer)
+    │       │   ├── images.scm (px packages images)
+    │       │   ├── kde-plasma.scm (px packages kde-plasma)
+    │       │   ├── library.scm (px packages library)
+    │       │   ├── linux.scm (px packages linux)
+    │       │   ├── log.scm (px packages log)
+    │       │   ├── machine-learning.scm (px packages machine-learning)
+    │       │   ├── mastodon.scm (px packages mastodon)
+    │       │   ├── matrix-client.scm (px packages matrix-client)
+    │       │   ├── matrix.scm (px packages matrix)
+    │       │   ├── monitoring.scm (px packages monitoring)
+    │       │   ├── networking.scm (px packages networking)
+    │       │   ├── node.scm (px packages node)
+    │       │   ├── package-management.scm (px packages package-management)
+    │       │   ├── programming.scm (px packages programming)
+    │       │   ├── python-xyz.scm (px packages python-xyz)
+    │       │   ├── qt.scm (px packages qt)
+    │       │   ├── security-token.scm (px packages security-token)
+    │       │   ├── setup.scm (px packages setup)
+    │       │   ├── sof.scm (px packages sof)
+    │       │   ├── themes.scm (px packages themes)
+    │       │   ├── throttled.scm (px packages throttled)
+    │       │   └── tpm.scm (px packages tpm)
+    │       ├── services
+    │       │   ├── base.scm (px services base)
+    │       │   ├── bluetooth.scm (px services bluetooth)
+    │       │   ├── desktop.scm (px services desktop)
+    │       │   ├── device.scm (px services device)
+    │       │   ├── disk.scm (px services disk)
+    │       │   ├── log.scm (px services log)
+    │       │   ├── monitoring.scm (px services monitoring)
+    │       │   ├── networking.scm (px services networking)
+    │       │   ├── ntp.scm (px services ntp)
+    │       │   ├── package-management.scm (px services package-management)
+    │       │   ├── security-token.scm (px services security-token)
+    │       │   └── server.scm (px services server)
+    │       └── system
+    │           ├── config.scm (px system config)
+    │           ├── install.scm (px system install)
+    │           └── os.scm (px system os)
+    ├── plt
+    │   └── plt
+    │       ├── home
+    │       │   ├── abcde.scm (plt home abcde)
+    │       │   ├── alacritty.scm (plt home alacritty)
+    │       │   ├── bare-emacs.scm (plt home bare-emacs)
+    │       │   ├── base.scm (plt home base)
+    │       │   ├── bash.scm (plt home bash)
+    │       │   ├── becca-services.scm (plt home becca-services)
+    │       │   ├── bluetooth.scm (plt home bluetooth)
+    │       │   ├── calibre.scm (plt home calibre)
+    │       │   ├── chromium.scm (plt home chromium)
+    │       │   ├── creative.scm (plt home creative)
+    │       │   ├── docker.scm (plt home docker)
+    │       │   ├── emacs.scm (plt home emacs)
+    │       │   ├── finance.scm (plt home finance)
+    │       │   ├── flatpak.scm (plt home flatpak)
+    │       │   ├── fonts.scm (plt home fonts)
+    │       │   ├── foot.scm (plt home foot)
+    │       │   ├── git.scm (plt home git)
+    │       │   ├── gnupg.scm (plt home gnupg)
+    │       │   ├── htpc.scm (plt home htpc)
+    │       │   ├── kdeconnect.scm (plt home kdeconnect)
+    │       │   ├── libreoffice.scm (plt home libreoffice)
+    │       │   ├── mail.scm (plt home mail)
+    │       │   ├── mako.scm (plt home mako)
+    │       │   ├── minetest.scm (plt home minetest)
+    │       │   ├── mozilla.scm (plt home mozilla)
+    │       │   ├── mpv.scm (plt home mpv)
+    │       │   ├── nyxt.scm (plt home nyxt)
+    │       │   ├── openrgb.scm (plt home openrgb)
+    │       │   ├── pcoip.scm (plt home pcoip)
+    │       │   ├── pdf.scm (plt home pdf)
+    │       │   ├── picmover.scm (plt home picmover)
+    │       │   ├── podman.scm (plt home podman)
+    │       │   ├── rofi.scm (plt home rofi)
+    │       │   ├── services.scm (plt home services)
+    │       │   ├── sound.scm (plt home sound)
+    │       │   ├── spotify.scm (plt home spotify)
+    │       │   ├── ssh.scm (plt home ssh)
+    │       │   ├── sway.scm (plt home sway)
+    │       │   ├── theme.scm (plt home theme)
+    │       │   ├── thunar.scm (plt home thunar)
+    │       │   ├── tls.scm (plt home tls)
+    │       │   ├── vpn.scm (plt home vpn)
+    │       │   ├── waybar.scm (plt home waybar)
+    │       │   ├── wayland.scm (plt home wayland)
+    │       │   ├── work.scm (plt home work)
+    │       │   └── zsh.scm (plt home zsh)
+    │       ├── packages
+    │       │   ├── emacs-xyz.scm (plt packages emacs-xyz)
+    │       │   ├── finance.scm (plt packages finance)
+    │       │   ├── fonts.scm (plt packages fonts)
+    │       │   ├── games.scm (plt packages games)
+    │       │   ├── guile-xyz.scm (plt packages guile-xyz)
+    │       │   ├── package-management.scm (plt packages package-management)
+    │       │   ├── photo.scm (plt packages photo)
+    │       │   ├── plt.scm (plt packages plt)
+    │       │   ├── printing.scm (plt packages printing)
+    │       │   ├── python-web.scm (plt packages python-web)
+    │       │   ├── python-xyz.scm (plt packages python-xyz)
+    │       │   ├── wayland.scm (plt packages wayland)
+    │       │   └── work.scm (plt packages work)
+    │       ├── services
+    │       │   └── serialize.scm (plt services serialize)
+    │       └── system
+    │           ├── automount.scm (plt system automount)
+    │           ├── btrbk.scm (plt system btrbk)
+    │           ├── btrfs.scm (plt system btrfs)
+    │           ├── install.scm (plt system install)
+    │           ├── machines.scm (plt system machines)
+    │           └── u2f.scm (plt system u2f)
+    ├── rde
+    │   ├── src
+    │   │   ├── gnu
+    │   │   │   └── home-services-utils.scm (gnu home-services-utils)
+    │   │   └── rde
+    │   │       ├── build.scm (rde build)
+    │   │       ├── exceptions.scm (rde exceptions)
+    │   │       ├── features.scm (rde features)
+    │   │       ├── gexp.scm (rde gexp)
+    │   │       └── packages.scm (rde packages)
+    │   └── tests
+    │       └── rde
+    │           ├── features-test.scm (rde features-test)
+    │           ├── test-runners.scm (rde test-runners)
+    │           └── tests.scm (rde tests)
+    └── rrr
+        ├── guix
+        │   ├── build
+        │   │   └── pijul.scm (guix build pijul)
+        │   └── pijul-download.scm (guix pijul-download)
+        └── rrr
+            ├── packages
+            │   ├── admin.scm (rrr packages admin)
+            │   ├── audio.scm (rrr packages audio)
+            │   ├── cpp.scm (rrr packages cpp)
+            │   ├── crates-io.scm (rrr packages crates-io)
+            │   ├── crypto.scm (rrr packages crypto)
+            │   ├── c.scm (rrr packages c)
+            │   ├── disk.scm (rrr packages disk)
+            │   ├── dns.scm (rrr packages dns)
+            │   ├── emacs.scm (rrr packages emacs)
+            │   ├── emacs-xyz.scm (rrr packages emacs-xyz)
+            │   ├── engineering.scm (rrr packages engineering)
+            │   ├── finance.scm (rrr packages finance)
+            │   ├── fonts.scm (rrr packages fonts)
+            │   ├── gnupg.scm (rrr packages gnupg)
+            │   ├── goldencheetah.scm (rrr packages goldencheetah)
+            │   ├── guile.scm (rrr packages guile)
+            │   ├── guile-xyz.scm (rrr packages guile-xyz)
+            │   ├── hare.scm (rrr packages hare)
+            │   ├── haskell-xyz.scm (rrr packages haskell-xyz)
+            │   ├── image.scm (rrr packages image)
+            │   ├── kvantum.scm (rrr packages kvantum)
+            │   ├── linux.scm (rrr packages linux)
+            │   ├── matrix.scm (rrr packages matrix)
+            │   ├── messaging.scm (rrr packages messaging)
+            │   ├── networking.scm (rrr packages networking)
+            │   ├── nntp.scm (rrr packages nntp)
+            │   ├── password-utils.scm (rrr packages password-utils)
+            │   ├── pijul.scm (rrr packages pijul)
+            │   ├── pueue.scm (rrr packages pueue)
+            │   ├── python-xyz.scm (rrr packages python-xyz)
+            │   ├── retroshare.scm (rrr packages retroshare)
+            │   ├── rust-apps.scm (rrr packages rust-apps)
+            │   ├── shellutils.scm (rrr packages shellutils)
+            │   ├── softwareheritage.scm (rrr packages softwareheritage)
+            │   ├── suckless.scm (rrr packages suckless)
+            │   ├── telephony.scm (rrr packages telephony)
+            │   ├── tree-sitter.scm (rrr packages tree-sitter)
+            │   ├── version-control.scm (rrr packages version-control)
+            │   ├── video.scm (rrr packages video)
+            │   ├── vnc.scm (rrr packages vnc)
+            │   ├── wayland.scm (rrr packages wayland)
+            │   ├── web-browsers.scm (rrr packages web-browsers)
+            │   ├── web.scm (rrr packages web)
+            │   ├── wm.scm (rrr packages wm)
+            │   ├── xorg.scm (rrr packages xorg)
+            │   └── yuzu.scm (rrr packages yuzu)
+            └── packages.scm (rrr packages)
+
+101 directories, 452 files
+#+end_example
+*** Scheme
+
+modules under subdirectories in:
+
++ gccjit-guile
++ mcron
++ guile-SML
+
+guile does: partially, probabaly for separating concerns between sets of modules
+(to incrementally introduce features in the language)
+
+#+begin_src  shell :dir /data/ecto/scheme :results output verbatim :wrap example text
+find . -maxdepth 4 -name '*.scm' -type f \
+    -exec grep -e '(define-module' \{\} + |\
+  sed -e 's/:(define-module.*(/ (/' |\
+  tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example text
+.
+└── .
+    ├── artanis
+    │   ├── artanis
+    │   │   ├── artanis.scm (artanis artanis)
+    │   │   ├── cache.scm (artanis cache)
+    │   │   ├── client.scm (artanis client)
+    │   │   ├── commands
+    │   │   │   ├── api.scm (artanis commands api)
+    │   │   │   ├── create.scm (artanis commands create)
+    │   │   │   ├── draw.scm (~a ~a)
+    │   │   │   ├── draw.scm (artanis commands draw)
+    │   │   │   ├── help.scm (artanis commands help)
+    │   │   │   ├── migrate.scm (artanis commands migrate)
+    │   │   │   ├── version.scm (artanis commands version)
+    │   │   │   └── work.scm (artanis commands work)
+    │   │   ├── commands.scm (artanis commands)
+    │   │   ├── config.scm (artanis config)
+    │   │   ├── cookie.scm (artanis cookie)
+    │   │   ├── db.scm (artanis db)
+    │   │   ├── debug.scm (artanis debug)
+    │   │   ├── env.scm (artanis env)
+    │   │   ├── ffi.scm (artanis ffi)
+    │   │   ├── fprm.scm (artanis fprm)
+    │   │   ├── inotify.scm (artanis inotify)
+    │   │   ├── irregex.scm (artanis irregex)
+    │   │   ├── lpc.scm (artanis lpc)
+    │   │   ├── mime.scm (artanis mime)
+    │   │   ├── mvc
+    │   │   │   ├── controller.scm (artanis mvc controller)
+    │   │   │   ├── controller.scm:           (define-module (app controllers name)
+    │   │   │   ├── migration.scm (artanis mvc migration)
+    │   │   │   ├── migration.scm:           (define-module (db migration name)
+    │   │   │   ├── model.scm (artanis mvc model)
+    │   │   │   ├── model.scm:           (define-module (app models name)
+    │   │   │   ├── route.scm (artanis mvc route)
+    │   │   │   ├── route.scm:    (define-module (app __fake router)
+    │   │   │   └── view.scm (artanis mvc view)
+    │   │   ├── oht.scm (artanis oht)
+    │   │   ├── page.scm (artanis page)
+    │   │   ├── route.scm (artanis route)
+    │   │   ├── security
+    │   │   │   └── nss.scm (artanis security nss)
+    │   │   ├── sendmail.scm (artanis sendmail)
+    │   │   ├── server
+    │   │   │   ├── aio.scm (artanis server aio)
+    │   │   │   ├── epoll.scm (artanis server epoll)
+    │   │   │   ├── http.scm (artanis server http)
+    │   │   │   ├── proxy.scm (artanis server proxy)
+    │   │   │   ├── ragnarok.scm (artanis server ragnarok)
+    │   │   │   ├── scheduler.scm (artanis server scheduler)
+    │   │   │   └── server-context.scm (artanis server server-context)
+    │   │   ├── server.scm (artanis server)
+    │   │   ├── session.scm (artanis session)
+    │   │   ├── sql-mapping
+    │   │   │   ├── built-in.scm (artanis sql-mapping built-in)
+    │   │   │   ├── fetcher.scm (artanis sql-mapping fetcher)
+    │   │   │   ├── handlers.scm (artanis sql-mapping handlers)
+    │   │   │   └── mapping.scm (artanis sql-mapping mapping)
+    │   │   ├── sql-mapping.scm (artanis sql-mapping)
+    │   │   ├── ssql.scm (artanis ssql)
+    │   │   ├── third-party
+    │   │   │   ├── csv.scm (artanis third-party csv)
+    │   │   │   ├── json.scm (artanis third-party json)
+    │   │   │   └── redis.scm (artanis third-party redis)
+    │   │   ├── tpl
+    │   │   │   ├── lexer.scm (artanis tpl lexer)
+    │   │   │   ├── parser.scm (artanis tpl parser)
+    │   │   │   ├── sxml.scm (artanis tpl sxml)
+    │   │   │   └── utils.scm (artanis tpl utils)
+    │   │   ├── tpl.scm (artanis tpl)
+    │   │   ├── upload.scm (artanis upload)
+    │   │   ├── utils.scm (artanis utils)
+    │   │   ├── webapi
+    │   │   │   ├── restful.scm (artanis webapi restful)
+    │   │   │   └── restful.scm:           (define-module (app api version)
+    │   │   ├── websocket
+    │   │   │   ├── frame.scm (artanis websocket frame)
+    │   │   │   ├── handshake.scm (artanis websocket handshake)
+    │   │   │   ├── named-pipe.scm (artanis websocket named-pipe)
+    │   │   │   └── protocols.scm (artanis websocket protocols)
+    │   │   └── websocket.scm (artanis websocket)
+    │   └── test-suite
+    │       └── test-suite
+    │           ├── helper.scm (test-suite helper)
+    │           └── lib.scm (test-suite lib)
+    ├── bobotpp
+    │   └── scripts
+    │       └── bot.scm (bobotpp bot))
+    ├── chickadee
+    │   ├── chickadee
+    │   │   ├── async-repl.scm (chickadee async-repl)
+    │   │   ├── audio
+    │   │   │   ├── mpg123.scm (chickadee audio mpg123)
+    │   │   │   ├── openal.scm (chickadee audio openal)
+    │   │   │   ├── vorbis.scm (chickadee audio vorbis)
+    │   │   │   └── wav.scm (chickadee audio wav)
+    │   │   ├── audio.scm (chickadee audio)
+    │   │   ├── base64.scm (chickadee base64)
+    │   │   ├── cli
+    │   │   │   ├── bundle.scm (chickadee cli bundle)
+    │   │   │   └── play.scm (chickadee cli play)
+    │   │   ├── cli.scm (chickadee cli)
+    │   │   ├── data
+    │   │   │   ├── array-list.scm (chickadee data array-list)
+    │   │   │   ├── grid.scm (chickadee data grid)
+    │   │   │   ├── heap.scm (chickadee data heap)
+    │   │   │   ├── path-finding.scm (chickadee data path-finding)
+    │   │   │   ├── quadtree.scm (chickadee data quadtree)
+    │   │   │   └── queue.scm (chickadee data queue)
+    │   │   ├── freetype.scm (chickadee freetype)
+    │   │   ├── game-loop.scm (chickadee game-loop)
+    │   │   ├── graphics
+    │   │   │   ├── 9-patch.scm (chickadee graphics 9-patch)
+    │   │   │   ├── blend.scm (chickadee graphics blend)
+    │   │   │   ├── buffer.scm (chickadee graphics buffer)
+    │   │   │   ├── color.scm (chickadee graphics color)
+    │   │   │   ├── depth.scm (chickadee graphics depth)
+    │   │   │   ├── engine.scm (chickadee graphics engine)
+    │   │   │   ├── framebuffer.scm (chickadee graphics framebuffer)
+    │   │   │   ├── gl.scm (chickadee graphics gl)
+    │   │   │   ├── light.scm (chickadee graphics light)
+    │   │   │   ├── mesh.scm (chickadee graphics mesh)
+    │   │   │   ├── model.scm (chickadee graphics model)
+    │   │   │   ├── multisample.scm (chickadee graphics multisample)
+    │   │   │   ├── particles.scm (chickadee graphics particles)
+    │   │   │   ├── path.scm (chickadee graphics path)
+    │   │   │   ├── pbr.scm (chickadee graphics pbr)
+    │   │   │   ├── phong.scm (chickadee graphics phong)
+    │   │   │   ├── pixbuf.scm (chickadee graphics pixbuf)
+    │   │   │   ├── polygon.scm (chickadee graphics polygon)
+    │   │   │   ├── shader.scm (chickadee graphics shader)
+    │   │   │   ├── skybox.scm (chickadee graphics skybox)
+    │   │   │   ├── sprite.scm (chickadee graphics sprite)
+    │   │   │   ├── stencil.scm (chickadee graphics stencil)
+    │   │   │   ├── text.scm (chickadee graphics text)
+    │   │   │   ├── texture.scm (chickadee graphics texture)
+    │   │   │   ├── tile-map.scm (chickadee graphics tile-map)
+    │   │   │   └── viewport.scm (chickadee graphics viewport)
+    │   │   ├── image
+    │   │   │   ├── jpeg.scm (chickadee image jpeg)
+    │   │   │   └── png.scm (chickadee image png)
+    │   │   ├── image.scm (chickadee image)
+    │   │   ├── json.scm (chickadee json)
+    │   │   ├── math
+    │   │   │   ├── bezier.scm (chickadee math bezier)
+    │   │   │   ├── easings.scm (chickadee math easings)
+    │   │   │   ├── matrix.scm (chickadee math matrix)
+    │   │   │   ├── quaternion.scm (chickadee math quaternion)
+    │   │   │   ├── rect.scm (chickadee math rect)
+    │   │   │   └── vector.scm (chickadee math vector)
+    │   │   ├── math.scm (chickadee math)
+    │   │   ├── readline.scm (chickadee readline)
+    │   │   ├── scripting
+    │   │   │   ├── agenda.scm (chickadee scripting agenda)
+    │   │   │   ├── channel.scm (chickadee scripting channel)
+    │   │   │   └── script.scm (chickadee scripting script)
+    │   │   ├── scripting.scm (chickadee scripting)
+    │   │   └── utils.scm (chickadee utils)
+    │   ├── chickadee.scm (chickadee)
+    │   └── tests
+    │       ├── array-list.scm (tests array-list)
+    │       ├── base64.scm (tests base64)
+    │       ├── heap.scm (tests heap)
+    │       ├── matrix.scm (tests matrix)
+    │       ├── quadtree.scm (tests quadtree)
+    │       ├── queue.scm (tests queue)
+    │       ├── rect.scm (tests rect)
+    │       ├── utils.scm (tests utils)
+    │       └── vector.scm (tests vector)
+    ├── gccjit-guile
+    │   └── src
+    │       └── gccjit.scm (gccjit)
+    ├── guile
+    │   ├── benchmark
+    │   │   └── measure.scm (measure)
+    │   ├── benchmark-suite
+    │   │   └── benchmark-suite
+    │   │       └── lib.scm (benchmark-suite lib)
+    │   ├── examples
+    │   │   ├── box-dynamic-module
+    │   │   │   ├── box-mixed.scm (box-mixed))
+    │   │   │   └── box-module.scm (box-module))
+    │   │   └── modules
+    │   │       ├── module-0.scm (module-0))
+    │   │       ├── module-1.scm (module-1))
+    │   │       └── module-2.scm (module-2))
+    │   ├── guile-readline
+    │   │   └── ice-9
+    │   │       └── readline.scm (ice-9 readline)
+    │   ├── libguile
+    │   │   └── libguile-3.0-gdb.scm (guile-gdb)
+    │   ├── module
+    │   │   ├── ice-9
+    │   │   │   ├── and-let-star.scm (ice-9 and-let-star)
+    │   │   │   ├── arrays.scm (ice-9 arrays)
+    │   │   │   ├── atomic.scm (ice-9 atomic)
+    │   │   │   ├── binary-ports.scm (ice-9 binary-ports)
+    │   │   │   ├── boot-9.scm:(define* (define-module* name
+    │   │   │   ├── boot-9.scm (guile-user)
+    │   │   │   ├── boot-9.scm:             (let ((m (define-module* '(name name* ...)
+    │   │   │   ├── boot-9.scm (system syntax internal))
+    │   │   │   ├── buffered-input.scm (ice-9 buffered-input)
+    │   │   │   ├── calling.scm (ice-9 calling)
+    │   │   │   ├── command-line.scm (ice-9 command-line)
+    │   │   │   ├── common-list.scm (ice-9 common-list)
+    │   │   │   ├── control.scm (ice-9 control)
+    │   │   │   ├── copy-tree.scm (ice-9 copy-tree)
+    │   │   │   ├── curried-definitions.scm (ice-9 curried-definitions)
+    │   │   │   ├── deprecated.scm (ice-9 deprecated)
+    │   │   │   ├── documentation.scm (ice-9 documentation)
+    │   │   │   ├── eval-string.scm (ice-9 eval-string)
+    │   │   │   ├── exceptions.scm (ice-9 exceptions)
+    │   │   │   ├── expect.scm (ice-9 expect)
+    │   │   │   ├── fdes-finalizers.scm (ice-9 fdes-finalizers)
+    │   │   │   ├── format.scm (ice-9 format)
+    │   │   │   ├── ftw.scm (ice-9 ftw)
+    │   │   │   ├── futures.scm (ice-9 futures)
+    │   │   │   ├── gap-buffer.scm (ice-9 gap-buffer)
+    │   │   │   ├── getopt-long.scm (ice-9 getopt-long)
+    │   │   │   ├── hash-table.scm (ice-9 hash-table)
+    │   │   │   ├── hcons.scm (ice-9 hcons)
+    │   │   │   ├── history.scm (ice-9 history)
+    │   │   │   ├── history.scm (value-history))
+    │   │   │   ├── i18n.scm (ice-9 i18n)
+    │   │   │   ├── iconv.scm (ice-9 iconv)
+    │   │   │   ├── lineio.scm (ice-9 lineio)
+    │   │   │   ├── list.scm (ice-9 list)
+    │   │   │   ├── local-eval.scm (ice-9 local-eval)
+    │   │   │   ├── ls.scm (ice-9 ls)
+    │   │   │   ├── match.scm (ice-9 match)
+    │   │   │   ├── null.scm (ice-9 null)
+    │   │   │   ├── occam-channel.scm (ice-9 occam-channel)
+    │   │   │   ├── optargs.scm (ice-9 optargs)
+    │   │   │   ├── peg.scm (ice-9 peg)
+    │   │   │   ├── poe.scm (ice-9 poe)
+    │   │   │   ├── poll.scm (ice-9 poll)
+    │   │   │   ├── popen.scm (ice-9 popen)
+    │   │   │   ├── ports.scm (ice-9 ports)
+    │   │   │   ├── ports.scm (ice-9 ports))
+    │   │   │   ├── ports.scm (ice-9 ports internal)
+    │   │   │   ├── pretty-print.scm (ice-9 pretty-print)
+    │   │   │   ├── q.scm (ice-9 q)
+    │   │   │   ├── r5rs.scm (ice-9 r5rs)
+    │   │   │   ├── r6rs-libraries.scm:                 (define-module (name name* ...)
+    │   │   │   ├── rdelim.scm (ice-9 rdelim)
+    │   │   │   ├── receive.scm (ice-9 receive)
+    │   │   │   ├── regex.scm (ice-9 regex)
+    │   │   │   ├── runq.scm (ice-9 runq)
+    │   │   │   ├── rw.scm (ice-9 rw)
+    │   │   │   ├── safe-r5rs.scm (ice-9 safe-r5rs)
+    │   │   │   ├── safe.scm (ice-9 safe)
+    │   │   │   ├── sandbox.scm (ice-9 sandbox)
+    │   │   │   ├── save-stack.scm (ice-9 save-stack)
+    │   │   │   ├── scm-style-repl.scm (ice-9 scm-style-repl)
+    │   │   │   ├── serialize.scm (ice-9 serialize)
+    │   │   │   ├── session.scm (ice-9 session)
+    │   │   │   ├── stack-catch.scm (ice-9 stack-catch)
+    │   │   │   ├── streams.scm (ice-9 streams)
+    │   │   │   ├── string-fun.scm (ice-9 string-fun)
+    │   │   │   ├── suspendable-ports.scm (ice-9 suspendable-ports)
+    │   │   │   ├── textual-ports.scm (ice-9 textual-ports)
+    │   │   │   ├── threads.scm (ice-9 threads)
+    │   │   │   ├── time.scm (ice-9 time)
+    │   │   │   ├── top-repl.scm (ice-9 top-repl)
+    │   │   │   ├── unicode.scm (ice-9 unicode)
+    │   │   │   ├── vlist.scm (ice-9 vlist)
+    │   │   │   └── weak-vector.scm (ice-9 weak-vector)
+    │   │   ├── language
+    │   │   │   ├── bytecode.scm (language bytecode)
+    │   │   │   ├── cps.scm (language cps)
+    │   │   │   └── tree-il.scm (language tree-il)
+    │   │   ├── oop
+    │   │   │   └── goops.scm (oop goops)
+    │   │   ├── rnrs
+    │   │   │   └── bytevectors.scm (rnrs bytevectors)
+    │   │   ├── scheme
+    │   │   │   ├── base.scm (scheme base)
+    │   │   │   ├── case-lambda.scm (scheme case-lambda)
+    │   │   │   ├── char.scm (scheme char)
+    │   │   │   ├── complex.scm (scheme complex)
+    │   │   │   ├── cxr.scm (scheme cxr)
+    │   │   │   ├── eval.scm (scheme eval)
+    │   │   │   ├── file.scm (scheme file)
+    │   │   │   ├── inexact.scm (scheme inexact)
+    │   │   │   ├── lazy.scm (scheme lazy)
+    │   │   │   ├── load.scm (scheme load)
+    │   │   │   ├── process-context.scm (scheme process-context)
+    │   │   │   ├── r5rs.scm (scheme r5rs)
+    │   │   │   ├── read.scm (scheme read)
+    │   │   │   ├── repl.scm (scheme repl)
+    │   │   │   ├── time.scm (scheme time)
+    │   │   │   └── write.scm (scheme write)
+    │   │   ├── scripts
+    │   │   │   ├── api-diff.scm (scripts api-diff)
+    │   │   │   ├── autofrisk.scm (scripts autofrisk)
+    │   │   │   ├── compile.scm (scripts compile)
+    │   │   │   ├── disassemble.scm (scripts disassemble)
+    │   │   │   ├── display-commentary.scm (scripts display-commentary)
+    │   │   │   ├── doc-snarf.scm (scripts doc-snarf)
+    │   │   │   ├── frisk.scm:                      ((define-module)
+    │   │   │   ├── frisk.scm (scripts frisk)
+    │   │   │   ├── generate-autoload.scm:;; (define-module (guile-user)
+    │   │   │   ├── generate-autoload.scm:    (display "(define-module ")
+    │   │   │   ├── generate-autoload.scm (scripts generate-autoload)
+    │   │   │   ├── help.scm (scripts help)
+    │   │   │   ├── lint.scm:\011   ((define-module define-generic quote quasiquote)
+    │   │   │   ├── lint.scm (scripts lint)
+    │   │   │   ├── list.scm (scripts list)
+    │   │   │   ├── punify.scm (scripts punify)
+    │   │   │   ├── read-rfc822.scm (scripts read-rfc822)
+    │   │   │   ├── read-scheme-source.scm (scripts read-scheme-source)
+    │   │   │   ├── read-text-outline.scm (scripts read-text-outline)
+    │   │   │   ├── scan-api.scm (scripts scan-api)
+    │   │   │   ├── snarf-check-and-output-texi.scm (scripts snarf-check-and-output-texi)
+    │   │   │   ├── snarf-guile-m4-docs.scm (scripts snarf-guile-m4-docs)
+    │   │   │   ├── summarize-guile-TODO.scm (scripts summarize-guile-TODO)
+    │   │   │   └── use2dot.scm (scripts use2dot)
+    │   │   ├── srfi
+    │   │   │   ├── srfi-10.scm (srfi srfi-10)
+    │   │   │   ├── srfi-111.scm (srfi srfi-111)
+    │   │   │   ├── srfi-11.scm (srfi srfi-11)
+    │   │   │   ├── srfi-13.scm (srfi srfi-13))
+    │   │   │   ├── srfi-14.scm (srfi srfi-14))
+    │   │   │   ├── srfi-16.scm (srfi srfi-16)
+    │   │   │   ├── srfi-171.scm (srfi srfi-171)
+    │   │   │   ├── srfi-17.scm (srfi srfi-17)
+    │   │   │   ├── srfi-18.scm (srfi srfi-18)
+    │   │   │   ├── srfi-19.scm (srfi srfi-19)
+    │   │   │   ├── srfi-1.scm (srfi srfi-1)
+    │   │   │   ├── srfi-26.scm (srfi srfi-26)
+    │   │   │   ├── srfi-27.scm (srfi srfi-27)
+    │   │   │   ├── srfi-28.scm (srfi srfi-28)
+    │   │   │   ├── srfi-2.scm (srfi srfi-2)
+    │   │   │   ├── srfi-31.scm (srfi srfi-31)
+    │   │   │   ├── srfi-34.scm (srfi srfi-34)
+    │   │   │   ├── srfi-35.scm (srfi srfi-35)
+    │   │   │   ├── srfi-37.scm (srfi srfi-37)
+    │   │   │   ├── srfi-38.scm (srfi srfi-38)
+    │   │   │   ├── srfi-39.scm (srfi srfi-39)
+    │   │   │   ├── srfi-41.scm (srfi srfi-41)
+    │   │   │   ├── srfi-42.scm (srfi srfi-42)
+    │   │   │   ├── srfi-43.scm (srfi srfi-43)
+    │   │   │   ├── srfi-45.scm (srfi srfi-45)
+    │   │   │   ├── srfi-4.scm (srfi srfi-4)
+    │   │   │   ├── srfi-60.scm (srfi srfi-60)
+    │   │   │   ├── srfi-64.scm (srfi srfi-64)
+    │   │   │   ├── srfi-67.scm (srfi srfi-67)
+    │   │   │   ├── srfi-69.scm (srfi srfi-69)
+    │   │   │   ├── srfi-6.scm (srfi srfi-6)
+    │   │   │   ├── srfi-71.scm (srfi srfi-71)
+    │   │   │   ├── srfi-88.scm (srfi srfi-88)
+    │   │   │   ├── srfi-8.scm (srfi srfi-8)
+    │   │   │   ├── srfi-98.scm (srfi srfi-98)
+    │   │   │   └── srfi-9.scm (srfi srfi-9)
+    │   │   ├── statprof.scm (statprof)
+    │   │   ├── sxml
+    │   │   │   ├── apply-templates.scm (sxml apply-templates)
+    │   │   │   ├── fold.scm (sxml fold)
+    │   │   │   ├── match.scm (sxml match)
+    │   │   │   ├── simple.scm (sxml simple)
+    │   │   │   ├── ssax.scm (sxml ssax)
+    │   │   │   ├── transform.scm (sxml transform)
+    │   │   │   └── xpath.scm (sxml xpath)
+    │   │   ├── system
+    │   │   │   ├── foreign-library.scm (system foreign-library)
+    │   │   │   ├── foreign-object.scm (system foreign-object)
+    │   │   │   ├── foreign.scm (system foreign)
+    │   │   │   ├── syntax.scm (system syntax)
+    │   │   │   └── xref.scm (system xref)
+    │   │   ├── texinfo
+    │   │   │   ├── docbook.scm (texinfo docbook)
+    │   │   │   ├── html.scm (texinfo html)
+    │   │   │   ├── indexing.scm (texinfo indexing)
+    │   │   │   ├── plain-text.scm (texinfo plain-text)
+    │   │   │   ├── reflection.scm (texinfo reflection)
+    │   │   │   ├── serialize.scm (texinfo serialize)
+    │   │   │   └── string-utils.scm (texinfo string-utils)
+    │   │   ├── texinfo.scm (texinfo)
+    │   │   └── web
+    │   │       ├── client.scm (web client)
+    │   │       ├── http.scm (web http)
+    │   │       ├── request.scm (web request)
+    │   │       ├── response.scm (web response)
+    │   │       ├── server.scm (web server)
+    │   │       └── uri.scm (web uri)
+    │   └── test-suite
+    │       ├── standalone
+    │       │   ├── test-import-order-a.scm (test-import-order-a)
+    │       │   ├── test-import-order-b.scm (test-import-order-b)
+    │       │   ├── test-import-order-c.scm (test-import-order-c)
+    │       │   └── test-import-order-d.scm (test-import-order-d)
+    │       └── test-suite
+    │           └── lib.scm (test-suite lib)
+    ├── guile-SML
+    │   ├── examples
+    │   │   ├── compiler
+    │   │   │   └── context.scm (context)
+    │   │   ├── parenthesis-check
+    │   │   │   └── context.scm (context)
+    │   │   └── png
+    │   │       └── png-signature-context.scm (png-signature-context)
+    │   ├── modules
+    │   │   └── smc
+    │   │       ├── compiler.scm (smc compiler)
+    │   │       ├── fsm.scm (smc fsm)
+    │   │       ├── puml-context.scm (smc puml-context)
+    │   │       ├── puml-fsm.scm:(define-module
+    │   │       ├── puml.scm (smc puml)
+    │   │       ├── trace-context.scm (smc trace-context)
+    │   │       └── trace-fsm.scm:(define-module
+    │   └── tests
+    │       ├── common.scm (tests common)
+    │       ├── compiler-guile.scm:    "(define-module"
+    │       └── test-context.scm (tests test-context)
+    ├── haunt
+    │   ├── haunt
+    │   │   ├── artifact.scm (haunt artifact)
+    │   │   ├── asset.scm (haunt asset)
+    │   │   ├── builder
+    │   │   │   ├── assets.scm (haunt builder assets)
+    │   │   │   ├── atom.scm (haunt builder atom)
+    │   │   │   ├── blog.scm (haunt builder blog)
+    │   │   │   └── rss.scm (haunt builder rss)
+    │   │   ├── html.scm (haunt html)
+    │   │   ├── inotify.scm (haunt inotify)
+    │   │   ├── page.scm (haunt page)
+    │   │   ├── post.scm (haunt post)
+    │   │   ├── publisher
+    │   │   │   └── rsync.scm (haunt publisher rsync)
+    │   │   ├── publisher.scm (haunt publisher)
+    │   │   ├── reader
+    │   │   │   ├── commonmark.scm (haunt reader commonmark)
+    │   │   │   ├── skribe.scm:    (define-module name
+    │   │   │   ├── skribe.scm:    (define-module name args ...))))
+    │   │   │   ├── skribe.scm:(define-syntax-rule (define-module* name args ...)
+    │   │   │   ├── skribe.scm (haunt reader skribe)
+    │   │   │   └── texinfo.scm (haunt reader texinfo)
+    │   │   ├── reader.scm:    (define-module name
+    │   │   ├── reader.scm:    (define-module name args ...))))
+    │   │   ├── reader.scm:(define-syntax-rule (define-module* name args ...)
+    │   │   ├── reader.scm (haunt reader)
+    │   │   ├── serve
+    │   │   │   ├── mime-types.scm (haunt serve mime-types)
+    │   │   │   └── web-server.scm (haunt serve web-server)
+    │   │   ├── site.scm (haunt site)
+    │   │   ├── skribe
+    │   │   │   └── utils.scm (haunt skribe utils)
+    │   │   ├── skribe.scm (haunt skribe)
+    │   │   ├── ui
+    │   │   │   ├── build.scm (haunt ui build)
+    │   │   │   ├── publish.scm (haunt ui publish)
+    │   │   │   └── serve.scm (haunt ui serve)
+    │   │   ├── ui.scm:    (define-module name
+    │   │   ├── ui.scm:    (define-module name args ...))))
+    │   │   ├── ui.scm:(define-syntax-rule (define-module* name args ...)
+    │   │   ├── ui.scm (haunt ui)
+    │   │   ├── utils.scm (haunt utils)
+    │   │   └── watch
+    │   │       ├── fallback.scm (haunt watch fallback)
+    │   │       └── linux.scm (haunt watch linux)
+    │   └── tests
+    │       ├── helper.scm (tests helper)
+    │       ├── post.scm (test-post)
+    │       └── utils.scm (test-utils)
+    ├── lepton-eda
+    │   └── liblepton
+    │       └── scheme
+    │           └── netlist.scm (netlist)
+    ├── mcron
+    │   └── src
+    │       └── mcron
+    │           ├── base.scm (mcron base)
+    │           ├── command-line-processor.scm (mcron command-line-processor)
+    │           ├── core.scm (mcron core)
+    │           ├── environment.scm (mcron environment)
+    │           ├── getopt-long.scm (mcron getopt-long)
+    │           ├── job-specifier.scm (mcron job-specifier)
+    │           ├── redirect.scm (mcron redirect)
+    │           ├── utils.scm (mcron utils)
+    │           ├── vixie-specification.scm (mcron vixie-specification)
+    │           └── vixie-time.scm (mcron vixie-time)
+    ├── shepherd
+    │   ├── build-aux
+    │   │   └── guix
+    │   │       └── shepherd-package.scm (shepherd-package)
+    │   └── modules
+    │       ├── shepherd
+    │       │   ├── args.scm (shepherd args)
+    │       │   ├── colors.scm (shepherd colors)          ;copied from Guix with minor changes
+    │       │   ├── comm.scm (shepherd comm)
+    │       │   ├── service.scm (shepherd service)
+    │       │   └── support.scm (shepherd support)
+    │       └── shepherd.scm (shepherd)
+    └── shroud
+        └── shroud
+            ├── secret.scm (shroud secret)
+            ├── ui
+            │   ├── hide.scm (shroud ui hide)
+            │   ├── list.scm (shroud ui list)
+            │   ├── remove.scm (shroud ui remove)
+            │   └── show.scm (shroud ui show)
+            ├── ui.scm (shroud ui)
+            └── utils.scm (shroud utils)
+
+86 directories, 418 files
+#+end_example
+
+*** Dotfiles
+
+These users do: kitnil
+
+#+begin_src  shell :dir /data/ecto/x.files :results output verbatim :wrap example text
+here=$(pwd)
+for dir in {akagi/dotfiles,kitnil/dotfiles/dotfiles,krevedkokun/dotfiles/src}; do
+pushd $dir
+
+find . -maxdepth 4 -name '*.scm' -type f \
+    -exec grep -e '(define-module' \{\} + |\
+  sed -e 's/:(define-module.*(/ (/' |\
+  tree --fromfile .
+popd
+done
+#+end_src
+
+#+RESULTS:
+#+begin_example text
+/data/ecto/x.files/akagi/dotfiles /data/ecto/x.files
+.
+└── .
+    └── magi
+        ├── configs.scm (magi configs)
+        ├── deploy.scm (magi deploy)
+        ├── features
+        │   ├── base.scm (magi features base)
+        │   ├── docker.scm (magi features docker)
+        │   ├── emacs.scm (magi features emacs)
+        │   ├── emacs-xyz.scm (magi features emacs-xyz)
+        │   ├── networking.scm (magi features networking)
+        │   ├── password-utils.scm (magi features password-utils)
+        │   ├── presets.scm (magi features presets)
+        │   ├── shellutils.scm (magi features shellutils)
+        │   ├── ssh.scm (magi features ssh)
+        │   ├── video.scm (magi features video)
+        │   ├── wm.scm (magi features wm)
+        │   └── xdisorg.scm (magi features xdisorg)
+        ├── home
+        │   ├── audio.scm (magi home audio)
+        │   ├── auxiliary.scm (magi home auxiliary)
+        │   ├── base.scm (magi home base)
+        │   ├── bittorrent.scm (magi home bittorrent)
+        │   ├── clojure.scm (magi home clojure)
+        │   ├── clouds.scm (magi home clouds)
+        │   ├── documentation.scm (magi home documentation)
+        │   ├── elixir.scm (magi home elixir)
+        │   ├── emacs.scm (magi home emacs)
+        │   ├── fonts.scm (magi home fonts)
+        │   ├── games.scm (magi home games)
+        │   ├── gtk.scm (magi home gtk)
+        │   ├── haskell.scm (magi home haskell)
+        │   ├── images.scm (magi home images)
+        │   ├── lisp.scm (magi home lisp)
+        │   ├── mail.scm (magi home mail)
+        │   ├── matrix.scm (magi home matrix)
+        │   ├── music.scm (magi home music)
+        │   ├── networking.scm (magi home networking)
+        │   ├── notification.scm (magi home notification)
+        │   ├── scheme.scm (magi home scheme)
+        │   ├── security.scm (magi home security)
+        │   ├── services
+        │   │   ├── emacs.scm (magi home services emacs)
+        │   │   ├── fonts.scm (magi home services fonts)
+        │   │   ├── i2p.scm (magi home services i2p)
+        │   │   ├── kdeconnect.scm (magi home services kdeconnect)
+        │   │   ├── keybase.scm (magi home services keybase)
+        │   │   ├── mail.scm (magi home services mail)
+        │   │   ├── minidlna.scm (magi home services minidlna)
+        │   │   ├── notification.scm (magi home services notification)
+        │   │   ├── password-utils.scm (magi home services password-utils)
+        │   │   ├── pipewire.scm (magi home services pipewire)
+        │   │   ├── polybar.scm (magi home services polybar)
+        │   │   ├── proxy.scm (magi home services proxy)
+        │   │   ├── pueue.scm (magi home services pueue)
+        │   │   ├── wm.scm (magi home services wm)
+        │   │   ├── xdisorg.scm (magi home services xdisorg)
+        │   │   ├── xorg.scm (magi home services xorg)
+        │   │   └── xremap.scm (magi home services xremap)
+        │   ├── shells.scm (magi home shells)
+        │   ├── terminals.scm (magi home terminals)
+        │   ├── version-control.scm (magi home version-control)
+        │   ├── video.scm (magi home video)
+        │   ├── web-browsers.scm (magi home web-browsers)
+        │   ├── wm.scm (magi home wm)
+        │   ├── xdg.scm (magi home xdg)
+        │   └── xorg.scm (magi home xorg)
+        ├── hosts
+        │   ├── magi.scm (magi hosts magi)
+        │   └── psycho100.scm (magi hosts psycho100)
+        ├── system
+        │   ├── base.scm (magi system base)
+        │   ├── desktop.scm (magi system desktop)
+        │   ├── install.scm (magi system install)
+        │   ├── magi.scm (magi system magi)
+        │   ├── remote
+        │   │   ├── deploy.scm (magi system remote deploy)
+        │   │   ├── home-server.scm (magi system remote home-server)
+        │   │   ├── kokuou.scm (magi system remote kokuou)
+        │   │   ├── psycho100.scm (magi system remote psycho100)
+        │   │   └── vps.scm (magi system remote vps)
+        │   ├── services
+        │   │   ├── dns.scm (magi system services dns)
+        │   │   └── networking.scm (magi system services networking)
+        │   └── test-system.scm (magi system test-system))
+        ├── users
+        │   ├── akagi.scm (magi users akagi)
+        │   ├── gintoki.scm (magi users gintoki)
+        │   └── mob.scm (magi users mob)
+        └── utils.scm (magi utils)
+
+11 directories, 79 files
+/data/ecto/x.files
+/data/ecto/x.files/kitnil/dotfiles/dotfiles /data/ecto/x.files
+.
+└── .
+    ├── guile
+    │   ├── bash.scm (bash)
+    │   ├── config.scm (guile config))
+    │   ├── gitlab.scm (guile gitlab)
+    │   ├── gpg.scm (guile gpg)
+    │   └── pass.scm (guile pass)
+    ├── guixsd
+    │   ├── modules
+    │   │   ├── bootloader
+    │   │   │   └── grub.scm (bootloader grub)
+    │   │   ├── config.scm (config)
+    │   │   ├── home
+    │   │   │   └── config.scm (home config)
+    │   │   ├── jenkins
+    │   │   │   └── plugins.scm (jenkins plugins)
+    │   │   ├── manifests
+    │   │   │   └── wm.scm (manifests wm)
+    │   │   ├── packages
+    │   │   │   ├── admin.scm (packages admin)
+    │   │   │   ├── certs.scm (packages certs)
+    │   │   │   ├── chromium.scm (packages chromium)
+    │   │   │   ├── cisco.scm (packages cisco)
+    │   │   │   ├── containers.scm (packages containers)
+    │   │   │   ├── docker.scm (packages docker)
+    │   │   │   ├── games.scm (packages games)
+    │   │   │   ├── hardware.scm (packages hardware)
+    │   │   │   ├── jenkins.scm (packages jenkins)
+    │   │   │   ├── juniper.scm (packages juniper)
+    │   │   │   ├── kubernetes.scm (packages kubernetes)
+    │   │   │   ├── linux.scm (packages linux)
+    │   │   │   ├── mail.scm (packages mail)
+    │   │   │   ├── monitoring.scm (packages monitoring)
+    │   │   │   ├── netboot.scm (packages netboot)
+    │   │   │   ├── networking.scm (packages networking)
+    │   │   │   ├── password-utils.scm (packages password-utils)
+    │   │   │   ├── ssh.scm (packages ssh)
+    │   │   │   ├── video.scm (packages video)
+    │   │   │   ├── virtualization.scm (packages virtualization)
+    │   │   │   ├── vpn.scm (packages vpn)
+    │   │   │   └── wm.scm (packages wm)
+    │   │   ├── services
+    │   │   │   ├── admin.scm (services admin)
+    │   │   │   ├── autofs.scm (services autofs)
+    │   │   │   ├── autossh.scm (services autossh)
+    │   │   │   ├── backup.scm (services backup)
+    │   │   │   ├── bird.scm (services bird)
+    │   │   │   ├── bittorrent.scm (services bittorrent)
+    │   │   │   ├── certbot.scm (services certbot)
+    │   │   │   ├── ddc.scm (services ddc)
+    │   │   │   ├── desktop.scm (services desktop)
+    │   │   │   ├── dns.scm (services dns)
+    │   │   │   ├── docker.scm (services docker)
+    │   │   │   ├── gitlab.scm (services gitlab)
+    │   │   │   ├── intel.scm (services intel)
+    │   │   │   ├── ipset.scm (services ipset)
+    │   │   │   ├── jenkins.scm (services jenkins)
+    │   │   │   ├── keepalived.scm (services keepalived)
+    │   │   │   ├── kubernetes.scm (services kubernetes)
+    │   │   │   ├── mail.scm (services mail)
+    │   │   │   ├── monitoring.scm (services monitoring)
+    │   │   │   ├── networking.scm (services networking)
+    │   │   │   ├── nix.scm (services nix)
+    │   │   │   ├── openvpn.scm (services openvpn)
+    │   │   │   ├── ssh.scm (services ssh)
+    │   │   │   ├── syncthing.scm (services syncthing)
+    │   │   │   ├── tftp.scm (services tftp)
+    │   │   │   ├── virtualization.scm (services virtualization)
+    │   │   │   ├── vnc.scm (services vnc)
+    │   │   │   └── web.scm (services web)
+    │   │   ├── system
+    │   │   │   ├── install.scm (system install)
+    │   │   │   └── nongnu.scm (system nongnu)
+    │   │   ├── utils
+    │   │   │   └── package.scm (utils package)
+    │   │   └── utils.scm (utils)
+    │   └── scripts
+    │       └── ssl.scm (ssl)
+    ├── jenkins
+    │   └── scripts
+    │       └── plugins.scm (jenkins scripts plugins)
+    └── manifests
+        ├── deprecated.scm (deprecated)
+        ├── obs.scm (obs)
+        └── telegram.scm (telegram)
+
+17 directories, 69 files
+/data/ecto/x.files
+/data/ecto/x.files/krevedkokun/dotfiles/src /data/ecto/x.files
+.
+└── .
+    └── guile
+        ├── prelude
+        │   └── curry.scm (prelude curry)
+        ├── prelude.scm (prelude))
+        └── yggdrasil
+            ├── configurations
+            │   └── asgard.scm (yggdrasil configurations asgard)
+            ├── modules
+            │   ├── alacritty.scm (yggdrasil modules alacritty)
+            │   ├── connman.scm (yggdrasil modules connman)
+            │   ├── dbus.scm (yggdrasil modules dbus)
+            │   ├── direnv.scm (yggdrasil modules direnv)
+            │   ├── elogind.scm (yggdrasil modules elogind)
+            │   ├── emacs.scm (yggdrasil modules emacs)
+            │   ├── engineering.scm (yggdrasil modules engineering)
+            │   ├── fonts.scm (yggdrasil modules fonts)
+            │   ├── foot.scm (yggdrasil modules foot)
+            │   ├── git.scm (yggdrasil modules git)
+            │   ├── gnupg.scm (yggdrasil modules gnupg)
+            │   ├── gtk.scm (yggdrasil modules gtk)
+            │   ├── isync.scm (yggdrasil modules isync)
+            │   ├── l2md.scm (yggdrasil modules l2md)
+            │   ├── librewolf.scm (yggdrasil modules librewolf)
+            │   ├── libvirt.scm (yggdrasil modules libvirt)
+            │   ├── light.scm (yggdrasil modules light)
+            │   ├── make.scm (yggdrasil modules make)
+            │   ├── mako.scm (yggdrasil modules mako)
+            │   ├── msmtp.scm (yggdrasil modules msmtp)
+            │   ├── multimedia.scm (yggdrasil modules multimedia)
+            │   ├── notmuch.scm (yggdrasil modules notmuch)
+            │   ├── nyxt.scm (yggdrasil modules nyxt)
+            │   ├── pass.scm (yggdrasil modules pass)
+            │   ├── pipewire.scm (yggdrasil modules pipewire)
+            │   ├── pm.scm (yggdrasil modules pm)
+            │   ├── rofi.scm (yggdrasil modules rofi)
+            │   ├── scrot.scm (yggdrasil modules scrot)
+            │   ├── ssh.scm (yggdrasil modules ssh)
+            │   ├── sway.scm (yggdrasil modules sway)
+            │   ├── tofi.scm (yggdrasil modules tofi)
+            │   ├── wlsunset.scm (yggdrasil modules wlsunset)
+            │   └── xdg.scm (yggdrasil modules xdg)
+            └── packages
+                ├── clojure.scm (yggdrasil packages clojure)
+                ├── crates-gtk.scm (yggdrasil packages crates-gtk)
+                ├── engineering.scm (yggdrasil packages engineering)
+                ├── freedesktop.scm (yggdrasil packages freedesktop)
+                ├── gnome.scm (yggdrasil packages gnome)
+                ├── gtk.scm (yggdrasil packages gtk)
+                ├── linux.scm (yggdrasil packages linux)
+                ├── mozilla.scm (yggdrasil packages mozilla)
+                ├── pipewire.scm (yggdrasil packages pipewire)
+                ├── pm.scm (yggdrasil packages pm)
+                ├── security-token.scm (yggdrasil packages security-token)
+                ├── sound.scm (yggdrasil packages sound)
+                └── xdisorg.scm (yggdrasil packages xdisorg)
+
+8 directories, 49 files
+/data/ecto/x.files
+#+end_example
+
+
+* Top-level Modules
+
+** Guix
+
+=tree -L 3 -P "*.scm" --prune /data/ecto/guix/channels=
+
+#+begin_quote
+/data/ecto/guix/channels
+├── flatwhatson
+│   └── flat
+│       └── packages.scm
+├── guix-android
+│   └── android
+│       └── iri.scm
+├── guix-crypto
+│   ├── bin
+│   │   ├── clef-pipe-test.scm
+│   │   └── release-update-helper.scm
+│   └── tests
+│       └── swarm-tests.scm
+├── guix-hpc
+│   ├── cnrs
+│   │   └── irit.scm
+│   ├── fau
+│   │   └── likwid.scm
+│   ├── inria
+│   │   ├── bioversiton.scm
+│   │   ├── concace.scm
+│   │   ├── datamove.scm
+│   │   ├── dtk.scm
+│   │   ├── eztrace.scm
+│   │   ├── flowvr.scm
+│   │   ├── hawen.scm
+│   │   ├── julia.scm
+│   │   ├── llvm.scm
+│   │   ├── medinria.scm
+│   │   ├── mipp.scm
+│   │   ├── mpi.scm
+│   │   ├── opencoarrays.scm
+│   │   ├── pampa.scm
+│   │   ├── simgrid.scm
+│   │   ├── staging.scm
+│   │   ├── storm.scm
+│   │   └── tadaam.scm
+│   ├── lanl
+│   │   └── lanl.scm
+│   ├── libnegf
+│   │   └── libnegf.scm
+│   ├── llnl
+│   │   └── geos.scm
+│   ├── lrz
+│   │   └── librsb.scm
+│   ├── mongoose
+│   │   └── mongoose.scm
+│   ├── teaching
+│   │   └── nachos.scm
+│   └── ufrgs
+│       └── ufrgs.scm
+├── guix-hpc-non-free
+│   ├── bsc
+│   │   ├── alya.scm
+│   │   └── slurm17.scm
+│   ├── hacky
+│   │   ├── gitlab.scm
+│   │   ├── mumps-mkl.scm
+│   │   ├── services-gitlab.scm
+│   │   └── suitesparse-mkl.scm
+│   ├── inrae
+│   │   └── mse.scm
+│   ├── inria
+│   │   ├── aerosol.scm
+│   │   ├── energy-scope.scm
+│   │   ├── experimental.scm
+│   │   ├── hodins.scm
+│   │   └── makutu.scm
+│   ├── non-free
+│   │   ├── cuda.scm
+│   │   ├── hlibpro.scm
+│   │   ├── icc.scm
+│   │   ├── medit.scm
+│   │   ├── mkl.scm
+│   │   └── parmetis.scm
+│   └── tainted
+│       ├── cccl.scm
+│       ├── machine-learning.scm
+│       └── python-xyz.scm
+├── guix-manage
+│   ├── guix-manage
+│   │   ├── add.scm
+│   │   ├── create.scm
+│   │   ├── delete.scm
+│   │   ├── errors.scm
+│   │   ├── gc.scm
+│   │   ├── manifests.scm
+│   │   ├── profiles.scm
+│   │   ├── remove.scm
+│   │   ├── serialize.scm
+│   │   ├── upgrade.scm
+│   │   └── utils.scm
+│   ├── guix.scm
+│   ├── hall.scm
+│   └── tests
+│       ├── commands.scm
+│       ├── common.scm
+│       ├── profiles.scm
+│       ├── serialize.scm
+│       └── utils.scm
+├── guixrus
+│   └── guixrus
+│       ├── contributors.scm
+│       └── licenses.scm
+├── nonguix
+│   ├── nongnu
+│   │   ├── ci.scm
+│   │   └── packages.scm
+│   └── nonguix
+│       ├── download.scm
+│       ├── licenses.scm
+│       ├── modules.scm
+│       ├── multiarch-container.scm
+│       └── utils.scm
+├── rde
+│   └── guix.scm
+└── rrr
+    ├── guix
+    │   └── pijul-download.scm
+    └── rrr
+        └── packages.scm
+
+38 directories, 83 files
+#+end_quote
+
+** Scheme Projects
+
+=tree -L 3 -P "*.scm" --prune /data/ecto/scheme/=
+
+#+begin_quote
+/data/ecto/scheme/
+├── artanis
+│   ├── artanis
+│   │   ├── artanis.scm
+│   │   ├── cache.scm
+│   │   ├── client.scm
+│   │   ├── commands.scm
+│   │   ├── config.scm
+│   │   ├── cookie.scm
+│   │   ├── db.scm
+│   │   ├── debug.scm
+│   │   ├── env.scm
+│   │   ├── ffi.scm
+│   │   ├── fprm.scm
+│   │   ├── inotify.scm
+│   │   ├── irregex.scm
+│   │   ├── lpc.scm
+│   │   ├── mime.scm
+│   │   ├── oht.scm
+│   │   ├── page.scm
+│   │   ├── route.scm
+│   │   ├── sendmail.scm
+│   │   ├── server.scm
+│   │   ├── session.scm
+│   │   ├── sql-mapping.scm
+│   │   ├── ssql.scm
+│   │   ├── tpl.scm
+│   │   ├── upload.scm
+│   │   ├── utils.scm
+│   │   └── websocket.scm
+│   ├── build-aux
+│   │   ├── check_texinfo.scm
+│   │   └── gen-directive.scm
+│   └── examples
+│       ├── blog.scm
+│       ├── test.scm
+│       └── upload.scm
+├── bobotpp
+│   └── scripts
+│       ├── bobot-utils.scm
+│       └── bot.scm
+├── chickadee
+│   ├── chickadee
+│   │   ├── async-repl.scm
+│   │   ├── audio.scm
+│   │   ├── base64.scm
+│   │   ├── cli.scm
+│   │   ├── freetype.scm
+│   │   ├── game-loop.scm
+│   │   ├── image.scm
+│   │   ├── json.scm
+│   │   ├── math.scm
+│   │   ├── readline.scm
+│   │   ├── scripting.scm
+│   │   └── utils.scm
+│   ├── chickadee.scm
+│   ├── doc
+│   │   └── build-html.scm
+│   ├── examples
+│   │   ├── 9-patch.scm
+│   │   ├── audio.scm
+│   │   ├── game-controller.scm
+│   │   ├── grid.scm
+│   │   ├── model.scm
+│   │   ├── particles.scm
+│   │   ├── path.scm
+│   │   ├── quadtree.scm
+│   │   ├── sprite-batch.scm
+│   │   ├── sprite.scm
+│   │   ├── text.scm
+│   │   └── tile-map.scm
+│   ├── guix.scm
+│   └── tests
+│       ├── array-list.scm
+│       ├── base64.scm
+│       ├── heap.scm
+│       ├── matrix.scm
+│       ├── quadtree.scm
+│       ├── queue.scm
+│       ├── rect.scm
+│       ├── utils.scm
+│       └── vector.scm
+├── gccjit-guile
+│   ├── build-aux
+│   │   └── test-driver.scm
+│   ├── examples
+│   │   └── bfc.scm
+│   ├── src
+│   │   └── gccjit.scm
+│   └── tests
+│       ├── gccjit.scm
+│       └── square.scm
+├── guile
+│   ├── benchmark
+│   │   ├── lib.scm
+│   │   └── measure.scm
+│   ├── emacs
+│   │   └── guile-emacs.scm
+│   ├── gc-benchmarks
+│   │   ├── gcbench.scm
+│   │   ├── gc-profile.scm
+│   │   ├── guile-test.scm
+│   │   ├── loop.scm
+│   │   ├── run-benchmark.scm
+│   │   └── string.scm
+│   ├── libguile
+│   │   └── libguile-3.0-gdb.scm
+│   └── module
+│       ├── rnrs.scm
+│       ├── statprof.scm
+│       └── texinfo.scm
+├── guile-examples
+│   └── Guile-SiCP
+│       ├── AmbQuery.scm
+│       ├── evaluator.base.scm
+│       ├── interpret.scm
+│       ├── Microshaft.scm
+│       ├── simulations.scm
+│       ├── streams.base.scm
+│       ├── table.base.scm
+│       ├── test13.scm
+│       ├── test2.scm
+│       ├── test3.scm
+│       ├── test4.scm
+│       ├── test5.scm
+│       ├── test.scm
+│       └── testsp.scm
+├── guile-SML
+│   ├── examples
+│   │   ├── pumlpuml.scm
+│   │   └── puml.scm
+│   ├── guix.scm
+│   └── tests
+│       ├── cli-profile.scm
+│       ├── cli.scm
+│       ├── common.scm
+│       ├── compiler-guile.scm
+│       ├── compiler-guile-standalone.scm
+│       ├── compiler.scm
+│       ├── context-char.scm
+│       ├── context-common.scm
+│       ├── context-functional-char.scm
+│       ├── context-functional-generic.scm
+│       ├── context-functional-u8.scm
+│       ├── context-oop-char.scm
+│       ├── context-oop-generic.scm
+│       ├── context-oop-port.scm
+│       ├── context-oop-u8.scm
+│       ├── context.scm
+│       ├── context-u8.scm
+│       ├── fsm.scm
+│       ├── log.scm
+│       ├── profiler.scm
+│       ├── puml-context.scm
+│       ├── puml.scm
+│       ├── set.scm
+│       ├── state.scm
+│       ├── test-context.scm
+│       └── transition.scm
+├── haunt
+│   ├── example
+│   │   └── haunt.scm
+│   ├── guix.scm
+│   ├── haunt
+│   │   ├── artifact.scm
+│   │   ├── asset.scm
+│   │   ├── html.scm
+│   │   ├── inotify.scm
+│   │   ├── page.scm
+│   │   ├── post.scm
+│   │   ├── publisher.scm
+│   │   ├── reader.scm
+│   │   ├── site.scm
+│   │   ├── skribe.scm
+│   │   ├── ui.scm
+│   │   └── utils.scm
+│   ├── tests
+│   │   ├── helper.scm
+│   │   ├── post.scm
+│   │   └── utils.scm
+│   └── website
+│       └── haunt.scm
+├── lepton-eda
+│   ├── build-tools
+│   │   └── test-driver.scm
+│   └── tests
+│       └── env.scm
+├── libctl
+│   ├── base
+│   │   ├── class.scm
+│   │   ├── ctl.scm
+│   │   ├── extern-funcs.scm
+│   │   ├── help.scm
+│   │   ├── include.scm
+│   │   ├── interaction.scm
+│   │   ├── io-vars.scm
+│   │   ├── math-utils.scm
+│   │   ├── matrix3x3.scm
+│   │   ├── simplex.scm
+│   │   ├── utils.scm
+│   │   └── vector3.scm
+│   └── utils
+│       ├── ctl-io.scm
+│       └── geom.scm
+├── mcron
+│   ├── build-aux
+│   │   ├── guix.scm
+│   │   └── test-driver.scm
+│   └── tests
+│       ├── base.scm
+│       ├── environment.scm
+│       ├── job-specifier.scm
+│       ├── utils.scm
+│       ├── vixie-specification.scm
+│       └── vixie-time.scm
+├── meep
+│   └── scheme
+│       ├── casimir.scm
+│       └── materials.scm
+├── shepherd
+│   ├── build-aux
+│   │   └── manifest.scm
+│   ├── guix.scm -> build-aux/guix/shepherd-package.scm
+│   └── modules
+│       └── shepherd.scm
+├── shroud
+│   ├── package.scm
+│   └── shroud
+│       ├── secret.scm
+│       ├── ui.scm
+│       └── utils.scm
+└── xbindkeys
+    ├── xbindkeysrc-combo.scm
+    └── xbindkeysrc.scm
+
+50 directories, 184 files
+#+end_quote
