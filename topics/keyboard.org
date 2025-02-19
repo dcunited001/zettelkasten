@@ -716,6 +716,76 @@ the command needs to be run like =setkeycodes $scancode $keycode=.
 
 *** Generating Configs
 
+* GNU Readline
+:PROPERTIES:
+:ID:       584a7cd2-8a2d-4d5f-b8e5-f012e21562ea
+:END:
+
+** Docs
++ [[https://readline.kablamo.org/emacs.html][Readline Cheat Sheet]]
++ [[https://tiswww.cwru.edu/php/chet/readline/readline.html][Readline Manuals]]. Info also in the Bash Manual
+
+** Resources
++ [[https://zwischenzugs.com/2019/04/23/the-missing-readline-primer/][The Missing Readline Primer]]
+** Topics
+
+*** Keybindings.
+
+Run =bind -f $file= to emit your current bindings to a script.
+
+Other useful Bash bindings:
+
++ C-x C-e :: open $EDITOR and evaluate the buffer as command when it closes.
+
+**** Testing Configs
+
+[[https://community.hpe.com/t5/operating-system-hp-ux/stty-erase-stty-werase/td-p/5283019][HPE Community: setting keybindings using stty and testing with =exec bash=]]
+
+*** Clipboard
+**** Send to clipboard without =xclip=
+
+#+begin_quote
+This did seem to work, now it's not. One computer on wayland; another on X11.
+#+end_quote
+
++ Use =C-@= or =M-<space>= to set mark.
++ Use =C-x C-x= to show mark -- by exchanging point's current position with
+  marked. This can be confusing because it changes the current mark
+  position. And the text must be highlighted to kill/copy.
++ =M-w= will always copy text highlighted text to clipboard (like Emacs). This
+  works using mark & move commands or with mouse.
++ =C-w= will always kill the text, but it won't copy it
+
+#+begin_src sh :tangle .bashrc :shebang #!/bin/sh
+# enable set-mark (overrides control sequences like unix-word-rubout)
+# set bind-tty-special-chars off
+
+# for some reason, i still need to undef C-w (so i don't need the above
+# ... removing, since my changes did not fix the problem)
+#
+# stty werase undef
+
+# enable copy/paste
+bind '"\C-@":set-mark'
+bind '"\e ":set-mark'
+bind '"\C-w":kill-region'
+bind '"\ew":copy-region-as-kill'
+
+# now i know this is more common
+
+# also M-tab for `dynamic-complete-history`
+#+end_src
+
+Find =rl_tty_set_default_bindings= in the readline source to see exactly what
+it does (no time). This [[https://stackoverflow.com/a/23558325][s/o answer]] explains ... and i guess =stty -a= will
+tell you what's mapped by default.
+
+| erase | =^?=      | kill  | =^U=      | eof     | =^D=      | werase | =^W= |      |    |
+| eol   | =<undef>= | eol2  | =<undef>= | swtch   | =<undef>= |        |    |      |    |
+| rprnt | =^R=      | lnext | =^V=      | discard | =^O=      |        |    |      |    |
+| intr  | =^C=      | quit  | =^\=      | start   | =^Q=      | stop   | =^S= | susp | =^Z= |
+
+
 * Window Managers
 ** [[id:39e14ffe-75c9-49e6-b852-6c492c4ee3e0][KDE]]
 

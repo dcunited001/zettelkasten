@@ -44,6 +44,26 @@
 
 ** Topics
 
+*** Job Management
+
+**** Killing Child Jobs
+
+From [[https://git.aweirdimagination.net/perelman/kill-child-jobs/src/branch/master/bash.sh][bash.sh]] in a [[kill-child-jobs][kill-child-jobs]] repo that covers compatibility between
+bash/dash/ash. Full example with setup [[https://git.aweirdimagination.net/perelman/kill-child-jobs/src/branch/master/all-full-example.sh][all-full-example.sh]]. There's also =./tests=
+
+#+begin_src shell
+#!/usr/bin/env bash
+set -e
+
+# from:
+# example:
+
+kill_child_jobs() {
+    # from:  https://unix.stackexchange.com/a/544167
+    while kill %% 2>/dev/null; do sleep 0; done
+}
+#+end_src
+
 *** Commands
 
 **** tee
@@ -342,13 +362,13 @@ attempted to abreviate in miniscule derived from =~!@#%=.
 
 
 
-| Syntax Like                   | POSIX | Name                         |                                        |
-|-------------------------------+-------+------------------------------+----------------------------------------|
-| =%= =#= =%%= =##=             | y     | pattern removal expans.      | removes leading or trailing substrings |
-| =${#somestring}=              | y     | String length                | returns the length of =${xx}=, is      |
-| =${var:$i:$n}=                | n     | Substring, length =n= at =i= |                                        |
-| =${var/$pattern/$replacement} | n     |                              | example:                               |
-|                               |       |                              |                                        |
+| Syntax Like                   | POSIX | Name                     |                                        |
+|-------------------------------+-------+--------------------------+----------------------------------------|
+| =%= =#= =%%= =##=                     | y     | pattern removal expans.  | removes leading or trailing substrings |
+| =${#somestring}=                | y     | String length            | returns the length of =${xx}=, is        |
+| =${var:$i:$n}=                  | n     | Substring, length =n= at =i= |                                        |
+| =${var/$pattern/$replacement} | n     |                          | example:                               |
+|                               |       |                          |                                        |
 
      * The expansion , which expands to the
      substring of =var==s value of length LENGTH, beginning at OFFSET,
@@ -638,17 +658,114 @@ important, but it is not necessarily the most valuable product of a question.
 + [[https://unix.stackexchange.com/a/322821][Finding where bash functions are defined]] (and the obfuscation thereof)
 
 ** Topics
+
+
+
+*** Colors
+
+#+begin_quote
+hmmmmm colors in man are gone except for the standout effect on the status
+line. /Some of it/ is still there in vty's. but =!echo $PAGER $MANPAGER and $(which less)=
+from within man/less show the expected output AFAIK.
+#+end_quote
+
+**** From Dotfiles
+
+Shell colors (stackoverflow)
+
+#+begin_src sh :shebang #!/bin/sh
+if [ "$TERM" != "dumb" ]; then
+    #export CURSOR_BOX=$(echo -e '\001\033[\017
+
+    export RESTORE=$(echo -en '\001\033[0m\002')
+    export STANDOUT=$(echo -en '\001\033[00;44;37m\002')
+    export RED=$(echo -en '\001\033[00;31m\002')
+    export GREEN=$(echo -en '\001\033[00;32m\002')
+    export YELLOW=$(echo -en '\001\033[00;33m\002')
+    export BLUE=$(echo -en '\001\033[00;34m\002')
+    export MAGENTA=$(echo -en '\001\033[00;35m\002')
+    export PURPLE=$(echo -en '\001\033[00;35m\002')
+    export CYAN=$(echo -en '\001\033[00;36m\002')
+    export LIGHTGRAY=$(echo -en '\001\033[00;37m\002')
+    export LRED=$(echo -en '\001\033[01;31m\002')
+    export LGREEN=$(echo -en '\001\033[01;32m\002')
+    export LYELLOW=$(echo -en '\001\033[01;33m\002')
+    export LBLUE=$(echo -en '\001\033[01;34m\002')
+    export LMAGENTA=$(echo -en '\001\033[01;35m\002')
+    export LPURPLE=$(echo -en '\001\033[01;35m\002')
+    export LCYAN=$(echo -en '\001\033[01;36m\002')
+    export WHITE=$(echo -en '\001\033[01;37m\002')
+else
+    export RESTORE=""
+    export STANDOUT=""
+    export RED=""
+    export GREEN=""
+    export YELLOW=""
+    export BLUE=""
+    export MAGENTA=""
+    export PURPLE=""
+    export CYAN=""
+    export LIGHTGRAY=""
+    export LRED=""
+    export LGREEN=""
+    export LYELLOW=""
+    export LBLUE=""
+    export LMAGENTA=""
+    export LPURPLE=""
+    export LCYAN=""
+    export WHITE=""
+fi
+
+export LESS_TERMCAP_mb="${LRED}"
+export LESS_TERMCAP_md="${LRED}"
+export LESS_TERMCAP_me="${RESTORE}"
+export LESS_TERMCAP_se="${RESTORE}"
+export LESS_TERMCAP_so="${STANDOUT}"
+#export LESS_TERMCAP_so=$'\E[00;44;37m'
+export LESS_TERMCAP_ue="${RESTORE}"
+export LESS_TERMCAP_us="${LGREEN}"
+
+# fix for less as MANPAGER
+# https://bbs.archlinux.org/viewtopic.php?id=287185
+export GROFF_NO_SGR=1
+#+end_src
+
+And when no colors
+
++ Protesilaos: [[file:/data/ecto/x.files/protesilaos/dotfiles/shell/.bashrc::Colourise man pages][font & color config for man]]
++ =man termcap= for an explanation of codes
++ example dircolors output: [[file:/data/ecto/x.files/benmezger/dotfiles/dot_dircolors][benmezger dircolors]]
+
+**** Less Termcaps
+
+Source: [[https://unix.stackexchange.com/questions/108699/documentation-on-less-termcap-variables][stackoverflow]]
+
+|---------+----------+------------------------------------|
+| termcap | terminfo | desc                               |
+|---------+----------+------------------------------------|
+| ks      | smkx     | make the keypad send commands      |
+| ke      | rmkx     | make the keypad send digits        |
+| vb      | flash    | emit visual bell                   |
+| mb      | blink    | start blink                        |
+| md      | bold     | start bold                         |
+| me      | sgr0     | turn off bold, blink and underline |
+| so      | smso     | start standout (reverse video)     |
+| se      | rmso     | stop standout                      |
+| us      | smul     | start underline                    |
+| ue      | rmul     | stop underline                     |
+|---------+----------+------------------------------------|
+
 *** Misc Helpful Things
 
 Variable formatting
 
-|-----------------------------+----------------+---------------------------+---------------------------|
-|                             | example        |                           |                           |
-|-----------------------------+----------------+---------------------------+---------------------------|
+|---------------------------+----------------+-----------------------+---------------------------|
+|                           | example        |                       |                           |
+|---------------------------+----------------+-----------------------+---------------------------|
 | ~${FILENAME#__file}~        | ${PATH#*:*:*:} | pop =n= paths off =$PATH= | removes prefix pattern == |
-| ~${"${FILENAME%.sh}"%shim}~ |                |                           | bad substitution          |
-| ~${"${FILENAME%.sh}"%shim}~ |                |                           | bad substitution          |
-|                             |                |                           |                           |
+| ~${"${FILENAME%.sh}"%shim}~ |                |                       | bad substitution          |
+| ~${"${FILENAME%.sh}"%shim}~ |                |                       | bad substitution          |
+|                           |                |                       |                           |
 
 + basename $1 .ext :: potential injection when handling unquoted
   input, esp when accepting multiple paramters.
@@ -668,16 +785,16 @@ See also "parameter expansion" from POSIX
 
 ***** [[https://gist.github.com/wcarhart/23008155c0699b497879595c84294296][wcarhart/bash_tidbits.md]] (gist)
 
-|-------------------+------------------------------+-------------------------------------------------------|
-|                   |                              |                                                       |
-|-------------------+------------------------------+-------------------------------------------------------|
-| check filetype    | ~if [[ "$1" == *$2]]; then~  | a glob?                                               |
+|-----------------+----------------------------+-------------------------------------------------------|
+|                 |                            |                                                       |
+|-----------------+----------------------------+-------------------------------------------------------|
+| check filetype  | ~if [[ "$1" == *$2]]; then~  | a glob?                                               |
 | ~script~ command  | pipe to: ~script 'screen -'~ | invoke without attached term (also records a session) |
-| ~!! !^ !:2 !:3~   | nth args                     | i always forget the chars for nth args                |
-| ~!!:2-4~          | nth args from =2= to =4=     |                                                       |
-| ~!!:-4~           | nth args from =0= up to =4=  | includes the command                                  |
-| ~!!:0-~           | nth args, except the last    | if you want the last, just use =!!=                   |
-| ~echo "bar"{-2,}~ | bar2 bar                     |                                                       |
+| ~!! !^ !:2 !:3~   | nth args                   | i always forget the chars for nth args                |
+| ~!!:2-4~          | nth args from =2= to =4=       |                                                       |
+| ~!!:-4~           | nth args from =0= up to =4=    | includes the command                                  |
+| ~!!:0-~           | nth args, except the last  | if you want the last, just use =!!=                     |
+| ~echo "bar"{-2,}~ | bar2 bar                   |                                                       |
 
 ****** TODO look at other scripts (convert to snippets?)
 + [ ] helpful_array_manipulation
