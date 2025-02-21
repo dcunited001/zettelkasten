@@ -1,0 +1,209 @@
+:PROPERTIES:
+:ID:       9174b126-1816-4501-8f17-2ad630b148ce
+:END:
+#+TITLE: Guix: Find which profiles contain a file or package
+#+CATEGORY: slips
+#+TAGS:
+
+* Resources
+
+
+* Notes
+
+So this isn't really a security related issue, but I'm basically just trying to
+figure out why there's a =curl= running requests without going through any
+certificate store. Pretty much any build of curl should throw a fit when this happens.
+
+... but yeh, no wonder they tell you not to curl shell scripts.
+
++ If you get a bad curl client Alice with =CURL_CA_BUNDLE= to
++ make requests over a MitM connection (via Malory)
++ where the network isn't able to confirm/check that the DNS/IP of the server
+  it's connecting to (Bob)
++ Then you should be able to hand off fake certificates between Alice & Bob via
+  the Mallory connection
++ The client is responsible for initiating OSCP validation.
++ Any intrustion protection would need to do deep packet inspection and catch
+  the impersonated server (bob) sending fake certs -- and knowing to cross
+  validate it (basically doing OSCP or checking Cert Stapling on the clients
+  behalf)
+
+This requires quite a few steps and conditions: to supply the env. variable,
+you already need to have quite a bit of access; an attacker probably has
+better ways around things.
+
+** Context
+
+The =emacs-elfeed= package depends on =curl= which is not a propagated
+input. I've specifically avoided adding curl to my =emacs-g= profile ... mainly
+because I was unsure of interactions. I did include the =nss-certs= package in
+the profile because I wanted its certificate store to be independent of the
+system it's on -- this i guess isn't compatible with my decision to excluded
+curl from the profile
+
+*** Error
+
+Elfeed just doesn't update and shows some error =60=, which I see in the
+=*elfeed-log*=. I trace it back to this. Elfeed is swallowing the errors, so
+debugging would only help if you step through ... which I guess I really should
+be doing.
+
+#+begin_example emacs-lisp
+(defcustom elfeed-use-curl
+  (not (null (executable-find elfeed-curl-program-name)))
+  "If non-nil, fetch feeds using curl instead of `url-retrieve'."
+  :group 'elfeed
+  :type 'boolean)
+#+end_example
+
+So in my session, this is the path elfeed is trying to read from.
+
+#+begin_src emacs-lisp
+(executable-find elfeed-curl-program-name)
+#+end_src
+
+#+RESULTS:
+: /gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0/bin/curl
+
+When I run curls manually with this.
+
+#+begin_quote
+/gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0/bin/curl --verbose https://https://valdyas.org/fading/feed/
+
+% Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 159.69.155.203:443...
+Trying 2a01:4f8:c2c:b39::1:443...
+Immediate connect fail for 2a01:4f8:c2c:b39::1: Network is unreachable
+Connected to valdyas.org (159.69.155.203) port 443 (#0)
+GnuTLS ciphers: NORMAL:-ARCFOUR-128:-CTYPE-ALL:+CTYPE-X509:-VERS-SSL3.0
+ALPN: offers h2
+ALPN: offers http/1.1
+SSL connection using TLS1.2 / ECDHE_RSA_AES_256_GCM_SHA384
+server certificate verification failed. CAfile: none CRLfile: none
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0
+Closing connection 0
+
+curl: (60) server certificate verification failed. CAfile: none CRLfile: none
+More details here: https://curl.se/docs/sslcerts.html
+
+curl failed to verify the legitimacy of the server and therefore could not
+establish a secure connection to it. To learn more about this situation and
+how to fix it, please visit the web page mentioned above.
+
+#+end_quote
+
+i'm guessing the certificate store is bundled into the curl binary.
+
+#+begin_src sh :results verbatim
+/gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0/bin/curl-config --cc
+/gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0/bin/curl-config --ca
+/gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0/bin/curl-config --prefix
+#+end_src
+
+#+RESULTS:
+: gcc
+:
+: /gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0
+
+Strings doesn't clarify much that =curl-config= hasn't already yielded.
+
+#+begin_example sh
+strings /gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0/bin/curl
+#+end_example
+
+Other curl binaries on the system give pretty typical results
+
+*** Guix profile
+
+So there's not much in the package dependency.
+
+#+begin_src sh :results verbatim
+tree -L 3 /gnu/store/p38l5rwmrwwf41w314ab10ffkcl1lz47-emacs-elfeed-org-0.1-1.77b6bbf/
+#+end_src
+
+#+RESULTS:
+: /gnu/store/p38l5rwmrwwf41w314ab10ffkcl1lz47-emacs-elfeed-org-0.1-1.77b6bbf/
+: └── share
+:     └── emacs
+:         └── site-lisp
+:
+: 4 directories, 0 files
+
+But it's not in this profile. I only have a few Guix profiles on this
+system. About 4 + the system/user profiles. Curl isn't propgated in any of them
+and it's not in the path.
+
+#+begin_src sh :results output
+ls -la ~/.guix-extra-profiles/emacs-g/emacs-g/bin | grep curl | wc -l
+#+end_src
+
+#+RESULTS:
+: 0
+
+** Reverse dependency search in Guix
+
+*** Issues
+
+Searching through the guix store can be a pain if you have to follow links.
+
++ Find won't work without explicitly hinting how it should follow links. this
+  involves many more syscalls (it depends on the order in which =find= actually
+  traverses links, whether its multithreaded, how those threads sync and whether
+  it maintains an index), so its a bit and kludgy.
++ Grep similarly won't "just work"
++ Globbing doesn't work, especially without =shopt=
+
+**** Tangent: Stowing by hand
+
+I did actually try to install Matlab on Guix system, which is why i've thought
+about link traversal. there are a lot of good comments in the install script
+that seem to describe situations common to Unix/Linux computing but which
+mysteriously never reveal themselves to me in any way. No stack overflow, no
+mentions in a textbook, maybe a few offhand comments (maybe in reference to a
+"difficult" interview question)
+
+Where would you encounter these issues?
+
++ when installing multiple versions of the same software on servers in the late
+  90's and early 2000's
++ whether using =stow= or "manually", when you go to stow multiple separated
+  trees into the same target (you have to watch for cycles)
+
+But yeh, there are fewer references to this than to hard links ... both of which
+is extremely useful without more sufficient tools (or newer tools)
+
+*** Tools
+
+**** Guix.el
+
+The =guix.el= package is really the best tool to try first, especially if you
+don't know much about Guix/Scheme.
+
++ it should allow you to check the search-paths for a profile. without globbing
+  this is pretty hard to dump (to search for SSL)
+
+
+**** CLI
+
+There are a few tools for this
+
++ guix graph :: can help if you're looking for a package:
++ guix locate :: i wish i had known about this awhile ago. it depends on the
+  sqlite databases that guix produces.
+
+***** Guix Locate
+
+
+guix locate --database=
+  /gnu/store/b727ryyfiz1cfdywjp8s1wmxd6lzsz8p-curl-7.85.0 --stats
+
+
+Package Databases
+
++ /home/dc/.cache/guix/locate/db.sqlite
++ /var/guix/db/db.sqlite
+
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
