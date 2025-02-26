@@ -1,0 +1,159 @@
+:PROPERTIES:
+:ID:       58c94100-403f-4444-a333-c8253c30c7d7
+:END:
+#+TITLE: Arei.el setup for Guix and Guile Projects
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:87c43128-92c2-49ed-b76c-0d3c2d6182ec][Scheme]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* Guix Home
+
+#+begin_quote
+The following is are the musings of an idiot savant. It's not intended to be
+correct. I'm just trying to figure this out, particularly the telos.
+#+end_quote
+
+** Env
+
+These additional module in =./env/ellipsis/*.scm== seem to be similar (in
+purpose) to =.guile=: they're intended to add some minimal tooling, but without
+actually interfering with the module namespaces in =./gh/ellipsis/**/*.scm=
+
+*** Channels
+
++ If I use a similar project structure to the ~abcdw/rde examples, but I'm not
+  using the features abstraction (at least for now until I learn a bit more),
+  then does =./env/ellipsis/channels.scm= need to mirror the channels deployed to
+  =home-environment=?
+  - I think not, but the =env= channels should lag.
++ when does =guix home reconfigure= actually update my channels? and will I need
+  to refresh the emacs environment ... sometimes? idk.
+
+* RDE
+
+In his projects, abcdw sets up a Makefile to run arei, but this a =guix= whose
+channels are locked via =time-machine=. This is found in the projects below,
+where there are a few patterns.
+
+It seems that he needs to use time-machine because things could get dicey when
+hacking on Guix/Home & RDE from a =guix= where the channels are
+out-of-sync. There are a few different situations to take care of:
+
+1. =guix system reconfigure= where the system specifies =home-environment=: Here,
+   I assume that the home-environment will be selected for the user's
+   =~/.config/guix/channels.scm= before it would be otherwise be used to install
+   =~/.config/guix/current/bin/guix=. Since this is taking place within the
+   context of derivations in guix-demon, then there must be some hand-off to a
+   new "scheme environment" where the =home-environment= channels are used.
+2. The same =guix system= action, but on a fresh installation. This is
+   effectively the same anyways, just bootstrapped on a =cow-store=.
+3. A =guix home reconfigure=
+4. evaluations in a arei/geiser REPL, which don't necessarily result from a
+   guix CLI action: here, the same separation is needed for running
+   derivations which /would/ need to distinguish between the =guix= in the
+   controlling repl and, say, the guix used for derivations that specify
+   packages in the =/gnu/store=
+5. Deployments (to git or to =cuirass= CI), which is where it's critical that
+   everything is correct. These will produce signed channel updates consumed
+   by downstream channel users.
+
+Technically, the gexp interface is like a fence over which serialized
+procedures, the gexps, are handed off to the =guix-demon= to continue ... so
+quite a bit of this is implicit. However, that's why maintaining the
+separation is important.
+
+Anyways, it seems like the usage of time-machine serves several purposes:
+
++ For speed: to help ensure the objects from the derivations for =guix
+  time-machine -C $channels= are all identified in the store. Some of the process
+  still must happen, but once the derivations are calculated ... then /some/ of
+  their objects can be identified in the store by their hash.... (hmmm... but
+  not all of them? hashes are pretty unique though)
++ maintain a purely separated working environment vs environment used to
+  process the derivations
++ specify an environment that maintains a safe distance behind the pushed
+  updates to the channel (just in case...)
+
+i'm guessing that each daemon operation starts with a channel state reset &
+then a rewind or fast foward, subsuming the =guix= state used for the
+derivations.
+
+** ~abcdw/rde
+
++ [[https://git.sr.ht/~abcdw/rde/tree/master/Makefile#L1][Makefile]]
++ [[https://git.sr.ht/~abcdw/rde/tree/master/examples/Makefile#L1][./examples/Makefile]]
+
+This includes a working example with it's own Makefile. This needs to be
+controlled by the outer Makefile, somewhat. IDK =make= though.
+
+This enables integration testing, while also providing a good jumping-off point
+for users to learn. The separation of concerns (tests & template) here is
+difficult to achieve.
+
+** ~abcdw/sample-guile-project
+
++ [[https://git.sr.ht/~abcdw/sample-guile-project/tree/master/Makefile#L1][Makefile]]
+
+This is a much simpler project, which is helpful for the grokking. There is less
+source, but it builds you up fairly quickly into running code from scheme on the
+guix-demon.
+
+Manually working with gexps/derivations is actually one of the more difficult
+"gaps to bridge" for beginner/intermediate Guix users. It's important for
+getting further into the Guix core and possibly when debugging/writing a
+=build-system=. It's just going to be that way, regardless, since there is
+considerable separation between the runtime/REPL and the guix demon.
+
+** abcdw/cs6120
+
++ [[https://github.com/abcdw/cs6120/blob/main/Makefile][./MakeFile]]
++ [[https://github.com/abcdw/cs6120/blob/main/env/guile/cs6120/channels.scm][./env/guile/cs6120/channels.scm]]
++ [[https://github.com/abcdw/cs6120/blob/main/env/guile/cs6120/packages.scm][./env/guile/cs6120/packages.scm]]
+
+This project setup is supposed to save quite a bit of time.
+
+For this project, /I think/ that separation between modules within =./env= is less
+consequential than for =rde=. There, IMO the project structure works well also.
+it's just a little more complicated -- but then so is any project that:
+
++ contains multiple Makefile roots
++ to run make tasks in a nested project (separate Makefile, not simply included)
++ while also running qemu builds, against multiple targets with different
+  architectures.
+
+#+begin_quote
+Brief not: The Guix & RDE codebases have been unbelievably helpful for learning,
+as well as all the channels out there. It's why i've been ambivalent about
+external-facing progress ... since there's plenty of internal progress happening
+in my head. That's not necessarily plainly visible, maybe to people observing
+the amount of effort I'm going through.
+#+end_quote
+
+Anyways, this cs6120 setup is quite a bit more complex, which I haven't quite
+grokked. It seems to be:
+
++ using the =(guix git-download)= module to clone the git repo for each channel
+  manually inspecting each
++ it selects the =guix= channel first (by key: =channels.scm= are not in order)
++ for each channel, it looks at the =./.guix-channel= file, which is an
+  interpretable scheme file, and retieves the channel's module root (for rde:
+  =./src=)
++ from the code, i'm guessing that it merges the file trees. that's what seems
+  to say. I then concocts a single channel.
+
+  #+begin_example scheme
+(define-public (package-for-channels channels)
+;; in package definition
+    (source (channels->combined-source-code
+             (remove guix-channel? channels)))
+    ;; ...
+)
+  #+end_example
+
+After the guile modules are consumed (and thus the combined package defined),
+then everything is processed as a single transaction. This is a bit brittle, but
+assuming that nothing dramatic changes, it helps with the initial boot-time. I'm
+still not sure how much of an issue that is.
