@@ -22,6 +22,111 @@ These additional module in =./env/ellipsis/*.scm== seem to be similar (in
 purpose) to =.guile=: they're intended to add some minimal tooling, but without
 actually interfering with the module namespaces in =./gh/ellipsis/**/*.scm=
 
+*** Layout
+
+I went through several iterations, but went with this. I may insert ={src,guile}=
+into their respective locations for =test= and =env= idk, like in
+=sample-guile-project=. If I move around files, I really don't want to update
+=Makefile= and =#:use-module= references. Though this is mostly find/replace, I
+don't want to leave my REPL in an uncertain state.
+
+#+begin_src shell :results output verbatim
+echo {ellipsis/ellipsis/,dc/dc/}{home/services,packages,services,systems} \
+    Makefile test/dc/setup.scm env/dc/{packages,channels}.scm |\
+    sed -e 's/ /\n/g' |\
+    tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+├── dc
+│   └── dc
+│       ├── home
+│       │   └── services
+│       ├── packages
+│       ├── services
+│       └── systems
+├── ellipsis
+│   └── ellipsis
+│       ├── home
+│       │   └── services
+│       ├── packages
+│       ├── services
+│       └── systems
+├── env
+│   └── dc
+│       ├── channels.scm
+│       └── packages.scm
+├── Makefile
+└── test
+    └── dc
+        └── setup.scm
+
+11 directories, 12 files
+#+end_example
+
+Since I wanted a workflow where I move stable packages/services towards
+ellipsis, referenced by =.guix-channel=, This still doesn't allow the
+=GUILE_LOAD_PATH= to be specified only for =ellipsis=.
+
+#+begin_example
+.
+├── env
+│   └── dc
+│       ├── channels.scm
+│       └── packages.scm
+├── Makefile
+├── src
+│   └── guile
+│       ├── dc
+│       │   ├── home
+│       │   │   └── services
+│       │   ├── packages
+│       │   ├── services
+│       │   └── systems
+│       └── ellipsis
+│           ├── home
+│           │   └── services
+│           ├── packages
+│           ├── services
+│           └── systems
+└── test
+    └── dc
+        └── setup.scm
+
+11 directories, 12 files
+#+end_example
+
+These both seem more amenable to deploying merged file trees into =GUILE_LOAD_PATH=
+than this:
+
+#+begin_src shell :results output verbatim :dir ~/.dotfiles
+find guile -name "*.scm" -type f -print |\
+    tee -ap >(printf "guile/env/foo.scm\nguile/test/bar.scm\n") |\
+    tree -d --prune --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── guile
+    ├── env
+    ├── modules
+    │   ├── dc
+    │   │   ├── home
+    │   │   │   └── services
+    │   │   └── systems
+    │   └── ellipsis
+    │       ├── home
+    │       │   └── services
+    │       ├── packages
+    │       │   └── wip
+    │       ├── services
+    │       └── systems
+    └── test
+#+end_example
+
 *** Channels
 
 + If I use a similar project structure to the ~abcdw/rde examples, but I'm not
