@@ -262,3 +262,270 @@ After the guile modules are consumed (and thus the combined package defined),
 then everything is processed as a single transaction. This is a bit brittle, but
 assuming that nothing dramatic changes, it helps with the initial boot-time. I'm
 still not sure how much of an issue that is.
+
+* Emacs
+
+While it's simple to set up =guile-ares-rs= in a new Guile project that doesn't
+need to load Guix, it's a bit much to set up otherwise. If someone were just
+getting started with Guix, I would recommend using =guile-studio=.
+
++ write a simple =guile-studio-init.el= manually evaluated with =(load ...)=.
++ For project-specific settings, maybe a =.geiser-local.el= file. This would maybe
+  set =guix-pulled-profile=, if you need it, but the other init file may be more
+  appropriate.
++ You can then use =.envrc= if you need it, while depending on the bash profile's
+  =GUILE_LOAD_PATH= for a consistent environment.
+
+Just running =guix shell guile-studio emacs-guix= should be enough to get started
+(i haven't tested the guix.el functionality)
+
+As a noob, being able to set up a filetree with modules to load into a Geiser
+repl is sufficient. This helps you shit-test your code, so you don't have to run
+things like =guix system -L $loadpath reconfigure not-my-system.scm= for better
+output on errors.
+
+Unfortunately, starting =guix repl= doesn't let Geiser connect too good ... for
+some reason idk. It hangs for a few minutes. The REPL interactivity for Guix is
+unfortunate. It's not bad if you have someone to mentor your way into using
+Guile/Guix/Emacs... so just keep in mind that it's well-worth your time to find
+one.
+
+#+begin_quote
+NOTE: I probably will not update these notes as my config changes. The solution
+to "halfway use Geiser so i have guix.el" is not ideal. That's why I suggest
+=guile-studio= where you want to run =geiser-guile= and =guix.el=. And actually,
+writing some =systemd= services to load an alternate emacs config that gets
+launched with =guix shell= is not hard (and is basically equivalent to
+=guile-studio=)
+#+end_quote
+
+The GNU software is almost always simpler -- and will almost always be
+ubiquitous/timeless... When it's complicated, you probably just need to find
+someone to show what your doing.
+
+** Overview
+
+Obviously, I'd like to use =arei.el=.
+
++ But what if I want to use another scheme dialect? I don't, for now.
++ But, what if I want to return to using Geiser later or for Guile projects that
+  don't import Guix modules?
++ Also, there's a comprehensive Geiser dependency used for =guix.el= which itself
+  is incredibly useful. Since =M-x guix= and most =guix.el= functionality relies on
+  an entirely different global =geiser= repl, this doesn't conflict with
+  project-specific settings... but it does require loading =geiser-guile=
+
+For the second issue, I wanted to settle the Geiser config before I changed it
+out. This requires:
+
++ Settling the =GUILE_LOAD_PATH= in the environment. For most of these, you /may/
+  need to set =GUILE_LOAD_COMPILED_PATH= also. Guile will search that path only if
+  defined, so it's probably not your problem. You also need a project with make,
+  where you clean the =.go= files, so it's not a good place to start (in case your
+  experience with in-tree compilation & =make= for C/C++ is limited lol)
++ Setting up =guix-pulled-profile= ... which in almost every case should just be
+  =$HOME/.config/guix/current=
++ Determining which method has responsibility for loading the Repl environment
+  - .dir-locals.el :: This makes it tough to load. As a practical matter, you
+    can only have one =.dir-locals.el= active for a file-tree.
+  - file local variables :: What if someone else is browsing your repo and
+    doesn't have =guix-scheme-mode=? Doesn't work unless the mode is common (and
+    preferably auto-loaded in emacs).
+  - geiser-guile-load-path :: This has project-specific settings.
+  - scheme-mode-hook :: Switching to =guix-scheme-mode= here means that
+    =scheme-mode= will run it's hooks again. That's about as messy as =use-package=
+    load order.
+  - def-project-mode! :: this is doom-specific and works well for hooking minor
+    modes in a file-tree, but doesn't work for major modes or =auto-mode-alist=
+    AFAIK
+  - auto-mode-alist :: This would need to be config-specific. Probably not wise
+    to set as a local variable of any flavor (it's a big list that many, many
+    evaluation contexts in emacs refer to)
+  - .envrc :: this is fairly straight-forward, but will affect any interactive
+    shell that enters your project directory.
+
+So I went with the last two.
+
++ The =guile-ares-rs= repl has it's own consistent environment in the =make ares=
+  task. This runs in a clean =guix shell=
+
+** Guile
+
+Outside of =ares=, guile has this environment, set up in =.envrc= for my project. On
+my foreign distribution, I'll get to setting the =.profile= environment later. If
+using Geiser, this ensures consistent access to your non-Guix channels ... which
+for many non-Guix Guile projects, is definitely _not_ actually what you want.
+
+.envrc
+
+#+begin_src shell
+export GUILE_LOAD_PATH="$HOME/.config/guix/current/lib/guile/3.0/site-ccache:$HOME/.config/guix/current/share/guile/site/3.0"
+export GUILE_LOAD_COMPILED_PATH="$HOME/.config/guix/current/share/guile/site/3.0"
+
+path_add GUILE_LOAD_PATH
+path_add GUILE_LOAD_COMPILED_PATH
+#+end_src
+
+** Makefile
+
+For now, there is just the =ares= task. I don't want to be to eager to add to this
+until later. this. I don't have much exp. with make and make's tasks are
+generally coupled to the project's file paths which may still change.
+
+#+begin_src makefile
+ares:
+	guix time-machine -C env/dc/channels.scm -- \
+	shell -L ./env --pure --rebuild-cache guile-next guile-ares-rs \
+	-e '(@ (dc packages) guix-from-my-channels)' \
+	-e '(@ (dc packages) channels-package)' \
+	-- \
+	guile -L ./dc -L ./ellipsis -L ./env -c \
+	"(begin (use-modules (guix gexp)) #;(load gexp reader macro globally) \
+((@ (ares server) run-nrepl-server)))"
+#+end_src
+
+Ares needs to load G-Exp's which are Guile [[https://www.gnu.org/software/guile/manual/html_node/Reader-Extensions.html][reader extensions]].
+
+** Ares RS and Arei.el
+
+#+begin_src emacs-lisp
+;; that's it, pretty much
+(use-package! arei :defer t)
+#+end_src
+
+Run =guile-ares-rs= server externally, then connect using =sesman-start=. From here,
+you just need to understand how to switch modules, but most of the =arei= code
+will detect this via =(ares-current-module)= ... and =M-: (ares-current-module)=
+itself is a good shit test to determine whether the arei.el code & state are
+loaded properly.
+
+If you're in the middle of switching to arei.el or changing =auto-mode-alist=,
+then you may need to jump to =M-x ibuffer= and =Dx= some of those buffers.
+
+Arei will run =(arei--enable-on-existing-scheme-buffers)= when it's initially
+loaded though.
+
+** Doom Emacs
+
+*** Geiser
+
+If you want to use =geiser=, then you'd probably want to properly set the
+project-specific settings. This is a bit confusing, as all of the above settings
+in the list for =determining which method has responsibility= may affect code.
+Changing them may require =direnv allow= and =M-x envrc-reload= or killing buffers,
+etc. It's a PITA. Honestly, just using =guix home= avoids the possibility of
+setting most of this incorrectly, but then Geiser itself has many problems that
+are non-obvious.
+
+#+begin_src emacs-lisp
+(use-package! geiser
+  :defer t
+  :config
+  (add-to-list 'geiser-implementations-alist '(((regexp "\\.scm$") guile)))
+  :custom
+  ;; TODO: PKG: project.el -- maybe update to geiser-repl-project-root
+  (geiser-repl-current-project-function #'projectile-project-root)
+  (geiser-repl-add-project-paths
+   nil
+   "`guix-load-path' seems to append using `add-to-list', so whether the
+.dotfiles channel is added via that or `geiser-repl-add-project-paths',
+the result is the same, unless the project's guile modules are not at
+the root")
+  (geiser-debug-treat-ansi-colors 'colors "Requires guile-colorized (ice-9 colorized)")
+  (geiser-default-implementation 'guile)
+  (geiser-repl-highlight-output-p t))
+#+end_src
+
+You need =racket= if you use =lispy= because of a bug that wasn't fix in the last
+tag. The lispy-project is unmaintained. Arei doesn't really work with lispy.
+
+#+begin_src emacs-lisp
+;; req. for lispy? even with master?
+(use-package! geiser-racket :defer t :after geiser)
+#+end_src
+
+Arei definitely has code to look these up in the manual.
+
+#+begin_src emacs-lisp
+(use-package! geiser-guile
+  :defer t
+  :after geiser
+  :config
+  (add-to-list 'geiser-guile-manual-lookup-nodes "Geiser")
+  (add-to-list 'geiser-guile-manual-lookup-nodes "Guile Reference")
+  (add-to-list 'geiser-guile-manual-lookup-nodes "Guile Library")
+  (add-to-list 'geiser-guile-manual-lookup-nodes "Guix"))
+#+end_src
+
+*** Flycheck Guile
+You're probably going to want to unhook =flycheck-guile.el=.
+
++ This probably works well for small guile projects. Since Guix loads a lot of
+  code (and since it needs to load code for other channels), this means
+  flycheck-guile needs to do a lot of compilation. It caches this compilation in
+  =~/.cache/guile=. If it doesn't complete before you change the file & save, it
+  starts it again.
++ You'll likely get an error message about missing guix patches, especially if
+  your values for =guile-load-path= & etc are incorrect.
++ It also has a separate process it uses to compile/run. It doesn't simply eval
+  in the =geiser= repl for that buffer. You can't easily customize this without
+  advice anyways. So it's best to turn it off.
+
+#+begin_src emacs-lisp
+(use-package! flycheck-guile
+  :defer t
+  :after geiser-guile
+  :config (add-to-list 'flycheck-disabled-checkers 'guile))
+
+;; if flycheck-guile loads, you'll need to ensure (require 'ffap) runs and that
+;; the patch path is set up.
+#+end_src
+
+** Geiser
+
+Even without Doom's setup, Geiser loads when =scheme-mode= loads. This is because
+=geiser-mode--maybe-activate= gets hooked on =scheme-mode-hook=. Fortunately, this
+only keys on =major-mode=, so if there's a derived major mode, it won't run.
+
+#+begin_example emacs-lisp
+(defun geiser-mode--maybe-activate ()
+  (when (and geiser-mode-auto-p (eq major-mode 'scheme-mode))
+    (turn-on-geiser-mode)))
+#+end_example
+
+** Guix.el
+
+guix.el defines =guix-scheme-mode= in [[https://git.savannah.gnu.org/cgit/guix/emacs-guix.git/tree/elisp/guix-scheme.el?h=master#n41][guix-scheme.el]], which basically doesn't do
+anything except format the buffer.
+
+So we just need to make sure that, where Arei is preferred, =guix-scheme-mode= is
+used instead.
+
+To ensure that your own Guix functionality gets loaded:
+
+#+begin_src emacs-lisp
+(setopt guix-load-path '((expand-file-name ".dotfiles/ellipsis" (getenv "HOME"))
+                         (expand-file-name ".dotfiles/dc" (getenv "HOME"))))
+#+end_src
+
+To ensure that =auto-mode-alist= sets =guix-scheme-mode= config the following -- i know, confusing, since
+=guix.el= runs (an emacs-global, guix-specific) geiser REPL, but this actually
+prevents specific projects from being affected by it.
+
+#+begin_src emacs-lisp
+(defun dc/guix-scheme-mode-regexp (path)
+  (rx (and (literal path) "/" (+ any) ".scm")))
+
+(cl-dolist (dir '("dc" "ellipsis" "env" "test"))
+  (add-to-list 'auto-mode-alist (cons (dc/guix-scheme-mode-regexp
+                                       (expand-file-name (string-append ".dotfiles/" dir)
+                                                         (getenv "HOME")))
+                                      'guix-scheme-mode)))
+#+end_src
+
+Important: make sure that =auto-mode-alist= is updated _after_ scheme/geiser/guile
+modify it.
+
+=auto-mode-alist= keys on a programmatically generated regexp. e.g. figuring out
+why =conf[ig].abc= or =config.scm= loads =conf-mode= and not the correct one requires
+some "emacs archeology"

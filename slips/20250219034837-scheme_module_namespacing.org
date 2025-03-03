@@ -77,6 +77,10 @@ space. the free monoid "ish" gives you this.
 so, here tree still parses files as files. as long as everything to the right is
 as unique as the filepath (which functions as the means of distinguishing
 identity), then it formats properly.
+
+-----
+
+Technically, I think, it's the Kleene Star
 #+end_quote
 
 The regex i'm using for =sed= after =find= is probably not hitting everything... oh
@@ -663,6 +667,25 @@ find . -maxdepth 4 -name '*.scm' -type f \
 
 101 directories, 452 files
 #+end_example
+
+*** Channels
+
+#+begin_src  shell :dir /data/ecto/guix/channels :results output verbatim :wrap example text
+find . -maxdepth 4 -name '.guix-channel' -type f \
+    -exec grep -e '(directory "' \{\} + |\
+    sed -e 's/: \+(directory "\(.*\)".*/ (\1)/g' # |\
+#    tree -a --fromfile .
+# tree doesn't display results here
+#+end_src
+
+#+RESULTS:
+#+begin_example text
+./rde/.guix-channel (src)
+./guix-crypto/.guix-channel (src)
+./baulig/.guix-channel (packages)
+#+end_example
+
+
 *** Scheme
 
 modules under subdirectories in:
@@ -690,9 +713,11 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   ├── artanis.scm (artanis artanis)
     │   │   ├── cache.scm (artanis cache)
     │   │   ├── client.scm (artanis client)
+    │   │   ├── cli.scm (artanis cli)
     │   │   ├── commands
     │   │   │   ├── api.scm (artanis commands api)
     │   │   │   ├── create.scm (artanis commands create)
+    │   │   │   ├── create.scm (conf plugins)
     │   │   │   ├── draw.scm (~a ~a)
     │   │   │   ├── draw.scm (artanis commands draw)
     │   │   │   ├── help.scm (artanis commands help)
@@ -707,6 +732,11 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   ├── env.scm (artanis env)
     │   │   ├── ffi.scm (artanis ffi)
     │   │   ├── fprm.scm (artanis fprm)
+    │   │   ├── i18n
+    │   │   │   ├── json.scm (artanis i18n json)
+    │   │   │   ├── locale.scm (artanis i18n locale)
+    │   │   │   └── sxml.scm (artanis i18n sxml)
+    │   │   ├── i18n.scm (artanis i18n)
     │   │   ├── inotify.scm (artanis inotify)
     │   │   ├── irregex.scm (artanis irregex)
     │   │   ├── lpc.scm (artanis lpc)
@@ -788,6 +818,7 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   ├── cli.scm (chickadee cli)
     │   │   ├── data
     │   │   │   ├── array-list.scm (chickadee data array-list)
+    │   │   │   ├── bytestruct.scm (chickadee data bytestruct)
     │   │   │   ├── grid.scm (chickadee data grid)
     │   │   │   ├── heap.scm (chickadee data heap)
     │   │   │   ├── path-finding.scm (chickadee data path-finding)
@@ -846,6 +877,7 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   └── tests
     │       ├── array-list.scm (tests array-list)
     │       ├── base64.scm (tests base64)
+    │       ├── bytestruct.scm (tests bytestruct)
     │       ├── heap.scm (tests heap)
     │       ├── matrix.scm (tests matrix)
     │       ├── quadtree.scm (tests quadtree)
@@ -892,6 +924,7 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   │   ├── control.scm (ice-9 control)
     │   │   │   ├── copy-tree.scm (ice-9 copy-tree)
     │   │   │   ├── curried-definitions.scm (ice-9 curried-definitions)
+    │   │   │   ├── custom-ports.scm (ice-9 custom-ports)
     │   │   │   ├── deprecated.scm (ice-9 deprecated)
     │   │   │   ├── documentation.scm (ice-9 documentation)
     │   │   │   ├── eval-string.scm (ice-9 eval-string)
@@ -940,6 +973,7 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   │   ├── scm-style-repl.scm (ice-9 scm-style-repl)
     │   │   │   ├── serialize.scm (ice-9 serialize)
     │   │   │   ├── session.scm (ice-9 session)
+    │   │   │   ├── soft-ports.scm (ice-9 soft-ports)
     │   │   │   ├── stack-catch.scm (ice-9 stack-catch)
     │   │   │   ├── streams.scm (ice-9 streams)
     │   │   │   ├── string-fun.scm (ice-9 string-fun)
@@ -954,7 +988,8 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   ├── language
     │   │   │   ├── bytecode.scm (language bytecode)
     │   │   │   ├── cps.scm (language cps)
-    │   │   │   └── tree-il.scm (language tree-il)
+    │   │   │   ├── tree-il.scm (language tree-il)
+    │   │   │   └── wisp.scm (language wisp)
     │   │   ├── oop
     │   │   │   └── goops.scm (oop goops)
     │   │   ├── rnrs
@@ -1077,6 +1112,18 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │       │   └── test-import-order-d.scm (test-import-order-d)
     │       └── test-suite
     │           └── lib.scm (test-suite lib)
+    ├── guile-examples
+    │   └── guile-openai
+    │       ├── openai
+    │       │   ├── chat.scm (openai chat)
+    │       │   ├── client.scm (openai client)
+    │       │   ├── completion.scm (openai completion)
+    │       │   ├── debug.scm (openai debug)
+    │       │   ├── edit.scm (openai edit)
+    │       │   ├── embedding.scm (openai embedding)
+    │       │   ├── image.scm (openai image)
+    │       │   └── moderation.scm (openai moderation)
+    │       └── openai.scm (openai)
     ├── guile-SML
     │   ├── examples
     │   │   ├── compiler
@@ -1106,13 +1153,16 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   │   ├── assets.scm (haunt builder assets)
     │   │   │   ├── atom.scm (haunt builder atom)
     │   │   │   ├── blog.scm (haunt builder blog)
+    │   │   │   ├── flat-pages.scm (haunt builder flat-pages)
+    │   │   │   ├── redirects.scm (haunt builder redirects)
     │   │   │   └── rss.scm (haunt builder rss)
     │   │   ├── html.scm (haunt html)
     │   │   ├── inotify.scm (haunt inotify)
     │   │   ├── page.scm (haunt page)
     │   │   ├── post.scm (haunt post)
     │   │   ├── publisher
-    │   │   │   └── rsync.scm (haunt publisher rsync)
+    │   │   │   ├── rsync.scm (haunt publisher rsync)
+    │   │   │   └── sourcehut.scm (haunt publisher sourcehut)
     │   │   ├── publisher.scm (haunt publisher)
     │   │   ├── reader
     │   │   │   ├── commonmark.scm (haunt reader commonmark)
@@ -1134,6 +1184,7 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │   ├── skribe.scm (haunt skribe)
     │   │   ├── ui
     │   │   │   ├── build.scm (haunt ui build)
+    │   │   │   ├── new.scm (haunt ui new)
     │   │   │   ├── publish.scm (haunt ui publish)
     │   │   │   └── serve.scm (haunt ui serve)
     │   │   ├── ui.scm:    (define-module name
@@ -1146,58 +1197,125 @@ find . -maxdepth 4 -name '*.scm' -type f \
     │   │       └── linux.scm (haunt watch linux)
     │   └── tests
     │       ├── helper.scm (tests helper)
+    │       ├── html.scm (test-html)
     │       ├── post.scm (test-post)
     │       └── utils.scm (test-utils)
     ├── lepton-eda
     │   └── liblepton
     │       └── scheme
     │           └── netlist.scm (netlist)
-    ├── mcron
+    ├── lib
     │   └── src
-    │       └── mcron
-    │           ├── base.scm (mcron base)
-    │           ├── command-line-processor.scm (mcron command-line-processor)
-    │           ├── core.scm (mcron core)
-    │           ├── environment.scm (mcron environment)
-    │           ├── getopt-long.scm (mcron getopt-long)
-    │           ├── job-specifier.scm (mcron job-specifier)
-    │           ├── redirect.scm (mcron redirect)
-    │           ├── utils.scm (mcron utils)
-    │           ├── vixie-specification.scm (mcron vixie-specification)
-    │           └── vixie-time.scm (mcron vixie-time)
+    │       ├── apicheck.scm (apicheck)
+    │       ├── compat
+    │       │   └── guile-2.scm (compat guile-2))
+    │       ├── config
+    │       │   └── load.scm (config load)
+    │       ├── container
+    │       │   ├── async-queue.scm (container async-queue)
+    │       │   ├── delay-tree.scm (container delay-tree)
+    │       │   └── nodal-tree.scm (container nodal-tree)
+    │       ├── debugging
+    │       │   ├── assert.scm (debugging assert)
+    │       │   └── time.scm (debugging time)
+    │       ├── graph
+    │       │   └── topological-sort.scm (graph topological-sort)
+    │       ├── htmlprag.scm (htmlprag))
+    │       ├── io
+    │       │   └── string.scm (io string)
+    │       ├── logging
+    │       │   ├── logger.scm (logging logger)
+    │       │   ├── port-log.scm (logging port-log)
+    │       │   └── rotating-log.scm (logging rotating-log)
+    │       ├── match-bind.scm (match-bind)
+    │       ├── math
+    │       │   ├── minima.scm (math minima)
+    │       │   └── primes.scm (math primes)
+    │       ├── md5.scm (md5)
+    │       ├── os
+    │       │   └── process.scm (os process)
+    │       ├── scheme
+    │       │   ├── documentation.scm (scheme documentation)
+    │       │   └── kwargs.scm (scheme kwargs)
+    │       ├── search
+    │       │   └── basic.scm (search basic)
+    │       ├── statprof.scm (statprof)
+    │       ├── string
+    │       │   ├── completion.scm (string completion)
+    │       │   ├── soundex.scm (string soundex)
+    │       │   ├── transform.scm (string transform)
+    │       │   └── wrap.scm (string wrap)
+    │       ├── sxml
+    │       │   ├── apply-templates.scm (sxml apply-templates)
+    │       │   ├── fold.scm (sxml fold)
+    │       │   ├── simple.scm (sxml simple)
+    │       │   ├── ssax.scm (sxml ssax)
+    │       │   ├── ssax-simple.scm (sxml ssax-simple)
+    │       │   ├── transform.scm (sxml transform)
+    │       │   ├── unicode.scm (sxml unicode)
+    │       │   └── xpath.scm (sxml xpath)
+    │       ├── term
+    │       │   └── ansi-color.scm (term ansi-color)
+    │       ├── texinfo
+    │       │   ├── docbook.scm (texinfo docbook)
+    │       │   ├── html.scm (texinfo html)
+    │       │   ├── indexing.scm (texinfo indexing)
+    │       │   ├── nodal-tree.scm (texinfo nodal-tree)
+    │       │   ├── plain-text.scm (texinfo plain-text)
+    │       │   ├── reflection.scm (texinfo reflection)
+    │       │   └── serialize.scm (texinfo serialize)
+    │       ├── texinfo.scm (texinfo)
+    │       ├── text
+    │       │   └── parse-lalr.scm (text parse-lalr)
+    │       └── unit-test.scm (unit-test)
     ├── shepherd
-    │   ├── build-aux
-    │   │   └── guix
-    │   │       └── shepherd-package.scm (shepherd-package)
-    │   └── modules
-    │       ├── shepherd
-    │       │   ├── args.scm (shepherd args)
-    │       │   ├── colors.scm (shepherd colors)          ;copied from Guix with minor changes
-    │       │   ├── comm.scm (shepherd comm)
-    │       │   ├── service.scm (shepherd service)
-    │       │   └── support.scm (shepherd support)
-    │       └── shepherd.scm (shepherd)
-    └── shroud
-        └── shroud
-            ├── secret.scm (shroud secret)
-            ├── ui
-            │   ├── hide.scm (shroud ui hide)
-            │   ├── list.scm (shroud ui list)
-            │   ├── remove.scm (shroud ui remove)
-            │   └── show.scm (shroud ui show)
-            ├── ui.scm (shroud ui)
-            └── utils.scm (shroud utils)
+    │   ├── modules
+    │   │   ├── shepherd
+    │   │   │   ├── args.scm (shepherd args)
+    │   │   │   ├── colors.scm (shepherd colors)          ;copied from Guix with minor changes
+    │   │   │   ├── comm.scm (shepherd comm)
+    │   │   │   ├── endpoints.scm (shepherd endpoints)
+    │   │   │   ├── logger.scm (shepherd logger)
+    │   │   │   ├── service.scm (shepherd service)
+    │   │   │   └── support.scm (shepherd support)
+    │   │   └── shepherd.scm (shepherd)
+    │   └── tests
+    │       └── services
+    │           ├── log-rotation-internal.scm (test-log-rotation-internal)
+    │           ├── system-log-internal.scm (test-system-log-internal)
+    │           └── timer-events.scm (test-timer)
+    ├── shroud
+    │   └── shroud
+    │       ├── secret.scm (shroud secret)
+    │       ├── ui
+    │       │   ├── hide.scm (shroud ui hide)
+    │       │   ├── list.scm (shroud ui list)
+    │       │   ├── remove.scm (shroud ui remove)
+    │       │   └── show.scm (shroud ui show)
+    │       ├── ui.scm (shroud ui)
+    │       └── utils.scm (shroud utils)
+    └── tools
+        └── guile-studio
+            └── guile-studio-configure.scm:                              (define-module (guile-studio-init))
 
-86 directories, 418 files
+107 directories, 484 files
 #+end_example
 
 *** Dotfiles
 
-These users do: kitnil
++ These users do: kitnil
++ jjba23's file paths =lib/*.scm= and =system/*.scm= do not follow the standard
+  convention for module names. The meanual specifies cloning to =sss-clone-dir=,
+  which ends in =sss=. There are no =-L= mentions in the =Makefile=
+  - this is incorrect, see ~abcdw/guile-ares-rs:
+    [[https://git.sr.ht/~abcdw/guile-ares-rs/tree/master/item/src/guile/ares/reflection/modules.scm#L61][src/guile/ares/reflection/modules.scm]]
+  - and also ~whereiseveryone/toys: [[https://git.sr.ht/~whereiseveryone/toys/tree/master/item/toys/discovery.scm][item/toys/discovery.scm]]
+
 
 #+begin_src  shell :dir /data/ecto/x.files :results output verbatim :wrap example text
 here=$(pwd)
-for dir in {akagi/dotfiles,kitnil/dotfiles/dotfiles,krevedkokun/dotfiles/src}; do
+# hiecaq/dotfiles has literate content only
+for dir in {jjba23/dotfiles,engstrand-config/dotfiles,akagi/dotfiles/src,akagi/dotfiles/configs,kitnil/dotfiles/dotfiles,krevedkokun/dotfiles/src}; do
 pushd $dir
 
 find . -maxdepth 4 -name '*.scm' -type f \
@@ -1210,17 +1328,116 @@ done
 
 #+RESULTS:
 #+begin_example text
-/data/ecto/x.files/akagi/dotfiles /data/ecto/x.files
+/data/ecto/x.files/jjba23/dotfiles /data/ecto/x.files
+.
+└── .
+    ├── lib
+    │   ├── bash.scm (sss bash)
+    │   ├── byggsteg.scm (sss byggsteg)
+    │   ├── emacs-bridge.scm (sss bridge emacs)
+    │   ├── enchant.scm (sss enchant)
+    │   ├── fontconfig.scm (sss fontconfig)
+    │   ├── foot.scm (sss foot)
+    │   ├── fuzzel.scm (sss fuzzel)
+    │   ├── git.scm (sss git)
+    │   ├── gtk.scm (sss gtk)
+    │   ├── labwc.scm (sss labwc)
+    │   ├── mako.scm (sss mako)
+    │   ├── mime.scm (sss mime)
+    │   ├── openpgp.scm (sss openpgp)
+    │   ├── palette.scm (sss palette)
+    │   ├── portals.scm (sss portals)
+    │   ├── process.scm (sss process)
+    │   ├── qt.scm (sss qt)
+    │   ├── qutebrowser.scm (sss qutebrowser)
+    │   ├── rofi.scm (sss rofi)
+    │   ├── ssh.scm (sss ssh)
+    │   ├── sway.scm (sss sway)
+    │   ├── vars.scm (sss vars)
+    │   └── waybar.scm (sss waybar)
+    └── system
+        └── packages
+            ├── conky.scm (sss packages conky)
+            └── sss-packages.scm (sss packages)
+
+5 directories, 25 files
+/data/ecto/x.files
+/data/ecto/x.files/engstrand-config/dotfiles /data/ecto/x.files
+.
+└── .
+    └── engstrand
+        ├── channels.scm (engstrand channels)
+        ├── configs
+        │   ├── fredrik.scm (engstrand configs fredrik)
+        │   └── johan.scm (engstrand configs johan)
+        ├── configs.scm (engstrand configs)
+        ├── features
+        │   ├── audio.scm (engstrand features audio)
+        │   ├── base.scm (engstrand features base)
+        │   ├── bluetooth.scm (engstrand features bluetooth)
+        │   ├── display.scm (engstrand features display)
+        │   ├── documents.scm (engstrand features documents)
+        │   ├── dwl-guile.scm (engstrand features dwl-guile)
+        │   ├── emacs.scm (engstrand features emacs)
+        │   ├── laptop.scm (engstrand features laptop)
+        │   ├── messaging.scm (engstrand features messaging)
+        │   ├── neovim.scm (engstrand features neovim)
+        │   ├── networking.scm (engstrand features networking)
+        │   ├── nix.scm (engstrand features nix)
+        │   ├── publish.scm (engstrand features publish)
+        │   ├── radio.scm (engstrand features radio)
+        │   ├── shells.scm (engstrand features shells)
+        │   ├── state.scm (engstrand features state)
+        │   ├── statusbar.scm (engstrand features statusbar)
+        │   ├── sync.scm (engstrand features sync)
+        │   ├── theming.scm (engstrand features theming)
+        │   ├── utils.scm (engstrand features utils)
+        │   ├── version-control.scm (engstrand features version-control)
+        │   ├── video.scm (engstrand features video)
+        │   ├── virtualization.scm (engstrand features virtualization)
+        │   ├── wayland.scm (engstrand features wayland)
+        │   ├── web-browsers.scm (engstrand features web-browsers)
+        │   └── xorg.scm (engstrand features xorg)
+        ├── home-services
+        │   └── qutebrowser.scm (engstrand home-services qutebrowser)
+        ├── installer.scm (engstrand installer)
+        ├── packages
+        │   ├── browsers.scm (engstrand packages browsers)
+        │   ├── documents.scm (engstrand packages documents)
+        │   ├── linux.scm (engstrand packages linux)
+        │   ├── python.scm (engstrand packages python)
+        │   ├── utils.scm (engstrand packages utils)
+        │   ├── wayland.scm (engstrand packages wayland)
+        │   └── xorg.scm (engstrand packages xorg)
+        ├── reconfigure.scm (engstrand reconfigure)
+        ├── serializers
+        │   └── qutebrowser.scm (engstrand serializers qutebrowser)
+        ├── systems
+        │   ├── fractal.scm (engstrand systems fractal)
+        │   ├── ghost.scm (engstrand systems ghost)
+        │   ├── kommunbook.scm (engstrand systems kommunbook)
+        │   ├── p400s.scm (engstrand systems p400s)
+        │   ├── pavilion.scm (engstrand systems pavilion)
+        │   ├── silverstone.scm (engstrand systems silverstone)
+        │   └── tuxedo.scm (engstrand systems tuxedo)
+        ├── systems.scm (engstrand systems)
+        ├── themes.scm (engstrand themes)
+        ├── utils
+        │   └── bemenu-prompt.scm (engstrand utils bemenu-prompt)
+        └── utils.scm (engstrand utils)
+
+10 directories, 52 files
+/data/ecto/x.files
+/data/ecto/x.files/akagi/dotfiles/src /data/ecto/x.files
 .
 └── .
     └── magi
-        ├── configs.scm (magi configs)
-        ├── deploy.scm (magi deploy)
         ├── features
         │   ├── base.scm (magi features base)
         │   ├── docker.scm (magi features docker)
         │   ├── emacs.scm (magi features emacs)
         │   ├── emacs-xyz.scm (magi features emacs-xyz)
+        │   ├── fontutils.scm (magi features fontutils)
         │   ├── networking.scm (magi features networking)
         │   ├── password-utils.scm (magi features password-utils)
         │   ├── presets.scm (magi features presets)
@@ -1230,79 +1447,45 @@ done
         │   ├── wm.scm (magi features wm)
         │   └── xdisorg.scm (magi features xdisorg)
         ├── home
-        │   ├── audio.scm (magi home audio)
-        │   ├── auxiliary.scm (magi home auxiliary)
-        │   ├── base.scm (magi home base)
-        │   ├── bittorrent.scm (magi home bittorrent)
-        │   ├── clojure.scm (magi home clojure)
-        │   ├── clouds.scm (magi home clouds)
-        │   ├── documentation.scm (magi home documentation)
-        │   ├── elixir.scm (magi home elixir)
-        │   ├── emacs.scm (magi home emacs)
-        │   ├── fonts.scm (magi home fonts)
-        │   ├── games.scm (magi home games)
-        │   ├── gtk.scm (magi home gtk)
-        │   ├── haskell.scm (magi home haskell)
-        │   ├── images.scm (magi home images)
-        │   ├── lisp.scm (magi home lisp)
-        │   ├── mail.scm (magi home mail)
-        │   ├── matrix.scm (magi home matrix)
-        │   ├── music.scm (magi home music)
-        │   ├── networking.scm (magi home networking)
-        │   ├── notification.scm (magi home notification)
-        │   ├── scheme.scm (magi home scheme)
-        │   ├── security.scm (magi home security)
-        │   ├── services
-        │   │   ├── emacs.scm (magi home services emacs)
-        │   │   ├── fonts.scm (magi home services fonts)
-        │   │   ├── i2p.scm (magi home services i2p)
-        │   │   ├── kdeconnect.scm (magi home services kdeconnect)
-        │   │   ├── keybase.scm (magi home services keybase)
-        │   │   ├── mail.scm (magi home services mail)
-        │   │   ├── minidlna.scm (magi home services minidlna)
-        │   │   ├── notification.scm (magi home services notification)
-        │   │   ├── password-utils.scm (magi home services password-utils)
-        │   │   ├── pipewire.scm (magi home services pipewire)
-        │   │   ├── polybar.scm (magi home services polybar)
-        │   │   ├── proxy.scm (magi home services proxy)
-        │   │   ├── pueue.scm (magi home services pueue)
-        │   │   ├── wm.scm (magi home services wm)
-        │   │   ├── xdisorg.scm (magi home services xdisorg)
-        │   │   ├── xorg.scm (magi home services xorg)
-        │   │   └── xremap.scm (magi home services xremap)
-        │   ├── shells.scm (magi home shells)
-        │   ├── terminals.scm (magi home terminals)
-        │   ├── version-control.scm (magi home version-control)
-        │   ├── video.scm (magi home video)
-        │   ├── web-browsers.scm (magi home web-browsers)
-        │   ├── wm.scm (magi home wm)
-        │   ├── xdg.scm (magi home xdg)
-        │   └── xorg.scm (magi home xorg)
-        ├── hosts
-        │   ├── magi.scm (magi hosts magi)
-        │   └── psycho100.scm (magi hosts psycho100)
+        │   └── services
+        │       ├── emacs.scm (magi home services emacs)
+        │       ├── i2p.scm (magi home services i2p)
+        │       ├── kdeconnect.scm (magi home services kdeconnect)
+        │       ├── minidlna.scm (magi home services minidlna)
+        │       ├── notification.scm (magi home services notification)
+        │       ├── password-utils.scm (magi home services password-utils)
+        │       ├── pipewire.scm (magi home services pipewire)
+        │       ├── polybar.scm (magi home services polybar)
+        │       ├── proxy.scm (magi home services proxy)
+        │       ├── pueue.scm (magi home services pueue)
+        │       ├── wm.scm (magi home services wm)
+        │       ├── xdisorg.scm (magi home services xdisorg)
+        │       ├── xorg.scm (magi home services xorg)
+        │       └── xremap.scm (magi home services xremap)
+        ├── packages
+        │   ├── admin.scm (magi packages admin)
+        │   └── emacs-xyz.scm (magi packages emacs-xyz)
         ├── system
-        │   ├── base.scm (magi system base)
-        │   ├── desktop.scm (magi system desktop)
-        │   ├── install.scm (magi system install)
-        │   ├── magi.scm (magi system magi)
-        │   ├── remote
-        │   │   ├── deploy.scm (magi system remote deploy)
-        │   │   ├── home-server.scm (magi system remote home-server)
-        │   │   ├── kokuou.scm (magi system remote kokuou)
-        │   │   ├── psycho100.scm (magi system remote psycho100)
-        │   │   └── vps.scm (magi system remote vps)
-        │   ├── services
-        │   │   ├── dns.scm (magi system services dns)
-        │   │   └── networking.scm (magi system services networking)
-        │   └── test-system.scm (magi system test-system))
-        ├── users
-        │   ├── akagi.scm (magi users akagi)
-        │   ├── gintoki.scm (magi users gintoki)
-        │   └── mob.scm (magi users mob)
+        │   └── services
+        │       ├── dns.scm (magi system services dns)
+        │       └── networking.scm (magi system services networking)
         └── utils.scm (magi utils)
 
-11 directories, 79 files
+9 directories, 32 files
+/data/ecto/x.files
+/data/ecto/x.files/akagi/dotfiles/configs /data/ecto/x.files
+.
+└── .
+    └── src
+        └── magi
+            ├── configs.scm (magi configs)
+            ├── deploy.scm (magi deploy)
+            └── users
+                ├── akagi.scm (magi users akagi)
+                ├── fd9a.scm (magi users fd9a)
+                └── mob.scm (magi users mob)
+
+5 directories, 5 files
 /data/ecto/x.files
 /data/ecto/x.files/kitnil/dotfiles/dotfiles /data/ecto/x.files
 .
@@ -1405,11 +1588,11 @@ done
             ├── configurations
             │   └── asgard.scm (yggdrasil configurations asgard)
             ├── modules
-            │   ├── alacritty.scm (yggdrasil modules alacritty)
+            │   ├── brightnessctl.scm (yggdrasil modules brightnessctl)
             │   ├── connman.scm (yggdrasil modules connman)
             │   ├── dbus.scm (yggdrasil modules dbus)
             │   ├── direnv.scm (yggdrasil modules direnv)
-            │   ├── elogind.scm (yggdrasil modules elogind)
+            │   ├── docker.scm (yggdrasil modules docker)
             │   ├── emacs.scm (yggdrasil modules emacs)
             │   ├── engineering.scm (yggdrasil modules engineering)
             │   ├── fonts.scm (yggdrasil modules fonts)
@@ -1421,7 +1604,6 @@ done
             │   ├── l2md.scm (yggdrasil modules l2md)
             │   ├── librewolf.scm (yggdrasil modules librewolf)
             │   ├── libvirt.scm (yggdrasil modules libvirt)
-            │   ├── light.scm (yggdrasil modules light)
             │   ├── make.scm (yggdrasil modules make)
             │   ├── mako.scm (yggdrasil modules mako)
             │   ├── msmtp.scm (yggdrasil modules msmtp)
@@ -1431,29 +1613,24 @@ done
             │   ├── pass.scm (yggdrasil modules pass)
             │   ├── pipewire.scm (yggdrasil modules pipewire)
             │   ├── pm.scm (yggdrasil modules pm)
-            │   ├── rofi.scm (yggdrasil modules rofi)
+            │   ├── podman.scm (yggdrasil modules podman)
             │   ├── scrot.scm (yggdrasil modules scrot)
+            │   ├── seatd.scm (yggdrasil modules seatd)
             │   ├── ssh.scm (yggdrasil modules ssh)
             │   ├── sway.scm (yggdrasil modules sway)
             │   ├── tofi.scm (yggdrasil modules tofi)
+            │   ├── transmission.scm (yggdrasil modules transmission)
             │   ├── wlsunset.scm (yggdrasil modules wlsunset)
             │   └── xdg.scm (yggdrasil modules xdg)
             └── packages
                 ├── clojure.scm (yggdrasil packages clojure)
                 ├── crates-gtk.scm (yggdrasil packages crates-gtk)
-                ├── engineering.scm (yggdrasil packages engineering)
-                ├── freedesktop.scm (yggdrasil packages freedesktop)
-                ├── gnome.scm (yggdrasil packages gnome)
-                ├── gtk.scm (yggdrasil packages gtk)
-                ├── linux.scm (yggdrasil packages linux)
                 ├── mozilla.scm (yggdrasil packages mozilla)
                 ├── pipewire.scm (yggdrasil packages pipewire)
                 ├── pm.scm (yggdrasil packages pm)
-                ├── security-token.scm (yggdrasil packages security-token)
-                ├── sound.scm (yggdrasil packages sound)
-                └── xdisorg.scm (yggdrasil packages xdisorg)
+                └── security-token.scm (yggdrasil packages security-token)
 
-8 directories, 49 files
+8 directories, 43 files
 /data/ecto/x.files
 #+end_example
 
@@ -1462,9 +1639,12 @@ done
 
 ** Guix
 
-=tree -L 3 -P "*.scm" --prune /data/ecto/guix/channels=
+#+begin_src shell :results output verbatim
+tree -L 3 -P "*.scm" --prune /data/ecto/guix/channels
+#+end_src
 
-#+begin_quote
+#+RESULTS:
+#+begin_example
 /data/ecto/guix/channels
 ├── flatwhatson
 │   └── flat
@@ -1588,19 +1768,23 @@ done
         └── packages.scm
 
 38 directories, 83 files
-#+end_quote
+#+end_example
 
 ** Scheme Projects
 
-=tree -L 3 -P "*.scm" --prune /data/ecto/scheme/=
+#+begin_src shell :results output verbatim
+tree -L 3 -P "*.scm" --prune /data/ecto/scheme/
+#+end_src
 
-#+begin_quote
+#+RESULTS:
+#+begin_example
 /data/ecto/scheme/
 ├── artanis
 │   ├── artanis
 │   │   ├── artanis.scm
 │   │   ├── cache.scm
 │   │   ├── client.scm
+│   │   ├── cli.scm
 │   │   ├── commands.scm
 │   │   ├── config.scm
 │   │   ├── cookie.scm
@@ -1609,6 +1793,7 @@ done
 │   │   ├── env.scm
 │   │   ├── ffi.scm
 │   │   ├── fprm.scm
+│   │   ├── i18n.scm
 │   │   ├── inotify.scm
 │   │   ├── irregex.scm
 │   │   ├── lpc.scm
@@ -1670,6 +1855,7 @@ done
 │   └── tests
 │       ├── array-list.scm
 │       ├── base64.scm
+│       ├── bytestruct.scm
 │       ├── heap.scm
 │       ├── matrix.scm
 │       ├── quadtree.scm
@@ -1700,6 +1886,7 @@ done
 │   │   ├── loop.scm
 │   │   ├── run-benchmark.scm
 │   │   └── string.scm
+│   ├── guix.scm -> .guix/modules/guile-package.scm
 │   ├── libguile
 │   │   └── libguile-3.0-gdb.scm
 │   └── module
@@ -1707,6 +1894,9 @@ done
 │       ├── statprof.scm
 │       └── texinfo.scm
 ├── guile-examples
+│   ├── guile-openai
+│   │   ├── guix.scm
+│   │   └── openai.scm
 │   └── Guile-SiCP
 │       ├── AmbQuery.scm
 │       ├── evaluator.base.scm
@@ -1771,17 +1961,57 @@ done
 │   │   ├── skribe.scm
 │   │   ├── ui.scm
 │   │   └── utils.scm
-│   ├── tests
-│   │   ├── helper.scm
-│   │   ├── post.scm
-│   │   └── utils.scm
-│   └── website
-│       └── haunt.scm
+│   └── tests
+│       ├── helper.scm
+│       ├── html.scm
+│       ├── post.scm
+│       └── utils.scm
 ├── lepton-eda
 │   ├── build-tools
 │   │   └── test-driver.scm
 │   └── tests
 │       └── env.scm
+├── lib
+│   ├── doc
+│   │   ├── guile-library.scm
+│   │   ├── make-html.scm
+│   │   └── make-texinfo.scm
+│   ├── examples
+│   │   └── document-module.scm
+│   ├── src
+│   │   ├── apicheck.scm
+│   │   ├── htmlprag.scm
+│   │   ├── match-bind.scm
+│   │   ├── md5.scm
+│   │   ├── statprof.scm
+│   │   ├── texinfo.scm
+│   │   └── unit-test.scm
+│   └── unit-tests
+│       ├── api.scm
+│       ├── container.async-queue.scm
+│       ├── graph.topological-sort.scm
+│       ├── htmlprag.scm
+│       ├── logging.logger.scm
+│       ├── match-bind.scm
+│       ├── math.minima.scm
+│       ├── math.primes.scm
+│       ├── md5.scm
+│       ├── os.process.scm
+│       ├── scheme.kwargs.scm
+│       ├── search.basic.scm
+│       ├── statprof.scm
+│       ├── string.completion.scm
+│       ├── string.transform.scm
+│       ├── string.wrap.scm
+│       ├── sxml.fold.scm
+│       ├── sxml.ssax.scm
+│       ├── sxml.transform.scm
+│       ├── sxml.xpath.scm
+│       ├── term.ansi-color.scm
+│       ├── texinfo.docbook.scm
+│       ├── texinfo.scm
+│       ├── texinfo.serialize.scm
+│       └── text.parse-lalr.scm
 ├── libctl
 │   ├── base
 │   │   ├── class.scm
@@ -1799,25 +2029,15 @@ done
 │   └── utils
 │       ├── ctl-io.scm
 │       └── geom.scm
-├── mcron
-│   ├── build-aux
-│   │   ├── guix.scm
-│   │   └── test-driver.scm
-│   └── tests
-│       ├── base.scm
-│       ├── environment.scm
-│       ├── job-specifier.scm
-│       ├── utils.scm
-│       ├── vixie-specification.scm
-│       └── vixie-time.scm
 ├── meep
 │   └── scheme
 │       ├── casimir.scm
 │       └── materials.scm
 ├── shepherd
 │   ├── build-aux
-│   │   └── manifest.scm
-│   ├── guix.scm -> build-aux/guix/shepherd-package.scm
+│   │   ├── test-driver.scm
+│   │   └── xgettext.scm
+│   ├── guix.scm -> .guix/modules/shepherd-package.scm
 │   └── modules
 │       └── shepherd.scm
 ├── shroud
@@ -1826,9 +2046,12 @@ done
 │       ├── secret.scm
 │       ├── ui.scm
 │       └── utils.scm
+├── tools
+│   └── guile-studio
+│       └── guile-studio-configure.scm
 └── xbindkeys
     ├── xbindkeysrc-combo.scm
     └── xbindkeysrc.scm
 
-50 directories, 184 files
-#+end_quote
+54 directories, 220 files
+#+end_example

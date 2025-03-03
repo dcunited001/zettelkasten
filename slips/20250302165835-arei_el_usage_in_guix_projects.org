@@ -1,0 +1,154 @@
+:PROPERTIES:
+:ID:       afe15be3-ae1d-4d5b-939a-83533c1a380b
+:END:
+#+TITLE: Arei.el: Usage in Guix Projects
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:87c43128-92c2-49ed-b76c-0d3c2d6182ec][Scheme]]
+
+* Setup
+
++ Emacs is currently setup as described here: [[id:58c94100-403f-4444-a333-c8253c30c7d7][Arei.el setup for Guix and Guile
+  Projects]]
++ These notes on scheme project layout describe the current module/file layout
+  for my dotfiles [[id:48c23507-41ef-47af-af7f-ab466fdc6012][Scheme: Module Namespacing]]
++ I'm running scripts in =$HOME/.dotfiles/.scratch/guile/*.scm= before I add
+  anything to the project, which prevents accumulation of stupid mistakes while
+  still letting me share across computers if I need.
+
+* Arei
+
+** Cider
+
+Arei implements nREPL, so the underlying =guile-ares-rs= process will even execute
+Clojure (as Scheme) if you send it: [[https://github.com/Olical/conjure/issues/549][Guile over nREPL, guile-ares-rs-integration]]
+
+** Emacs Config
+
+*** Remaining
+
++ =lispy-scheme.el= is still active in guix-scheme-mode, so keybindings for
+  eval-expression and xref conflict.
+
+*** arei-connection-mode
++ =prism-mode= works on first glance, but i haven't thought too much about it
+  yet... on second thought, the formatter will definitely choke on partial
+  output, so I guess it's better used ad-hoc instead of ab-hook.
+
+** Babel
+
+Since =nREPL= is implemented and =sesman= handles session management, it shouldn't
+be too difficult to duct-tape together with [[https://github.com/emacs-mirror/emacs/blob/master/lisp/org/ob-clojure.el#L330-L342][a few lines added to ob-clojure]], but
+overreliance on existing nREPL support for other editors isn't a great solution.
+
+** Guile
+
++ For a script without a =define-module= form, arei recognizes it as such -- see
+  defs for =arei-syntax.el= functions, it uses this quite a bit.
++ But does it distinguish between buffers for various script files? or does it
+  maintain a single namespace like =(guile user)=?
+
+* Tasks
+
+** Crate Importer
+
+One of the main challenges I have with packaging =go= or =rust= projects for Guix is
+just determining which packages will need to be defined. When this is simple to
+answer, than I can quickly expect about how much work is needed. For crates,
+specifically, this is simple: the importer will use =comment= from =(guix
+read-print)= to decorate the package inputs, if:
+
++ #:mark-missing? :: Guix doesn't know about the packages
++ #:allow-yanked? :: Cargo.io has removed this version/build from distribution
+
+These features aren't available as such in most other importers, but maybe by
+another interface. The list of packages for =cargo= isn't as bad as for =go=, but it
+helps alot to get an idea for the scope of work.
+
+*** Importer script
+
+Note: if you specify a recursive import, most of this should be unnecessary.
+Connection issues or dependency validity issues may require some more handling.
+
+Ideally, you can just kinda get a list of these things and hand the data off to
+=cargo= or whatever packaging tool is used for that language... but we live in
+2025 and =Node.js= scripts seem blissfuly unaware of the files they traverse on
+every =exec= ... so the magic =eightball.js= says: "Seems unlikely that POSIX-naive
+tooling would be simple".
+
+#+begin_src scheme
+(use-modules (gnu packages)
+             (gnu services)
+             (gnu)
+
+             (guix gexp)
+             (guix import crate)
+             (guix memoization)
+             (guix packages)
+             (json)
+             (srfi srfi-1)
+             (srfi srfi-26))
+#+end_src
+
+Then running this returns a quoted expression, which we need to reliably
+traverse. Since (i think) the recursive importer likely returns a =List<pkg>= ...
+then we need to lift the result to the =List<T>= type.
+
+#+begin_src scheme
+(define test-eww-bar (crate->guix-package "eww"))
+
+test-eww-bar
+#+end_src
+
+#+begin_example scheme
+following redirection to `https://static.crates.io/crates/eww/eww-0.0.1-alpha.2.crate'...
+
+;; The Guix importer returns this
+(define-public rust-eww-0.0.1
+  (package
+   (name "rust-eww")
+   (version "0.0.1-alpha.2")
+   (source
+    (origin
+     (method url-fetch)
+     (uri (crate-uri "eww" version))
+     (file-name (string-append name "-" version ".tar.gz"))
+     (sha256 (base32 "0j583vh5kn0k1adsh0q8mdscadlsqximd9scs76sg2n7jy4x19bi"))))
+   (build-system cargo-build-system)
+   (arguments
+    `(#:skip-build?
+      #t
+      #:cargo-inputs
+      (#<<comment> str: ";; rust-egui-wgpu-0.0.1\n" margin?: #f>
+       #<<comment> str: ";; rust-egui-winit-0.0.1\n" margin?: #f>)))
+   (home-page "https://github.com/LU15W1R7H/eww")
+   (synopsis "egui backend (winit + wgpu)")
+   (description "This package provides egui backend (winit + wgpu).")
+   (license license:asl2.0)))
+
+;; The importer prints this
+(("egui-wgpu" "0.0.1-alpha.1") ("egui-winit" "0.0.1-alpha.2"))
+#+end_example
+
+And this is where I hit a brick wall because I don't know tagalog morphemes. I
+mean... I don't know the scheme words.
+
+#+begin_src scheme
+(alist? (cdr  (caddr test-eww-bar))) ; => #t
+(package-arguments (cdr (caddr test-eww-bar))) ; => Expecting Struct (unevaluated)
+
+(assoc 'arguments (cdr (caddr test-eww-bar)))
+
+;; wrapped in quasiquote
+(let* ((pkg-args (assoc 'arguments (cdr (caddr test-eww-bar))))
+       ;; (assoc-ref #:cargo-inputs (cdr pkg-args))
+       ;; (list-head (cdr pkg-args) 2)
+       (pkg-args (cadadr pkg-args)))
+  ;; (assoc '#:cargo-inputs pkg-args)
+  (alist? pkg-args) ;; nope. you still can't have that thing.
+  pkg-args)
+
+#+end_src
