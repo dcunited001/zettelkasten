@@ -7,11 +7,113 @@
 #+DESCRIPTION: notes
 
 
+#+begin_quote
+I'll likely remove this from this note, since it's not really concise reference
+info.
+#+end_quote
+
+* Workflow
+
+From the =forge-get-repository= docstring:
+
+#+begin_quote
+A `:known' repository has an entry in the local database.  All other
+repositories are unknown.  `:known' repositories are divided into two
+subgroups: `:tracked' and \"untracked\" repositories.
+
+A `:tracked' repository was previously explicitly added to the database
+by the user.
+
+When Forge encounters a repository, without being instructed by the user
+to track it, it may nevertheless add limited information about it to the
+database.  Such a repository is `:known' but it is not `:tracked'.
+#+end_quote
+
+** Per-Project
+
++ You may be able to use =forge-get-repository= to add entries to the
+  =forge-database-file=, a SQLite repository. AFAIK, the library doesn't intend
+  you to change this file out (magit has local caches), but idk.
++ Add the repositories you intend to contribute to or service issues for as
+  =:tracked=. This will add all pull-request refs to your git index, which will
+  update/churn often, esp. for large repositories.
++ Adding them as =:known= lets you pull issues & PR's as needed, but I'm not
+  sure about PR refs. These should be simple to track with branches, but
+  having a system to label these accourding to the PR ref should make things
+  easier. Certainly it's faster.
++ There is =git worktree= functionality, but I can't imagine setting that up for
+  more than a handful of repositories. It makes other tooling you may have set
+  up more cumbersome to move around. I'm not sure what interface =forge.el=
+  provides or what filetree it expects you to use for that. =git= exposes some of
+  that file-mgmt functionality (but wasn't designed with worktrees in mind)
++ IMO if you're using worktrees, then you also want =git stack= or some
+  equivalent. However, the beauty of PR's is that someone else carries that unit
+  of work to completion. Unless it's a high-priority project for you, there's no
+  need to =restack=
+
+** Project Tracking
+
++ It is trivial to get Emacs to hook into =libnotify=. It's a matter of finding
+  the =forge= code to hook into.
++ Perhaps a better view on this would be a timeline, but that would req.
+  something like an OLAP cube (as a secondary database.)
++ Forge uses =sqlite=, so it is possible to version that file. Any two databases
+  with the same schema are fairly easy to diff using queries. This could, for
+  example. provide a daily report of what issues have been updated for =:tracked=
+  repositories. That requires some tooling. i don't expect Forge to use a
+  PostgreSQL database, as then users suddenly care about data persistence.
+
+I have ideas... but i can't seem to remember how to pull a key-value from an
+a-list while juggling all these lisps. I should just really do PMP.
+
+* Setup
+
+** =pass=
+
+This can be a bit confusing, so...
+
+#+begin_src shell
+pass_store=${PASSWORD_STORE:-$HOME/.password-store}
+ghub_forge=api.github.com
+ghub_user=asdf
+glab_forge=its.on.you
+
+ghub_token_file=$pass_store/$ghub_forge/$ghub_user^ghub.gpg
+forge_token_file=$pass_store/$ghub_forge/$ghub_user^forge.gpg
+
+mkdir -p $pass_store/$ghub_forge
+
+# encrypt some random data (i have trouble initializating these files as truly encrypted)
+date +%s | sha256sum |\
+    gpg -aer $EMAIL -o $ghub_token_file
+cat /dev/urandom | head -c 16 | sha256sum |\
+    gpg -aer $EMAIL -o $forge_token_file
+#+end_src
+
+Now open the files and insert classic tokens with these scopes:
+
++ ghub :: read only (i used for graphql only)
++ forge :: repos, user, read:org
+
+These are the defaults, you can customize tokens as needed, since auth is in
+github's hands.
+
+** =auth-source-pass.el=
+
+Maybe later, this part is actually fairly simple. Getting the layout for =pass=,
+so it works transparently with =auto-sources= is a bit difficult. You may have to
+read the =auto-sources.el= source code.
+
+You can also edit your =pass= store with =pass.el=. It works fairly well for
+personal tokens, but is otherwise a bit restrictive. =pass= permits arbitrary
+metadata which should work with most things, but =auth-sources= doesn't use it to
+query (IIRC). It's simple to sync to other linux systems, but not to phone/etc.
+* Schema
+
 This was generated using [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][Screwtapello/sqlite-schema-diagram]], using a similar
 process as [[id:c13684bd-77e7-46c6-98c6-a6486c2232d8][Firefox SQLite Schemas]], but I've since lost any notes used to do so.
 
 [[file:img/emacs-magit-forge-schema.svg]]
-
 * Roam                                                             :noexport:
 + [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]
 + [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
