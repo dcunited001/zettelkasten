@@ -16,6 +16,82 @@
 + [[https://orgmode.org/worg/org-contrib/babel/languages/ob-doc-lisp.html][worg: ob-lisp]]
 
 * Topics
+** 4.0 Release
++ [[https://nyxt.atlas.engineer/article/release-4.0.0-pre-release-1.org][Article: Nyxt 4.0.0-pre-release]]
+
+
+*** Debugging Flatpak
+
+To get app runtime ([[https://docs.flatpak.org/en/latest/debugging.html][source]])
+
+#+begin_src shell
+fpid=engineer.atlas.Nyxt-Electron
+fpruntime="$(flatpak --user info --show-runtime $fpid)"
+
+# from $fpruntime (for debug tooling)
+# flatpak install org.freedesktop.Platform.{GL,GL32}.Debug.default//24.08
+
+# SDK needed for --devel
+flatpak run --command=sh --devel --filesystem=$(pwd) $fpid
+#+end_src
+
++ [[https://github.com/flathub-infra/flatpak-builder-lint][flathub-infra/flatpak-builder-lint]]
+
+*** Flatpak Build
++ atlas-engineer/nyxt: [[https://github.com/atlas-engineer/nyxt/releases/tag/4.0.0-pre-release-3][4.0.0-pre-release-3]]
+
+**** nyxt-electron
+***** D-Bus
+
+Starting via this command doesn't provide access
+
+=flatpak run --command=sh --filesystem=$(pwd) $fpid=
+
+#+begin_example syslog
+[📦 engineer.atlas.Nyxt-Electron nyxt-release4]$ nyxt -I -C -S
+Nyxt version 4
+<INFO> [01:42:36] Source location: #P"/app/share/nyxt/"
+
+> cl-electron-server@0.0.1 start
+> zypak-wrapper /app/node_modules/electron/dist/electron /tmp/tmp1A9PYSC0-tmp.js /run/user/1000/app/engineer.atlas.Nyxt-Electron/cl-electron/electron.socket
+
+[292:0303/014236.540415:ERROR:bus.cc(407)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[292:0303/014236.640052:ERROR:bus.cc(407)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[292:0303/014236.640089:ERROR:bus.cc(407)] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+WARNING:
+   /run/user/1000/app/engineer.atlas.Nyxt-Electron/cl-electron/ID4108.socket already in use.
+
+#+end_example
+
++ Forgetful Mode :: Starting nyxt with =nyxt -I -C -S= should prevent it from
+  loading much of anything and it won't have a socket, however it loads one
+  anyways.
++ There are about 20 sockets within $XDG_RUNTIME_DIR
+
+
+
+***** Network Service
+
+Starts network service under the main electron. Killing it auto-restarts process
+
+Nyxt shows: =network_service_instance_impl.cc(613)] Network service
+crashed, restarting service.=
+
+#+begin_src shell
+/app/node_modules/electron/dist/electron --type=utility \
+  --utility-sub-type=network.mojom.NetworkService --lang=en-US \
+  --service-sandbox-type=none \
+  --enable-crash-reporter=31b863fe-63c8-423b-bf56-1cdae459a3e3,no_channel \
+  --user-data-dir=/home/dc/.var/app/engineer.atlas.Nyxt-Electron/config/Electron \
+  --secure-schemes=nyxt-resource --cors-schemes=lisp --fetch-schemes=lisp \
+  --shared-files=v8_context_snapshot_data:100 \
+  --field-trial-handle=3,i,11264466296067097544,8329796773992966666,262144 \
+  --disable-features=SpareRendererForSitePerProcess --variations-seed-version
+#+end_src
+
+
+**** nyxt-gi-gtk
+
 ** Source
 *** Utilities
 
@@ -25,7 +101,6 @@ be useful if running lisp via CLI.
 #+begin_src lisp
 (prini "Hello, Nyxt!" *standard-output*)
 #+end_src
-
 ** Profiles
 
 ** ASDF

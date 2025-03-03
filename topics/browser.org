@@ -29,8 +29,84 @@ Source References:
 + ./src/components/saved_tab_groups (saved as protobufs)
 + ./src/components/tab_groups
 
+* Electron
+** Docs
+** Resources
+** Topics
+
+*** Debug
+**** Tracing
++ [[https://www.electronjs.org/docs/latest/tutorial/performance][Electron Performance Tutorial]]
++ [[https://www.chromium.org/developers/how-tos/trace-event-profiling-tool/][about:tracing]]
+*** Process Model
+
+Two main types and a few others
+
++ main :: the top-level process =BrowserWindow=
++ utility :: the app can spawn child procs using the =UtilityProcess= API (runs
+  Node.js project). This can be disabled (in the application build) unless needed
++ renderer :: renders a web view
+
+**** IPC
+
++ Renderers can use =ipcRenderer=
+  - To receive events: =ipcRenderer.on(chan, listener)=
+  - To send events: =ipcRenderer.send(chan, ...args)=
+
+***** Structured Clone
+
++ Communicates using interfaces similar to webWorkers.
++ Objects must be serializable or more drastic measures are needed (... but
+  actually, most IPC methods just don't work). They're sent as full clones using
+  the =structuredClone()= algorithm. This evicts cache, introduces jitter/latency
+  and can complicate observability/tracing/etc
+
+
+Standard interfaces are defined for Web APIs in Web IDL format ([[https://webidl.spec.whatwg.org/#js-environment][spec]])
++ [[are][Javascript Types]]
++ [[https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm#webapi_types][Web/API Types]]
+
 
 * API
+** Standards
+*** IDL
+IDL specs are in repo: [[https://github.com/w3c/webref/tree/main/ed/idl][w3c/webref]] and collected by crawling with [[https://github.com/w3c/reffy][w3c/reffy]],
+which produces the provenance for all the Web APIs is documented in the parent
+folder at [[https://github.com/w3c/webref/blob/main/ed/index.json][./ed/index.json]]. There's also [[https://w3c.github.io/webref/ed/idlnames.json][.tr/idlnames.json]], but this hasn't been
+updated in a few years (afaik...).
+
+This gist gives an idea of how the data may be used
+
+#+begin_src shell :results output verbatim code :wrap example javascript
+curl -s https://gist.githubusercontent.com/dontcallmedom/4ce7183bd1ac9d6bf79ae11da12f1898/raw/35dd381295e1b22b90c50a338020b6d84b626d2c/update-interface-data.js
+#+end_src
+
+#+RESULTS:
+#+begin_example javascript
+const fs = require("fs").promises;
+
+// @@@ download latest tagged version of @webref/idl repo
+const webrefPath = "../../webref/ed/";
+(async function () {
+  const interfaceData = {};
+  const index = JSON.parse(await fs.readFile(webrefPath + "idlnames.json", "utf-8"));
+  (await Promise.all(
+    Object.entries(index)
+      .sort(([k1, v1], [k2, v2]) => k1.localeCompare(k2))
+      .map(async ([,{parsed: jsonIdlPath}]) => await fs.readFile(webrefPath + jsonIdlPath, "utf-8"))
+  )).forEach(jsonData => {
+    const jsonIdl = JSON.parse(jsonData);
+    if (jsonIdl.type === "interface" || jsonIdl.type === "interface mixin") {
+      interfaceData[jsonIdl.name] = {
+        inh: jsonIdl.inheritance?.name || "",
+        impl: jsonIdl.includes.map(i => i.name)
+      };
+    }
+  });
+  console.log(JSON.stringify(interfaceData, null, 2));
+})();
+#+end_example
+
 ** Notifications
 
 *** Manually enable notifications for a site using console
