@@ -693,6 +693,92 @@ console-specific.
 + [[https://www.emacswiki.org/emacs/LoadKeys][EmacsWiki]]
 + [[https://wiki.archlinux.org/title/Linux_console/Keyboard_configuration][Linux Console Keyboard Config]]
 + [[https://boxmatrix.info/wiki/Property:setkeycodes][https://boxmatrix.info/wiki/Property:setkeycodes]]
+** Topics
+
+*** Kharis (basically an HP Dev One)
+
+The output from =dumpkeys [options]= varies between keyboards.
+
+** Includes
+
+There are includes and they're necessary. If you simply remap keycodes, strange
+things may happen. For example, using the following without the include may
+cause your control key to "lock" and never unlock. Then alphanumeric keys will
+start causing their "control" action.
+
+** Caps to Control
+
+Just link to the appropriate include
+
+#+begin_src conf :tangle .local/share/kbd/caps-as-control.inc
+include "linux-with-alt-and-altgr.inc"
+
+keycode 58 = Control
+#+end_src
+
+On my HP laptop, remapping caps to control in console will occasionally get
+stuck in emacs & maybe elsewhere. This doesn't reset until you switch vty's. It
+may be a key combination that causes the kernel interpretation of keybindings to
+get stuck with bad modkey bits. It is limited to the caps key. If the control
+key glitched, then it would be difficult to switch terminals.
+
+There's probably something I'm not configuring, but ascertaining the state is
+cumbersome without scripts. Hopefully =kmscon= becomes more accessible.
+
+*** vconsole.conf
+
+Apparently, you can configure this with =vconsole.conf=
+
+I found in this commit from [[https://github.com/jsoo1/dotfiles/commit/fd686ea1874451987c3b0ae30749a2e48007c27f][jsoo1/dotfiles]].
+
+#+begin_quote
+Note: you really don't want to get this wrong or you may need to chroot your
+guix system. (see notes below...)
+#+end_quote
+
+This is needed in =/etc/vconsole.conf= very early on in system init.
+
+#+begin_src scheme
+;; not sure the file-union approach works here, since that would require
+;; directly targeting /etc
+(define-public %kharis-loadkeys-vconsole
+  (extra-special-file "/etc/vconsole.conf" (plain-file "KEYMAP=/etc/vconsole.Caps2Ctrl.map\n")))
+(define-public %kharis-loadkeys-caps2ctrl
+  ;; don't want to add to /usr/share/keymaps/
+  (extra-special-file "/etc/vconsole.Caps2Ctrl.map" (plain-file "keymaps 0-255\nkeycode 58 = Control\n"))
+#+end_src
+
+vconsole.conf
+
+#+begin_src conf
+# KEYMAP=/usr/share/keymaps/Caps2Ctrl.map
+KEYMAP=/etc/vconsole.Caps2Ctrl.map
+#+end_src
+
+vconsole.Caps2Ctrl.map
+
+#+begin_src conf
+keymaps 0-255
+keycode 58 = Control
+#+end_src
+
+I'm not even sure it will work ... the [[https://man.archlinux.org/man/vconsole.conf.5.en][vconsole.conf manpage]] says
+
+#+begin_quote
+=/etc/vconsole.conf= is usually created and updated using
+=systemd-localed.service(8)=.
+
+=localectl(1)= may be used to instruct =systemd-localed.service= to query or update
+configuration.
+#+end_quote
+
+Hmmm... There must be a service that causes =localectl= to pick up the keymaps
+
+Actually, Guix =operating-system= specifies a console keyboard, but I'm
+unsure of how to customize =KEYMAP= rather than simply specify a keyboard.
+Bundling the file into =/usr/share/keymaps/Caps2Ctrl.map= as a package may be
+a better way.
+
 ** Issues
 *** Finding includes/configs/keymaps
 
