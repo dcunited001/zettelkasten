@@ -20,6 +20,155 @@ docs.
 ** Docs
 
 + [[https://www.w3.org/2001/sw/SW-FAQ][W3C Semantic Web FAQ]]
++ [[https://www.w3.org/TR/?filter-tr-name=&status%5B%5D=standard][All The Standards]]
+
+*** RDF
+
++ [[https://www.w3.org/TR/rdf11-mt/][Semantics]]
++ [[https://www.w3.org/TR/rdf11-concepts/][Concepts and Abstract Syntax]]
+
+**** That's not canon
+
+Also, there's [[RDF Dataset Canonicalization][RDF Dataset Canonicalization]], so that Blue Sky admins can make
+"That's not canon" jokes while tweaking their SPARQL clusters to censor you. The
+hashing provides performance enhancements, so that processing doesn't require
+inflating large graphs in order to reason about previously ingested data. That's
+not really what RDF was intended for, but it is actually an application. "Over
+there are the parts of the ontologies /that we don't platform./"
+
+See the sections on hashing and especially the one on [[https://www.w3.org/TR/rdf-canon/#dataset-poisoning][Dataset Poisoning]], which
+really confirms for me quite a bit of what I was seeing occasionally on socia
+media -- it seemed that I would be warped to a "shit stream-processing shard"
+and that quite a bit of my newsfeed was manipulated. This section doesn't
+describe that, per se, but it is apropos to some of the "grey hat or black hat"
+social media marketing techniques that would enable such.
+
+* Schemata
+
+Considering there are so many of these, a few factors should prioritize your
+discovery of OWL/RDF documents:
+
++ Dependencies :: The fewer dependencies that a fairly central schema has, the
+  more useful it is. This inflates the memory (& thereby compute) required to
+  represent ontological structures. You'd like less, not more.
++ Age :: Humans living in the USA during the dotcom boom were the very first to
+  discover ontologies, so we should consider their oldest endeavors to probably
+  be more critical.
++ References :: Given a database of RDF documents, reference counting may help.
+
+The xmlns attributes from the top-level =<rdf/>= tag should be enough to start
+spidering the RDF docs. They are themselves examples of RDF data -- i.e. the XML
+documents that describe ontologies are themselves artifacts of data in the same
+format. They are composed of "[[Semantic triple][semantic triples]]" framed with context, which
+itselfs forms a basis for [[https://www.w3.org/TR/2014/REC-n-quads-20140225/][quads]], though I can't quite find info to confirm
+that..
+
+See this [[https://github.com/w3c/sdw/blob/gh-pages/time/rdf/abraham-lincoln.ttl][abraham-lincoln.ttl]] for an example. These just don't open/close =owl:=
+tags to define new OWL things (afaik...)
+
+
+
+** Topics
+
+*** Overview
+
+Quite a few of these one-off RDF's can be found in the w3c github. There are
+overviews on the main page.
+
+|----------------+----------|
+| Concept        | Repo     |
+|----------------+----------|
+| Space and Time | [[https://github.com/w3c/sdw][w3c/sdw]]  |
+| Data and Stuff | [[https://github.com/w3c/dxwg][w3c/dxwg]] |
+|                |          |
+|----------------+----------|
+
+**** Space and Time
+
+The main ontologies defined here are those prefixed with =time= and =ssn=, though
+the latter Sensor Sensor Network continues in another repository
+
+Quite a few "Turtle" files here in [[github:w3c/sdw][w3c/sdw]]. Most of these are just examples.
+[[https://github.com/w3c/sdw/blob/gh-pages/time/rdf/time.rdf][time.rdf]] is the main artifact, which itself contains these xlmns tags ... on
+second thought, better use [[https://github.com/w3c/sdw/blob/gh-pages/time/rdf/time.ttl][time.ttl]] -- the =.ttl= format is superior in every way,
+mainly because you can grep the top lines without worrying about running it
+through =tide=.
+
+Time is fairly fundamental, so we can assume that these =@prefix= schemata are
+fairly good next leads.
+
+#+begin_src shell :results output table
+curl -s "https://raw.githubusercontent.com/w3c/sdw/refs/heads/gh-pages/time/rdf/time.ttl" |\
+    head -n10 | grep '@prefix'  | sed -E 's/^.*@prefix ([a-zA-Z0-9]*): <(.*)>.*$/\1, \2/g'
+#+end_src
+
+#+RESULTS:
+|      | http://www.w3.org/2006/time#                |
+| dct  | http://purl.org/dc/terms/                   |
+| owl  | http://www.w3.org/2002/07/owl#              |
+| rdf  | http://www.w3.org/1999/02/22-rdf-syntax-ns# |
+| rdfs | http://www.w3.org/2000/01/rdf-schema#       |
+| skos | http://www.w3.org/2004/02/skos/core#        |
+| xsd  | http://www.w3.org/2001/XMLSchema#           |
+
+**** Data and Stuff
+
+From the DCAT3 schema
+
+#+begin_src shell :results output table
+curl -s "https://raw.githubusercontent.com/w3c/dxwg/refs/heads/gh-pages/dcat/rdf/dcat.ttl" |\
+    head -n20 | grep '@prefix'  | sed -E 's/^.*@prefix ([a-zA-Z0-9]*): <(.*)>.*$/\1, \2/g'
+#+end_src
+
+#+RESULTS:
+| adms    | http://www.w3.org/ns/adms#                  |
+| bibo    | http://purl.org/ontology/bibo/              |
+| dcat    | http://www.w3.org/ns/dcat#                  |
+| dcterms | http://purl.org/dc/terms/                   |
+| dctype  | http://purl.org/dc/dcmitype/                |
+| foaf    | http://xmlns.com/foaf/0.1/                  |
+| org     | http://www.w3.org/ns/org#                   |
+| owl     | http://www.w3.org/2002/07/owl#              |
+| prov    | http://www.w3.org/ns/prov#                  |
+| pav     | http://purl.org/pav/                        |
+| rdf     | http://www.w3.org/1999/02/22-rdf-syntax-ns# |
+| rdfs    | http://www.w3.org/2000/01/rdf-schema#       |
+| sdo     | http://schema.org/                          |
+| skos    | http://www.w3.org/2004/02/skos/core#        |
+| vann    | http://purl.org/vocab/vann/                 |
+| vcard   | http://www.w3.org/2006/vcard/ns#            |
+| xhv     | http://www.w3.org/1999/xhtml/vocab#         |
+| xsd     | http://www.w3.org/2001/XMLSchema#           |
+
+This schema is composed of seven main classes (see [[https://w3c.github.io/dxwg/dcat/#dcat-scope][DCAT scope]])
+
+[[file:img/dcat-rdf.svg]]
+
+*** Academic
+
+**** Datacite
+
+Metadata schema for citation, so academics can cite a park bench.
+
+The main page for [[https://schema.datacite.org/meta/kernel-4.6/index.html][Version 4.6]] is the same page that comes up as you click every
+other link ... this is very helpful for any academics who may get lost.
+Everything is well-cited, no doubt, but it wouldn't hurt to double check.
+
+The docs here are pretty good. One could hope for more diagrams. Though there
+are some, we know that you can't wait for that [[https://datacite-metadata-schema.readthedocs.io/_/downloads/en/4.6/pdf/][200 page PDF]] on an XSD to print
+out, so you have something to read while you get coffee. It is XSD though, so
+there are at least 100s of tools one may use to create diagrams, but let's not
+nitpick when there are tax dollars at stake. The PDF is comprehensive though,
+but it's going to occupy at least a monitor.
+
+#+begin_quote
+Your search - =site:https://schema.datacite.org/ ext:svg= - did not match any
+documents.
+#+end_quote
+
+To be fair, generating additional docs like that increase the maintenance
+burden, but holy shit why create something that's any more difficult to learn to
+use than necessary?
 
 * JSON
 
