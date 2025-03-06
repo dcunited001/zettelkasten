@@ -29,11 +29,193 @@ know enough to know I don't know much.
 + [[SSH ProxyCommand example][SSH Proxy Command]] for compatibility with older clients
 
 ** Topics
+*** Config Quirks
+**** Portability
+
+To make the configs portable, I need a link from =~/.ssh= to
+=${SSH_CONFIG_HOME}=. Includes can't use =${SSH_CONFIG_HOME}=, but
+IdentityFile can.
+
+GPG Agent may handle this differently, since it uses keygrips.
+
+***** Dealing with =ssh_config= path expansion
+
++ ssh uses tilde, not =HOME=
++ Links are inconvenient, since a computer will often have a =~/.ssh=
+  directory. This will need to be (re)moved.
+
+***** IdentityFile
+
++ Does not resolve relative paths like =Include=. instead, it expects these to
+  be relative to =pwd=
++ If =HOME= variable is set, ssh_config still expands tilde to the
+  user's home directory.
+
+***** Include
+
++ Cannot expand =${SSH_CONFIG_HOME}= directives
++ Can follow Match or Host directives
++ Relative paths will always be relative to:
+  - =~/.ssh/=
+  - =/etc/ssh/=
+  - changing =HOME= has no effect
++ May end up included in an Host directive if at end of file
+  - instead add after a =Match all=
++ Does not permit any =%.= expansion
+
+*** Config Defaults
+
+Host
+
+#+begin_example conf
+Host router
+  IdentityFile router
+  HostName 192.168.1.1
+  Port 2222
+  User sysadm
+  ControlMaster auto
+  ControlPath ~/.ssh/master-%r@%h:%p
+  ControlPersist 300
+#+end_example
+
+~/.ssh/config.defaults
+
+#+begin_src conf
+# For now
+IdentitiesOnly Yes
+
+Host gitlab.com
+  User git
+  ControlMaster no
+  IdentitiesOnly yes
+  IdentityFile gitlab
+  MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,umac-128@openssh.com
+Host github.com
+  User git
+  ControlMaster no
+  IdentitiesOnly yes
+  IdentityFile github
+  MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,umac-128-etm@openssh.com,hmac-sha2-512,hmac-sha2-256,umac-128@openssh.com
+
+Match all
+Include config.any
+#+end_src
+
+~/.ssh/config.any.defaults
+
+#+begin_src conf :tangle (concat secrets-home "/.ssh/config.any.defaults")
+Host *
+  #ControlMaster auto
+  #ControlPath ~/.ssh/master-%r@%h:%p
+  #ControlPersist 300
+  #AddKeysToAgent yes
+  AddressFamily inet
+  HashKnownHosts yes
+  VisualHostKey yes
+  PasswordAuthentication no
+  ChallengeResponseAuthentication no
+  StrictHostKeyChecking ask
+  VerifyHostKeyDNS yes
+  ForwardAgent no
+  ForwardX11 no
+  ForwardX11Trusted no
+  ServerAliveInterval 300
+  ServerAliveCountMax 2
+  Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+  MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+  KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+  HostKeyAlgorithms ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-ed25519,ssh-rsa
+
+#+end_src
+
+**** SSH Daemon
+
+#+begin_src conf :tangle :tangle (concat secrets-home "/.ssh/daemon.defaults")
+# https://github.com/drduh/config/blob/master/sshd_config
+# https://linux.die.net/man/5/sshd_config
+Port 22
+AddressFamily inet
+#ListenAddress 172.16.1.1
+#ListenAddress 10.8.1.1
+ListenAddress 0.0.0.0
+HostKey /etc/ssh/ssh_host_key
+HostKey /etc/ssh/ssh_host_rsa_key
+AllowUsers sysadm
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com
+KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+HostKeyAlgorithms ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-ed25519,ssh-rsa
+RekeyLimit 256M 1H
+SyslogFacility AUTH
+LogLevel VERBOSE
+LoginGraceTime 10s
+MaxStartups 1
+MaxSessions 2
+MaxAuthTries 3
+ClientAliveInterval 30
+ClientAliveCountMax 20
+PermitRootLogin no
+StrictModes yes
+PubkeyAuthentication yes
+AuthorizedKeysFile %h/.ssh/authorized_keys
+IgnoreRhosts yes
+PasswordAuthentication no
+PermitEmptyPasswords no
+HostbasedAuthentication no
+ChallengeResponseAuthentication no
+Compression delayed
+AllowTcpForwarding no
+X11Forwarding no
+GatewayPorts no
+PermitTunnel no
+TCPKeepAlive yes
+UseDNS no
+PrintMotd no
+PrintLastLog yes
+PermitUserEnvironment no
+#Subsystem sftp  /usr/lib/sftp-server
+#Subsystem sftp  /usr/libexec/sftp-server
+#TrustedUserCAKeys /etc/ssh/ca.pub
+#Match User proxy
+#       AllowTcpForwarding yes
+#+end_src
+
+*** PCKS11
+
+**** Specifying a link to the PKCS#11 lib
+
+The =ssh-agent= expects libs to be one of two default locations, but both this and
+=ssh-add= will resolve links that are passed, so they must be exact.
+
+On Guix, this requires setting up =ssh-agent= to point to the exact
+=opensc-pkcs11.so= with =ssh-agent -s -P $(readlink $PKCS_LIB)=.
+
+When tracing problems, then run as foreground daemon with =-d=.
+
+Then card-keys should now add when running =ssh-add -s "$(readlink $PKCS_LIB)"=
+
+Because ssh will use a similar interface that resolves links, then adding
+=PCKS11Provider /run/current-system/profile/lib/opensc-pkcs11.so= to the
+=ssh_config= will reach the correct bin from a link. No need to update the config
+(phew!).
+
+For this specific link to work, the =opensc= package must be installed to the Guix
+/system/.
+
+**** Scripts
+
+#+begin_src sh :tangle (concat secrets-home "/.ssh/agent_rc") :shebang "#!/bin/bash"
+export PKCS_LIB=/run/current-system/profile/lib/opensc-pkcs11.so
+
+alias pkcs-agent='ssh-agent -s -P $(readlink $PKCS_LIB)'
+#alias pkcs-add='ssh-add -s $(readlink $PKCS_LIB)' #readlink not necessary
+alias pkcs-add='ssh-add -s $PKCS_LIB'
+alias pkcs-ssh='ssh -I $PKCS_LIB'
+#+end_src
 
 *** SSH =JumpProxy= and =ProxyCommand=
 
 Okay wow this is a thing now. Nice to know.
-
 *** SSH Agent Forwarding
 
 + [[https://security.stackexchange.com/questions/92479/security-of-nested-ssh][Security of Nested SSH]]: Why not using agent forwarding might be a bad idea
