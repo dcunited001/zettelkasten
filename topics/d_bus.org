@@ -113,3 +113,123 @@ This contains
   - PcapNgReader :: PcapNg
 
 * Issues
+
+
+* org.freedesktop.Notifications
+
+** Docs
+
++ [[https://specifications.freedesktop.org/notification-spec/latest/][Specification]]
++ Implementation at [[https://gitlab.gnome.org/GNOME/libnotify][gitlab.gnome.org:GNOME/libnotify]]
++ Implementation via Portal at [[https://github.com/flatpak/xdg-desktop-portal/blob/main/data/org.freedesktop.portal.Notification.xml][flatpak/xdg-desktop-portal]]
+
+
+** Topics
+
+
+**** D-Bus Service Specification
+
+***** org.freedesktop.portal.Notification
+
+#+name: curlmespecs
+#+begin_src restclient :results value file :file img/org.freedesktop.portal.Notification.xml
+:curl-me-url = https://raw.githubusercontent.com/flatpak/xdg-desktop-portal/refs/heads/main/data/org.freedesktop.portal.Notification.xml
+
+GET :curl-me-url
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "(.owner.login)")
+#+end_src
+
+#+RESULTS: curlmespecs
+[[file:img/org.freedesktop.portal.Notification.xml]]
+
+Honestly probably easier to read as slimmed down XML
+
+#+name: orgFreedesktopPortalNotificationYaml
+#+begin_src shell :results output :var curlresult=curlmespecs :wrap example yaml
+xq -x . < $curlresult
+#+end_src
+
+#+RESULTS: orgFreedesktopPortalNotificationYaml
+#+begin_example yaml
+<node name="/" xmlns:doc="http://www.freedesktop.org/dbus/1.0/doc.dtd">
+  <interface name="org.freedesktop.portal.Notification">
+    <method name="AddNotification">
+      <annotation name="org.gtk.GDBus.C.UnixFD" value="true"></annotation>
+      <annotation name="org.qtproject.QtDBus.QtTypeName.In1" value="QVariantMap"></annotation>
+      <arg type="s" name="id" direction="in"></arg>
+      <arg type="a{sv}" name="notification" direction="in"></arg>
+    </method>
+    <method name="RemoveNotification">
+      <arg type="s" name="id" direction="in"></arg>
+    </method>
+    <property name="SupportedOptions" type="a{sv}" access="read">
+      <annotation name="org.qtproject.QtDBus.QtTypeName" value="QVariantMap"></annotation>
+    </property>
+    <property name="version" type="u" access="read"></property>
+    <signal name="ActionInvoked">
+      <arg type="s" name="id"></arg>
+      <arg type="s" name="action"></arg>
+      <arg type="av" name="parameter"></arg>
+    </signal>
+  </interface>
+</node>
+#+end_example
+
+Look at that shit right there. it's 22 lines.
+
+Here's the same thing in YAML
+
+#+name: orgFreedesktopPortalNotificationYaml
+#+begin_src shell :results output :var curlresult=curlmespecs :wrap example yaml
+xq -y . < $curlresult
+#+end_src
+
+#+RESULTS: orgFreedesktopPortalNotification
+#+begin_example yaml
+node:
+  '@name': /
+  '@xmlns:doc': http://www.freedesktop.org/dbus/1.0/doc.dtd
+  interface:
+    '@name': org.freedesktop.portal.Notification
+    method:
+      - '@name': AddNotification
+        annotation:
+          - '@name': org.gtk.GDBus.C.UnixFD
+            '@value': 'true'
+          - '@name': org.qtproject.QtDBus.QtTypeName.In1
+            '@value': QVariantMap
+        arg:
+          - '@type': s
+            '@name': id
+            '@direction': in
+          - '@type': a{sv}
+            '@name': notification
+            '@direction': in
+      - '@name': RemoveNotification
+        arg:
+          '@type': s
+          '@name': id
+          '@direction': in
+    property:
+      - '@name': SupportedOptions
+        '@type': a{sv}
+        '@access': read
+        annotation:
+          '@name': org.qtproject.QtDBus.QtTypeName
+          '@value': QVariantMap
+      - '@name': version
+        '@type': u
+        '@access': read
+    signal:
+      '@name': ActionInvoked
+      arg:
+        - '@type': s
+          '@name': id
+        - '@type': s
+          '@name': action
+        - '@type': av
+          '@name': parameter
+#+end_example
