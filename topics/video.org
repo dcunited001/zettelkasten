@@ -30,6 +30,53 @@ ffmpeg -y -i file.mp4 -i palette.png -filter_complex paletteuse -r 10 -s 480x320
 
 ** Topics
 
+*** MQTT
+
+MQTT may be appropriate in lieu of 0MQ.
+
+**** obs-mqtt-status
+
+There is a [[https://github.com/glikely/obs-mqtt-status][glikely/obs-mqtt-status]] project, which receives updates from OBS,
+forwards them to MQTT intermediary. When listening devices connected to the MQTT
+broker are forwarded messages, it changes the color of a display to indicate
+recording state. (the code to perform the latter isn't in the project, per se)
+
+*** 0MQ
+
+
+**** Remote Control
+
+For remote control of files rendered by OBS. This prevents a safe-ish boundary
+between applications that manage renderable state.
+
+***** Example: Update on screen text
+
+Render on screen text, which e.h. may contain _most recent emacs command_ and _most
+recent file_. Emacs has 0MQ bindings, used with jupyter.el.
+
++ 0MQ messages from Emacs received by 0MQ server listening to socket. Or 0MQ
+  messages may contain current state of network devices, rendered on screen as
+  things come up & go down.
++ 0MQ server runs in either OBS application extension or there is a file-based
+  boundary between 0MQ server and OBS -- i.e. OBS reads file, does _not_ manage
+  state of a 0MQ plugin, etc. This avoids a dump-truck full of problems (it also
+  allows processes running elsewhere in the network to update the rendered file)
++ Messages contain short strings or data structures with guarantees on
+  compactness.
+
+**** Stability Guarantees
+
+Assuming:
+
++ The 0MQ server type-checks received messagse
++ That specific components in the OBS cannot crash or crash "safely"
++ That OBS handles crashes by replacing receiving renderables with safe data
+  structures
+
+Then it's sufficiently stable -- this may need some work. If stability is an
+issue, then OBS can render from a file and (I believe) updates on-screen
+rendered text if file changes.
+
 *** OCR
 
 **** [[https://github.com/dram55/MarioMaker2OCR][Mario Maker 2 OCR]]
@@ -125,5 +172,4 @@ So then with multiple computers, there are other problems to be solved:
 Getting something like this to work on a single workstation would require less
 networking/automation, but still it's likely that the configs/environment would
 be brittle.
-
 *** Ansible
