@@ -436,6 +436,7 @@ Author shows it it in action:
 
 + [[https://github.com/direnv/direnv/wiki/PS1][Setting shell prompt]]
 
+
 ** Topics
 
 *** Pros/Cons
@@ -614,6 +615,12 @@ BEGIN { count=0 }
 ** Docs
 + [[https://linuxcommandlibrary.com/basic/oneliners][LinuxCommandLibrary: One Liners]]
 
+*** Prompt
+
++ [[https://www.askapache.com/linux/bash-power-prompt/][Bash Power Prompt]] one-liners
++ Giles Orr [[https://gilesorr.com/bashprompt/prompts/index.html][Bash Prompts]]
++ [[https://tldp.org/HOWTO/Bash-Prompt-HOWTO/index.html][tldp: Bash Prompt HOWTO]] (good, but no previews afaik)
+
 ** Resources
 
 + The [[https://unix.stackexchange.com/questions/587207/why-is-bash-sourcing-bashrc-in-non-interactive-mode-when-working-via-ssh][SSH_SOURCE_BASHRC]] controversy...
@@ -663,6 +670,99 @@ important, but it is not necessarily the most valuable product of a question.
 
 ** Topics
 
+
+
+*** Prompt
+
+**** [[https://wiki.archlinux.org/title/Bash/Prompt_customization][Using =tput= vs raw chars]]
+
+Raw chars will ultimately need to be interpreted by the terminal. the main issue
+is =xterm= vs =xterm-256color=. For compat (and to use =tput=), just use the latter.
+See [[https://wiki.archlinux.org/title/Bash/Prompt_customization#Terminfo_escape_sequences][terminfo escape sequences]]
+
+
+**** [[https://superuser.com/questions/301353/escape-non-printing-characters-in-a-function-for-a-bash-prompt/301355#301355][Escaping with =\[= and =\]=]]
+
+**** Shell Prompts
+
+These examples were from before I learned about =PROMPT_COMMAND=
+
+***** From Dotfiles
+
+Update PS1 according to [[https://github.com/direnv/direnv/wiki/PS1][direnv wiki]]
+
+To check capabilities, see =man terminfo= and =infocmp=
+
+#+begin_src sh :tangle .config/sh/rc.d/prompt.sh :shebang #!/bin/sh
+export PS_INFO=""
+export PS_PROMPT=""
+
+PS_GIT=""
+GIT_PS1_SHOWCOLORHINTS=1
+GIT_PS1_DESCRIBE_STYLE=branch
+GIT_PS1_SHOWUPSTREAM=name
+
+PS_PROMPT="${LYELLOW}\A ${LGREEN}\u${RED}@${LCYAN}\h ${RED}:: ${YELLOW}\w"
+if [ -n "$GUIX_ENVIRONMENT" ]; then
+    PS_INFO="${LMAGENTA}g${RESTORE}"
+fi
+
+if [ "$TERM" = "dumb" ]; then
+    PS1='$ '
+else
+    PS_GIT='$(__git_ps1 "«%s»") '
+    PS_INFO="$PS_GIT $PS_INFO"
+    PS1="$PS_INFO \n$PS_PROMPT"
+
+    # calc number of cols with $((COLUMNS -n ))
+    if [ -n "$PS_GIT" ]; then
+       PS1="$PS1"
+    fi
+    PS1="$PS1${RED}$ ${RESTORE}"
+fi
+
+#+end_src
+
+***** Ok, nevermind then
+
+TFW trying to avoid side effects in function (... but then realizing you in bash)
+
+#+begin_src sh :tangle .config/sh/prompt.sh :shebang #!/bin/sh
+
+ps_update() {
+    # $1: PS_PROMPT $2: PS_INFO (optional)
+    if [ "$TERM" = "dumb" ]; then
+        # || [ $# -ge 1 ]
+        # || [ -z "${RESTORE}" ] # well that's unfortunate
+        return # fail silently
+    fi
+
+    if [ -z "$PS_PROMPT" ]; then
+       PS_PROMPT="<=> ${RESTORE}"
+    fi
+
+    local ps_new="$PS_PROMPT"
+    if [ -n "$PS_INFO" ]; then
+        psnew="$PS_INFO\n$psnew$"
+    fi
+    psnew="$psnew ${RED}$ ${RESTORE}"
+    echo $psnew
+
+    # using in .envrc makes and it becomes specific to my system.
+}
+
+# PS1="$(ps_update \"$PS_INFO\")"
+# TERM=dumb
+#+end_src
+
+To use in direnv (untested....)
+
+#+begin_example sh
+PS_INFO="${PS_INFO}${LGREEN}[ foo ]${RESTORE} "
+[[ -n "$(declare -F ps_update)" ]] && psnew="$(ps_update $PS_INFO)"
+#+end_example
+
+Reload =direnvrc= with =direnv reload=
 
 
 *** Colors
@@ -758,7 +858,6 @@ Source: [[https://unix.stackexchange.com/questions/108699/documentation-on-less-
 | us      | smul     | start underline                    |
 | ue      | rmul     | stop underline                     |
 |---------+----------+------------------------------------|
-
 *** Misc Helpful Things
 
 Variable formatting
