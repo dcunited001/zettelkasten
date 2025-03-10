@@ -6,7 +6,12 @@
 #+EMAIL:     noreply@te.xel.io
 #+DESCRIPTION: notes
 
+#+begin_quote
+jesus !@#$'ing christ I just need to buy a Steam Deck.
 
+oh right, i forgot. my career was assassinated. I almost forgot, but there it is
+again to remind me.
+#+end_quote
 
 * Docs
 + [[github:ValveSoftware/Proton][Proton Github]]
@@ -14,9 +19,10 @@
 * Resources
 ** Tweaking
 + Mesa [[https://github.com/mesa3d/mesa/blob/main/docs/envvars.rst][Environment Variables]]
-+ Steam [[https://gitlab.steamos.cloud/steamrt/steam-runtime-tools/-/blob/03d00bbce1d43089bedd5e22a52cf56810ab4d4e/docs/steam-compat-tool-interface.md#user-content-environment][Environment Variables]] (is there a better ref?)
++ Steam [[https://gitlab.steamos.cloud/steamrt/steam-runtime-tools/-/blob/03d00bbce1d43089bedd5e22a52cf56810ab4d4e/docs/steam-compat-tool-interface.md#user-content-environment][Environment Variables]]
   - 2018: [[https://www.ctrl.blog/entry/flatpak-steamcloud-xdg.html][Flatpak, Steam Cloud, XDG & why Linux doesn’t sync progress]]
     - probably resolved
+  - [[https://www.pcgamingwiki.com/wiki/Glossary:Game_data][PC Gaming Wiki]]
 + Valve [[https://developer.valvesoftware.com/wiki/Command_Line_Options][Command Line Wiki]]
 
 ** Tools
@@ -25,19 +31,81 @@
 + Steam [[https://developer.valvesoftware.com/wiki/Developer_Console][Developer Console]]
   - Source [[https://developer.valvesoftware.com/wiki/Category:Source_SDK_FAQ][FAQ]]
 
-* Troubleshooting
+* Topics
+
+** Guix
+
+Nonguix has a container for game clients that installs as a package
+
++ Some interesting things done in =./nongnu/packages/game-client.scm= that
+  demonstrate how to get most headaches to go away (VS Code, etc.)
++ Probably the structure of links/references to =STEAM_DUR= will not work without
+  some shimming. Also, probably issues with some anti-cheat stuff.
+
+** Custom =STEAM_DIR= location
+
++ [[https://www.pcgamingwiki.com/wiki/Glossary:Game_data][PC Gaming Wiki]] describes Steam Library & Game Data locations
+
+#+begin_src sh :tangle .config/sh/profile.d/steam.sh :shebang #!/bin/sh
+export STEAM_DIR=$_STEAM/.var/app/com.valvesoftware.Steam/.steam
+export FLATPAK_STEAM_VAR=/flatpak/steam/.var
+
+# log with PROTON_LOG=1
+export PROTON_LOG_DIR=$_STEAM/log/proton
+export PROTON_CRASH_REPORT_DIR=$_STEAM/log/proton-crash
+
+alias run_steam="flatpak --installation=steam run com.valvesoftware.Steam"
+#+end_src
+
+Run with =FLATPAK_CONFIG_DIR=/etc/flatpak flatpak --installation=steam run com.valvesoftware.Steam=
+
+Or simply =flatpak --installation=steam run com.valvesoftware.Steam=
+
+*** Setup
+
++ Add =steam.sh= to =~/.config/sh/_load_profile.sh=
+
+#+begin_src sh :tangle no :eval no
+mkdir -p $_STEAM $FLATPAK_STEAM_VAR/com.valvesoftware.Steam
+
+# because flatpak steam will try to symlink /flatpak/dc/.var/com.valvesoftware.Steam/.var to ~/.var (which is very confusing)
+ln -s /flatpak/steam/.var/app/com.valvesoftware.Steam /flatpak/dc/.var/com.valvesoftware.Steam
+
+# ensure that FLATPAK_CONFIG_DIR is defined and that the steam flatpak install exists
+flatpak --installations
+
+flatpak --installation=steam remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak --installation=steam remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
+
+flatpak --installation=steam install flathub com.valvesoftware.Steam
+flatpak --installation=steam install flathub com.valvesoftware.Steam.CompatibilityTool.Proton
+#+end_src
+
+
+*** Issues
+
++ After invoking for the first time, if this link shows up, remove it
+  - =rm /flatpak/steam/.var/app/com.valvesoftware.Steam/.var=
++ Flatpak steam will ignore =STEAM_DIR= anyways...
+  - it will put the steam library within the steam install under
+    =/flatpak/steam/.var/app/com.valvesoftware.Steam/.var=
+
+
+***** TODO consider creating ./flatpak/installations.d/steam.conf
+
+** Troubleshooting
 
 Running Garuda from within a Proxmox VM.
 
 + ProtonDB: Improving Performance
 
-** Defaults For Launching Proton
+*** Defaults For Launching Proton
 
-*** Vulkan
+**** Vulkan
 
 *Always* prefer vulkan where possible.
 
-*** Mesa ACO
+**** Mesa ACO
 
 Set =RADV_PERFTEST=aco= to benefit from ACO.
 
@@ -52,44 +120,44 @@ Run =yay -Syu mesa-aco-git= to ensure that your version of Mesa includes ACO for
 shader caching.
 
 
-*** DXVK Async
+**** DXVK Async
 
-***** TODO figureout whether applying this patch is still necessary (alot of people use it)
+****** TODO figureout whether applying this patch is still necessary (alot of people use it)
 
-*** ESYNC/FSYNC
+**** ESYNC/FSYNC
 
 + *Always* prefer fsync where possible
 + Force with =
 
-***** TODO ensure this is compatible with current CPU config for Proxmox VM
+****** TODO ensure this is compatible with current CPU config for Proxmox VM
 
-*** Gamemoded
+**** Gamemoded
 
 Ensure =gamemoderun %command%= is included in the launch flags
 
 + =yay -Syu gamemoded= if running non-gaming Garuda.
 
 
-** Logging
+*** Logging
 
-** Fixes
+*** Fixes
 
-*** Shader Caching
+**** Shader Caching
 
 =yay -Syu mesa-aco-git=
 
-*** Feral Gamemode
+**** Feral Gamemode
 
 =yay -Syu gamemode lib32-gamemode=
 
 ***
 
-** Protontricks
+*** Protontricks
 xx
 
-* Games
+** Games
 
-** Death end re;Quest
+*** Death end re;Quest
 
 A story-driven isekai-based game.
 
@@ -99,7 +167,7 @@ clipboard:
 + Subtitles can be paused and there's a feature with backlog of text.
 + Works in combined Wayland/XWayland session on KDE
 
-*** Performance
+**** Performance
 
 There are performance issues though. Most reviews on protondb mention:
 
