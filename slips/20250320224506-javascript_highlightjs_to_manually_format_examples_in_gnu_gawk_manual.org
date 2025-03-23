@@ -1,0 +1,95 @@
+:PROPERTIES:
+:ID:       26a671e4-2cbf-491f-8f8a-a339fc3dd500
+:END:
+#+TITLE: Javascript: HighlightJS to Manually Format Examples in GNU Gawk Manual
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:4630e006-124c-4b66-97ad-b35e9b29ae0c][Javascript]]
++ [[id:584a7cd2-8a2d-4d5f-b8e5-f012e21562ea][GNU]]
++ [[id:1fd23f33-ec84-47e2-b326-dce568f1ae83][Web Design]]
+
+* Notes
+
+Add [[https://highlightjs.org/][highlight.js]] by adding it to the DOM. Add the css:
+
+#+begin_src html
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+
+<!-- these won't load unless async? lol idk -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script> -->
+<!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/go.min.js"></script> -->
+#+end_src
+
+The page will fetch the CSS, but not the javascript.
+
+***** gtag.js
+
+=gtag.js= provides an example of how to deal with this. The newer GTM stuff is
+complicated, as it downloads script tailored to the purpose. However,
+[[https://github.com/simpleanalytics/google-tag-manager/blob/main/index.html][simpleanalytics/google-tag-manager]] shows that gtag is not... (i think?).
+
+#+begin_src js
+// I've removed a bit of obfuscation
+(function (_window,
+           _document,
+           _ELEMENT,
+           _DATALAYER,
+           _GTM_ID) {
+    window[_DATALAYER] = window[_DATALAYER] || [];
+    window[_DATALAYER].push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+    var _script_tag = _document.getElementsByTagName(_ELEMENT)[0],
+        _newScript = _document.createElement(_ELEMENT),
+        _datalayer = _DATALAYER != "dataLayer" ? `&l=${_DATALAYER}` : "";
+    _newScript.async = true;
+    _newScript.src = `https://www.googletagmanager.com/gtm.js?id=${_GTM_ID}${_datalayer}`;
+    _script_tag.parentNode.insertBefore(_newScript, _script_tag);
+})(window, document, "script", "dataLayer", "GTM-KNX2B9L");
+#+end_src
+
+TL;DR: Anyways, the async parameter needed to be set... as long as CORS doesn't
+cause issues... . . . shit.
+
+Anyways, (maybe) this =js= should do the trick
+
+#+begin_src js
+// some GNU docs don't have <script> tags. use <meta> instead
+var firstScript = document.getElementsByTagName("meta")[0],
+    highlightJs =    document.createElement("script"),
+    highlightAwk = document.createElement("script");
+const highlightCdn = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0";
+
+hljs = Symbol('hljs'); // the value will change when reassigned. function
+function delayUntilHljs(resolve) {
+    if (typeof hljs === 'symbol'
+        || hljs.registerLanguage === undefined
+        || typeof hljs.registerLanguage != 'function') {
+        setTimeout(resolve, 1000);
+    }
+}
+
+highlightJs.async, highlightAwk.async = true,true;
+highlightJs.src = `${highlightCdn}/highlight.min.js`;
+highlightAwk.src = `${highlightCdn}/languages/awk.min.js`;
+
+firstScript.parentNode.insertBefore(highlightJs, firstScript);
+delayUntilHljs(delayUntilHljs); // hmmmm
+
+// import hljs from 'highlight.js'; // will fail unless at top of module
+highlightJs.parentNode.insertBefore(highlightAwk, highlightJs);
+
+function delayUntilAwk(resolve) {
+    if (typeof hljs.getLanguage('awk') == 'object')  {
+        examples = Array.from(document.querySelectorAll('.example pre.example-preformatted'));
+        // examples.forEach((x) => x.classList.add('example-awk));
+        examples.forEach((x) => hljs.highlight(x.innerText, {language: 'awk'}))
+    } else {
+        setTimeout(resolve, 1000);
+    }
+}
+#+end_src
+
+Well this should probably work, but there's no simple way to distinguish
+examples with =awk= syntax from those without (like shell examples).
+
+So I'm done.

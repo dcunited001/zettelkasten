@@ -6,12 +6,65 @@
 
 * Docs
 * Resources
-** Realm
-A little difficult to google
-
-+ [[https://2ality.com/2014/12/es6-symbols.html#crossing-realms-with-symbols][ES6 Symbols, crossing realms]]
-+ [[https://www.keithcirkel.co.uk/metaprogramming-in-es6-symbols/#:~:text=Symbols%20are%20completely%20unique%E2%80%A6][Metaprogramming in ES6: Symbols and why they're awesome]]
 * Topics
+** Specs
+*** Promises
+
++ [[https://dev.to/xnimorz/101-series-promises-2-how-to-get-current-promise-status-and-build-your-own-promise-queue-18j8][Obtaining Promise Status and a Promise Queue Class]]: execute promises
+  synchronously in order... e.g. when adding script tags to a page, wait for
+  new symbols to be fully defined (otherwise the DOM API moves on and chokes)
+
+**** Memory Leaks
+
+Yeh. Javascript SUCKS. No other language would ever do this right? ... Right?
+
+Wrong: the async pattern is hard to isolate. You need a language that excels at
+environment control. This is hard. Computers are fast. No one cares enough. So
+instead, the kernel is execution environment & the process model ensures that
+shit like this doesn't happen. Processes are /relatively/ short-lived.
+
+i.e. the sandboxed tab model is objectively wrong, IMO, when it finds itself
+being used for simple display of information.
+
+This is why Kaggle tabs displaying forum posts require 300+ MB of RAM.
+
+You need to prove that ∀t∋T ∃t after which loadScript() and dismantles all
+environments. Otherwise none of the symbols/values created within these
+environments will be garbage collecte (& and neither will those linked from
+within these recursive environments back out to the original calling context).
+The only point where that can be guaranteed to not exist for nested contexts is
+when the tab is closed.
+
+I couldn't really get [[https://medium.com/@RomarioDiaz25/the-problem-with-infinite-recursive-promise-resolution-chains-af5b97712661][this]] to work well. Apparently =async/await= doesn't matter.
+No time.
+
+#+begin_src js
+
+function loadScript(el, loc, url, test, cb) {
+    el.async,el.src = true,url;
+    loc.parentNode.insertBefore(el, loc);
+    return new Promise((res,rej) => {
+        console.log("making dur promias");
+        (function internalLoop() {
+            // console.log(this);
+            if (test()) {
+                res();
+            } else {
+                delay(1)
+                    .then(internalLoop)
+                    .catch(err => { reject(err) })
+            }
+        })
+    })
+}
+
+#+end_src
+
+The real root of the "Javascript problem" is cultural. You can't teach old dogs
+new tricks. _People won't even new things_. This is how they've learned and have
+been taught to consume information. It's like this because it promotes
+observability and the collection of data. Is that data valuable? Probably not,
+but it still increases the spatial complexity of data analysis.
 
 ** Org-Babel
 
@@ -21,6 +74,48 @@ The =ob-js= package is core.
 + web debuggers: mozrepl (discontinued)
 
 Much easier to just use clojurescript [[https://github.com/thheller/chrome-ext-v3][see example]]
+
+** Realm
+A little difficult to google
+
++ [[https://2ality.com/2014/12/es6-symbols.html#crossing-realms-with-symbols][ES6 Symbols, crossing realms]]
++ [[https://www.keithcirkel.co.uk/metaprogramming-in-es6-symbols/#:~:text=Symbols%20are%20completely%20unique%E2%80%A6][Metaprogramming in ES6: Symbols and why they're awesome]]
+
+**** Well-Known Symbols
+
++ [[https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Symbol#well-known_symbols][Well-known Symbols]]: symbols whose values are consistent across +obarray+ realms
+
+#+begin_quote
++ Well-known symbols do not have the concept of garbage collectability, because
+  they come in a fixed set and are unique throughout the lifetime of the
+  program.
+#+end_quote
+
++ Symbols have properties based on their relationships with the objects they
+  signify. See [[https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/getOwnPropertySymbols][Object.getOwnPropertySymbols()]]
+
+**** Connection to Emacs & =obarray=
+
+obarray docstring says:
+
+#+end_quote
+Symbol table for use by intern and read.
+
+It is a vector whose length ought to be prime for best results.
+The vector's contents don't make sense if examined from Lisp programs;
+to find all the symbols in an obarray, use mapatoms.
+#+begin_quote
+
+This is made more clear by [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Creating-Symbols.html][9.3 Creating and Interning Symbols]]. Use =obarray-make=
+to create new =obarray= symbol tables. This is useful for:
+
++ Repeatably constructing environments (automation or reseting environment state
+  before running tests)
++ preventing side-effects from spilling out of an environment updating)
++ tearing down & rotating those environments (Doom Emacs update/reload, maybe)
++ CLI scripts running Emacs code on an arbitrary Emacs Server which need
+  guarantees that an environment isn't polluted (by packages, drift, etc.)
+
 
 * WASM
 
@@ -48,7 +143,26 @@ bit of code can do quite a bit on many platforms, though it's not entirely a
 
 **** Reproducibility
 
++ A hashed executable WASM artifact doesn't guarantee identification of a unit's
+  behavior unless it's combined with much of the pieces that implement it's
+  behavior.
++ Parameterizing package names/versions/metadata so that many units of code can
+  be made available by a canonical identifier is difficult when the metadata may
+  include arbitrary structures (tree or maybe graph).
+  - typical metadata: transform a package definition to include a git tag/hash.
+    users can easily recognize the package by name and computers can fairly
+    easily recognize that this is a slightly different version of that package
+  - tree: build some package for RISC-V, but disable some instructions
+    (specifically, disable some subtree of instructions ... e.g. everything
+    related to FP-8)
+  - non-typical metadata: transform a package's dependencies. across versions of
+    the package, its set of dependencies may change.
 
+
+The reason that tree & non-tree is important here is because it's helpful to
+have a way to identify an artifact's metadata purely by a string (in the
+abstract free-monoid sense) produced by serialization, where guarantees can be
+made by ordering of the serialized parts of the string are
 *** ISA
 
 + [[https://dl.acm.org/doi/pdf/10.1145/3563311][A Fast In-Place Interpreter for WebAssembly]] (doi: 10.1145/3563311)

@@ -45,7 +45,23 @@ VyOS has =nftables= and a decent DSL with fairly good ansible support.
 + [[https://blog.kroy.io/2019/11/21/battle-of-the-bare-metal-routers/][Battle of the Metal Routers]]
 + [[https://blog.kroy.io/2019/08/23/battle-of-the-virtual-routers/][Battle of the Virtual Routers]] (VyOS)
 
+** OpenAPI
+
+A VyOS instance that runs the API can be configured to host an OpenAPI browser
+at https://muh.router.lab.local/redoc, so this is a good place to look for
+metaprogramming
+
 * Topics
+
+** Security
+
+*** Stripping Private Data From Config
+
+[[https://forum.vyos.io/t/ip-tv-with-igmp-issues/11604/3][Source]]
+
+#+begin_example shell
+show configuration commands | strip-private
+#+end_example
 
 ** Source
 *** vyos-1x
@@ -131,6 +147,118 @@ DATA_DIR = directories['data']
 #+end_example
 
 
+** Org Babel
+
+It would be possible to run commands against a vyos interface.
+
+*** Potential Problems
+
++ Since [[https://docs.vyos.io/en/equuleus/cli.html#the-config-mode][configuraton mode changes the shell prompt from $ to #]], the tramp regexp
+  may need to change.
+
+**** Statefulness
+
+The usage of =configure= introduces "statefulness" and so your scripts must adapt
+to this.
+
+***** Config modes
+
+Three modes for configuration: saved (startup), working, and active/running.
+
+This actually makes scripting much easier:
+
++ Your changes are transactional, =commit= the whole thing or reset
++ Aborted automation scripts can easily be unwound.
+
+***** Command Modes
+
+There are two modes for commands: Operational mode and Configuration mode
+
++ Running =show interfaces= in configuration mode outputs diffs with
+  additions/replacements/deletions.
+
+So scripts that do the following may be problematic
+
++ sets data based on state which cannot be predicted: network data or
+  configuration management service which retrieve data on the router itself
++ sets data only in the working configuratioin parameters
++ can only source data for configuration after changes to firewall/routing.
+  these scripts should generally be broken into multiple scripts, unless that
+  would require multiple "transaction" rewinds
++ scripts that need to "hold" changes to working configuration on multiple
+  devices, to evaluate whether the transaction should be commit. e.g. making
+  changes to VPN/GRE tunnels for devices that would lose connectivity, where you
+  want something to validate changes to working configuration (again, it
+  displays in diff)
+
+And actually, most of the working-configuration state is lost when you exit
+configuration mode. This is probably for the best, as your scripts should
+precompute all values anyways.
+
++ also, scripts that should generally require multiple transactions. i.e. you
+  would like to =commit= mutliple times, but then need to rewind the changes to
+  multiple devices -- in this case, the sequence of commands to rewind the
+  changes cannot be known to be the "inverse" of the configured commands. So, a
+  pattern for automation where you always save the running config before you
+  initiate changes.
+
+Since you can't exit configuration mode without commiting, your automation needs
+to manage:
+
++ connection state (e.g. ssh)
++ error handling ... (e.g. you fat-fingered that VPN)
++ in addition to config delta and configuration mode state (e.g. the mode or the
+  active interface)
+
+The answers to the above general design concerns should be found in the code
+that supports the [[https://docs.vyos.io/en/equuleus/configexamples/index.html][Configuration Blueprints]], especially the automated testing.
+
+THE PROBLEM: these scenarios are actually exceedingly common for managing large
+deployments, which are actually more common than you'd think (although
+Route/Switch is small world)
+
+You absolutely will take down the network & services lulz
+
+*** Connect using =sshfs= to eval
+
+One approach would just set the =:dir= to a Tramp path, but this isn't great
+
+#+begin_example org
+#+begin_src sh :dir (concat (identity sshfs-uri)) :shebang #!/bin/ash :eval never
+ssh aserver '
+nvram show | grep vlan
+'
+#+end_src
+#+end_example
+
++ and [[https://lists.gnu.org/archive/html/emacs-orgmode/2016-01/msg00321.html][there can be issues with =/tmp=]] since babel will try to store scripts
+  there on the remote host while it runs them
+  - This is an issue for =busybox=, maybe =ash= and maybe =dropbear=... so it like
+    doesn't work well for ddwrt, unless it's a custom build
++ =sshfs-uri= would be something like =(setq sshfs-uri
+  "/ssh:root@router.mynet.local:/jffs/deploy")=
++ idk whether I used =sshfs= because =/ssh:user@host:/root/muh/server=, but Tramp
+  maintains a persistent =ssh= connection that it injects real commands into
+  (which is why it doesn't work when =PS1= has a colorized prompt)
+
+There may be other approaches that combine Tramp/Babel
+
++ This requires some [[https://stewart123579.github.io/blog/posts/emacs/emacs-on-windows-getting-tramp-to-work/][Tramp tweaks for Windows]]
+
+*** From the VyOS manual
+
+Running this at a shell would connect, then run the commands
+
+#+begin_example sh
+ssh 192.0.2.1 'vbash -s' <<EOF
+source /opt/vyatta/etc/functions/script-template
+run show interfaces
+exit
+EOF
+#+end_example
+
+
+
 ** Automation
 
 + Ansible is the main tool for configuration. Their ansible code includes
@@ -143,8 +271,6 @@ DATA_DIR = directories['data']
 + [[https://docs.vyos.io/en/stable/automation/terraform/index.html][Terraform]] can provision a VyOS image (and Ansible configures).
 
 + [[https://docs.vyos.io/en/stable/automation/cloud-init.html][Cloud-init]] is also an option
-
-
 ** ZeroTier & Tailscale
 
 [[https://lev-0.com/][lev-0]] has several series on setting Tailscale on VyOS as a podman service. The
