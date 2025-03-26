@@ -91,7 +91,138 @@ crashed, restarting service.=
 
 
 **** nyxt-gi-gtk
+** Emacs
+*** Doom
 
+**** Quicklisp & =sly-contribs=
+
+The defaults for =sly-contribs=. probably just set this to
+
+#+begin_example emacs-lisp
+'(sly-stepper sly-repl-ansi-color sly-fancy sly-asdf sly-macrostep sly-quicklisp)
+#+end_example
+
+Sly crashes when slynk-quicklisp and slynk-stepper aren't found
+
+#+begin_quote
+Watch out! SLY failed to load SLYNK module slynk-quicklisp for contrib sly-quicklisp!
+Watch out! SLY failed to load SLYNK module slynk-stepper for contrib sly-stepper!
+#+end_quote
+
+Nyxt also complains. Doom includes these references to =sly-contrib= modules. When
+debugging the flatpak build, I think that mixing the environments will cause
+problems (but idk whether CL is designed so that REPL-only features can mix deps
+from multiple environments)
+
+#+begin_example grep
+Exported grep results:
+
+sly/sly.el:113:  'sly-contribs "2.3.2")
+sly/sly.el:115:(defvar sly-contribs '(sly-fancy)
+sly/sly.el:121:CONTRIBS defaults to `sly-contribs' and is a list (LIB1 LIB2...)
+sly/sly.el:124:If CONTRIBS is nil, `sly-contribs' is *not* affected, otherwise
+sly/sly.el:147:    (setq sly-contribs contribs))
+sly/sly.el:150:(defvaralias 'sly-required-modules 'sly-contrib--required-slynk-modules)
+sly/sly.el:152:(defvar sly-contrib--required-slynk-modules '()
+sly/sly.el:158:in `sly-contribs.'")
+sly/sly.el:180:        sly-contribs)
+sly/sly.el:184:          (mapcar #'sly-contrib--find-contrib
+sly/sly.el:185:                  (cl-reduce #'append (mapcar #'sly-contrib--all-dependencies
+sly/sly.el:186:                                              sly-contribs))))
+sly/sly.el:193:                         (sly-contrib--all-contribs))))
+sly/sly.el:198:                    (sly-contrib--enabled-p to-disable))
+sly/sly.el:199:             do (funcall (sly-contrib--disable to-disable)))
+sly/sly.el:204:                      (sly-contrib--enabled-p to-enable))
+sly/sly.el:205:             do (funcall (sly-contrib--enable to-enable)))
+sly/sly.el:2003:      (sly-contrib--load-slynk-dependencies)
+sly/sly.el:6875:(defun sly-contrib--load-slynk-dependencies ()
+sly/sly.el:6881:                              sly-contrib--required-slynk-modules
+sly/sly.el:6914:(cl-defstruct (sly-contrib
+sly/sly.el:6915:               (:conc-name sly-contrib--))
+sly/sly.el:6925:(defmacro define-sly-contrib (name _docstring &rest clauses)
+sly/sly.el:6950:               (put 'sly-contribs ',name
+sly/sly.el:6951:                    (make-sly-contrib
+sly/sly.el:6959:                            #'sly-contrib--enable
+sly/sly.el:6960:                            (cl-remove-if #'sly-contrib--enabled-p
+sly/sly.el:6965:                                   sly-contrib--required-slynk-modules
+sly/sly.el:6968:           ;; `sly-contrib--load-slynk-dependencies' here, and it this
+sly/sly.el:6975:             (sly-contrib--load-slynk-dependencies))
+sly/sly.el:6977:           (setf (sly-contrib--enabled-p ,(contrib-sym name)) t))
+sly/sly.el:6981:                    do (setq sly-contrib--required-slynk-modules
+sly/sly.el:6982:                             (cl-remove dep sly-contrib--required-slynk-modules
+sly/sly.el:6986:                            #'sly-contrib--disable
+sly/sly.el:6987:                            (cl-remove-if-not #'sly-contrib--enabled-p
+sly/sly.el:6990:           (setf (sly-contrib--enabled-p ,(contrib-sym name)) nil))))))
+sly/sly.el:6992:(defun sly-contrib--all-contribs ()
+sly/sly.el:6993:  "All defined `sly-contrib' objects."
+sly/sly.el:6994:  (cl-loop for (nil val) on (symbol-plist 'sly-contribs) by #'cddr
+sly/sly.el:6995:           when (sly-contrib-p val)
+sly/sly.el:6998:(defun sly-contrib--all-dependencies (contrib)
+sly/sly.el:7002:          (cl-mapcan #'sly-contrib--all-dependencies
+sly/sly.el:7003:                     (sly-contrib--sly-dependencies
+sly/sly.el:7004:                      (sly-contrib--find-contrib contrib))))))
+sly/sly.el:7006:(defun sly-contrib--find-contrib (designator)
+sly/sly.el:7007:  (if (sly-contrib-p designator)
+sly/sly.el:7009:    (or (get 'sly-contribs designator)
+sly/sly.el:7012:(defun sly-contrib--read-contrib-name ()
+sly/sly.el:7013:  (let ((names (cl-loop for c in (sly-contrib--all-contribs) collect
+sly/sly.el:7014:                        (symbol-name (sly-contrib--name c)))))
+sly/sly.el:7019:  (interactive (list (sly-contrib--read-contrib-name)))
+sly/sly.el:7021:    (funcall (sly-contrib--enable (sly-contrib--find-contrib name)))))
+sly/sly.el:7025:  (interactive (list (sly-contrib--read-contrib-name)))
+sly/sly.el:7027:    (funcall (sly-contrib--disable (sly-contrib--find-contrib name)))))
+sly/sly.el:7432:                          'define-sly-contrib)
+sly/lib/sly-tests.el:1308:                 (assq 'slynk/mrepl sly-contrib--required-slynk-modules))
+sly/lib/sly-tests.el:1401:                (setq sly-contribs '(sly-fancy))
+sly/doc/sly.texi:3112:your setup a bit.  Generally, you set the variable @code{sly-contribs}
+sly/doc/sly.texi:3124:(setq sly-contribs '(sly-scratch sly-mrepl))
+sly/doc/sly.texi:3133:We recommend that you setup the @code{sly-contribs}
+sly/doc/sly.texi:3136:new @code{sly-contribs} variable to another value and call @code{M-x
+sly/contrib/sly-tramp.el:6:(define-sly-contrib sly-tramp
+sly/contrib/sly-trace-dialog.el:12:(define-sly-contrib sly-trace-dialog
+sly/contrib/sly-stickers.el:105:(define-sly-contrib sly-stickers
+sly/contrib/sly-scratch.el:6:(define-sly-contrib sly-scratch
+sly/contrib/sly-retro.el:4:(define-sly-contrib sly-retro
+sly/contrib/sly-profiler.el:9:(define-sly-contrib sly-profiler
+sly/contrib/sly-package-fu.el:5:(define-sly-contrib sly-package-fu
+sly/contrib/sly-mrepl.el:10:(define-sly-contrib sly-mrepl
+sly/contrib/sly-indentation.el:6:(define-sly-contrib sly-indentation
+sly/contrib/sly-fontifying-fu.el:21:(define-sly-contrib sly-fontifying-fu
+sly/contrib/sly-fancy.el:4:(define-sly-contrib sly-fancy
+sly/contrib/sly-fancy-trace.el:5:(define-sly-contrib sly-fancy-trace
+sly/contrib/sly-fancy-inspector.el:5:(define-sly-contrib sly-fancy-inspector
+sly/contrib/sly-autodoc.el:7:(define-sly-contrib sly-autodoc
+sly-quicklisp/sly-quicklisp.el:36:(define-sly-contrib sly-quicklisp
+sly-quicklisp/sly-quicklisp.el:97:;;; Automatically add ourselves to `sly-contribs' when this file is loaded
+sly-quicklisp/sly-quicklisp.el:100:  (add-to-list 'sly-contribs 'sly-quicklisp 'append))
+sly-quicklisp/sly-quicklisp-autoloads.el:13:  (add-to-list 'sly-contribs 'sly-quicklisp 'append))
+sly-quicklisp/README.md:30:be registered in SLY's `sly-contribs` variable for SLY to take care of
+sly-stepper/sly-stepper.el:40:(define-sly-contrib sly-stepper
+sly-stepper/sly-stepper.el:112:;;; Automatically add ourselves to `sly-contribs' when this file is loaded
+sly-stepper/sly-stepper.el:115:  (add-to-list 'sly-contribs 'sly-stepper 'append))
+sly-stepper/sly-stepper-autoloads.el:14:  (add-to-list 'sly-contribs 'sly-stepper 'append))
+sly-stepper/README.md:31:contrib has to be registered in SLY's `sly-contribs` variable for SLY
+sly-macrostep/sly-macrostep.el:49:(define-sly-contrib sly-macrostep
+sly-macrostep/sly-macrostep.el:141:;;; Automatically add ourselves to `sly-contribs' when this file is loaded
+sly-macrostep/sly-macrostep.el:144:  (add-to-list 'sly-contribs 'sly-macrostep 'append))
+sly-macrostep/sly-macrostep-autoloads.el:13:  (add-to-list 'sly-contribs 'sly-macrostep 'append))
+sly-macrostep/README.md:33:be registered in SLY's `sly-contribs` variable for SLY to take care of
+sly-repl-ansi-color/sly-repl-ansi-color.el:35:(define-sly-contrib sly-repl-ansi-color
+sly-repl-ansi-color/README.md:12:(push 'sly-repl-ansi-color sly-contribs)
+sly-asdf/sly-asdf.el:50:(define-sly-contrib sly-asdf
+sly-asdf/sly-asdf.el:360:  (add-to-list 'sly-contribs 'sly-asdf 'append))
+sly-asdf/README.md:15:Installing manually will require the contrib be registered in SLY's `sly-contrib` variable.
+sly-asdf/README.md:17:(add-to-list 'sly-contribs 'sly-asdf 'append)
+sly/NEWS.md:535:If the user sets `sly-contribs` to `sly-mrepl` she can be sure that no
+sly/Makefile:52:		--eval "(setq sly-contribs (quote ($(CONTRIB_NAME))))"	\
+sly/Makefile:69:			      (sly-contrib--all-dependencies		\
+sly/CONTRIBUTING.md:239:`sly-contribs`.
+sly/CONTRIBUTING.md:241:     (setq sly-contribs (delq 'sly-retro sly-contribs))
+sly/CONTRIBUTING.md:260:function `sly-contrib--load-slynk-dependencies` will ask Slynk to put
+
+#+end_example
+
+ 
 ** Source
 *** Utilities
 

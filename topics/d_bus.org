@@ -111,6 +111,31 @@ This contains
 + [[github:courvoif/pcap-file][courvoif/pcap-file]]
   - PcapReader :: Pcap
   - PcapNgReader :: PcapNg
+** rtkit
+
+*** What Processes is it supervising?
+
+This script was suggested in this [[https://unix.stackexchange.com/a/750856][s/o answer]], but the d-bus interface doesn't
+include the =RealtimeKit1= service (it mostly matches the CLI parameters)
+
+#+begin_src shell
+#!/bin/bash
+
+# Get the list of processes managed by rtkit
+processes=$(dbus-send --system --dest=org.freedesktop.RealtimeKit1 --print-reply /org/freedesktop/RealtimeKit1 org.freedesktop.RealtimeKit1.GetManagedProcesses | awk '/array/ {flag=1; next} flag')
+
+# Loop through each process and extract the process ID and thread count
+while read -r line; do
+    if [[ $line =~ uint32\ ([0-9]+) ]]; then
+        pid="${BASH_REMATCH[1]}"
+    elif [[ $line =~ uint32\ ([0-9]+) ]]; then
+        threads="${BASH_REMATCH[1]}"
+        echo "Process ID: $pid, Supervised Threads: $threads"
+    fi
+done <<< "$processes"
+#+end_src
+
+
 
 * Issues
 

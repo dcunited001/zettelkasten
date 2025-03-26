@@ -1,0 +1,159 @@
+:PROPERTIES:
+:ID:       83745eea-f2f8-45d8-bd6e-9e4f2b3b6a44
+:END:
+#+TITLE: WTF is Corba? D-Bus, Sockets and Shared Memory
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:6bb5bd07-0a63-4a8b-ac9e-0b5c285175d3][D-Bus]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Resources
+
++ [[https://www.baeldung.com/linux/kernel-counterparts-explained][Baeldung: Kernel Counterparts of Pipes: FIFOs and Unix Domain Sockets]]
++ [[https://www.dre.vanderbilt.edu/~schmidt/corba-response.html][Response to "The Rise/Fall of CORBA"]] by GI oJe
+
+* A Mix of Tangents
+
+And from the [[https://dbus.freedesktop.org/doc/dbus-faq.html#components][D-Bus FAQ:]]
+
+#+begin_quote
+*Q: Is D-Bus a "component system"?*
+#+end_quote
+
+Interesting bits italicized
+
+#+begin_quote
+*A:* It helps to keep these concepts separate in your mind:
+
++ Object/component system
++ GUI control/widget embedding interfaces
++ Interprocess communication system or wire protocol
+
+D-Bus is not a component system. /"Component system" was originally defined by
+COM, and was essentially a workaround for the limitations of the C++ object
+system (adding introspection, runtime location of objects, ABI guarantees, and
+so forth)./ With the C# language and CLR, Microsoft added these features to the
+primary object system, leaving COM obsolete. Similarly, /Java has much less need
+for something like COM than C++ did./ Even QObject (from Qt) and GObject (from
+GLib) offer some of the same features found in COM.
+
+Component systems are not about GUI control embedding. Embedding a spreadsheet
+in a word processor document is a matter of defining some specific interfaces
+that objects can implement. /These interfaces provide methods related to GUI
+controls/. So an object implementing those interfaces can be embedded.
+
+The word "component" just means "object with some fancy features" [from Design
+Patterns book] and in modern languages all objects are effectively "components."
+
+So components are fancy objects, and some objects are GUI controls.
+#+end_quote
+
+Hmmmm, okay
+
+#+begin_quote
+A third, unrelated feature is _interprocess communication or IPC_. D-Bus is an IPC
+system. Given an object (or "component" if you must), you can /expose the
+functionality of that object over an IPC system/. _Examples of IPC systems are
+DCOM, CORBA, SOAP, XML-RPC, and D-Bus_. You can use any of these IPC systems with
+any object/component system, though some of them are "tuned" for specific object
+systems. You can think of an IPC system primarily as a wire protocol.
+#+end_quote
+
+So that's why the D-Bus methods usually mirror object API's? (in addition to the
+protocol-specific implementation details including reflection artifacts)
+
+#+begin_quote
+If you combine an IPC system with a set of GUI control interfaces, then you can
+have an out-of-process or dynamically-loaded GUI control.
+
+Another related concept is the plugin or extension. Generic plugin systems such
+as the Eclipse system are not so different from component/object systems, though
+perhaps a "plugin" tends to be a bundle of objects with a user-visible name and
+can be downloaded/packaged as a unit.
+#+end_quote
+
+Still not sure about CORBA though.
+
+** Why not sockets over network?
+
+#+begin_quote
+TLDR: i guess this question just doesn't make sense. It's not even wrong.
+TCP/UDP sockets are Unix Sockets over the network.
+
+The kernel manages memory references to socket identity in the =filesystem
+namespace=, making them file-like. As for sockets vs. shared memory patterns for
+IPC:
+
++ (maybe?) sockets can be used to communicate pointers to shared memory (and
+  thereby for synchronization)
++ but there's no simple way to make the shared-memory pattern scale across a
+  network without convoluting the semantics to create a technical exception
+  (like shared memory for supercomputing to embeds the toroidal topology into a
+  shared address space). Otherwise, there's nothing fast enough to benefit ...
+  Maybe XDP/DPDK
+#+end_quote
+
+
+But wording in [[https://www.geeksforgeeks.org/advantages-of-unix-sockets-for-ipc/][articles like this]] is very confusing (maybe AI generated):
+
+#+begin_quote
+2. Distributed Systems:
+
+Within distributed systems, UNIX sockets play a pivotal role in facilitating
+communication between nodes. They contribute to the seamless exchange of data
+and coordination among interconnected processes, enhancing the overall
+efficiency of the system.
+
+Example: In a distributed database system, UNIX sockets enable nodes to
+communicate and synchronize data, ensuring consistency across the distributed
+architecture.
+#+end_quote
+
+** Why Not?
+
+I thought something like [[https://docs.kernel.org/networking/tipc.html][TIPC]] was required to use Unix Sockets over the network
+
+[[https://softwareengineering.stackexchange.com/questions/182411/what-are-the-pros-and-cons-of-inter-process-communication-done-via-sockets-vs-sh][What are the pros and cons of Inter process communication done via sockets vs
+shared memory?]]
+
+#+begin_quote
+Sockets are _one-to-one_. You need multiple sockets if you want to send the same
+thing to multiple processes.
+
+With shared memory, you can have multiple readers, and also multiple writers.
+#+end_quote
+
+*** One-to-One?
+
+(idk, obviously) How does ZeroMQ Socket API do fanin/fanout?
+
++ [[https://zeromq.org/socket-api/#messaging-patterns][Messaging Patterns]]
++ Pipeline (fanout/fanin)
+
+Also, linux manpages:
+
++ [[https://man7.org/linux/man-pages/man2/socketpair.2.html][socketpair(2)]]: "the only supported domains for this call are AF_UNIX (or
+  synonymously, AF_LOCAL) and AF_TIPC (since Linux 4.12)."
++ [[https://man7.org/linux/man-pages/man7/unix.7.html][unix(7)]]: clarifies address types/paths
+
+**** TIPC
+
+Three address types:
+
++ Service address
++ Service Range
++ Socket Address
+
+Also, neighbor discover uses a Gossip Protocol:
+
+#+begin_quote
+This Overlapping Ring Monitoring algorithm, in reality a combination of ring
+monitoring and the Gossip protocol, makes it possible to establish full-mesh
+clusters of up to 1000 nodes with a failure discovery time of 1.5 seconds, while
+it in smaller clusters can be made much shorter.
+#+end_quote
+
+There are performance gains over TCP of 1-2x, but this doesn't seem to justify
+compexity (except maybe in specialized use-cases).

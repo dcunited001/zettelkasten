@@ -1,0 +1,427 @@
+:PROPERTIES:
+:ID:       7be2f205-4d21-4ccb-b599-db97b4103a34
+:END:
+#+TITLE: Biblio: New org-cite workflow for org-roam, citar, org-ref, bibtex and pdftools
+#+CATEGORY: slips
+#+TAGS:
+
+Again, none of this should be considered complete information. It certainly
+should not be considered up-to-date lol
+
+* Roam
++ [[id:6a612c79-df93-4872-af87-60d1b3622ae3][Biblio]]
++ [[id:c311d8a7-1627-4a18-84e4-77d7e1e725c7][Research]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
+
+* Docs
++ jkitchin/org-ref: [[https://github.com/jkitchin/org-ref/tree/master/org-ref.org#other-libraries-in-org-ref][org-ref.org#other-libraries-in-org-ref]]
++ jkitchin/org-ref-cite
++ jkitchin/scimax
+  
+  
+* Overview
+
+My [[id:6a612c79-df93-4872-af87-60d1b3622ae3][Old Biblio Workflow]] was set up without fully integrating =org-cite=, which
+changes things up.
+
++ The [[https://github.com/jkitchin/org-ref][org-ref]] author has added org-ref-cite for org-cite compatibility, but
+  hasn't quite integrated it into =org-ref= or =scimax=.
+
+I'm taking notes on this because everything is so modular that it's easy to
+forget: for =X= situation, =M-x this-one-command= moves workflow forward. What I
+found from =org-ref= was that each situation had its command.
+
+** Goals
+
+I mainly want to maintain a consistent set of PDF's for documents like:
+
++ journal articles
++ textbooks
++ regular books
+
+As I'm writing notes in denote or org-roam, then I'd like to:
+
++ track/validate where I'm pulling in information
++ readily retrieve resources (instead of google/scholar, I may want to send a
+  link to a resource I'm familiar with)
++ seperate note-taking concerns: am I writing an ad-hoc note (that links
+  multiple org-roam notes) or am I specifically tackling some subject (like
+  learning cryptographY or methodically studying some textbook)
+
+I'm likely not publishing anything. I mainly want an informal database and carry
+citations/files in a common format from one computer to another.
+
+** Org-cite and Dependencies
+
+After writing much of this, I wanted to clarify =org-cite='s conceptual
+boundaries. See the =org-cite= section below on =org-cite-*-processor=.
+
++ citar :: this is designed for searching existing bibtex files, inserting
+  citations into org-files. It doesn't really format citations for =org-export=.
+  - It only formats where =citar= is displaying indexed results; AFAIK, since
+    configuring it doesn't set =org-cite-export-processor=. Citar requires setting
+    up a consistent =citekey= for the bibliographic database.
+  - =citar=, =vertico= =embark= work well with =org-cite= provided that you have a
+    bibliography database.
+  - =citar= does _not_ provide functionality for pulling entries into =.bib= files
+    AFAIK, nor does it clean them (it may validate them idk).
++ org-ref :: The libraries here (including =doi-utils=) include functionality for
+  managing the =.bib= files. errors can occur when they're are not formatted
+  properly, so these may be better managed outside of emacs.
+  - e.g. you can open a PDF and add it to a =.bib= file, which is a PITA.
++ org-cite :: This provides four functions: activate (fontify), insert, follow,
+  and export. Exporting is handled in =oc.el= code.
+  - In the Emacs/Doom configs I've found, users integrate the bibliographic
+    functionality with "biblio styles" mostly made available from Zotero..
+
+
+** Automation
+
+Honestly, there's so much friction in the process of getting PDFs from journal
+sources that much of the DOI functionality won't work without setting cookies,
+etc. I'm not sure it's worth it. As long as...
+
++ I can pull a PDF into a bibtex database where citekeys are persistent and
+  reasonable (and can be easily changed later, which I've already planned)
++ I can search a bibtex database, ending up in a PDF or notes file
++ I can consistently associate an =.org= or org heading with a PDF to take notes
+  from, then initiate a reading session.
++ I can extract Table of Contents from a PDF to notes (to maybe split into files
+  for each chapter)
+
+Then ... it doesn't matter whether the PDF is on my machine or I pull it via
+HTTPS. Everything else is icing on the cake.
+
+*** Curling and Scraping
+
+There are so many disparate sources with disparate measures in place to
+prevent scraping or leaks of docs (they've integrated quite a bit more
+cloudflare ish). This is easier if you're used to writing these scripts or maybe
+if your traffic is sourced from an IP address that cloudflare recognizes as
+belonging to an academic source (which is why Aaron Schwartz was in that closet)
+
+Much of the functionality in =org-ref='s libraries to search/explore references
+helped a ton (crossref and a few others).
+
+Using a properly configured web-proxy to connect to these resources would be the
+best way to avoid friction, as you can rewrite HTTP headers.
+
+** Maintaining =.bib= Files
+
+*** Outside of Emacs
+
+IDK
+
+*** In Emacs
+
++ many users want Zotero/etc to handle the main bibliogrpahic database
++ then (for note-taking, org-roam navigation, citation backlink counting, etc)
+  they make bibliographic data available via bibtex files
++ these bibtex files are indexed by citar.
++ for publishing =org -> latex -> PDF=, they may handle this within Emacs or use
+  some other document formatting app
++ a =*.bib= file, specific to the context (like a document for publishing) may be
+  by collected/exported on an as needed basis0.
++ use the =#+BIBLIOGRAPHY:= keyword(s), with a local bibliography (org-cite and
+  bibtex should be able to import the =.bib= file just fine, even if it overwrites
+  what's in =bibtex-completion-bibliography= or =citar-bibliography=.
+  - For =org-cite-export-processor=, it _should_ insert =citekey= whatever is found in
+    the =#+BIBLIOGRAPHY:= keys (i.e. it should merge, effectively). I didn't test.
+
+*** Collaboration
+
+For collaboration, it's pretty critical for you to have the same formatting
+for =bibtex -> citekey=. If =ahead-of-time= you have a migration strategy, then
+you'll probably be alright. But it'd just be simpler to avoid reformatting
+by sticking to the defaults.
+
+Having your =.bib= file in version control is also not a bad idea at all --
+_SORTING by citekey_ will minimize unnecessary diffs, making changes more clear.
+(this is a benefit of a primary key)
+
+          #+begin_quote
+Don't use =.dir-locals.el=, just use the =#+BIBLIOGRAPHY:= keyword(s)
+
+One should be able to use =.dir-locals.el= to tell =citar= to bound the citation
+analysis functionality to a specific directorie's bibtex file. or via
+=#+BIBLIOGRAPHY: myrefs.bib=. Actually using =.dir-locals.el= for this purpose +may+
+/will/ be problematic (not portable between multiple emacs setups)
+          #+end_quote
+
+* Libraries
+
+I'll show the config in =doom= first, which is fairly straightforward. Then I'll
+explain how to add the missing pieces to use =org-ref= and =doi-utils= for things
+like
+
++ extracting bibtex to a file
++ moving PDF files to a directory in the =bibtex-completion-library-paths=
++ download PDF's using =doi-utils= or from other sources like arxiv
+
+** Doom
+
+Doom sets up a bit of =org-cite=, =citar= and similar tools. How it sets these up
+depends on what completion setup you have: ivy, helm or vertico.
+
++ You should probably be using =vertico=, since that package ecosystem is
+  friendlier, more extensible, more modular, etc.
++ It's also easier to set up completion sources, which use newer components
+  within Emacs without needing to provide redundancy within the ivy/counsel or
+  helm middlewares
+
+*** Config
+
+Ensure =init.el= contains the =biblio= module...
+
+#+begin_src emacs-lisp
+(doom!
+ ;; ...
+ :tools
+ biblio
+ ;; ...
+ )
+#+end_src
+
+This sets the following =org-cite= processors:
+
++ org-cite-export-processors :: ='((latex biblatex) (t csl))=
++ org-cite-{activate,follow,insert} :: =citar=
+
+It alos sets up indicators that will display in =vertico= when working with =citar=
+references. This indicates whether there are local PDFs, notes, citations, etc.
+
+Add =org-ref= to =packages.el= and ensure it builds with these files:
+
+#+begin_src emacs-lisp
+(package! org-ref
+  :recipe (:type git :flavor git :inherit nil
+	   :host github :repo "jkitchin/org-ref" :branch "master"
+	   :files (:defaults
+                   "org-ref-utils.el"
+                   "org-ref-url-utils.el"
+                   "doi-utils.el"
+                   "nist-webook.el"
+                   "org-ref-arxiv.el"
+                   "org-ref-bibtex.el"
+                   "org-ref-isbn.el"
+                   "org-ref-pubmed.el"
+                   "org-ref-scifinder.el"
+                   "org-ref-scopus.el"
+                   "org-ref.bib"
+                   "citeproc")))
+#+end_src
+
+These should now be in your Emacs =load-path=.
+
++ The functionality in =org-ref= needs to be set /before/ =citar= loads.
++ Doom Emacs sets =:defer t= for citar and org/agenda/roam.
++ While testing changes to =bibtex-= variables, just use =setq=, since adding it to
+  =:config= blocks may persist these lambda's in =use-package= blocks and they're
+  impossible to remove afterwords.
+
+config.el
+
+#+begin_src emacs-lisp
+
+#+end_src
+
+
+
+** Tracking =org-cite= integration
+*** Citar
+
+Citar contains no references to =bibtex-*= other than in the =citar--insert-bibtex= defun.
+
+*** Org Ref
+
+Again, this should not be considered complete and certainly not up-to-date lol
+
+**** Commands Needed
+
+- org-ref-debug :: show debugging info about org-ref
+- org-ref-extract-doi-from-pdf :: try to extract DOI from a PDF file
+- doi-utils-get-bibtex-entry-pdf :: try to download PDF for a bibtex entry
+  - C-u :: do `read-file-name' to get local PDF file
+  - C-u C-u :: do `read-buffer-to-switch' to use PDF buffer
+- org-ref-pdf-to-bibtext :: with PDF as current buffer, try to extract bibtex
+- org-ref-bibtex-key-from-doi?
+
+
+**** Usage of =bibtex.el= vars and functionality
+
+=bibtex-completion-bibliography=
+
+- org-ref-pdf.el :: org-ref-bibtex-key-from-doi
+- org-ref-core.el :: org-ref-find-bibliography
+- org-ref-core.el :: org-ref-possible-bibfiles
+- org-ref-core.el :: org-ref-get-bibtex-key-and-file
+- org-ref-arxiv.el :: org-add-bibtex-entry
+- org-ref-bibtex.el :: org-ref-bibtex-get-entry
+- doi-utils.el :: doi-utils-open-bibtex
+- doi-utils.el :: doi-utils-add-entry-from-crossref-query
+
+usage of =bibtex-completion-library-path=
+
+- org-ref-citation-links.el :: org-ref-valid-keys uses =bibtex-completion-cache=
+  (used by =org-ref-cite-activate=)
+- org-ref-utils.el :: most usage flows through this defun: =org-ref-get-library-path=
+- this is about where I stopped poking around.
+
+* Workflow
+
+** TODO .... hmmm
+
+
+* Collaborative Workflows
+
+The org files in jkitchin/scimax provide examples of cooperative editing
+using org files:
+
+- i.e. documents can be sent back/forth over email/git
+- comments can be added while tracking contribution with email/git
+
+i can't remember the exact details, but this is a bit of an issue when using
+emacs, since you need to import/export from other document formatting files --
+while dealing with with issues like =*.odt= from =*.doc[x]= with potentially
+embedded LaTeX fragments. This actually isn't so bad, as long as your workflow
+doesn't involve re-exporting imported ODT format.
+
+But it's definitely going to "cramp your style". I don't have enough experience
+here to understand how this works, but I'm imagining that LaTeX fragments pass
+between many program boundaries before drafts are reviewed.
+
+* Org Cite
+
+Best places to find info on =org-cite=:
+
++ [[https://orgmode.org/manual/Citation-handling.html][Citation Handling]] in the Org Manual
++ oc*.el: in the header comments & the docstrings
+
+There are mainly four types of =org-cite= processors
+
++ org-cite-export-processor :: export "via different libraries for different
+  target formats."
++ org-cite-insert-processor :: "add/edit citations via =org-cite-insert="
++ org-cite-activate-processor :: "fontification, tooltip preview, etc"
++ org-cite-follow-processor :: "at point actions on citations via
+  =org-open-at-point="
+
+Exporters:
+
++ text,csl :: [[https://citationstyles.org/][CSL]] uses =citeproc= and renders different styles (in text)
++ bibtex,natbib,biblatex :: used with LaTeX-style org-export (LaTeX, beamer,
+  etc)
+
+Citar handles everything except =export=.
+
+#+begin_quote
+idk why it's so hard for me to look at manuals and extract the info I need. I
+guess it's difficult to track which parts/paragrams of which pages I've actually
+read, whereas with a book, it's pretty simple to "visually index" a pages
+contents as somewhere between un/read.
+
+this didn't quite jump out at me until I read the heading comments in the =oc.el=
+source code and started tracing through keywords.
+#+end_quote
+
+** Keywords
+
+=#+bibliography:= seems to only be referenced by =org-ref
+
++ #+BIBLIOGRAPHY: :: "First set one-or-more bibliographies, either globally with
+  org-cite-global-bibliography, or locally using one or more 'bibliography'
+  keywords ... set one or more Org mode uses all the local and global
+  bibliographies combined to search for citation keys."
++ #+PRINT_BIBLIOGRAPHY: :: where to print the bibliography (accumulated
+  citations). The citations may contain metadata. To print citations for an
+  =org-beamer= (e.g. PDF slides or PDF poster), the [[https://orgmode.org/manual/Bibliography-options-in-the-biblatex-and-csl-export-processors.html][arguments to
+  PRINT_BIBLIOGRAPHY]] vary based on the =org-cite-export-processor=
++ #+CITE_EXPORT :: =[citation export processor] [backend=$backend,style=style]=
+
+** Processors
+
+*** References
+
+functions =org-cite.*processor$=
+
+| org-cite-processor              | Return expected citation/bibliography processor.                     |
+| org-cite-get-processor          | Return citation processor named after symbol NAME.                   |
+| org-cite-csl--processor         | Return Citeproc processor reading items from current bibliography.   |
+| org-cite--make-processor        | Constructor for objects of type ‘org-cite-processor’.                |
+| org-cite-register-processor     | Mark citation processor NAME as available.                           |
+| org-cite-try-load-processor     | Try loading citation processor NAME if unavailable.                  |
+| org-cite-unregister-processor   | Unregister citation processor NAME.                                  |
+| org-cite-make-insert-processor  | Build a function appropriate as an insert processor.                 |
+| org-cite-store-export-processor | Store export processor in the ‘:cite-export’ property during export. |
+
+variables =org-cite.*processors?$=
+
+| org-cite--processors        | List of registered citation processors.                       |
+| org-cite-follow-processor   | Processor used for following citations, as a symbol.          |
+| org-cite-insert-processor   | Processor used for inserting citations, as a symbol.          |
+| org-cite-export-processors  | Processor used for exporting citations, as a triplet, or nil. |
+| org-cite-activate-processor | Processor used for activating citations, as a symbol.         |
+
+** Bibtex References
+
+Grepping the org source code for =[^-]bibtex= shows that
+
++ Org cite contains these references to =bibtex-*= functions
++ there are a handful of a handful of bibtex vars
+
+I'm not 100% confident about this, as I didn't look for counterexamples.
+
+However, it looks like the "why" of org-cite was to introduce a compatibility
+layer that mostly doesn't specify bibtex dependencies beyond what is immediately
+necessary. This decouples Emacs from =bibtex.el= while also allowing tools to
+continue using it. (idk, not 100% confident on this either)
+
+#+begin_example grep
+Exported grep results:
+
+lisp/ox-latex.el:1462:`org-latex-compiler'), and %bib is the BibTeX-like compiler (see
+lisp/oc-basic.el:233:DIALECT is the BibTeX dialect used.  See `bibtex-dialect'.
+lisp/oc-basic.el:236:        (bibtex-sort-ignore-string-entries t))
+lisp/oc-basic.el:237:    (bibtex-set-dialect dialect t)
+lisp/oc-basic.el:239:    (unless (bibtex-validate)
+lisp/oc-basic.el:242:    (bibtex-map-entries
+lisp/oc-basic.el:259:                 (let ((bibtex-string-files `(,(buffer-file-name)))
+lisp/oc-basic.el:260:                       (bibtex-expand-strings t))
+lisp/oc-basic.el:261:                   (bibtex-parse-entry t)))
+lisp/oc-basic.el:832:       (bibtex-set-dialect)
+lisp/oc-basic.el:833:       (bibtex-search-entry key)))))
+lisp/ol-bibtex.el:127:(declare-function bibtex-beginning-of-entry "bibtex" ())
+lisp/ol-bibtex.el:128:(declare-function bibtex-generate-autokey "bibtex" ())
+lisp/ol-bibtex.el:129:(declare-function bibtex-parse-entry "bibtex" (&optional content))
+lisp/ol-bibtex.el:130:(declare-function bibtex-url "bibtex" (&optional pos no-browse))
+lisp/ol-bibtex.el:245:  "Set to a truth value to use `bibtex-generate-autokey' to generate keys."
+lisp/ol-bibtex.el:428:	    (bibtex-beginning-of-entry)
+lisp/ol-bibtex.el:458:				(bibtex-generate-autokey))))
+lisp/ol-bibtex.el:512:  (when (eq major-mode 'bibtex-mode)
+lisp/ol-bibtex.el:522:		     (bibtex-beginning-of-entry)
+lisp/ol-bibtex.el:523:		     (bibtex-parse-entry)))))
+lisp/ol-bibtex.el:552:  (let ((bibtex-autokey-names 1)
+lisp/ol-bibtex.el:553:	(bibtex-autokey-names-stretch 1)
+lisp/ol-bibtex.el:554:	(bibtex-autokey-name-case-convert-function 'identity)
+lisp/ol-bibtex.el:555:	(bibtex-autokey-name-separator " & ")
+lisp/ol-bibtex.el:556:	(bibtex-autokey-additional-names " et al.")
+lisp/ol-bibtex.el:557:	(bibtex-autokey-year-length 4)
+lisp/ol-bibtex.el:558:	(bibtex-autokey-name-year-separator " ")
+lisp/ol-bibtex.el:559:	(bibtex-autokey-titlewords 3)
+lisp/ol-bibtex.el:560:	(bibtex-autokey-titleword-separator " ")
+lisp/ol-bibtex.el:561:	(bibtex-autokey-titleword-case-convert-function 'identity)
+lisp/ol-bibtex.el:562:	(bibtex-autokey-titleword-length 'infty)
+lisp/ol-bibtex.el:563:	(bibtex-autokey-year-title-separator ": "))
+lisp/ol-bibtex.el:564:    (setq org-bibtex-description (bibtex-generate-autokey)))
+lisp/ol-bibtex.el:567:    (bibtex-beginning-of-entry)
+lisp/ol-bibtex.el:568:    (cdr (assoc "=key=" (bibtex-parse-entry)))))
+lisp/ol-bibtex.el:572:  (when (eq major-mode 'bibtex-mode)
+lisp/ol-bibtex.el:587:	    (bibtex-url)))
+lisp/ol-bibtex.el:609:           (let ((bibtex-entries
+lisp/ol-bibtex.el:616:               (insert (mapconcat #'identity bibtex-entries "\n")))
+lisp/ol-bibtex.el:618:                      (length bibtex-entries) filename)
+lisp/ol-bibtex.el:678:This uses `bibtex-parse-entry'.
+lisp/ol-bibtex.el:700:           (save-excursion (bibtex-beginning-of-entry) (bibtex-parse-entry)))
+lisp/ol-bibtex.el:716:	  (bibtex-beginning-of-entry))))
+lisp/ol-bibtex.el:777:      (bibtex-mode)
+#+end_example
