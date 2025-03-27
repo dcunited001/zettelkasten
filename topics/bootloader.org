@@ -36,18 +36,28 @@ Standard for exposing device metadata to bootloader.
 + archwiki: [[https://wiki.archlinux.org/title/Dm-crypt/System_Configuration][Dm-Crypt/System_Configuration]]
 + archwiki: [[https://wiki.archlinux.org/title/Persistent_block_device_naming][Persistent Block Device Naming]]
 
+** Issues
+
+
+* Multiboot USB (Grub)
+
+** Docs
++ [[https://github.com/aguslr/multibootusb][aguslr/multibootusb]]
++ [[https://github.com/GrantEdwards/Linux-Multiboot][GrantEdwards/Linux-Multiboot]] a bit on multiboot, kernel boot options and how
+  grub's =probe= "discovers things"
++ [[https://github.com/Jimmy-Z/grub-iso-boot/blob/master/grub.cfg#L149-L151][Jimmy-Z/grub-iso-boot]] similar concept, more scripting. e.g. checks/deletes
+  loopback devices (yikes)
+
 ** Resources
 
 ** Topics
-
-*** Multiboot
-
+*** Basics
 + aguslr/multibootusb essentially automates much of the loopback GRUB described
   in [[https://wiki.archlinux.org/wiki/title/Multiboot_USB_drive][archwiki:Multiboot_USB_drive]]
 + There are alternative tools like ventoy, Yumi. Other alternatives listed on
   aguslr/multibootusb's site.
 
-**** aguslr/multibootusb
+*** aguslr/multibootusb
 
 This is pretty straightforward, easy to grok and easy to extend with additional
 images.
@@ -59,7 +69,7 @@ wget -qO - 'https://www.kernel.org/pub/linux/utils/boot/syslinux/syslinux-6.03.t
     | tar -xz -C $mntusb/boot/grub/ --no-same-owner --strip-components 3 'syslinux-6.03/bios/memdisk/memdisk'
 #+end_src
 
-***** Usage
+**** Usage
 
 + Create a partition table on your USB disk. Multiboot expects
   =$mntusb/boot/{grub/mbusb.d/,isos}= to exist on the boot partition.
@@ -70,17 +80,51 @@ Instead of copying all the =mbusb.d/*.d= files, you can just copy the configs
 you're interested in and tweak them, but you may not be able to easily rsync
 them. This gives you more control over what could load.
 
-**** Guix
+*** [[https://man.archlinux.org/man/bootparam.7.en][bootparam]]: kernel boot options
+
+[[https://guix.gnu.org/manual/en/html_node/Initial-RAM-Disk.html][Init-RAM-Disk]] in the Guix manual covers it's expected bootparam, how to set
+their defaults and how to override them.
+
+*** Guix
+
+**** Configuring Guix to boot from =(loop)=
 
 The [[https://guix.gnu.org/manual/devel/en/guix.html#Bootloader-Configuration][bootloader-configuration]] record needs to support GRUB's =loopback= option in
 order to reimplement aguslr/multibootusb approach. There are other options,
 including chainloading, etc.
 
+**** Grub Config for Iso9660 builds
 
-
-
+The ISO builds with something like this:
 
 ** Issues
+
+*** Boots always fail after first boot fails
+
+See this [[https://github.com/hakuna-m/wubiuefi/issues/345][GH Issue]]
+
+Each =loop= device can only be created once. This apparently happens when you open
+the submenu. This causes bad state after the first boot fails.
+
+To fix, use =loopback -d loop "$iso_path=, with the appropriate checks and etc
+
++ I think this fails by design in agulsr/multibootusb, since the manual says "this
+  involves running a small program prepended to initramfs"
++ Jimmy-Z/grub-iso-boot went through a lot of trouble to use a single =loop=
+  device. it's possible having multiple active is not kosher. the manual is
+  unclear as to how all the state is handed off to initramfs. 
+
+#+begin_quote
+When you click =reboot=, your computer is actually "reincarnated" ... (since the
+OS to UEFI to bootloader handoff can propagate state/arguments). 
+
+See [[https://www.youtube.com/watch?v=asnXWOUKhTA][Build a minimal Linux with only Busybox in 1 hour]].
+
+No reason to get mystical about it, but it's interesting.
+#+end_quote
+
+There could also be [[https://www.gnu.org/software/grub/manual/grub/html_node/Loopback-booting.html][a userspace program that runs too early or an issue with the
+=initramfs=]].
 
 * U-Boot
 
