@@ -111,7 +111,7 @@ GET :kle-layouts
 :headers
 #+end_src
 
-#+name: nrowsOfN
+#+name: kbdCount
 #+begin_src jq :in-file img/kle/ansi-104.json
 .data as $data | $data | map(length)
 #+end_src
@@ -126,62 +126,408 @@ GET :kle-layouts
 :   23
 : ]
 
-#+name: kbdKeysTest
+#+name: kbdTest
 #+begin_src jq :in-file img/kle/ansi-104.json :results silent
 .data[] | map(strings // null)
 #+end_src
 
-Indexs of keys
+Paths of keys
 
 #+name: kbdKeys
-#+begin_src jq :in-file img/kle/ansi-104.json :results silent
-.data | map(to_entries | map(. |= (.value | type != "string") // .key) | map(numbers))
+#+begin_src jq :in-file img/kle/ansi-104.json :results output silent
+.data | to_entries | 
+  map(.key as $k | .value | to_entries |
+       map(. |= [$k,(.value | type != "string") // .key]) |
+     map(select(last | numbers)))
 #+end_src
 
-dState, as in state-machine deltas
+Paths of state-changes
 
-#+name: kbdDstate
-#+begin_src jq :in-file img/kle/ansi-104.json :results silent
-.data | map(to_entries | map(. |= (.value | type != "object") // .key) | map(numbers))
+#+name: kbdStates
+#+begin_src jq :in-file img/kle/ansi-104.json :results output silent
+# :results silent
+.data | to_entries[0:3] |
+  map(.key as $k | .value | to_entries |
+       map(. |= [$k,(.value | type != "object") // .key]) |
+     map(select(last | numbers)))
 #+end_src
 
-#+begin_src restclient :jq "map([.owner.login, .name, .size])[] | @csv" :results table :jq-args "--raw-output"
-:gh-graphql-url = https://api.github.com/graphql
-:gh-url-base = https://api.github.com
-:gh-org = vyos
-:gh-url-path = orgs/:gh-org/repos
-:gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+Check counts
 
-:headers = <<
-Accept: application/vnd.github+json
-Authorization: Bearer :gh-token
-X-GitHub-Api-Version: 2022-11-28
-User-Agent: Emacs
-#
++ Nope =code :wrap example json :jq-args "--raw-output"=
++ Only variables? Requires =:cmd-line "jq -n"= (without =:in-file= or =:stdin=)
++ Won't produce a table. I think bc =range(...)= ???
 
-GET :gh-url-base/:gh-url-path
-:headers
-
-# nope, just use :jq and :jq-args above.
-# -> jq-set-var :repo-sizes map(.owner)
-# -> jq-set-var :repo-sizes map(. | "(.owner.login)")
+#+name: kbdTypeCounts
+#+begin_src jq :in-file img/kle/ansi-104.json :var kbdKeys=kbdKeys kbdStates=kbdStates
+# it needs the base datastructure anyways
+# [($kbdKeys | fromjson) | length, ($kbdStates | fromjson) | length]
+#. | ($kbdKeys | fromjson[0] | length)
+range(0;.data | length) |
+  ($kbdKeys | fromjson) as $kbdKeys |
+  ($kbdStates | fromjson) as $kbdStates |
+  reduce . as $i ([]; . += [
+                          $i,
+                          ($kbdKeys[$i] | length),
+                          ($kbdStates[$i] | length)
+                        ])  | @csv
+        
 #+end_src
 
-DO YOU HAVE A FUCKING ZIPPER?
+#+RESULTS: kbdTypeCounts
+: "0,16,4"
+: "1,21,4"
+: "2,21,5"
+: "3,16,0"
+: "4,17,0"
+: "5,13,0"
 
-#+name: kbdKeysTable
-#+begin_src jq :in-file img/kle/ansi-104.json :var k=kbdKeys :jq-args "--raw-output"
-# .data[0] | getpath($k | fromjson | map(map([.])))
-# $k | fromjson | map(map([.]))
-# .data[] | getpath([0])
+When in doubt .... map,map,reduce
 
-.data as $data | ($k | fromjson) as $k |
-  $data[] | to_entries | map(getpath($k))
-
-  #reduce . as $e ([]; . += getpath($e))
+#+name: kbdJustTheKeys
+#+begin_src jq :in-file img/kle/ansi-104.json :var kbdKeys=kbdKeys kbdStates=kbdStates 
+# it needs the base datastructure anyways
+# [($kbdKeys | fromjson) | length, ($kbdStates | fromjson) | length]
+#. | ($kbdKeys | fromjson[0] | length)
+($kbdKeys | fromjson) as $kbdKeys |
+  .data as $data | $kbdKeys |
+  map(
+      map(
+          reduce . as $p ([];
+                          . += [$data | getpath($p)]
+                         )))
 #+end_src
 
-#+RESULTS: kbdKeysTable
+#+RESULTS: kbdJustTheKeys
+#+begin_example
+[
+  [
+    [
+      "Esc"
+    ],
+    [
+      "F1"
+    ],
+    [
+      "F2"
+    ],
+    [
+      "F3"
+    ],
+    [
+      "F4"
+    ],
+    [
+      "F5"
+    ],
+    [
+      "F6"
+    ],
+    [
+      "F7"
+    ],
+    [
+      "F8"
+    ],
+    [
+      "F9"
+    ],
+    [
+      "F10"
+    ],
+    [
+      "F11"
+    ],
+    [
+      "F12"
+    ],
+    [
+      "PrtSc"
+    ],
+    [
+      "Scroll Lock"
+    ],
+    [
+      "Pause\nBreak"
+    ]
+  ],
+  [
+    [
+      "~\n`"
+    ],
+    [
+      "!\n1"
+    ],
+    [
+      "@\n2"
+    ],
+    [
+      "#\n3"
+    ],
+    [
+      "$\n4"
+    ],
+    [
+      "%\n5"
+    ],
+    [
+      "^\n6"
+    ],
+    [
+      "&\n7"
+    ],
+    [
+      "*\n8"
+    ],
+    [
+      "(\n9"
+    ],
+    [
+      ")\n0"
+    ],
+    [
+      "_\n-"
+    ],
+    [
+      "+\n="
+    ],
+    [
+      "Backspace"
+    ],
+    [
+      "Insert"
+    ],
+    [
+      "Home"
+    ],
+    [
+      "PgUp"
+    ],
+    [
+      "Num Lock"
+    ],
+    [
+      "/"
+    ],
+    [
+      "*"
+    ],
+    [
+      "-"
+    ]
+  ],
+  [
+    [
+      "Tab"
+    ],
+    [
+      "Q"
+    ],
+    [
+      "W"
+    ],
+    [
+      "E"
+    ],
+    [
+      "R"
+    ],
+    [
+      "T"
+    ],
+    [
+      "Y"
+    ],
+    [
+      "U"
+    ],
+    [
+      "I"
+    ],
+    [
+      "O"
+    ],
+    [
+      "P"
+    ],
+    [
+      "{\n["
+    ],
+    [
+      "}\n]"
+    ],
+    [
+      "|\n\\"
+    ],
+    [
+      "Delete"
+    ],
+    [
+      "End"
+    ],
+    [
+      "PgDn"
+    ],
+    [
+      "7\nHome"
+    ],
+    [
+      "8\n↑"
+    ],
+    [
+      "9\nPgUp"
+    ],
+    [
+      "+"
+    ]
+  ],
+  [
+    [
+      "Caps Lock"
+    ],
+    [
+      "A"
+    ],
+    [
+      "S"
+    ],
+    [
+      "D"
+    ],
+    [
+      "F"
+    ],
+    [
+      "G"
+    ],
+    [
+      "H"
+    ],
+    [
+      "J"
+    ],
+    [
+      "K"
+    ],
+    [
+      "L"
+    ],
+    [
+      ":\n;"
+    ],
+    [
+      "\"\n'"
+    ],
+    [
+      "Enter"
+    ],
+    [
+      "4\n←"
+    ],
+    [
+      "5"
+    ],
+    [
+      "6\n→"
+    ]
+  ],
+  [
+    [
+      "Shift"
+    ],
+    [
+      "Z"
+    ],
+    [
+      "X"
+    ],
+    [
+      "C"
+    ],
+    [
+      "V"
+    ],
+    [
+      "B"
+    ],
+    [
+      "N"
+    ],
+    [
+      "M"
+    ],
+    [
+      "<\n,"
+    ],
+    [
+      ">\n."
+    ],
+    [
+      "?\n/"
+    ],
+    [
+      "Shift"
+    ],
+    [
+      "↑"
+    ],
+    [
+      "1\nEnd"
+    ],
+    [
+      "2\n↓"
+    ],
+    [
+      "3\nPgDn"
+    ],
+    [
+      "Enter"
+    ]
+  ],
+  [
+    [
+      "Ctrl"
+    ],
+    [
+      "Win"
+    ],
+    [
+      "Alt"
+    ],
+    [
+      ""
+    ],
+    [
+      "Alt"
+    ],
+    [
+      "Win"
+    ],
+    [
+      "Menu"
+    ],
+    [
+      "Ctrl"
+    ],
+    [
+      "←"
+    ],
+    [
+      "↓"
+    ],
+    [
+      "→"
+    ],
+    [
+      "0\nIns"
+    ],
+    [
+      ".\nDel"
+    ]
+  ]
+]
+#+end_example
+
 
 * wtf jq
 
