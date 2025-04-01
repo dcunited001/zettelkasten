@@ -1,0 +1,275 @@
+:PROPERTIES:
+:ID:       475a26b8-ef8f-42fa-aebc-a3bf5850cd7b
+:END:
+#+title: Guix Golang: Goplantuml
+
+* go-github-com-jfeliu007-goplantuml
+
+There's =spf13/afero@0.6.0= in Guix already. if it's compatible, there's a chance
+this could be easy.
+
+#+begin_src scheme
+
+(define-public go-github-com-jfeliu007-goplantuml
+  (package
+    (name "go-github-com-jfeliu007-goplantuml")
+    (version "1.6.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/jfeliu007/goplantuml")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1qp3jnkb1zb0a2vfndcbxs9ixm0z4m3w79kjn7bfxv9n1fmq0w1s"))))
+    (build-system go-build-system)
+    (arguments
+     (list
+      #:import-path "github.com/jfeliu007/goplantuml"))
+    (propagated-inputs (list go-github-com-spf13-afero))
+    (home-page "https://github.com/jfeliu007/goplantuml")
+    (synopsis "GoPlantUML V2")
+    (description
+     "@code{PlantUML} Class Diagram Generator for golang projects.  Generates class
+diagram text compatible with plantuml with the information of all structures and
+interfaces as well as the relationship among them.")
+    (license license:expat)))
+#+end_src
+
+
+The build is failing though and I can't tell why. A suggestion from IRC, if
+using =--keep-failed=, then I may get more info by =guix shell --container= with dev
+dependencies. I need to reconstructing the environment.
+
+#+begin_src shell
+guix shell -D -L ~/.dotfiles/ellipsis -L ~/.dotfiles/dc \
+    --container go-github-com-jfeliu007-goplantuml
+#+end_src
+
+There may be another way, if I build in a Guix REPL. This is possible from
+=guix.el=, but my guile-fu is not up to it. The =build= metacommands don't fail in a
+way that makes the context available to you, so without more skill with the
+store/monad, gexp and derivations, it's not clear how to enter the environment.
+
+#+begin_example shell
+GO111MODULE='off'
+GOARCH='amd64'
+GOBIN='/gnu/store/6yfbd0i86a9d7c41bnx5zszlwww8b1mf-go-github-com-jfeliu007-goplantuml-1.6.2/bin'
+GOCACHE='/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0/go-build'
+GOENV='/homeless-shelter/.config/go/env'
+GOEXE=''
+GOEXPERIMENT=''
+GOFLAGS='-v '
+GOHOSTARCH='amd64'
+GOHOSTOS='linux'
+GOINSECURE=''
+GOMODCACHE='/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0/pkg/mod'
+GONOPROXY=''
+GONOSUMDB=''
+GOOS='linux'
+GOPATH='/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0'
+GOPRIVATE=''
+GOPROXY='https://proxy.golang.org,direct'
+GOROOT='/gnu/store/hc34bvsfp9xmxgfsa5s9i4ji4ism1nvj-go-1.21.13/lib/go'
+GOSUMDB='sum.golang.org'
+GOTMPDIR=''
+GOTOOLCHAIN='auto'
+GOTOOLDIR='/gnu/store/hc34bvsfp9xmxgfsa5s9i4ji4ism1nvj-go-1.21.13/lib/go/pkg/tool/linux_amd64'
+GOVCS=''
+GOVERSION='go1.21.13'
+GCCGO='gccgo'
+GOAMD64='v1'
+AR='ar'
+CC='gcc'
+CXX='g++'
+CGO_ENABLED='1'
+GOMOD=''
+GOWORK=''
+CGO_CFLAGS='-O2 -g'
+CGO_CPPFLAGS=''
+CGO_CXXFLAGS='-O2 -g'
+CGO_FFLAGS='-O2 -g'
+CGO_LDFLAGS='-O2 -g'
+PKG_CONFIG='pkg-config'
+GOGCCFLAGS='-fPIC -m64 -pthread -Wl,--no-gc-sections -fmessage-length=0 -ffile-prefix-map=/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0/go-build952393551=/tmp/go-build -gno-record-gcc-switches'
+#+end_example
+
+Running =go env= from =guix shell --container= dumps values that retain =$HOME=, etc.
+From the build logs, =go env= dumps these, +but we need to export them AFAIK+ ...
+actually, the failed build, includes a =$build/environment-variables= script to
+source.
+
++ For some reason, the =environment-variables= script exports vars referencing
+  =guix-build*-1.2.3.drv-0= instead of =*drv-1=. idk. I'm going to clear those out
+  and try with the first set of build files.
++ The =environment-variables= script includes directories in =PATH= that no longer
+  exist, since =--keep-failed= retains the build artifacts, but not necessarily
+  the identical development deps per se. so there are a few values here that I
+  need to =sed= out before =source=. Otherwise, i lose access to =go= and the cli
+  basics like =ls=
+
+#+begin_src sh
+export CPLUS_INCLUDE_PATH="/gnu/store/56aq6sdx35f7rsxq8jq9ypafk0dhd3p3-bzip2-1.0.8/include:/gnu/store/544ga5n6nq8y2961ihigra6n6a0r99nn-file-5.45/include:/gnu/store/vrl2r0ps24k1a6yap2chjylv5rhbndvr-gawk-5.3.0/include:/gnu/store/fbaw0sb21gv02qq7gs9wg5y5wlpdgzih-xz-5.4.5/include:/gnu/store/lc6r1mh0jlcwixjziiw1zsx1my478rv1-make-4.4.1/include:/gnu/store/ylgkrq9j1gyfig2y66srmgsbyh9w20d9-binutils-2.41/include:/gnu/store/86fc8bi3mciljxz7c79jx8zr4wsx7xw8-gcc-11.4.0/include/c++:/gnu/store/86fc8bi3mciljxz7c79jx8zr4wsx7xw8-gcc-11.4.0/include:/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/include:/gnu/store/svghsdn1x3fyili8ij791nn25zba9bpf-linux-libre-headers-5.15.49/include"
+export C_INCLUDE_PATH="/gnu/store/56aq6sdx35f7rsxq8jq9ypafk0dhd3p3-bzip2-1.0.8/include:/gnu/store/544ga5n6nq8y2961ihigra6n6a0r99nn-file-5.45/include:/gnu/store/vrl2r0ps24k1a6yap2chjylv5rhbndvr-gawk-5.3.0/include:/gnu/store/fbaw0sb21gv02qq7gs9wg5y5wlpdgzih-xz-5.4.5/include:/gnu/store/lc6r1mh0jlcwixjziiw1zsx1my478rv1-make-4.4.1/include:/gnu/store/ylgkrq9j1gyfig2y66srmgsbyh9w20d9-binutils-2.41/include:/gnu/store/86fc8bi3mciljxz7c79jx8zr4wsx7xw8-gcc-11.4.0/include:/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/include:/gnu/store/svghsdn1x3fyili8ij791nn25zba9bpf-linux-libre-headers-5.15.49/include"
+export GO111MODULE="off"
+export GOBIN="/gnu/store/6yfbd0i86a9d7c41bnx5zszlwww8b1mf-go-github-com-jfeliu007-goplantuml-1.6.2/bin"
+export GOCACHE="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0/go-build"
+export GOFLAGS="-v "
+export GOMAXPROCS="8"
+export GOPATH="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0"
+export GUIX_LD_WRAPPER_ALLOW_IMPURITIES="no"
+export GUIX_LOCPATH="/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/lib/locale"
+export HOME="/homeless-shelter"
+export LC_ALL="C.UTF-8"
+export LIBRARY_PATH="/gnu/store/hc34bvsfp9xmxgfsa5s9i4ji4ism1nvj-go-1.21.13/lib:/gnu/store/56aq6sdx35f7rsxq8jq9ypafk0dhd3p3-bzip2-1.0.8/lib:/gnu/store/544ga5n6nq8y2961ihigra6n6a0r99nn-file-5.45/lib:/gnu/store/vrl2r0ps24k1a6yap2chjylv5rhbndvr-gawk-5.3.0/lib:/gnu/store/fbaw0sb21gv02qq7gs9wg5y5wlpdgzih-xz-5.4.5/lib:/gnu/store/ylgkrq9j1gyfig2y66srmgsbyh9w20d9-binutils-2.41/lib:/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/lib:/gnu/store/vqdiyyqbrv4akp68pfya4j6m3pdbnhca-glibc-2.39-static/lib"
+export NIX_BUILD_CORES="8"
+export NIX_BUILD_TOP="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0"
+export NIX_STORE="/gnu/store"
+export OBJCPLUS_INCLUDE_PATH="/gnu/store/56aq6sdx35f7rsxq8jq9ypafk0dhd3p3-bzip2-1.0.8/include:/gnu/store/544ga5n6nq8y2961ihigra6n6a0r99nn-file-5.45/include:/gnu/store/vrl2r0ps24k1a6yap2chjylv5rhbndvr-gawk-5.3.0/include:/gnu/store/fbaw0sb21gv02qq7gs9wg5y5wlpdgzih-xz-5.4.5/include:/gnu/store/lc6r1mh0jlcwixjziiw1zsx1my478rv1-make-4.4.1/include:/gnu/store/ylgkrq9j1gyfig2y66srmgsbyh9w20d9-binutils-2.41/include:/gnu/store/86fc8bi3mciljxz7c79jx8zr4wsx7xw8-gcc-11.4.0/include/c++:/gnu/store/86fc8bi3mciljxz7c79jx8zr4wsx7xw8-gcc-11.4.0/include:/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/include:/gnu/store/svghsdn1x3fyili8ij791nn25zba9bpf-linux-libre-headers-5.15.49/include"
+export OBJC_INCLUDE_PATH="/gnu/store/56aq6sdx35f7rsxq8jq9ypafk0dhd3p3-bzip2-1.0.8/include:/gnu/store/544ga5n6nq8y2961ihigra6n6a0r99nn-file-5.45/include:/gnu/store/vrl2r0ps24k1a6yap2chjylv5rhbndvr-gawk-5.3.0/include:/gnu/store/fbaw0sb21gv02qq7gs9wg5y5wlpdgzih-xz-5.4.5/include:/gnu/store/lc6r1mh0jlcwixjziiw1zsx1my478rv1-make-4.4.1/include:/gnu/store/ylgkrq9j1gyfig2y66srmgsbyh9w20d9-binutils-2.41/include:/gnu/store/86fc8bi3mciljxz7c79jx8zr4wsx7xw8-gcc-11.4.0/include:/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/include:/gnu/store/svghsdn1x3fyili8ij791nn25zba9bpf-linux-libre-headers-5.15.49/include"
+export OLDPWD
+export PATH="/gnu/store/hc34bvsfp9xmxgfsa5s9i4ji4ism1nvj-go-1.21.13/bin:/gnu/store/j5zgzgsmbjgywr67r86h1n6s4qiabv5q-tar-1.34/bin:/gnu/store/0r2fx1lr1h2i3cl1x5fw4s4ly95qspya-gzip-1.13/bin:/gnu/store/56aq6sdx35f7rsxq8jq9ypafk0dhd3p3-bzip2-1.0.8/bin:/gnu/store/544ga5n6nq8y2961ihigra6n6a0r99nn-file-5.45/bin:/gnu/store/swmflx2bmqpf0drm167pxfpgyr7ckcam-diffutils-3.10/bin:/gnu/store/4jhlsg65s1zx90gnnfmaax52i8prnl45-patch-2.7.6/bin:/gnu/store/b5c62i99dsfa5j0j3f8g2j1xdi6fih22-findutils-4.9.0/bin:/gnu/store/vrl2r0ps24k1a6yap2chjylv5rhbndvr-gawk-5.3.0/bin:/gnu/store/3f0fjq25n2kwcmi0zyrf216wa6g8xpjw-zstd-1.5.2/bin:/gnu/store/3i4fr8riqw9azh1p4mqggl5vdz23kyr8-sed-4.8/bin:/gnu/store/7k8b93779dqpwcg2qjdvnf4nl43jv7hf-grep-3.11/bin:/gnu/store/fbaw0sb21gv02qq7gs9wg5y5wlpdgzih-xz-5.4.5/bin:/gnu/store/7h0mnlwalw23j9jmvz5n1i5mqkgb4d06-coreutils-9.1/bin:/gnu/store/lc6r1mh0jlcwixjziiw1zsx1my478rv1-make-4.4.1/bin:/gnu/store/3jhfhxdf6v5ms10x5zmnl166dh3yhbr1-bash-minimal-5.1.16/bin:/gnu/store/3k6lyifyg024lk3gncsgf2gzjzvc70gv-ld-wrapper-0/bin:/gnu/store/ylgkrq9j1gyfig2y66srmgsbyh9w20d9-binutils-2.41/bin:/gnu/store/86fc8bi3mciljxz7c79jx8zr4wsx7xw8-gcc-11.4.0/bin:/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/bin:/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/sbin"
+export PWD="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0"
+export SHLVL="1"
+export SOURCE_DATE_EPOCH="1"
+export TEMP="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0"
+export TEMPDIR="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0"
+export TMP="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0"
+export TMPDIR="/tmp/guix-build-go-github-com-jfeliu007-goplantuml-1.6.2.drv-0"
+export out="/gnu/store/6yfbd0i86a9d7c41bnx5zszlwww8b1mf-go-github-com-jfeliu007-goplantuml-1.6.2"
+#+end_src
+
+=cat $GUIX_ENVIRONMENT/etc/profile= ... so we can re-source this (maybe?)
+
+#+begin_src shell
+export PATH="${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/bin:${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/sbin${PATH:+:}$PATH"
+export LIBRARY_PATH="${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/lib${LIBRARY_PATH:+:}$LIBRARY_PATH"
+export OBJCPLUS_INCLUDE_PATH="${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/include/c++:${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/include${OBJCPLUS_INCLUDE_PATH:+:}$OBJCPLUS_INCLUDE_PATH"
+export OBJC_INCLUDE_PATH="${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/include${OBJC_INCLUDE_PATH:+:}$OBJC_INCLUDE_PATH"
+export CPLUS_INCLUDE_PATH="${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/include/c++:${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/include${CPLUS_INCLUDE_PATH:+:}$CPLUS_INCLUDE_PATH"
+export C_INCLUDE_PATH="${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/include${C_INCLUDE_PATH:+:}$C_INCLUDE_PATH"
+export GUIX_LOCPATH="${GUIX_PROFILE:-/gnu/store/3yqp4r1yf6cr8fpqjl145zpxiahz93hf-profile}/lib/locale${GUIX_LOCPATH:+:}$GUIX_LOCPATH"
+#+end_src
+
+Attempt build again with
+
+ ~go install -ldflags=-s -w -trimpath github.com/jfeliu007/goplantuml~
+
+Fails: the import path was wrong
+
+~go install -ldflags="-s -w" -trimpath github.com/jfeliu007/goplantuml/cmd/goplantuml~
+
+This doesn't seem to create a binary artifact though. The build ends with the
+modules below, so i think the =go get github.com/..../goplantuml/parser is
+unnecessary.
+
+#+begin_quote
+github.com/jfeliu007/goplantuml/vendor/github.com/spf13/afero
+github.com/jfeliu007/goplantuml/parser
+github.com/jfeliu007/goplantuml/cmd/goplantuml
+#+end_quote
+
+This seems to have worked, but it installs into =GOBIN= instead of =GOPATH=. From
+within the container, =go install= writes to the path below -- this is NOT visible
+outside the container. A bit freaky at first.
+
+=/gnu/store/6yfbd...8b1mf-go-github-com-jfeliu007-goplantuml-1.6.2/bin/goplantuml=
+
+* Other packages
+
+From the original bout of =guix import go ...=
+
+** go-github-com-spf13-afero
+
+goplantuml requires =1.8.2=
+
++ there aren't binary releases
++ this painfully depends on =x-crypto= and =x-oauth2=, but 1+ years before they have
+  released versions...
++ pretty ridiculous dependency AFAIK, since it's used for =Walk= and =OsFs=, not _any_
+  of the wildass cloud deps.
+
+#+begin_src scheme
+(define-public go-github-com-spf13-afero
+  (package
+    (name "go-github-com-spf13-afero")
+    (version "1.8.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/spf13/afero")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "07w3iwagnpyr7vk0vn16aahm13d627alynrlv3xyjb5mcbh8c6qi"))))
+    (build-system go-build-system)
+    (arguments
+     (list
+      #:import-path "github.com/spf13/afero"))
+    (propagated-inputs (list go-google-golang-org-api
+                             go-golang-org-x-text
+                             go-golang-org-x-oauth2
+                             go-golang-org-x-crypto
+                             go-github-com-pkg-sftp
+                             go-github-com-googleapis-google-cloud-go-testing
+                             go-cloud-google-com-go-storage))
+    (home-page "https://github.com/spf13/afero")
+    (synopsis "Overview")
+    (description
+     "This package provides a @code{FileSystem} Abstraction System for Go.")
+    (license license:asl2.0)))
+
+#+end_src
+
+** go-google-golang-org--api
+
+afero requires =0.40.0=
+
+#+begin_src scheme
+(define-public go-google-golang-org-api
+  (package
+    (name "go-google-golang-org-api")
+    (version "0.228.0")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/googleapis/google-api-go-client")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0nh69jhyvbnxrpbp9gkbjzjbvz9zf9sdlxfnnpdr8xyj1bvmz0k8"))))
+    (build-system go-build-system)
+    (arguments
+     (list
+      #:go #{go-#f}#
+      #:import-path "google.golang.org/api"))
+    (propagated-inputs (list go-google-golang-org-protobuf
+                        go-google-golang-org-grpc
+                        go-google-golang-org-genproto-googleapis-rpc
+                        go-google-golang-org-genproto-googleapis-bytestream
+                        go-golang-org-x-time
+                        go-golang-org-x-sync
+                        go-golang-org-x-oauth2
+                        go-golang-org-x-net
+                        go-go-opentelemetry-io-contrib-instrumentation-net-http-otelhttp
+                        go-go-opentelemetry-io-contrib-instrumentation-google-golang-org-grpc-otelgrpc
+                        go-github-com-googleapis-gax-go-v2
+                        go-github-com-googleapis-enterprise-certificate-proxy
+                        go-github-com-google-uuid
+                        go-github-com-google-s2a-go
+                        go-github-com-google-go-cmp
+                        go-cloud-google-com-go-compute-metadata
+                        go-cloud-google-com-go-auth-oauth2adapt
+                        go-cloud-google-com-go-auth))
+    (home-page "https://google.golang.org/api")
+    (synopsis "Google APIs Client Library for Go")
+    (description
+     "Package api is the root of the packages used to access Google Cloud Services.
+See
+@@url{https://godoc.org/google.golang.org/api,https://godoc.org/google.golang.org/api}
+for a full list of sub-packages.")
+    (license license:bsd-3)))
+#+end_src

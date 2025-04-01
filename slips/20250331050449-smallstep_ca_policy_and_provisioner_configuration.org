@@ -1,0 +1,203 @@
+:PROPERTIES:
+:ID:       f38730e0-1f42-42e3-b173-e12535e55bcd
+:END:
+#+TITLE: Smallstep: CA, Policy and Provisioner Configuration
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:49373db0-532d-4b0f-b8ec-3f9a3f897895][StepCA]]
++ [[id:cf2191d6-e159-47b1-8e57-4154e190b956][Crypto]]
++ [[id:48d763a8-5579-4585-a9a2-e7cbb11701fe][Homelab]]
+
+* Resources
+
+* Concepts
+
+** Profiles
+
++ [[https://smallstep.com/docs/tutorials/intermediate-ca-new-ca/][Smallstep: Use step-ca with your existing Root CA]] This guide clarifies the
+  purpose of profiles & their =defaults.json=
+
+** Policies
+
++ Limited to [[https://smallstep.com/docs/step-ca/configuration/#policy][one per authority]] in the open source product.
+
+** Templates
+
+
+* Test Run
+
+Submitting basic values to =step ca init= gives the file-tree below.
+
+#+begin_quote
+.
+├── certs
+│   ├── intermediate_ca.crt
+│   └── root_ca.crt
+├── config
+│   ├── ca.json
+│   └── defaults.json
+├── db
+├── secrets
+│   ├── intermediate_ca_key
+│   └── root_ca_key
+└── templates
+#+end_quote
+
+The keys in these tables are all =--cli=options=
+
+|---------+-----------------+----------------------------------|
+| ca.json | cli             |                                  |
+|---------+-----------------+----------------------------------|
+|         | --deployment-type | standalone                       |
+|         | --name          | TestCA                           |
+|         | --dns           | 127.0.0.1                        |
+|         | --address       | 127.0.0.1:443                    |
+|         | --provisioner   | me@testca.com                    |
+|         | --password      | eFC253hSVyjVWesxccfoCvxKbIweeOMv |
+|---------+-----------------+----------------------------------|
+
+It creates a root cert
+
+|--------------------+--------+------------------------------------------------------------------|
+| ca.json            | cli    |                                                                  |
+|--------------------+--------+------------------------------------------------------------------|
+| root               | --root | ./certs/root_ca.crt                                              |
+| key                |        | ./secrets/root_ca_key                                            |
+| issuer-fingerprint |        | ade4a50390a06e8f8af19e396af81aa35c56ace2f2d25b4a02cb5cc8ec147003 |
+|--------------------+--------+------------------------------------------------------------------|
+
+It creates a db and an intermediate cert. These keys aren't CLI options, but
+instead match the =ca.json= keys.
+
+|---------------+-----+-------------------------------|
+| ca.json       | cli |                               |
+|---------------+-----+-------------------------------|
+| crt           |     | ./certs/intermediate_ca.crt   |
+| key           |     | ./secrets/intermediate_ca_key |
+| db.dataSource |     | ./db                          |
+|---------------+-----+-------------------------------|
+
+** Adding provisioners
+
+Running =step ca init= with =--acme= adds that provisioner in addtion to JWK.
+
++ provisioner defaults: ={"type":"ACME","name":"acme"}=
+
+... TODO
+
+** Using KMS
+
+See [[https://smallstep.com/docs/step-ca/cryptographic-protection/#notes-on-azure-key-vault-iam-permissions][Cryptographic Protection]]. Use =step kms create --json [--kms] $kms $kmsUri= to
+associate your
+
+** Multi-Context
+
+See [[https://smallstep.com/docs/step-cli/the-step-command/#contexts-working-with-multiple-cas][Working with multiple CAs]]
+
++ profiles :: client configurations (how you expect clients to)
++ authorities :: CA server config/data.
+  - [[ others][Certificate policies]] also go here
+  - =type= should only be relevant for [[https://smallstep.com/docs/step-ca/registration-authority-ra-mode/][Registration Authorities]] (e.g. stepcas, a
+    frontend for acme and maybe other provisioners simultaneously?)
+
+If you don't specify =--profile= or =--authority= for =step ca init=, then you'll need
+to rearrange the file tree. It won't delete the content in =STEPPATH= though.
+
+Running =step ca init --acme --context foobcontext= gives you this file-tree
+
+#+begin_quote
+.
+├── authorities
+│   └── foobcontext
+│       ├── certs
+│       │   ├── intermediate_ca.crt
+│       │   └── root_ca.crt
+│       ├── config
+│       │   ├── ca.json
+│       │   └── defaults.json
+│       ├── db
+│       ├── secrets
+│       │   ├── intermediate_ca_key
+│       │   └── root_ca_key
+│       └── templates
+├── contexts.json
+├── current-context.json
+└── profiles
+    └── foobcontext
+        └── config
+            └── defaults.json
+#+end_quote
+
++ ./profiles/foobcontext/config/defaults.json :: Empty ={}=
++ ./authorities/foobcontext/config/ca.json :: Looks like the other one
+
+Most of the relevant differences between using =--context= and not:
+
+=diff $STEPPATH/config/ca.json $STEPPATH2/authorities/foobcontext/config/ca.json=
+
+#+begin_example diff
+2c2
+<       "root": "./certs/root_ca.crt",
+---
+>       "root": "./authorities/foobcontext/certs/root_ca.crt",
+4,5c4,5
+<       "crt": "./certs/intermediate_ca.crt",
+<       "key": "./secrets/intermediate_ca_key",
+---
+>       "crt": "./authorities/foobcontext/certs/intermediate_ca.crt",
+>       "key": "./authorities/foobcontext/secrets/intermediate_ca_key",
+16c16
+<               "dataSource": "./db",
+---
+>               "dataSource": "./authorities/foobcontext/db",
+#+end_example
+
+*** List Contexts
+
+#+begin_src sh :eval no
+export STEPPATH=/tmp/foostep
+cat $(step path --base)/contexts.json | jq 'to_entries | map(.value.profile)'
+#+end_src
+
+That should be equivalent to =step context list=
+
+
+* Babel
+
+#+name: stepPath
+#+begin_src emacs-lisp :eval query
+(setq-local step-path (or (bound-and-true-p step-path)
+                          (read-string "Step path: " (make-temp-file "step-" t))))
+#+end_src
+
+#+RESULTS: stepPath
+: /tmp/step-SxOKdZ
+
+start a session
+
+#+header: :dir stepPath
+#+begin_src sh :session *guix* :results silent :eval query :async yes
+pkgs=(step-cli-bin step-ca-bin step-kms-plugin-bin sops)
+guix shell -L $HOME/.dotfiles/ellipsis -L $HOME/.dotfiles/ellipsis ${pkgs[@]}
+#+end_src
+
+test session
+
+#+begin_src sh :session *guix* :results silent :eval query
+step kms --help
+#+end_src
+
+Can't seem to use =org-babel-switch-to-session=. There aren't many [[https://emacs.stackexchange.com/questions/5293/how-to-force-an-org-babel-session-to-reset-or-initialize][answers]] on this.
+
+* Smallstep
+
+#+name: stepConfigDefaults
+#+begin_src sh :session g :results output code :wrap example json
+
+#+end_src
+
+** CLI
+
+** CA
