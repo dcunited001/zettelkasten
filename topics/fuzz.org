@@ -54,6 +54,10 @@ Here, Google recommends this GH Search:
 =DEFINE_BINARY_PROTO_FUZZER=]], this this instead searches all of github. This
 is actually very helpful.
 
+* Guix Fuzzing
+
+I can't find any other notes on this...
+
 #+begin_quote
 Ultimately, it won't make a difference ...
 
@@ -67,6 +71,39 @@ This idea is 6-12 months old though. Probably not the best workflow for fuzzing,
 but most of what I've seen doesn't direct anyone towards an efficient workflow.
 #+end_quote
 
+** Fuzzing with Nix Flakes
+
+[[https://mtlynch.io/nix-fuzz-testing-1/][Using Nix to Fuzz Test a PDF Parser]] (flake: [[https://gitlab.com/mtlynch/fuzz-xpdf/-/blob/master/flake.nix?ref_type=heads][mtlynch/fuzz-xpdf]])
+
+I had this same idea 2+ years ago, but I didn't really have time. I don't think
+anyone understood what I was talking about (on the Roanoke #infosec channel...).
+
+*** Oops Too Late. No one cared about your "idea".
+
+Above, the guy tries a similar idea, but here he writes Nix flake to build a
+single fuzzable =xpdf= package. This is still a great workflow, but it doesn't
+help much.
+
+The difference between this my idea above is that, given a derived build system
+for a language, you can quickly spec out a fuzzed build of most packages for the
+base build system. In practice, you'd need to alter the =(package...)=
+specification 40-80% of the time -- if not, your package is like literally 3-10
+lines of scheme; if so your package is like 30 lines of scheme.
+
+- a build system would make hundreds/thousands of packages fuzzable
+- these packges benefit from guix transformations
+  - so =guix shell afl-xpdf --with-branch=xpdf=devel= would let you fuzz the
+    development branch. the build should take about however long an AFL build
+    normally takes.
+
+The "valuable" part of this idea is that it simplifies the workflow for fuzzing.
+
++ you can just evaluate arbitrary =script.scm= files containing packages
++ or use =(@ (gnu packages thatbinary) (package (inherit fuzzthis-package)) ...)=
+
+In other words, you don't need to "start a project". You can just have a hunch
+that you want to fuzz something and you don't care where the packages sources
+live. It's a much less "stateful" workflow.
 
 * oss-fuzz
 
