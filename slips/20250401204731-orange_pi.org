@@ -30,9 +30,73 @@
 + [[https://github.com/orangepi-xunlong/wiringOP-Python/tree/next][orangepi-xunlong/wiringOP-python]] next branch
 + [[https://github.com/orangepi-xunlong/linux-orangepi][orangepi-xunlong/linux-orangepi]] see branches for Linux 6.6+
 
-** U-Boot
+** Linux
+
++ [[https://wiki.nixos.org/wiki/NixOS_on_ARM/Orange_Pi_5_Plus][NixOS on ARM: Orange Pi 5 Plus]]
+  - [[https://nixos.wiki/wiki/NixOS_on_ARM/Orange_Pi_5][On Orange Pi 5]]
++ [[https://rocknix.org/devices/orange-pi/orange-pi-5/][RockNix for RK3588]]. See [[https://www.youtube.com/watch?v=K3dByIl0RAs][video]]
+  - Apparently not based on Nix.
+  - Derivative of [[https://github.com/JustEnoughLinuxOS/distribution][JelOS]]? 
+
++ [[https://github.com/dvdjv/socle][dvdjv/socle]] NixOS on RK3588-based SoC (sounds like it works)
++ [[https://gitlab.com/K900/nix/-/tree/master/hacks?ref_type=heads][K900/nix ./hacks/orangepi5max]]
++ [[https://github.com/fb87/nixos-orangepi-5x][fb87/nixos-orangepi-5x]]
++ [[https://github.com/nabam/nixos-rockchip][nabam/nixos-rockchip]]
++ [[https://github.com/ryan4yin/nixos-rk3588?tab=readme-ov-file][ryan4yin/nixos-rk3588]] maybe works, comes with caveats
+  - it maybe benefits to build from Armbian (see below)
+
+#+begin_quote
+Regarding RK3588/RK3588s, a significant amount of work has been done by Armbian
+on their kernel, and device tree. Therefore, by integrating these components
+from Armbian with the NixOS rootfs, we can create a complete NixOS system.
+#+end_quote
+
+** Rockchip RK3588
+
++ [[https://www.rock-chips.com/uploads/pdf/2022.8.26/192/RK3588%20Brief%20Datasheet.pdf][Datasheet]]
++ [[https://docs.radxa.com/en/compute-module/cm5/radxa-os/mali-gpu][Switch GPU Driver]] from Mali to Panthor (OpenGL compatibility info)
+  - you want mali: OpenGL ES + OpenCL + 8K HDMI
+
+*** UEFI
+
+This seems to be the way to go. It's a bit complicated though.
+
++ [[https://github.com/edk2-porting/edk2-rk3588][edk2-porting/edk2-rk3588]]
+
+*** TF-A
+
+Collabora posts:
+
++ [[https://www.collabora.com/news-and-blog/blog/2024/02/21/almost-a-fully-open-source-boot-chain-for-rockchips-rk3588/][Almost a fully open-source boot chain for Rockchip's RK3588]]
++ [[https://www.collabora.com/news-and-blog/news-and-events/kernel-613-a-flawless-end-of-the-year.html][Kernel 6.13: A flawless end of the year]]
+
+rk3588 early boot details:
+
++ [[https://soliddowant.github.io/2024/01/23/rk3588-cluster-4][RK3588 Cluster Part 4: RK3588 boot process and U-Boot NVMe support]]
+
+Guix [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/packages/firmware.scm?h=master#n1190][arm-trusted-firmware-rk3588]]
+
+*** U-Boot
 
 + [[https://docs.u-boot.org/en/latest/board/rockchip/index.html][U-Boot Board-Specific Doc for Rockchip]]
+
+Don't soft-brick by faulty u-boot to eMMC: [[https://community.mnt.re/t/guix-and-reform/173/43][Guix and Reform]]
+
++ Collabora Forum: [[RK3588 Mainline Kernel support][Mainline Kernel Support]] (rk3588 features)
+
+*** MNT Reform
+
+An open platform that can run on a RK 3588Q chip ([[https://mntre.com/documentation/reform-rcore-rk3588-manual.pdf][specs]])
+
++ [[https://floss.social/@vagrantc/114154024787459911][floss.social thread]]
+  + lykso/mnt-reform-nonguix #4 [[https://issues.guix.gnu.org/48266][Support dynamic loading of modules from initrd]]
+    - [[https://codeberg.org/lykso/mnt-reform-nonguix/pulls/4/files#diff-941ef2783739952cd525f040bb389b1cfd9a1c2f][./mnt-reform/rk3588/templates/reform2.tmpl]]
+    - "code is a translation of [[https://source.mnt.re/reform/reform-rk3588-uboot/-/blob/main/build.sh?ref_type=heads][reform/reform-rk3588-uboot]]"
+
++ Guix [[https://issues.guix.gnu.org/77090][patch to add linux-libre mnt/reform variant]]
+
++ [[https://source.mnt.re/reform/reform-tools/-/blob/1.69/initramfs-tools/reform.conf?ref_type=tags][modules needed for initramfs]] on MNT Reform hardware (open platform that can
+  run on rk3588)
 
 *** Device Tree
 
@@ -40,7 +104,7 @@ A lot of info for Device Tree setup is required to build a custom information.
 This maps the operating system to the hardware componets (and the drivers...)
 
 + [[https://github.com/devicetree-org/devicetree-specification/releases/download/v0.4/devicetree-specification-v0.4.pdf][device-tree-specification-v0.4]]
-  
+
 *** Misc
 
 + [[U-Boot Reference Manual][2011 U-Boot Reference Manual]]
@@ -201,6 +265,18 @@ And some other armv7-a files
 
 
 ** Guix
+
+*** Rockchip System
+
++ [[https://codeberg.org/fishinthecalculator/guix-deployments/src/ee5f8d7b2cfc8b44a0f7de4049f95f2fb0a05615/modules/fishinthecalculator/tarapia/system/config.scm#L59-L65][fishinthecalculator/guix-deployments]] (author of gocix & sops) has a pinebook
+  system running on =rk3399= with a few build variants. There's some
+  tooling/scripts in the its system directory.
+
+  + It extends the =u-boot-pinebook-pro-rk3399-bootloader=
+  + Both systems specify a list of =initrd-modules= for the hardware
+  + I don't see any =devicetree= config (which may be completely in-tree for the
+    Arm kernel kernel)
+
 
 *** U-Boot
 
