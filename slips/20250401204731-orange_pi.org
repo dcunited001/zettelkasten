@@ -39,9 +39,11 @@ I'll create headings for those.
 + [[https://github.com/orangepi-xunlong/linux-orangepi][orangepi-xunlong/linux-orangepi]] see branches for Linux 6.6+
 
 * Resources
+
 * Issues
 
-* Topics 
+* Topics
+
 ** Kernel
 
 *** ubuntu-rockchip
@@ -298,12 +300,13 @@ This maps the operating system to the hardware componets (and the drivers...)
 
 Unrelated to the specific hardware, but lots of images detailing the U-Boot
 process: [[https://ww1.microchip.com/downloads/aemDocuments/documents/MPU64/ProductDocuments/SupportingCollateral/Booting_Application_Workloads_on_PIC64GX_White_Paper.pdf][Booting Application Workloads (including Linux) on Microchip PIC64GX]]
+
 ** Resources
+
 ** Topics
 
 
 * Orange Pi 5 Plus
-
 
 + The OrangePi 5x boards are too good for the price.
 + Quite a lot of chinese blobs in the builds though.
@@ -333,16 +336,122 @@ available at different points after boot.
 
 The source for pinouts is the [[http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_5_Plus#40_pin_interface_GPIO.2C_I2C.2C_UART.2C_SPI.2C_CAN_and_PWM_test][Orange Pi 5 Plus wiki]].
 
-**** Main
+#+begin_quote
+CAVEAT PINTOR: Beware of fat fingers.
+#+end_quote
+
+**** Voltage
+
+|-------+-----+-----+-----+---+----+-----+----+----+----+----+----|
+| Pin   |   1 |   2 |   4 | 9 | 14 |  17 | 20 | 25 | 30 | 34 | 39 |
+|-------+-----+-----+-----+---+----+-----+----+----+----+----+----|
+| Value | 3.3 | 5.0 | 5.0 | G |  G | 3.3 |  G |  G |  G |  G |  G |
+|-------+-----+-----+-----+---+----+-----+----+----+----+----+----|
 
 **** UART
 
-UARTs available
+|------+-----------------|
+| RX   | Receive         |
+| TX   | Transmit        |
+| RTSN | Request To Send |
+| CTSN | Clear To Send   |
+|------+-----------------|
 
-| UART1 | UART3 | UART4 | UART
+6 Total UARTs available
+
+|-------+-------+-------+-------+-------+-------|
+| UART1 | UART3 | UART4 | UART6 | UART7 | UART8 |
+|-------+-------+-------+-------+-------+-------|
+
+UART Pins:
+
+|----------+----+----+-----+-----+----------|
+| UART bus | RX | TX | RTS | CTS | DTBO     |
+|----------+----+----+-----+-----+----------|
+| UART1_M1 | 27 | 28 |   7 |  29 | uart1-m1 |
+| UART3_M1 | 18 | 16 |     |     | uart3-m1 |
+| UART4_M2 | 19 | 23 |     |     | uart4-m2 |
+| UART6_M1 | 10 |  8 |  22 |  32 | uart6-m1 |
+| UART7_M2 | 24 | 26 |     |     | uart7-m2 |
+| UART8_M1 | 40 | 35 |  38 |  36 | uart8-m1 |
+|----------+----+----+-----+-----+----------|
+
++ The 4th column is the corresponding configuration in DTBO
++ I added the =RTSN= and =CTSN= from the pinout diagram on the main product overview
+
+**** CAN Bus
+
++ Must be enabled in hardware
+
+|------------+-----+----------|
+| CAN        | Pin | Move PWM |
+|------------+-----+----------|
+| CAN0_RX_M0 |   3 | PWM1_M0  |
+| CAN0_TX_M0 |   5 | PWM0_M0  |
+|------------+-----+----------|
+
+**** PWM
+
+The PWMs are more consistently identified by their register value.
+
+|----------+----------+-----+----------+----------+---------+----------|
+| Register | PWM      | Pin | DTBO     | Alt PWM  | Alt PIN | Alt DBTO |
+|----------+----------+-----+----------+----------+---------+----------|
+| fd8b0000 | PWM0_M0  |   5 | pwm0-m0  | PWM0_M2  |      22 | pwm0-m2  |
+| fd8b0010 | PWM1_M0  |   3 | pwm1-m0  | PWM1_M2  |      32 | pwm1-m2  |
+| febe0030 | PWM11_M0 |  12 | pwm11-m0 |          |         |          |
+| febf0000 | PWM12_M0 |  14 | pwm12-m0 |          |         |          |
+| febf0010 | PWM13_M0 |  16 | pwm13-m0 |          |         |          |
+| febf0020 | PWM14_M0 |  33 | pwm14-m0 | PWM14_M2 |       7 | pwm14-m0 |
+|----------+----------+-----+----------+----------+---------+----------|
+
+The main pinout image identifies =PWM11= as =PWM11_IR_M0=
+
+Use =orangepi-config= to enable the Alt PIN Configuration.
+
++ =PWM0_M0= and =PWM0_M2=
++ =PWM1_M0= and =PWM1_M2=
++ =PWM14_M0= and =PWM14_M2=
+  
+These PWM pin configs "cannot be used at the same time. They are all the same
+PWM, but they are connected to different pins. Please don’t think that they are
+two different PWM bus."
+
+After enabling the =PWM= pins, then reboot and check =/sys/class/pwm/pwmchipX=,
+where the numbering _does not at all_ correspond to the pins.
 
 **** SPI
 
+|---------+------+------+-----+-----+------|
+| SPI Bus | MOSI | MISO | CLK | CS0 |  CS1 |
+|---------+------+------+-----+-----+------|
+| SPI0_M2 |   19 |   21 |  23 |  24 |   26 |
+| SPI4_M1 |   12 |   31 |  35 |  40 |   38 |
+| SPI4_M2 |    8 |   10 |  22 |  31 | none |
+|---------+------+------+-----+-----+------|
+
+DTBO configuration
+
+|---------+--------------------+--------------------+------------------------|
+| SPI0_M2 | spi0-m2-cs0-spidev | spi0-m2-cs1-spidev | spi0-m2-cs0-cs1-spidev |
+| SPI4_M1 | spi4-m1-cs0-spidev | spi4-m1-cs1-spidev | spi4-m1-cs0-cs1-spidev |
+| SPI4_M2 | spi4-m2-cs0-spidev |                    |                        |
+|---------+--------------------+--------------------+------------------------|
+
+#+begin_quote
+_For SPI4_M1_: In the Linux System, Pin 40 is closed by default. It needs to be
+opened manually using =orangepi-config=
+#+end_quote
+
+**** I2C
+
+|---------+---------+---------+---------+---------+---------|
+| I2C bus | I2C2_M0 | I2C2_M4 | I2C4_M3 | I2C5_M3 | I2C8_M2 |
+|---------+---------+---------+---------+---------+---------|
+| SDA     |       3 |      10 |      22 |      27 |      29 |
+| SCL     |       5 |       8 |      32 |      28 |       7 |
+| DTBO    | i2c2-m0 | i2c2-m4 | i2c4-m3 | i2c5-m3 | i2c8-m2 |
+|---------+---------+---------+---------+---------+---------|
 
 
 *** Hardware Functions
