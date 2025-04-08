@@ -1,0 +1,446 @@
+:PROPERTIES:
+:ID:       40dcb082-52a4-436c-b13a-975d3bd27cef
+:END:
+#+TITLE: Orange Pi: Firmware, u-boot, rkdevtool and SPI Flash
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:35cdd063-b646-4141-83ea-fcac8b337875][Orange Pi]]
++ [[id:708d6f59-64ad-473a-bfbb-58d663bde4f0][IoT]]
+
+* Docs
++ [[https://github.com/rockchip-linux/rkdeveloptool][rockchip-linux/rkdeveloptool]]
+  - radxa: [[https://docs.radxa.com/en/rock5/lowlevel-development/bootloader_spi_flash?method=simple][Flash BootLoader to SPI Nor Flash]] and [[https://docs.radxa.com/en/compute-module/cm3/low-level-dev/rkdeveloptool][rkdeveloptool]]
++ Usage: [[https://github.com/rockchip-linux/u-boot/blob/2687dce2617032930f2c43fef349bdea694c6f68/doc/README.rockusb#L31-L47][update TF-A and u-boot]] (general) and for [[https://github.com/rockchip-linux/u-boot/blob/2687dce2617032930f2c43fef349bdea694c6f68/board/rockchip/evb_rk3399/README#L94-L113][evb_rk3399]]
++ Instructions for [[http://www.orangepi.org/orangepiwiki/index.php/Orange_Pi_5_Plus#How_to_use_the_debugging_serial_port][clearing SPI Flash on Windows]] (using Gui RK Dev Tool)
+  - the device setup is the same
++ [[https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_table_header_(LBA_1)][GPT: Partition table header]]
+
+* Resources
+
+** Device Tree
+
++ [[https://www.horan.hk/blog/firmware-extract-gpl-part2/][Methods of extracting firmware from IoT devices]] (part 2)
+
+** Armbian forums
+
++ [[https://forum.armbian.com/topic/49922-orange-pi-5-bricked/][Orange Pi 5 Bricked]]
++ [[https://forum.armbian.com/topic/26418-maskrom-erase-spi/#comment-175057][Maskrom / erase SPI]]
+  - This thread seems to imply you can use the Radxa SPL loader image for Orange
+    Pi. By size, the two bins are similar. However, [[https://medium.com/@tunacici7/first-stage-loaders-bios-u-efi-iboot1-u-boot-spl-5c0bee7feb15][their devicetrees may
+    differ]]... I'm assuming the =rkdeveloptool= uses functionality in the SPI
+    protocol (or MaskROM) to acquire some details.
+
+* Setup
+
+Run =guix shell rkdeveloptool binwalk= and run =rkdeveloptool -h= to see options
+
+I was going to run the commands in an org-babel session ... but that's probably
+a bad idea.
+
+** Connect Device
+
++ Connect USB-C to =USB-C Data=
++ Press/hold =MaskROM=
++ Connect USB-C to =USB-C Power=, power on
++ Release =MaskROM=
+
+** Connect rkdeveloptool
+
+Check that device is available
+
+#+begin_src sh :eval no
+rkdeveloptool ld
+# DevNo=1 Vid=0x2207,Pid=0x350b,LocationID=102    Maskrom
+#+end_src
+
+*** Download SPL loader
+
+Everything except =ld= fails. 
+
++ According to [[https://github.com/rockchip-linux/rkdeveloptool/issues/69][#69]], you need to run =db= first to push the =loader.bin= onto the
+  board. I originally assumed this would extract [part of] the firmware, but
+  this initializes the hardware with an SPL loader.
++ I guess the MaskROM mode halts the boot process. When you run =db $loader=,
+  you're sending an alternate first-phase bootloader.
++ AFAIK, the =ul $loader= command will burn the image into SPI flash. Otherwise,
+  it's just running the SPL =$loader= as a program.
+
+*** Check device
+
+After =db $loader=, try =rkdeveloptool td= to check the device (not sure what tests
+are actually run here)
+
+* Usage
+
++ rkdeveloptool db $image :: save boot from device to bootloader
++ rkdeveloptool wl $sectorStart $sectorLength :: write file to bootloader
+  storage
+
+ 
+
+Chip Info
+
+#+begin_example shell
+rkdeveloptool rci
+# Chip Info:  38 38 35 33 A0 1 2A 2 0 80 3E 0 10 10 64 69
+
+rkdeveloptool rcb
+# Capability:2F 03 00 00 00 00 00 00
+# Direct LBA:     enabled
+# Vendor Storage: enabled
+# First 4m Access:        enabled
+# Read LBA:       enabled
+# Read Com Log:   enabled
+# Read IDB Config:        enabled
+# New IDB:        enabled
+#+end_example
+
+*** Active Storage
+
+=eMMC= storage defaults to active.
+
++ The radxa guide implies that storage can't be selected by hardware (may be a
+  limitation of their hardware or their SPL Loader bin)
+
+#+begin_example shell
+rkdeveloptool rid
+# Flash ID: 45 4D 4D 43 20
+
+rkdeveloptool rfi
+# Flash Info:
+#         Manufacturer: SAMSUNG, value=00
+#         Flash Size: 238552 MB
+#         Flash Size: 488554496 Sectors
+#         Block Size: 512 KB
+#         Page Size: 2 KB
+#         ECC Bits: 0
+#         Access Time: 40
+#         Flash CS: Flash<0>
+
+rkdeveloptool ppt
+# Not found any partition table!
+#+end_example
+
+Change to =SPI Nor=:
+
+#+begin_example shell
+# ChangeStorage:          cs [storage: 1=EMMC, 2=SD, 9=SPINOR]
+rkdeveloptool cs 9
+#+end_example
+
+Dump the partition table, which gives the LBA Offsets
+
+#+begin_example shell
+rkdeveloptool ppt
+# **********Partition Info(GPT)**********
+# NO  LBA       Name
+# 00  00000040  idbloader
+# 01  00000400  uboot
+#+end_example
+
+Check the =SPI Nor= data
+
+#+begin_example shell
+rkdeveloptool rid
+# Flash ID: 4E 4F 52 20 20
+
+rkdeveloptool rfi
+# Flash Info:
+#        Manufacturer: SAMSUNG, value=00
+#        Flash Size: 16 MB
+#        Flash Size: 32768 Sectors
+#        Block Size: 64 KB
+#        Page Size: 2 KB
+#        ECC Bits: 0
+#        Access Time: 40
+#        Flash CS: Flash<0>
+#+end_example
+
+*** GPT Table
+
+Extract the =MBR+GPT= Header.
+
++ 0x0000 sector :: MBR
++ 0x0001 sector :: GPT
+
+#+begin_example sh
+rkdeveloptool rl 0x0000 2 $img
+# cat $img | xxd
+#+end_example
+
+Parse the header with =sfdisk -d $img= to display info on truncated disk .... hmmm
+seems to validate some aspects of the disk.
+
+#+begin_example yaml
+# GPT PMBR size mismatch (8191 != 1) will be corrected by write.
+label: dos
+label-id: 0x00000000
+device: 20250408_lba0.img
+unit: sectors
+grain: 512
+sector-size: 512
+20250408_lba0.img1 : start=           1, size=           1, type=ee
+#+end_example
+
+Extract the full image
+
+#+begin_example sh
+rkdeveloptool rl 0x0000 32768 $fullimg
+#+end_example
+
+Dump GPT header to json
+
+#+begin_src sh :results output code :wrap src json :eval query
+sfdisk --json $fullimg
+#+end_src
+
+#+RESULTS:
+#+begin_src json
+{
+   "partitiontable": {
+      "label": "gpt",
+      "id": "FC962DFA-7504-4678-A999-D219793C10EC",
+      "device": "full-spi.img",
+      "unit": "sectors",
+      "firstlba": 34,
+      "lastlba": 8158,
+      "sectorsize": 512,
+      "partitions": [
+         {
+            "node": "full-spi.img1",
+            "start": 64,
+            "size": 960,
+            "type": "0FC63DAF-8483-4772-8E79-3D69D8477DE4",
+            "uuid": "9B647F18-6CFB-4F5C-B33D-9799543E1A02",
+            "name": "idbloader"
+         },{
+            "node": "full-spi.img2",
+            "start": 1024,
+            "size": 6144,
+            "type": "0FC63DAF-8483-4772-8E79-3D69D8477DE4",
+            "uuid": "BF621326-6273-4F65-81A8-3AC2F0686FD7",
+            "name": "uboot"
+         }
+      ]
+   }
+}
+#+end_src
+
+*** Binwalk
+
+=binwalk -Me $fullimg=
+
+#+begin_example text
+Scan Time:     2025-04-08 19:02:25
+Target File:   full-spi.img
+MD5 Checksum:  9881c035932b9e31dc22be03c4700e80
+Signatures:    411
+
+DECIMAL       HEXADECIMAL     DESCRIPTION
+--------------------------------------------------------------------------------
+253624        0x3DEB8         CRC32 polynomial table, little endian
+328280        0x50258         Flattened device tree, size: 6809 bytes, version: 17
+524288        0x80000         Flattened device tree, size: 1975 bytes, version: 17
+1335116       0x145F4C        CRC32 polynomial table, little endian
+1429259       0x15CF0B        Android bootimg, kernel size: 1919249152 bytes, kernel addr: 0x5F6C656E, ramdisk size: 1919181921 bytes, ramdisk addr: 0x5700635F, product name: ""
+1997312       0x1E7A00        Flattened device tree, size: 21304 bytes, version: 17
+2146304       0x20C000        Flattened device tree, size: 13605 bytes, version: 17
+#+end_example
+
+So there are four device trees. Then, with =binwalk -cf $csv -e $fullimg=
+
+#+begin_src sh :results output code :wrap example sh :eval query
+p=/tmp/tmp.WJgyO3457v
+img=full.img
+csv=/tmp/fdsa.log
+i=0
+grep -e device $csv |\
+    sed -E 's/([0-9]+),.*size: ([0-9]+) bytes.*/\1 \2/g' |\
+while read dtoffset dtsize; do
+  i="$((i + 1))"
+#  echo $i: $dtoffset $dtsize
+  fname="$p/$(basename $p/$img .img).$i.dtb"
+  echo dd if=$p/$img of=$fname bs=1 skip=$dtoffset count=$dtsize
+done
+#+end_src
+
+#+RESULTS:
+#+begin_example sh
+dd if=/tmp/tmp.WJgyO3457v/full.img of=full.1.dtb bs=1 skip=328280 count=6809
+dd if=/tmp/tmp.WJgyO3457v/full.img of=full.2.dtb bs=1 skip=524288 count=1975
+dd if=/tmp/tmp.WJgyO3457v/full.img of=full.3.dtb bs=1 skip=1997312 count=21304
+dd if=/tmp/tmp.WJgyO3457v/full.img of=full.4.dtb bs=1 skip=2146304 count=13605
+#+end_example
+
+... and copy the =dd= commands and run.
+
+*** Device Tree
+
+#+begin_src sh :results output :eval query
+p=/tmp/tmp.WJgyO3457v
+prefix=full
+cd $p
+
+for f in $prefix.{1,2,3,4}.dtb; do
+    fout="$(basename $f .dtb).dts"
+    dtc -s -I dtb $f -O dts -o $fout
+done
+#+end_src
+
+
+* Issues
+
+hmmm need to fixup everything in this heading
+
+** TODO Finish Notes
+
+
+*** Tasks
+
++ [ ] read from SPI Flash
++ [ ] binwalk -Me
++ [ ] extract GPT partition table
+
+*** Targeting devices
+
+The radxa notes state that =rkdeveloptool= can't select devices to write to,
+though the CLI shows the =ld= command......
+
+*** Extracting offsets
++ The Flash stores images within a GPT partition.
+
++ After =db $image=, then you should be able to add the device as loopback and
+  inspect its partition structure to find offsets
++ The u-boot image usually contains both the firmware and the bootloader.
+
+** Reset Device into MaskROM mode
+
+Apparently [[https://github.com/rockchip-linux/rkdeveloptool/issues/43#issuecomment-555286351][rkdeveloptool rd 3]] reboots into MaskROM mode ... (need to verify in
+the C source)
+** Guix Shell
+
++ Requires sudo/hardware access
++ Probably needs a wrapper script to [[https://www.draketo.de/software/guix-work.html#run-in-ontainer][run in container]], but with hardware access.
+
+*** Pass through USB Device
+
+Get the bus/device
+
+#+begin_src sh :results output
+vendor=2207 # Rockchip
+busid="$(lsusb | grep $vendor | sed -E 's/^Bus ([0-9]+).*$/\1/g')"
+devid="$(lsusb | grep $vendor | sed -E 's/^Bus.*Device ([0-9]+).*$/\1/g')"
+devpath="/dev/bus/usb/$busid/$devid"
+
+echo $devpath
+#+end_src
+
+#+RESULTS:
+: /dev/bus/usb/001/010
+
+*** rkdeveloptool build
+
+**** Via AUR:
+
+Version 1.32: adds =cs= command?
+
+#+begin_quote
+linux-vdso.so.1 (0x000072488157f000)
+libusb-1.0.so.0 => /usr/lib/libusb-1.0.so.0 (0x00007248813d1000)
+libstdc++.so.6 => /usr/lib/libstdc++.so.6 (0x0000724881000000)
+libgcc_s.so.1 => /usr/lib/libgcc_s.so.1 (0x00007248813a3000)
+libc.so.6 => /usr/lib/libc.so.6 (0x0000724880e0e000)
+libudev.so.1 => /usr/lib/libudev.so.1 (0x000072488135c000)
+/lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x0000724881581000)
+libm.so.6 => /usr/lib/libm.so.6 (0x0000724880d16000)
+libcap.so.2 => /usr/lib/libcap.so.2 (0x000072488134e000)
+#+end_quote
+
+**** Via Guix
+
+Version 1.3
+
+#+begin_quote
+linux-vdso.so.1 (0x00007b4957f55000)
+libusb-1.0.so.0 => /gnu/store/4gqfvdiz8zrf7kx0zwq7j94acdgkzszd-libusb-1.0.25/lib/libusb-1.0.so.0 (0x00007b4957f31000)
+libstdc++.so.6 => /gnu/store/d69awcc5wahh71amx0dmgaimsdvvp2bg-gcc-11.4.0-lib/lib/libstdc++.so.6 (0x00007b4957c00000)
+libm.so.6 => /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/libm.so.6 (0x00007b4957e51000)
+libgcc_s.so.1 => /gnu/store/d69awcc5wahh71amx0dmgaimsdvvp2bg-gcc-11.4.0-lib/lib/libgcc_s.so.1 (0x00007b4957e37000)
+libc.so.6 => /gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/libc.so.6 (0x00007b4957a22000)
+/gnu/store/hw6g2kjayxnqi8rwpnmpraalxi0djkxc-glibc-2.39/lib/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007b4957f57000)
+#+end_quote
+** Babel
+
+#+name: spiPath
+#+begin_src emacs-lisp :eval query :cache yes
+(setq-local spi-path (or (bound-and-true-p spi-path)
+                         (read-string "SPI path: " (make-temp-file "spi-" t))))
+#+end_src
+
+#+RESULTS[c8bf8b1f4e9255aefd0f4f9f3671f961bb8a067b]: spiPath
+: /tmp/spi-6djkEd
+
+Start a session.
+
++ For some reason, =guix shell= without clearing out =GUIX_PROFILE= is setting up
+  the path incorrectly (babel is doing something else). Using =--pure= leaves me
+  without some essential tools.
++ =:dir spiPath= isn't working...
+
+# +header: :dir spiPath
+
+#+begin_src sh :session *spi* :eval query :async yes :var spiPath=spiPath
+cd $spiPath
+pkgs=(rkdeveloptool binwalk)
+guix shell ${pkgs[@]}
+
+# fix path
+PATH=${GUIX_ENVIRONMENT}/bin:$PATH
+#+end_src
+
+#+RESULTS:
+: bash: bind: warning: line editing not enabled
+: bash: bind: warning: line editing not enabled
+: bash: bind: warning: line editing not enabled
+: bash: bind: warning: line editing not enabled
+: bash: bind: warning: line editing not enabled
+: direnv: unloading
+: $ $ $ $
+
+Test session
+
++ The =line editing not enabled= warning may be causing problems.
++ The process may emit some weird control characters, so maybe this won't work.
+
+#+begin_src sh :session *spi* :eval no :results output verbatim
+rkdeveloptool -h | tr -d '\r'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+---------------------Tool Usage ---------------------
+Help:                   -h or --help
+Version:                -v or --version
+ListDevice:             ld
+DownloadBoot:           db <Loader>
+UpgradeLoader:          ul <Loader>
+ReadLBA:                rl  <BeginSec> <SectorLen> <File>
+WriteLBA:               wl  <BeginSec> <File>
+WriteLBA:               wlx  <PartitionName> <File>
+WriteGPT:               gpt <gpt partition table>
+WriteParameter:         prm <parameter>
+PrintPartition:         ppt
+EraseFlash:             ef
+TestDevice:             td
+ResetDevice:            rd [subcode]
+ReadFlashID:            rid
+ReadFlashInfo:          rfi
+ReadChipInfo:           rci
+ReadCapability:         rcb
+PackBootLoader:         pack
+UnpackBootLoader:       unpack <boot loader>
+TagSPL:                 tagspl <tag> <U-Boot SPL>
+-------------------------------------------------------
+#+end_example
