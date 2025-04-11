@@ -57,8 +57,138 @@ See [[id:bd7dd6c8-7035-4e7a-b730-0d7f9c61ef9f][DC Guix]] or the backlinks.
 
 * Topics
 
-** Programming Langauges
+** Docs
 
+The =texi= build calls into =./doc/build.scm=. This file leverages a lot of
+scheme-fu and tricks from =./guix/gexp.scm=.
+
+It would be nice to give some of the subordinate Guix channels some of the same
+treatment as the main Guix channel. For now, this mostly means that you'd get 10
+levels of rainbow parens in the HTML docs, but that beats the snot out of the
+Texinfo PDFs, which do not utilize any syntax highlighting. This is alright, but
+... it really helps me to grok things.
+
+This is really a non-issue, as (at least in the next few years) the smaller
+channels outside of Guix proper will usually contribute their source code into
+Guix (e.g. =gocix= has patches in the works for its =oci= contributions)
+
+However, later on, it may make sense to do something with
+=guile-syntax-highlighting= and =wasm=, considering there's a considerable amount of
+work going into Guile's support for wasm. Thus, such work would be more a
+contribution towards Guile than Guix.
+
+*** Syntax Highlighting
+
+The scheme in the Guix docs is highlighted via =guile-syntax-highlight= in
+[[https://git.savannah.gnu.org/cgit/guix.git/tree/doc/build.scm][doc/build.scm]]:
+
++ [[https://git.savannah.gnu.org/cgit/guix.git/tree/doc/build.scm?h=master#n792][html-manual]] calls [[https://git.savannah.gnu.org/cgit/guix.git/tree/doc/build.scm?h=master#n884][syntax-highlighted-html]] which is defined [[https://git.savannah.gnu.org/cgit/guix.git/tree/doc/build.scm?h=master#n354][here]]
++ This uses =with-extensions= (defined in [[https://git.savannah.gnu.org/cgit/guix.git/tree/guix/gexp.scm?h=master#n1458][guix/gexp.scm]]) which basically decorates
+  =body= with =extensions= so that the guile scheme can locate definitions for code
+  without necessarily containing their definitions in the global scheme
+  environment.
+
+*** build.scm structure
+
+This is a script and not a module itself:
+
++ There is no =(define-module ...)= form
++ So umm ... nothing is exported
+
+After defining some =%top-level-identifiers=, the =./doc/build.scm= has these
+top-level entry points:
+
++ =(define (tex-manual-images source) ...)=
++ =(define* (tex-manual-source source #:key ...) ...)=
++ =(define (normalize-language-code language) ...)=
++ =(define* (html-manual-identifier-index manual base-url #:key ...) ...)=
++ =(define* (html-identifier-indexes manual directory-suffix #:key ...) ...)=
++ =(define* (syntax-highlighted-html input #:key ...) ...)=
++ =(define* (stylized-html source input #:key ...) ...)=
++ =(define* (html-manual source #:key (languages %languages) #:key ...) ...)=
++ =(define* (pdf-manual source #:key (languages %languages) #:key ...) ...)=
++ =(define* (guix-manual-text-domain source #:optional ...) ...)=
++ =(define* (localization-helper-module source #:optional ...) ...)=
++ =(define* (html-manual-indexes source #:key ...) ...)=
++ =(define* (pdf+html-manual source) #:key ...) ...)=
++ =(define (latest-commit+date directory) ...)=
++ =(define guile-manual ...)=
++ =(define (for-all-languages index) (map ... ) %languages)=
++ =(define guile-mono-node-indexes (for-all-languages ...))=
++ =(define guile-split-node-indexes (for-all-languages ...))=
++ =(define (merge-index-alists alist1 alist2) ...)=
+
+And =%languages= refers to human langauges  
+
+The final top-level sexp calls into these definitions:
+
+#+begin_src scheme
+(let* ((root (canonicalize-path
+              (string-append (current-source-directory) "/..")))
+       (commit date (latest-commit+date root))
+       (version (or (getenv "GUIX_MANUAL_VERSION")
+                    (string-take commit 7)))
+       (select? (let ((vcs? (git-predicate root)))
+                  (lambda (file stat)
+                    (and (vcs? file stat)
+                         ;; Filter out this file.
+                         (not (string=? (basename file) "build.scm"))))))
+       (source (local-file root "guix" #:recursive? #t
+                           #:select? select?)))
+
+  (define guix-manual
+    (html-manual source
+                 #:manual "guix"
+                 #:version version
+                 #:date date))
+
+  (define guix-mono-node-indexes
+    ;; Alist of indexes for GUIX-MANUAL, where each key is a language code and
+    ;; each value is a file-like object containing the identifier index.
+    (html-identifier-indexes guix-manual ""
+                             #:manual-name "guix"
+                             #:base-url (if (string=? %manual "guix")
+                                            (const "")
+                                            (cut string-append
+                                              "/manual/devel/" <>))
+                             #:languages %languages))
+
+  (define guix-split-node-indexes
+    ;; Likewise for the split-node variant of GUIX-MANUAL.
+    (html-identifier-indexes guix-manual "/html_node"
+                             #:manual-name "guix"
+                             #:base-url (if (string=? %manual "guix")
+                                            (const "")
+                                            (cut string-append
+                                              "/manual/devel/" <>
+                                              "/html_node"))
+                             #:languages %languages))
+
+  (define mono-node-indexes
+    (merge-index-alists guix-mono-node-indexes guile-mono-node-indexes))
+
+  (define split-node-indexes
+    (merge-index-alists guix-split-node-indexes guile-split-node-indexes))
+
+  (format (current-error-port)
+          "building manual from work tree around commit ~a, ~a~%"
+          commit
+          (let* ((time (make-time time-utc 0 date))
+                 (date (time-utc->date time)))
+            (date->string date "~e ~B ~Y")))
+
+  (pdf+html-manual source
+                   ;; Always use the identifier indexes of GUIX-MANUAL and
+                   ;; GUILE-MANUAL.  Both "guix" and "guix-cookbook" can
+                   ;; contain links to definitions that appear in either of
+                   ;; these two manuals.
+                   #:mono-node-indexes mono-node-indexes
+                   #:split-node-indexes split-node-indexes
+                   #:version version
+                   #:date date))
+#+end_src
+
+** Programming Langauges
 ** CWT: [[https://www.commonwl.org/][Common Workflow Language]]
 
 "An open standard for describing analysis workflows."

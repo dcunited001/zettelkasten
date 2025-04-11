@@ -1,0 +1,91 @@
+:PROPERTIES:
+:ID:       28655ffc-2d0a-4ce8-a780-bc0df3a4f043
+:END:
+#+TITLE: Emacs: VSCode Snippets
+#+description: For a great good
+
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:18d07822-9dda-4430-85a1-f7eb39f40429][VSCode]]
+
+
+
+* Extensions
+
+These require some massaging. Basically, one =jq= query on keys to extract
+filenames and a for loop to fill =[.body,.prefix,.description]= into one file
+each. After that, some munging, since the format is not 100% compatible with
+yasnippet (though both are based on textmate)
+
+** svenbecker/vscode-pytorch
+
++ [[https://raw.githubusercontent.com/SvenBecker/vscode-pytorch/refs/heads/master/snippets/pytorch.json][pytorch.json]]
++ [[https://raw.githubusercontent.com/SvenBecker/vscode-pytorch/refs/heads/master/snippets/torchvision.json][torchvision.json]]
+
+** run-at-scale/vscode-terraform-doc-snippets
+
++ [[https://raw.githubusercontent.com/run-at-scale/vscode-terraform-doc-snippets/refs/heads/master/snippets/terraform.json][terraform.json]]
+
+8,000 of these, apparently. 4 years old, but unlikley to have changed -- the
+Terraform module APIs are derivative from the Cloud APIs. The former abstracts
+changes in the latter (more or less). It was generated from Terraform examples.
+
+** ericsia/vscode-python-snippet-pack-2.0
+
++ [[https://github.com/ericsia/vscode-python-snippet-pack-2.0/tree/master/snippets][./snippets]]
+
+
+
+* Dammit Babel
+
+#+name: extQuery
+#+begin_example json
+{"assetTypes":["Microsoft.VisualStudio.Services.Icons.Default","Microsoft.VisualStudio.Services.Icons.Branding","Microsoft.VisualStudio.Services.Icons.Small"],"filters":[{"criteria":[{"filterType":8,"value":"Microsoft.VisualStudio.Code"},{"filterType":10,"value":"snippets"},{"filterType":12,"value":"37888"}],"direction":2,"pageSize":54,"pageNumber":1,"sortBy":0,"sortOrder":0,"pagingToken":null}],"flags":870}
+#+end_example
+
+ "map([.owner.login, .name, .size])[] | @csv"
+
+#+name: extResult
+#+headers: :var q=extQuery
+#+begin_src restclient :jq . :results value code :wrap example json :jq-args "--raw-output"
+:ms-url = _apis/public/gallery/extensionquery?api-version=7.2-preview.1
+:ms-url-base = https://marketplace.visualstudio.com
+
+:headers = <<
+Accept: application/json; api-version=7.2-preview.1; excludeUrls=true
+Content-Type: application/json
+
+POST :ms-url-base/:ms-url
+:headers
+:q
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "(.owner.login)")
+#+end_src
+
+#+RESULTS: extResult
+#+begin_example json
+{
+  "type": "https://tools.ietf.org/html/rfc7231#section-6.5.13",
+  "title": "Unsupported Media Type",
+  "status": 415,
+  "traceId": "00-19f53edabf5856c6a43fb097d4bfc9bd-b00841ab1a95215e-00"
+}
+#+end_example
+
+
+#+begin_src sh :var data=extQuery :results output code :wrap example json
+
+url=https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery?api-version=7.2-preview.1
+curl -d $data -H 'Content-Type: application/json' $url |\
+    jq '.results[]'
+
+#+end_src
+
+#+RESULTS:
+#+begin_example json
+3
+#+end_example
