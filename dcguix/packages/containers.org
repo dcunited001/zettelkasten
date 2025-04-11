@@ -1,0 +1,117 @@
+:PROPERTIES:
+:ID:       f55d8d2a-e58a-4445-a7af-53a901a7895f
+:END:
+#+TITLE: DC Guix: Nonguix Containers
+#+CATEGORY: dcguix
+#+TAGS:
+
+These notes are likely incomplete.
+
+I'm trying to figure out how to ensure VSCode runs (with the annoyingly
+"necessary?" proprietary code). i.e. do I need a VM or not? It /would/ actually be
+useful to have a _declarative linux system_ as a daily driver.
+
+Without Guix, I would have no idea about =ld.so.conf= and =ld.so.cache=. The source
+in =(nonguix multiarch-container)= also auto-documents the most necessary paths &
+environment variables for a container to interact with all input -- without
+using =sudo docker run=. The same information is useful for allowing docker
+containers to have access to USB and serial devices (and also for
+troubleshooting).
+
+* =(nonguix multiarch-container)=
+
+The comments at the top are helpful:
+
+#+begin_quote
+
+The script provided by this package may optionally be started as
+a shell instead of automatically launching the wrapped entrypoint by setting
+the environment variable DEBUG=1.  If the sandbox is started this way then
+the package should subsequently be launched via fhs-internal.
+
+The sandbox shell aids in debugging missing container elements.  For
+example a missing symlink may be created manually before launching the
+package to verify that the fix works before filing a bug report.
+
+A container wrapper creates the following store items:
+
+Main container package [nonguix-container->package] (basically a dummy package
+with symlink to wrapper script)
+
++ Wrapper script [make-container-wrapper] (runs "guix shell") _References_:
+  - manifest.scm [make-container-manifest] (used by wrapper to guarantee
+    exact store items)
+  - container-internal [make-container-internal] {inside container}
+    (dummy package added to container with symlink to internal-script)
+    - internal-script [make-internal-script] {inside container}
+      (script run in-container which performs additional setup before
+      launching the desired application)
+      - _References_: Wrapped package {inside container}.
+#+end_quote
+
+** =<nonguix-container>=
+
+Package fields
+
+|-------------+--------+---------|
+| field       | type   | default |
+|-------------+--------+---------|
+| name        | string |         |
+| version     | string | #f      |
+| home-page   | string | #f      |
+| synopsis    | string | #f      |
+| description | string | #f      |
+| license     | string | #f      |
+|-------------+--------+---------|
+
+Guix container fields: these loosely map to  =guix shell= CLI options
+
+|---------------+-----------------+---------|
+| field         | type            | default |
+|---------------+-----------------+---------|
+| exposed       | list-of-strings | '()     |
+| shared        | list-of-strings | '()     |
+| preserved-env | list-of-strings | '()     |
+|---------------+-----------------+---------|
+
+Nonguix container fields
+
+|---------------+----------------------------------------------------------------------------------------------------|
+| field         | desc                                                                                               |
+|---------------+----------------------------------------------------------------------------------------------------|
+| sandbox-home  | remaps =HOME= to =GUIX_SANDBOX_HOME=                                                                   |
+| wrapper-name  | name for the wrapper script                                                                        |
+| internal-name | name for the dummy package (housing the fhs-internal script)                                       |
+| manifest-name | name for the manifest generated in =(nonguix-container->package container)=                          |
+| run           | the final =(apply system* `(#$(file-append pkg run) ,@package-args))= returned to =(program-file ...)= |
+| wrap-package  | supplied as input to =(nonguix-container->package container)= and to =run=                             |
+|               |                                                                                                    |
+
+
+** =(nonguix-container->package container)=
+
++ inputs
+  - wrap-package
+  - fhs-union-64, if exists (otherwise null-splat)
+  - fhs-union-32, if exists (otherwise null-splat)
+  - fhs-internal :: (make-container-internal container)
+  - fhs-wrapper :: (make-container-manifest container fhs-internal)
+  - fhs-manifest :: (make-container-wrapper container fhs-manifest fhs-internal)
+
+This is used by the module where a container's packages are defined. e.g.
+
+#+begin_src scheme
+(define-public steam-for
+  (compose nonguix-container->package steam-container-for))
+
+(define-public steam (steam-for mesa))
+(define-public steam-nvidia
+  (package-with-alias "steam-nvidia" (steam-for nvda)))
+
+(define-public heroic-for
+  (compose nonguix-container->package heroic-container-for))
+
+(define-public heroic (heroic-for mesa))
+(define-public heroic-nvidia
+  (package-with-alias "heroic-nvidia" (heroic-for nvda)))
+#+end_src
