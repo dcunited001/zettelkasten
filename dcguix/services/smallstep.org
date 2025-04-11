@@ -1,0 +1,85 @@
+:PROPERTIES:
+:ID:       fad97ef9-d940-473e-9547-280ad65d0277
+:END:
+#+title: DC Guix: Smallstep Service
+#+CATEGORY: dcguix
+
+Thinking about writing a smallstep service
+
+#+begin_src scheme
+;;; Copyright © 2025 David Conner <aionfork@gmail.com>
+
+(define-module (ellipsis services smallstep)
+  ;;#:use-module (ellipsis common)
+  ;;#:use-module (ellipsis config)
+
+  #:use-module (gnu home services)
+  #:use-module (gnu packages)
+  #:use-module (gnu services base)
+  #:use-module (gnu services configuration)
+  #:use-module (gnu services shepherd)
+  #:use-module (gnu services)
+  #:use-module (gnu)
+
+  #:use-module (guix gexp)
+  #:use-module (srfi srfi-1)
+  #:export (smallstep-service-type))
+
+;; NOTE: need to decide how to handle secrets. probably need some supporting scheme utils
+
+;;; Commentary:
+;;;
+;;; This module provides service definitions for smallstep services.
+;;;
+;;; step-ca-service
+;;;
+;;; Code:
+
+;;; Packages
+
+;; (use-package-modules ...)
+(define-public %smallstep-packages
+  (list))
+
+;; TODO: step-ca-provisioner-configuration
+;; TODO: step-ca-authority-configuration
+;; TODO: step-ca-policy-configuration
+;; TODO: step-ca-context-configuration
+
+;; NOTE: for now, just allow JSON config. eventually produce/merge JSONs
+
+(define-record-type* <smallstep-configuration>
+  smallstep-configuration make-smallstep-configuration
+  smallstep-configuration?
+  (uid smallstep-configuration-uid      ;string
+       (default "smallstep"))
+  (gid smallstep-configuration-gid      ;string
+       (default "smallstep")))
+
+(define (smallstep-activation config)
+  "Return the activation gexp for CONFIG."
+  #~(begin
+      (use-modules (guix build utils))
+      ))
+
+;;; Service Files
+
+;;; Services
+
+;; TODO smallstep-ca-service-type
+
+;;;
+
+(define smallstep-service-type
+  (service-type
+   (name 'smallstep)
+   (extensions
+    (list (service-extension activation-service-type
+                             smallstep-activation)))
+   (default-value (smallstep-configuration))
+   (description
+    "Run the smallstep.")))
+
+;;; smallstep.scm ends here
+
+#+end_src
