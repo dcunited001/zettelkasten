@@ -282,6 +282,73 @@ CREATE TRIGGER object_data_delete_trigger AFTER DELETE ON object_data FOR EACH R
 CREATE TRIGGER file_update_trigger AFTER UPDATE ON file FOR EACH ROW WHEN NEW.refcount = 0 BEGIN DELETE FROM file WHERE id = OLD.id; END;
 #+end_src
 
+*** Extension Databases
+
+List with details on files. There will be multiple groups for profiles.
+
+#+begin_src sh
+pattern="*moz-extension*/idb/*.sqlite"
+# ffroot=$HOME/.mozilla, etc . . .
+find $ffroot/$ffprofile -type f \
+    -wholename "$pattern" \
+    -exec ls -alt \{\} +
+#+end_src
+
+Get the list & pull into a variable
+
+#+begin_src sh
+ffprofile=fdsa1234
+
+# shellcheck maybe get mad idk
+ffext=(${find $ffroot/$ffprofile -wholename $pattern -type f -print})
+#+end_src
+
+Run a query against all databases to select from the "database" table.
+
+#+begin_src sh
+for db in ${ffext[@]}; do sqlite3 $db 'select * from database;'; done
+#+end_src
+
+it's moderately helpful to sort/filter these. you need at least ad-hoc file
+descriptors for that (e.g. =>3= ...)
+
+#+begin_quote
+my shellfu's not what i'd like it to be.
+
+hence "what i be not, the more determined i should try to be" ... though it
+certainly helps to shorten the feedback loop.
+
+most of life is a social process. try unhooking 99% the wires in a circuit and
+see how much energy flows. the network effects are strong even whether the
+current flows with you or sweeps you away. you are less the sum of what you have
+worked to become and more the product of your interactions with others.
+#+end_quote
+
+Anyways, the first two columns:
+
++ name :: the primary key for most other tables in this "extension" database.
++ origin :: mostly =moz-extension://= urls.
+  - Some of the native functionality of the browser is exposed through
+    extensions.
+  - Some of these don't seem to work though.
+
+Clicking on the link gives you an obfuscated view into a virtual file system
+(into which the extension has been loaded.)
+
+For most db's the name is simple =webExtensions-storage-local=, but a few are
+descriptive:
+
+| tdsStorage | __dbnames | https | TabFaviconHelper | PermanentStorage |
+
+#+begin_quote
+Anyways, a site that should've totally NOT prompted for _something_ did ask about
+it. This is super sketchy that it even works like that ... but yeh.
+
+And i'm wondering why a disabled extension is asking for increased permissions,
+but idk. I was hoping timestamps would clear things up.
+
+#+end_quote
+
 * Cleanup                                                          :noexport:
 
 ** Accidentally Commited the FF Profile?

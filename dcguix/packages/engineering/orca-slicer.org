@@ -1,0 +1,364 @@
+#+TITLE: DC Guix: Orca Slicer
+#+CATEGORY: dcguix
+#+TAGS:
+
+... and I just found the flatpak in the release files lol
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:abd2d6e9-fe5b-4ba4-8533-0e5a3d174743][Golang]]
++ [[id:6a7b6508-e7cf-4f55-a589-d354cee1766d][CAD]]
++ [[id:cbfc2dba-7692-46a3-9c69-9edda1f91126][3D Printing]]
+
+* Dependencies
+
+See [[https://github.com/SoftFever/OrcaSlicer/blob/69df9420c16283751a304f5c905799f355e518a8/deps/CMakeLists.txt][./deps/CMakeLists.txt]]
+
+** Guix Packages
+
+|---------------+-----------------|
+| orca          | prusa           |
+|---------------+-----------------|
+| glfw          | prusa-libbgcode |
+| nlohmann-json |                 |
+| openssl       |                 |
+| opencv        |                 |
+|---------------+-----------------|
+
+Both prusa/orca:
+
+|---------+------------------+---------------+--------+------+----------------+---------|
+| boost   | cereal           | cgal          | curl   | dbus | eigen          | eudev   |
+| expat   | glew             | glib          | gmp    | gtk+ | heatshrink     | hidapi  |
+| ilmbase | libigl           | libjpeg-turbo | libpng | mesa | mpfr           | nanosvg |
+| nlopt   | opencascade-occt | qhull         | tbb    | zlib | orca-wxwidgets | openvdb |
+| pango   |                  |               |        |      |                |         |
+|---------+------------------+---------------+--------+------+----------------+---------|
+
+*** TODO Resolve OpenCV
+
++ [ ] check: needs 4.6.0?
++ [ ] check: the prusa package allows some dependencies to fall through. OpenCV or
+  OpenCV-like?
++ [ ] otherwise: transform the OpenCV package to be configured to match prusa
+  needs.
+
+deps/CMakeLists.txt will download OpenCV 4.6.0 via ./deps/OpenCV/OpenCV.cmake
+
++ unless there are references nested inside orca ./deps, then opencv is only
+  used for a GUI color controls.
++ ./src/libslic3r/ObjColorUtils.hpp provides QuantKMeans regression? not sure
+  what it's learning
+
+** OpenVDB
+
+Data structures & tools for working with sparse volumetric data (discretized on
+3D grids ... so voxels?)
+
++ Repo [[https://github.com/AcademySoftwareFoundation/openvdb][AcademySoftwareFoundation/openvdb]]
+
+** WxWidgets
+
+Both =prusa-slicer= and =orca-slicer= maintain a fork of wxwidgets.
+
++ The =prusa-wxwidgets= package from Guix mentions [[https://github.com/NixOS/nixpkgs/commit/0e724ac89f3dbf6ed31d647290a371b44a85e5ad][this commit from NixOS]] and also
+  notes that the slicer will segfault if not built against this =wxwidgets=
++ [[https://github.com/SoftFever/Orca-deps-wxWidgets][SoftFever/Orca-deps-wxWidgets]]
+  - forked from [[https://github.com/wxWidgets/wxWidgets/commit/9c0a8be1dc32063d91ed1901fd5fcd54f4f955a1][9c0a8be]]: ranges from 3.1.5 to 3.2.7.1, but the 7 commits on
+    wxwidgets start in 2024, but build on 3.1.5 (Apr 2021)
+  - [[https://github.com/wxWidgets/wxWidgets/commit/f8513a830573f026060c46de04247561f60b5b60][this commit]] allows compat with libwebkit2gtk-4.1 (vs 4.0) and links with
+    libsoup-3.0 (vs 2.4), but retains compat with the older versions. thus,
+    use the [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/packages/webkit.scm?h=master#n320][same webkitgtk as prusa-wxwidgets]]:
+
+wxwidgets has messed up apps on archlinux more than once for me, so it's not
+exactly an easy dependency to work with (there are 70,000 commits).
+
+** NanoSVG
+
++ [[https://github.com/memononen/nanosvg][memononen/nanosvg]] is the canonical repo
+  - guix nanosvg includes [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/packages/patches/nanosvg-prusa-slicer.patch?h=master#n1][this patch]], which is effectively [[https://github.com/fltk/nanosvg/commit/7aeda550a84c15680f7e55867896c3906299dffb][this commit]] from
+    fitk/nanosvg (this could also just be a guix transformation, but maybe the
+    patch is more likely to error when changes are needed)
++ [[https://github.com/SoftFever/nanosvg][SoftFever/nanosvg]] is a fork of [[https://github.com/fltk/nanosvg][fitk/nanosvg]]
+  - it adds [[https://github.com/fltk/nanosvg/compare/fltk...SoftFever:Orca-deps-nanosvg:Orca][one commit]] that fixes a unicode path issue on windows. that's
+    irrelevant here AFAIK. i'm just going to use the guix package, instead of a
+    transformation.
+
+** Bundled Dependencies in =./src=
+
+Comparing ./src in:
+
++ [[https://github.com/prusa3d/PrusaSlicer/tree/version_2.7.4/src][prusa3d/PrusaSlicer@version_2.7.4]]
++ [[https://github.com/SoftFever/OrcaSlicer/tree/main/src][SoftFever/OrcaSlicer@main]]
+
+|--------------+-------+------------+-----+-------+------------------------------------------------------------------|
+|              | prusa | orcaslicer | ð   | type  | desc                                                             |
+|--------------+-------+------------+-----+-------+------------------------------------------------------------------|
+| admesh       | -     | -          | 8m  | cpp   | profiler                                                         |
+| agg          | -     | -          |     | .h    | rasterization of curves                                          |
+| ankerl       | -     | -          |     | .h    | [[https://github.com/martinus/unordered_dense][martinus/unordered_dense]] magic hash                              |
+| avrdude      | -     | -          |     | c cpp | addresses problem with "i3 mk2 usb communication chips"          |
+| boost        | X     |            |     | cpp   | [[https://www.boost.org/doc/libs/1_85_0/libs/nowide/doc/html/index.html][Boost.Nowide]] for cross-platform unicode                          |
+| build-utils  | X     |            |     | cpp   | encoding-check so your phone doesn't melt                        |
+| clipper      | -     | -          | 2m  | cpp   | move a small ball in a jagged polygon                            |
+| clipper2     |       | X          |     | cpp   | 2022 implementation                                              |
+| eigen        | -     | -          |     | .h    | headers + templates                                              |
+| expat        |       | X          |     | c     | headers + templates                                              |
+| fast_float   | -     | -          |     | .h    | fast float ops from/on strings                                   |
+| glu-libtess  | -     | -          |     | c     | libtess tesselation lib (for static comp w/o OpenGL deps)        |
+| hidapi       | -     | -          |     | c     | multiplatform                                                    |
+| hints        | -     | -          |     | cpp   | pot                                                              |
+| imgui        | -     | -          |     | cpp   | C++ widgets                                                      |
+| imguizmo     |       | X          | 1m  | cpp   | 3D widgets on imgui                                              |
+| libigl       | -     | -          |     | cpp   | SVD, winding numbers, comp. geom                                 |
+| libnest2d    | -     | -          | 8m  | hpp   | 1.cpp. geom interfaces, [[https://github.com/SoftFever/OrcaSlicer/blob/main/src/libnest2d/include/libnest2d/utils/metaloop.hpp][metaloopa]], steins gate                   |
+| libslic3r    | -     | -          | 3h  | cpp   | bigass cpp                                                       |
+| mcut         |       | X          | 2m  | cpp   | mesh cuts (boolean ops on meshes)                                |
+| minilzo      |       | X          |     | c     | mini-LZO compression                                             |
+| miniz        | -     | -          | 11m | c     | mini-zlib compression                                            |
+| nanosvg      |       | X          |     | .h    | Nano SVGs, fast, limited to cubic beziers                        |
+| nlohmann     |       | X          |     | .hpp  | [[https://github.com/nlohmann/json][nlohmann/json]]                                                    |
+| occt_wrapper | X     |            |     | cpp   | load STEP files via [[https://dev.opencascade.org/content/c-wrapper-update-coming-soon][OCC.XCAFApp]] (Named Topo's)                   |
+| platform     | -     | -          | 2m  | sh    | desktop files, platform-specific build details                   |
+| qhull        |       | X          |     | cpp   | comp geom (linear, convex hulls)                                 |
+| qoi          | -     | -          |     | c     | [[https://github.com/SoftFever/OrcaSlicer/tree/main/src/qoi][qoi]] massive textures with custom layer specs (like TIFF)         |
+| semver       | -     | -          | 1y  | c     |                                                                  |
+| Shiny        |       | X          |     | c     | profiling                                                        |
+| slic3r       | -     | -          | 3h  |       | SceneKit for slic3rs (GUI w/ interactive 3D components)          |
+| spline       |       | X          | 8m  | .h    | cubic spline interpolation library without external              |
+| stb_dxt      | -     | -          |     | .h    | Real-Time DXT1/DXT5 compressor (asyncronous texture compression) |
+| tcbspan      | X     |            |     | .hpp  | C++ implementation of C++20's [[https://en.cppreference.com/w/cpp/container/span][std::span]]                          |
+|--------------+-------+------------+-----+-------+------------------------------------------------------------------|
+
+*** Clipper
+
++ An extension of Bala Vatti's clipping algorithm: [[http://portal.acm.org/citation.cfm?id=129906][A generic solution to polygon
+  clipping]]
++ [[http://www.me.berkeley.edu/~mcmains/pubs/DAC05OffsetPolygon.pdf][Polygon Offsetting by Computing Winding Numbers]]
+
+Needs minkowski sum/difference
+
+#+begin_src c
+// how does std.transform work?
+std::transform(pattern.cbegin(), pattern.cend(),
+               path2.begin(), [p](const Point64& pt2) {return p + pt2; });
+#+end_src
+
+*** spline
+
++ implementation?
+
+used in [[https://github.com/SoftFever/OrcaSlicer/blob/69df9420c16283751a304f5c905799f355e518a8/src/libslic3r/GCode/SmallAreaInfillFlowCompensator.cpp#L18][./src/libslic3r/GCode/SmallAreaInfillFlowCompensator.cpp]]:
+
+#+begin_src cpp
+flowModel = std::make_unique<tk::spline>();
+flowModel->set_points(eLengths, flowComps);
+#+end_src
+
+okay, i guess =spline.h= is like an abstract class. I was looking for an
+implementation for methods... which partially defined in the file. I guess
+type-inferences used for fields & some behaviors (i don't know C++, which is
+some of what I'm hoping to get exposure to here)
+
+*** TODO remaining packages
+
++ [[https://github.com/cutdigital/mcut][cutdigital/mcut]]: no guix package, but implementation in project
+  - build progresses
++ imguizmo: has impl
++ clipper2: has impl
++ minilzo: has impl
+
+* CMake Options
+
++ SLIC3R_FHS :: 1
++ SLIC3R_GTK :: 3
++ SLICER_WX_STABLE :: 1
+  - no references to =SLICER_WX.*= in prusa 2.7.4
++ libigl_DIR :: i think added to CMakeLists.txt by =substitute*=
++ Catch2_DIR :: required for tests, provided by guix (same as igl)
+
+* Package
+
+This project is forked from BambuSlicer, itself forked from PrusaSlicer, for
+which there's a package in ./gnu/packages/engineering.scm.
+
+There's some drift, but the're all cmake projects with bundled deps.
+
+Fairly simple deps-to-modules lookup with =guix search '(qhull|tbb|zlib)'=
+
+** OrcaSlicer
+
+#+begin_src scheme :tangle ./orca-slicer.scm
+(use-modules (guix utils)
+             ((guix licenses) #:prefix license:)
+             (guix packages)
+             (guix git-download)
+             (guix build-system cmake)
+             (gnu)
+             (gnu packages)
+             (srfi srfi-1))
+
+;; orca slicer
+(use-package-modules serialization     ; cereal
+                     boost
+                     graphics          ; cgal ilmbase nanosvg openvdb
+                     glib              ; dbus
+                     algebra           ; eigen
+                     maths             ; nlopt qhull opencascade-occt
+                     curl
+                     linux             ; eudev
+                     gl                ; glew mesa
+                     multiprecision    ; gmp mpfr
+                     xml               ; expat
+                     gtk               ; gtk+ pango
+                     libusb               ; libusb
+                     compression       ; heatshrink zlib
+                     image             ; libjpeg-turbo libpng
+                     engineering       ; libigl prusa-libbgcode
+                     wxwidgets         ; prusa-wxwidgets
+                     check             ; catch2
+                     pkg-config
+                     tls               ; openssl
+                     tbb)
+
+(define orca-wxwidgets
+  (let ((commit "acdc6db5064274405c323c3823eedf559bbe0474")
+        (revision "0"))
+    (package
+      (inherit wxwidgets-sans-egl)
+      (name "orca-wxwidgets")
+      (version (git-version "0.0.0" revision commit))
+      (home-page "https://github.com/SoftFever/Orca-deps-wxWidgets")
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url home-page)
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32
+           "12yncg5pazpjibjvr63afryl19k0gvhrqxzg00qfqz86aj3359qx"))))
+      (native-inputs (modify-inputs (package-native-inputs wxwidgets)
+                       (prepend nanosvg)))
+      (arguments
+       (substitute-keyword-arguments (package-arguments wxwidgets)
+         ((#:phases phases)
+          #~(modify-phases #$phases
+              (add-after 'unpack 'copy-nanosvg-source
+                (lambda _
+                  (copy-recursively #$(package-source nanosvg) "3rdparty/nanosvg/"))))))))))
+
+(package
+  (name "orca-slicer")
+  (version "2.3.0")
+  (source
+   (origin
+     (method git-fetch)
+     (uri
+      (git-reference
+       (url "https://github.com/SoftFever/OrcaSlicer")
+       (commit (string-append "v" version))))
+     (file-name (git-file-name name version))
+     (sha256 (base32 "0igjzkq9v6np91vhnbb07kbmfz9s2yy26ah9l2q4l9j167pbjiih"))
+     ;; (patches (search-patches "prusa-slicer-fix-tests.patch"))
+     (modules '((guix build utils)))
+     (snippet
+      `(begin
+         ;; NOTE: prusa master removes most of these from ./src
+
+         ;; Prusa slicer bundles a lot of dependencies in src/ directory.
+         ;; Most of them contain prusa-specific modifications (e.g. avrdude),
+         ;; but others do not. Here we replace the latter with Guix packages.
+         ;; Remove bundled libraries that were not modified by Prusa Slicer developers.
+         (delete-file-recursively "src/hidapi")
+         (delete-file-recursively "src/eigen")
+         (delete-file-recursively "src/libigl/igl")
+
+         ;; NOTE: orca handles FindEXPAT differently
+         ;; (substitute* "CMakeLists.txt"
+         ;;   (("add_library\\(libexpat INTERFACE\\)")
+         ;;    ""))
+
+         ;; NOTE:
+         (substitute* "src/libigl/CMakeLists.txt"
+           (("target_link_libraries\\(libigl INTERFACE igl::core\\)") ""))
+
+         ;; NOTE: patch to supply system hidapi checks out
+         (substitute* "src/CMakeLists.txt"
+           (("add_subdirectory\\(hidapi\\)")
+            "pkg_check_modules(HIDAPI REQUIRED hidapi-hidraw)")
+           (("include_directories\\(hidapi/include\\)")
+            "include_directories()"))
+
+         ;; NOTE: orca also includes "libslic3r PRIVATE utils" otherwise this checks out
+         (substitute* "src/slic3r/CMakeLists.txt"
+           (("add_library\\(libslic3r_gui.*" all)
+            (string-append
+             all
+             "\ntarget_include_directories(libslic3r_gui PUBLIC ${HIDAPI_INCLUDE_DIRS})\n"))
+           (("\\bhidapi\\b") "${HIDAPI_LIBRARIES}"))))))
+  (build-system cmake-build-system)
+  (arguments
+   (list #:configure-flags
+         #~(list "-DSLIC3R_FHS=1"   ;; Use The Filesystem Hierarchy Standard.
+                 "-DSLIC3R_GTK=3"   ;; Use GTK+
+                 ;; Use wxWidgets 3.0.x.x to prevent GUI crashes when adding support enforcers.
+                 "-DSLIC3R_WX_STABLE=1"
+                 (format #f "-Dlibigl_DIR=~a"
+                         (search-input-directory %build-inputs
+                                                 "lib/cmake/igl/"))
+                 (format #f "-DCatch2_DIR=~a"
+                         (search-input-directory %build-inputs
+                                                 "lib/cmake/Catch2/")))
+         ;; #:phases
+         ;; #~(modify-phases %standard-phases
+         ;;     (add-after 'unpack 'fix-include-paths
+         ;;       (lambda _
+         ;;         (substitute* "tests/libslic3r/test_quadric_edge_collapse.cpp"
+         ;;           (("#include <libigl/igl/qslim.h>")
+         ;;            "#include <igl/qslim.h>")))))
+         ))
+  (native-inputs
+   (list pkg-config catch2))
+  (inputs
+   (list cereal
+         boost
+         cgal
+         curl
+         dbus
+         eigen
+         eudev
+         expat
+         glew
+         glfw
+         glib
+         gmp
+         gtk+
+         heatshrink
+         hidapi
+         ilmbase
+         libigl
+         libjpeg-turbo
+         libpng
+         mesa
+         mpfr
+         nanosvg
+         nlopt
+         ;; nlohmann-json ; cpp
+         opencascade-occt
+         openssl
+         openvdb
+         orca-wxwidgets
+         pango
+         qhull
+         tbb
+         zlib))
+  (home-page "https://www.orcaslicer.com/")
+  (synopsis "G-code generator for 3D printers (Bambu, Prusa, Voron, VzBot, RatRig, Creality, etc.)")
+  (description "Orca slicer is a powerful open source slicer for FFF (FDM) 3D Printers")
+  (license license:agpl3)
+
+  ;; Mark as tunable to take advantage of SIMD code in Eigen and in libigl.
+  (properties '((tunable? . #t))))
+#+end_src
