@@ -1,0 +1,289 @@
+:PROPERTIES:
+:ID:       b4a8b4dd-940e-4e91-895d-5e1a9759407e
+:END:
+#+title: DC Guix: Protobuf UML Diagram
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+* Docs
++ Repo: [[https://github.com/kinow/protobuf-uml-diagram][kinow/protobuf-uml-diagram]]
+
+* Package
+
+** Current
+
+Here's the current package
+
+#+begin_src scheme
+(define-public python-protobuf-uml-diagram
+  (package
+    (name "python-protobuf-uml-diagram")
+    (version "0.13")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "protobuf-uml-diagram" version))
+       (sha256
+        (base32 "0p0cyk62m6a9zj5xqxkmdqs4r71n9xfywqxcp962ffgi85jpd6vy"))))
+    (build-system pyproject-build-system)
+    (propagated-inputs (list python-click python-graphviz python-protobuf))
+    (native-inputs (list python-codecov
+                         python-coverage
+                         python-pycodestyle
+                         python-pytest
+                         python-pytest-cov
+                         python-pytest-env
+                         python-pytest-mock
+                         python-setuptools
+                         python-wheel))
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'check))))
+    (home-page "https://github.com/kinow/protobuf-uml-diagram/")
+    (synopsis "Create UML diagrams from Protobuf proto files")
+    (description "Create UML diagrams from Protobuf proto files. Requires
+using `protoc' to compile them using `--python_out'. See `./dockerrun.sh' and
+`./docker/gen_uml.sh' to generate.")
+    (license #f)))
+
+#+end_src
+
+** Add =--format=svg= to package
+
+*** Using Snippets
+
+Make a small modification. The code has =with_format()= that seems to enable =svg=
+output, but it's not in the =@click.command()= setup before =def main=.
+
+At first, I tried modifying just the package using =(snippets ...)= on the source,
+like this:
+
+#+begin_src scheme
+(modules '((guix build utils)))
+(snippet
+ `(begin
+    (substitute* "protobuf_uml_diagram.py"
+      (("@check.command.*" all)
+       (string-append
+        all
+        "\n@click.option('--format', type=str('png'), required=False, help='File format')\n"))
+      (("\\.with_full_names\\(full_names\\)" all)
+       (string-append
+        all
+        ".with_format(format) ")))))
+#+end_src
+
+Guix builds are hermetically sealed. It's not transforming the source. I can
+make the snippet transformation fail by naming a file that doesn't exist, but
+the regexp's aren't matching (or something).
+
+So, this doesn't result in any modifications ... idk, but me wrong; me dumb.
+Obviously, these regexps have some caveats in python, since the tab-depth must
+be maintained -- actually idk, since there's a =\= that hits a newline. But also,
+I don't care to find out.
+
+The snippet may be failing since it's sourced from PyPi... but since it fails
+(see above), then idk.
+
+Anyways.
+
+*** Using Guix Transformations.
+
+I forked the repo on Github, made changes, ran the tests using the GH until they
+passed.
+
+#+begin_example diff
++ @click.option('--format', type=click.Choice(["png","svg"]), required=False, default="png",
++               help='Diagram output format (e.g. png, svg).')
++ def main(proto: str, output: Path, full_names: bool, format: str) -> None:
+
+      Diagram() \
+          .from_file(proto) \
+          .to_file(output) \
+          .with_full_names(full_names) \
++         .with_format(format) \
+          .build()
+#+end_example
+
+Then to actually test to ensure that =svg= files are produced:
+
+#+begin_src shell
+repo_url=https://github.com/dcunited001/protobuf-uml-diagram.git
+branch=add-format
+proj=protobuf-uml-diagram
+pkg=python-$proj
+guix shell -L ~/.dotfiles/ellipsis \
+    --with-git-url=$pkg=$repo
+    --with-branch=$pkg=add-format $pkg
+#+end_src
+
+Ok. if you don't understand what's so game-changing about the ease of specifying
+this (or of specifying new package dependents or variants inline along with a
+new package) ... then there's something wrong with you (see below).
+
+Anyways. Now we're at a guix shell
+
+#+begin_src shell
+protobuf-uml-diagram --help
+#+end_src
+
+#+RESULTS
+#+begin_example diff
+  Usage: .protobuf-uml-diagram-real [OPTIONS]
+
+  Options:
+    --proto TEXT          Compiled Python proto module (e.g.
+                          some.package.ws_compiled_pb2).  [required]
+    --output DIRECTORY    Output directory.  [required]
+    --full_names BOOLEAN  Use full names (Class.type) or not (type) in diagram.
++   --format [png|svg]    Diagram output format (e.g. png, svg).
+    --help                Show this message and exit.
+#+end_example
+
+Ok, now to actually test.
+
+
+*** Why Transform?
+
+#+begin_quote
+That would mean customizing OpenCV build flags (for multiple versions of OpenCV,
+maybe) for a high-level application that you define in the same scheme file.
+
+Then testing your application's build/tests/functionality using a new version of
+OpenCV (same build flags) .. by simply changing a few CLI flags. Or maybe
+editing a few files. Of course, at scale there's a bit more overhead, esp when
+multiple teams share the same Guix channel... but wow.
+
+Anyways, don't explore beyond the comfort of your slow =Deb= or =RPM= build process,
+simply because the your been doing it that same way for about 25 =%years=.
+
+I on the other hand am a single person. I could barely maintain the
+infrastructure for =PPA=, unless I could run it in the cloud. I can't afford that.
+
+This extends to IoT builds, as well. Need to test a variant hardware profile
+that requires device-tree modifications? You can build firmware & u-boot
+variants as packages. If there are dependencies here, you can change that. For
+IoT, as long as it produces a single image, then (regardless of =/gnu/store=) you
+can build variants.
+
++ Hard-dependencies on firmware/driver don't hold up cross-team collaboration.
++ Advancing versions of dependencies is easier for single team members to try
+  without getting input or waiting on another team's work/approval. (though
+  making work available for large-scale distribution still would have process
+  checks in place)
+#+end_quote
+
+
+* First version
+
+That required too much text-munging.
+
+#+begin_quote
+(See the GoogleCloudPlatform/proto-gen-md-diagrams headline in [[id:bd7dd6c8-7035-4e7a-b730-0d7f9c61ef9f][DC Guix]] entry)
+#+end_quote
+
+This python package is a bit more reasonable with the default formatting, but
+doesn't give you the flexibility modify the diagram source. Technically, you can
+if you follow the included jupyter notebook [[https://github.com/kinow/protobuf-uml-diagram/blob/master/notebooks/Protobuf%20reflection%20UML.ipynb][Protobuf Reflection UML]].
+
+After setting up the package, clone the repo with the protobufs. See
+=./dockerrun.sh= and [[https://github.com/kinow/protobuf-uml-diagram/blob/master/docker/gen_uml.sh][./docker/gen_uml.sh]] to understand argument passing:
+
++ It uses =protoc= to build to =PROTO_PATH=, which outputs to =--python_out=${PYTHONPATH}=.
++ then it iterates over the files returned by the same =find= query, but adjusts
+  them to name a =outdir.mypb_pb2= python module instead of a =outdir/mypb.proto= file.
++ Since these are python modules, it needs to programmatically import them and
+  reflect to generate the UML
+
+... it's probably a pretty good python project to refer to generally.
+
+
+#+begin_src shell
+guix shell -L $mychan protobuf graphviz python-protobuf-uml-diagram
+
+PROTO_PATH=spec
+PYTHONPATH=specout
+
+protoc --proto_path=${PROTO_PATH} -I=/usr/include --python_out=${PYTHONPATH} $(find ${PROTO_PATH} -name '*.proto')
+
+export PYTHONPATH
+for p in $(find ${PYTHONPATH} -name '*_pb2.py'); do
+    p="${p/specout\//}";
+    # still need to remove the $PYTHONPATH, but bash probably doesn't
+    # interpolate this
+    p="${p/\//.}";
+    p="${p/\.py/}";
+
+    # echo protobuf-uml-diagram.py --proto "${p}" --output=specout;
+    echo protobuf-uml-diagram.py --proto "${p}" --output=specout;
+done
+
+#+end_src
+
+*** Guix package
+
+Getting the package running was simple. The output of =guix import pypi
+protobuf-uml-diagram== produced this almost exactly. It just required adding some
+imports at the top of =./ellipsis/packages/protobuf.scm=
+
+#+begin_example scheme
+(define-public python-protobuf-uml-diagram
+  (package
+    (name "python-protobuf-uml-diagram")
+    (version "0.13")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (pypi-uri "protobuf-uml-diagram" version))
+       (sha256
+        (base32 "0p0cyk62m6a9zj5xqxkmdqs4r71n9xfywqxcp962ffgi85jpd6vy"))))
+    (build-system pyproject-build-system)
+    (propagated-inputs (list python-click python-graphviz python-protobuf))
+    (native-inputs (list python-codecov
+                         python-coverage
+                         python-pycodestyle
+                         python-pytest
+                         python-pytest-cov
+                         python-pytest-env
+                         python-pytest-mock
+                         python-setuptools
+                         python-wheel))
+    (arguments
+     (list
+      #:phases
+
+      ;; NOTE tests were failing. pytest requires some stick-poking
+      #~(modify-phases %standard-phases
+          (delete 'check))))
+    (home-page "https://github.com/kinow/protobuf-uml-diagram/")
+    (synopsis "Create UML diagrams from Protobuf proto files")
+    (description "Create UML diagrams from Protobuf proto files. Requires
+using `protoc' to compile them using `--python_out'. See `./dockerrun.sh' and
+`./docker/gen_uml.sh' to generate.")
+    (license #f)))
+#+end_example
+
+Test failures. I needed to get into the package environment to see, but =guix
+build --keep-failed= wasn't really doing that for some reason.
+
+#+begin_quote
+starting phase `check'
+Using pytest
+============================= test session starts ==============================
+platform linux -- Python 3.10.7, pytest-8.3.3, pluggy-1.5.0 -- /gnu/store/cd9xnk7dcn5dfibjzvl6l7wk43s5ifg1-python-wrapper-3.10.7/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default' -> database=DirectoryBasedExampleDatabase('/tmp/guix-build-python-protobuf-uml-diagram-0.13.drv-0/protobuf-uml-diagram-0.13/.hypothesis/examples')
+rootdir: /tmp/guix-build-python-protobuf-uml-diagram-0.13.drv-0/protobuf-uml-diagram-0.13
+plugins: hypothesis-6.54.5, cov-6.0.0, env-0.6.2, mock-3.14.0
+collecting ... collected 0 items
+
+============================ no tests ran in 0.06s =============================
+error: in phase 'check': uncaught exception:
+%exception #<&invoke-error program: "/gnu/store/i65m7m87830mbw56p9gckfmk27vjrs56-python-pytest-8.3.3/bin/pytest" arguments: ("-vv") exit-status: 5 term-signal: #f stop-signal: #f>
+phase `check' failed after 0.3 seconds
+command "/gnu/store/i65m7m87830mbw56p9gckfmk27vjrs56-python-pytest-8.3.3/bin/pytest" "-vv" failed with status 5
+
+#+end_quote
