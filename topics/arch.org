@@ -59,6 +59,70 @@ Nix and /not have this functionality/
 ** Resources
 
 ** Topics
+*** Services
+
+**** Locate timer
+
+Garuda ships =plocate=, but I need to tweak the configuration. It indexes BTRFS
+=/.snapshots= and =/gnu/store=. The config is in =/etc/updatedb.conf=, so I just
+needed to add those directories to =PRUNEPATHS=
+
+#+begin_src sh :results output verbatim
+pacman -Fl plocate | cut -f2 -d' ' | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+├── etc
+│   └── updatedb.conf
+├── usr
+│   ├── bin
+│   │   ├── locate
+│   │   ├── mlocate
+│   │   ├── plocate
+│   │   ├── plocate-build
+│   │   └── updatedb
+│   ├── lib
+│   │   ├── systemd
+│   │   │   └── system
+│   │   │       ├── plocate-updatedb.service
+│   │   │       └── plocate-updatedb.timer
+│   │   ├── sysusers.d
+│   │   │   └── plocate.conf
+│   │   └── tmpfiles.d
+│   │       └── plocate.conf
+│   └── share
+│       └── man
+│           ├── man1
+│           │   └── plocate.1.gz
+│           ├── man5
+│           │   └── updatedb.conf.5.gz
+│           └── man8
+│               ├── plocate-build.8.gz
+│               └── updatedb.8.gz
+└── var
+    └── lib
+        └── plocate
+            └── CACHEDIR.TAG
+
+17 directories, 15 files
+#+end_example
+
+It runs with a timer
+
+#+begin_src sh :results output verbatim
+systemctl  list-timers --all --plain 'plocate*'
+#+end_src
+
+#+RESULTS:
+: NEXT                        LEFT LAST                        PASSED UNIT                   ACTIVATES
+: Wed 2025-04-16 00:33:00 EDT  15h Tue 2025-04-15 00:08:17 EDT 8h ago plocate-updatedb.timer plocate-updatedb.service
+:
+: 1 timers listed.
+
+And can be edited using =systemctl edit --full plocate-updatedb.service=.
+
 *** Tools
 
 Equivalents to similar tools from Manjaro (also higher level than many of the
