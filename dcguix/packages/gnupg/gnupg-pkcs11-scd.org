@@ -3,6 +3,15 @@
 :END:
 #+title: DC Guix: GnuPG PKCS11 SCD & Proxy
 
+I'm thinking I'd rather just split out my Yubikey's PIV functionality anyways.
+There are many extra slots on the YK which you can use with stepcli/gpgsm or
+however ... but to carry around /this much/ *power* ... idk man.
+
+(All the slots share the same PIN and revocation is a /huge PITA/)
+
+* Roam
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
+
 * Overview
 
 + [[https://github.com/alonbl/gnupg-pkcs11-scd/blob/master/gnupg-pkcs11-scd/gnupg-pkcs11-scd.conf.example][gnupg-pkcs11-scd.conf]] :: example configuration file
@@ -13,5 +22,74 @@ Packages
 + RPM template: [[https://github.com/alonbl/gnupg-pkcs11-scd/blob/master/distro/rpm/gnupg-pkcs11-scd.spec.in][./distro/rpm/gnupg-pkcs11-scd.spec.in]]
 + Deb: [[https://github.com/alonbl/gnupg-pkcs11-scd/tree/master/distro/debian][./distro/debian]]
 
+* Tasks
++ [ ] where to set socket? ==--with-proxy-socket=/run/gnupg-pkcs11-scd-proxy/cmd=
+
+* Notes
+
+Following the [[https://github.com/alonbl/gnupg-pkcs11-scd/blob/master/distro/rpm/gnupg-pkcs11-scd.spec.in][RPM .spec]] as a guide
+
+** Dependencies
+
+|---------------+----------+----------|
+|               | Build    | Runtime  |
+|---------------+----------+----------|
+| openssl       | >=0.9.7a | >=0.9.7a |
+| pkcs11-helper | >=1.03   | >=1.03   |
+| libassuan     | X        | X        |
+| libgcrypt     | X        | X        |
+|---------------+----------+----------|
+
+Indirect Deps: =pcsc-lite=
+
+** RPM
+
+Three bins
+
++ bin/gnupg-pkcs11-scd
++ bin/gnupg-pkcs11-scd-proxy
++ bin/gnupg-pkcs11-scd-proxy-server
+
+Other files
+
++ 2 manpages, 1 systemd unit (proxy), 1 example config
++ license, readme
+
+The =proxy= package sets up systemd services under specific user/group ownership.
+
+#+begin_example shell
+getent group gnupg-pkcs11-scd-proxy >/dev/null || groupadd -r gnupg-pkcs11-scd-proxy
+getent group gnupg-pkcs11 >/dev/null || groupadd -r gnupg-pkcs11
+getent passwd gnupg-pkcs11-scd-proxy >/dev/null || \
+  useradd -r -g gnupg-pkcs11-scd-proxy -G gnupg-pkcs11 -s /sbin/nologin \
+    -d / -c "gnupg-pkcs11-scd-proxy" gnupg-pkcs11-scd-proxy
+#+end_example
 
 * Package
+
+#+begin_src scheme :tangle gnupg-pkcs11-scd.scm :eval no
+(define-public gnupg-pkcs11-scd
+  (package
+    (name "gnupg-pkcs11-scd")
+    (version "0.11.0")
+    (source
+     (origin
+       (method url-fetch)
+       (uri (string-append
+             "https://github.com/alonbl/gnupg-pkcs11-scd/releases/download/gnupg-pkcs11-scd-"
+             version "/gnupg-pkcs11-scd-" version ".tar.bz2"))
+       (sha256
+        (base32 "1ac86jfj4qfwzbvsg6l9r4w4bbwxj2i9qi4dy1nz5aqcj6x1an2c"))))
+    (build-system gnu-build-system)
+    (inputs (list openssl pcsc-lite pkcs11-helper libassuan libgcrypt))
+    (native-inputs (list pkg-config))
+    (arguments
+     `(#:configure-flags '("--enable-proxy"))
+    (home-page "https://github.com/OpenSC/pkcs11-helper")
+    (synopsis "PKCS#11 enabled GnuPG SCD")
+    (description
+     "gnupg-pkcs11 is a project to implement a BSD-licensed smart-card daemon to
+enable the use of PKCS#11 tokens with GnuPG. PKCS#11 is the de-facto standard
+for accessing cryptographic tokens.")
+    (license (list license:gpl2 license:bsd-3))))
+#+end_src
