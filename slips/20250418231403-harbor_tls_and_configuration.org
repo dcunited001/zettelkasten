@@ -1,0 +1,670 @@
+:PROPERTIES:
+:ID:       18577ce7-40a7-4ef1-a694-e16fbc8bd354
+:END:
+#+TITLE: Harbor: TLS and Configuration
+#+CATEGORY: slips
+#+TAGS:
+
+#+begin_quote
+Note: These designs will change and are probably not even wrong ... esp the TLS
+stuff, which will likely move elsewhere
+#+end_quote
+
+* Roam
++ [[id:afe1b2f0-d765-4b68-85d0-2a9983fa2127][Containers]]
++ [[id:ac2a1ae4-a695-4226-91f0-8386dc4d9b07][Devops]]
+
+* Docs
+** Harbor
+
+[[https://goharbor.io/docs/2.13.0/install-config/][Installation & Configuration]] (links for 2.13.0)
+
++ [[https://goharbor.io/docs/2.13.0/install-config/configure-yml-file/][Harbor YML]]
++ [[https://goharbor.io/docs/2.13.0/install-config/configure-system-settings-cli/][User Config]]: for clients, configure in UI or via HTTP
++ [[https://goharbor.io/docs/2.13.0/install-config/configure-internal-tls/][Internal TLS]]
+
+* Config
+
+** UML
+
+#+begin_src plantuml :noweb yes :file img/devops/harbor-yaml.svg
+' sh :noweb yes
+@startyaml
+<<harborYamlUml>>
+@endyaml
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/harbor-yaml.svg]]
+
+** Example Config
+
+#+begin_src yaml :noweb-ref harborYamlUml
+hostname: reg.mydomain.com
+#+end_src
+
+https enabled? redirects to https.port
+
++ https.strong_ssl_ciphers :: defaults false
+
+#+begin_src yaml :noweb-ref harborYamlUml
+http:
+  port: 80
+
+https:
+  port: 443
+  certificate: /etc/harbor/tls/internal/nginx.crt
+  private_key: /etc/harbor/tls/internal/nginx.key
+  strong_ssl_ciphers: true
+
+#+end_src
+
+affects nginx component
+
+#+begin_src yaml :noweb-ref harborYamlUml
+ip_family:
+  ipv6:
+    enabled: false
+  ipv4:
+    enabled: true
+#+end_src
+
+
+#+begin_src yaml :noweb-ref harborYamlUml
+internal_tls:
+  enabled: true
+  dir: /etc/harbor/tls/internal
+#+end_src
+
++ external_url :: enabled? =hostname= no longer used
+
+#+begin_src yaml :noweb-ref harborYamlUml
+external_url: https://enables.external.proxy.com:8433
+harbor_admin_password: ChangeAfterInitialization
+#+end_src
+
++ conn_.* :: format: "300ms", "-1.5h" or "2h45m". Valid time units are "ns",
+  "us" (or "µs"), "ms", "s", "m", "h".
++ database.max_open_conns :: postgres default 1024
+
+#+begin_src yaml :noweb-ref harborYamlUml
+database:
+  password: root123
+  max_idle_conns: 100
+  max_open_conns: 900
+
+  conn_max_lifetime: 5m
+  conn_max_idle_time: 0
+#+end_src
+
+# The default data volume
+#+begin_src yaml :noweb-ref harborYamlUml
+data_volume: /data
+#+end_src
+
+External Storage Options: filesystem, azure, gcs, s3, swift and oss
+
++ more info on [[https://distribution.github.io/distribution/about/configuration/][distribution.github.io]] and [[https://distribution.github.io/distribution/storage-drivers/][storage drivers]]
++ storage_service.redirect :: disables registry redirect
+
+#+begin_src yaml :noweb-ref harborYamlUml
+storage_service:
+  ca_bundle: /etc/harbor/tls/storage/bundle.crt
+  filesystem:
+    maxthreads: 100
+
+  redirect:
+    disable: false
+#+end_src
+
+Trivy
+
+#+begin_quote
+Trivy DB contains vulnerability information from NVD, Red Hat, and many other upstream vulnerability databases.
+It is downloaded by Trivy from the GitHub release page https://github.com/aquasecurity/trivy-db/releases and cached
+in the local file system. In addition, the database contains the update timestamp so Trivy can detect whether it
+should download a newer version from the Internet or use the cached one. Currently, the database is updated every
+12 hours and published as a new release to GitHub.
+#+end_quote
+
++ ignore_unfixed :: display only fixed vulnerabilities
++ skip_update :: enable/disable Trivy downloads from Github (potential rate
+  limiting issues in test or CI/CD). must download =trivy-offline.tar.gz= and
+  =metadata.json= files manually (and mount them)
++ security_check :: defaults to =vuln=
++ insecure :: skips cert validation
++ github_token :: up to 5000 req per hour (otherwise 60)
+
+#+begin_src yaml :noweb-ref harborYamlUml
+trivy:
+  ignore_unfixed: false
+  skip_update: false
+  skip_java_db_update: false
+  offline_scan: false
+  security_check: vuln,config,secret
+  insecure: false
+  timeout: 5m0s
+  github_token: to download Trivy DB
+#+end_src
+
+Job Service
+
+#+begin_src yaml :noweb-ref harborYamlUml
+jobservice:
+  max_job_workers: 10
+  max_job_duration_hours: 24
+  job_loggers:
+    - STD_OUTPUT
+    - FILE
+    - DB
+  logger_sweeper_duration: 1
+
+#+end_src
+
+Notifications: time in seconds
+
+#+begin_src yaml :noweb-ref harborYamlUml
+notification:
+  webhook_job_max_retry: 3
+  webhook_job_http_client_timeout: 3
+
+#+end_src
+
+Logging
+
++ log.level :: info, debug, warning, error, fatal
+
+#+begin_src yaml :noweb-ref harborYamlUml
+log:
+  level: info
+  local:
+    rotate_count: 50
+    rotate_size: 200M
+    location: /var/log/harbor
+
+  external_endpoint:
+    protocol: tcp
+    host: syslog.guix.com
+    port: 5140
+
+_version: 2.13.0
+
+#+end_src
+
+external database
+
++ external_database.harbor.ssl_mode :: you actually needed it GLHF
+
+#+begin_src yaml :noweb-ref harborYamlUml
+external_database:
+ harbor:
+   host: harbor_db_host
+   port: harbor_db_port
+   db_name: harbor_db_name
+   username: harbor_db_username
+   password: harbor_db_password
+   ssl_mode: disable
+   max_idle_conns: 2
+   max_open_conns: 0
+
+#+end_src
+
+Redis
+
++ redis.db_index :: core is 0, unchangeable
++ redis.harbor_db_index :: optional. defaults to =0=
++ redis.cache_layer_db_index :: optional. defaults to =0=.
+
+#+begin_src yaml :noweb-ref harborYamlUml
+redis:
+  registry_db_index: 1
+  jobservice_db_index: 2
+  trivy_db_index: 5
+  harbor_db_index: 6
+  cache_layer_db_index: 7
+
+#+end_src
+
+external redis
+
++ external_redis.host :: also supports sentinel
+  - redis: =<host_redis>:<port_redis>=
+  - redis+sentinel: =<host_sentinel1>:<port>,<host_sentinel2>:<port>,<host_sentinel3>:<port>=
++ external_redis.tlsOptions :: only server-auth (mTLS not supported)
++ external_redis.tlsOptions.rootCA :: set the ca path specifically.
+
+#+begin_src yaml :noweb-ref harborYamlUml
+external_redis:
+  host: redis:6379
+  password:
+  username: username password
+  sentinel_master_set: required for redis+sentinel
+  tlsOptions:
+    enable: false
+    rootCA: /etc/harbor/tls/redis/root.crt
+  registry_db_index: 1
+  jobservice_db_index: 2
+  trivy_db_index: 5
+  idle_timeout_seconds: 30
+  harbor_db_index: 6
+  cache_layer_db_index: 7
+
+#+end_src
+
+trust cert of =uaa= instance via self-signed cert
+
+#+begin_src yaml :noweb-ref harborYamlUml
+uaa:
+  ca_file: /etc/harbor/tls/uaa/root.crt
+#+end_src
+
+Global proxy
+
+#+begin_quote
+Config http proxy for components, e.g. http://my.proxy.com:3128 Components
+doesn't need to connect to each others via http proxy. Remove component from
+=components= array if want disable proxy for it. If you want use proxy for
+replication, MUST enable proxy for core and jobservice, and set =http_proxy= and
+=https_proxy=. Add domain to the =no_proxy= field, when you want disable proxy
+for some special registry.
+#+end_quote
+
+#+begin_src yaml :noweb-ref harborYamlUml
+proxy:
+  http_proxy: https://my.proxy.com:8080
+  https_proxy: https://above.paygrade.com:443
+  no_proxy:
+  components:
+    - core
+    - jobservice
+    - trivy
+#+end_src
+
+metric
+
+#+begin_src yaml :noweb-ref harborYamlUml
+metric:
+  enabled: false
+  port: 9090
+  path: /metrics
+
+#+end_src
+
+trace
+
+#+begin_quote
+only can enable one trace provider =jaeger= or =otel= at the same time.
+
++ when using =jaeger=, can only enable it with agent mode orcollector mode
++ if using =jaeger= collector mode, uncomment endpoint and uncomment username,
+  password if needed if using jaeger agetn mode uncomment =agent_host= and
+  =agent_port=
+#+end_quote
+
++ trace.sample_rate :: set to =1= if you want sampling 100% of trace data; set =0.5=
+  if you wanna sampling 50% of trace data, and so forth
++ trace.namespace :: differentiate different harbor services
++ trace.attributes :: user-defined dict.
+
+#+begin_src yaml :noweb-ref harborYamlUml
+trace:
+  enabled: true
+  sample_rate: 1
+  namespace: thisharbor
+  attributes:
+    application: harbor
+  jaeger:
+    endpoint: http://hostname:14268/api/traces
+    username: user
+    password: pass
+    agent_host: hostname
+    agent_port: 6831
+
+  otel:
+    endpoint: hostname:4318
+    url_path: /v1/traces
+    compression: false
+    insecure: true
+    timeout: 10
+#+end_src
+
++ upload_purging :: purge =_upload= directories
+
+#+begin_src yaml :noweb-ref harborYamlUml
+upload_purging:
+  enabled: true
+  age: 168h
+  interval: 24h
+  dryrun: false
+
+#+end_src
+
++ cache.enabled :: cache resources in redis (for high concurrent manifest
+  pulling). for HA
+
+#+begin_src yaml :noweb-ref harborYamlUml
+cache:
+  enabled: false
+  expire_hours: 24
+#+end_src
+
+core
+
+#+begin_src yaml :noweb-ref harborYamlUml
+core:
+  quota_update_provider: redis
+#+end_src
+
+#+begin_quote
+The provider for updating project quota(usage), there are 2 options, redis or
+db, by default is implemented by db but you can switch the updation via redis.
+
++ improves the performance of high concurrent pushing to the same
+  project
++ reduces the database connections spike and occupies.
+
+By redis will bring up some delay for quota usage updation for display, so only
+suggest switch provider to redis if you were ran into the db connections spike
+around the scenario of high concurrent pushing to same project, no improvement
+for other scenes.
+#+end_quote
+
+* TLS
+
+To generate example certs, run:
+
+#+begin_example sh
+docker run -v /:/hostfs goharbor/prepare:<current_harbor_version> gencert -p /path/to/internal/tls/cert
+#+end_example
+
+The config is for a registry at =registry.solidstate.nomoneydown.cloud=
+
+** Homelab CA
+
+Main root
+
++ Certs deployed to =/etc/pki/ca-trust/source/whitelist= where trustable
+  - PITA, but not actually that complicated
+  - containers should pass these in (requires restart) or mount root trust...
+
+#+begin_src plantuml :noweb-ref rootCA
+json "<color:red> Homelab Root" as homelab_root {
+  "crt": "./homelab_root.crt",
+  "issuer": "Homelab Root",
+  "subject": "Homelab Root",
+  "basicConstraints": {
+    "isCA": true,
+    "maxPathLen": -1
+  }
+}
+
+json homelab_ca {
+  "crt": "./homelab_root+ca.crt",
+  "basicConstraints": {
+    "isCA": true,
+    "maxPathLen": 3
+  }
+}
+
+json homelab_cicd_ca {
+  "crt": "./homelab_root+ca+cicd_ca.crt",
+  "basicConstraints": {
+    "isCA": true,
+    "maxPathLen": 2
+  }
+}
+#+end_src
+
+
+Smallstep name constraints and [[https://smallstep.com/docs/step-ca/templates/#arbitrary-x509-extensions][other x509 extensions]]
+
+#+begin_example json
+{
+  "nameConstraints": {
+    "critical": false,
+    "permittedDNSDomains": ["doe.com"],
+    "excludedDNSDomains": ["doe.org"],
+    "permittedIPRanges": ["1.2.3.0/24"],
+    "excludedIPRanges": ["3.2.1.0/24"],
+    "permittedEmailAddresses": ["jane@doe.com"],
+    "excludedEmailAddresses": ["jane@doe.org"],
+    "permittedURIDomains": ["https://doe.com"],
+    "excludedURIDomains": ["https://doe.org"]
+  }
+}
+#+end_example
+
+
+Piv CA
+
+#+begin_src plantuml :noweb-ref rootCA
+json homelab_piv_ca {
+  "key": "yubikey:slot-id=99",
+  "crt": "./homelab_root+ca+piv_ca.crt",
+  "kms": {
+    "type": "yubikey",
+    "uri": "yubikey:serial=123456789"
+  },
+  "basicConstraints": {
+    "isCA": true,
+    "maxPathLen": 1
+  }
+}
+
+homelab_piv_ca --> homelab_ca
+homelab_ca --> homelab_root
+homelab_cicd_ca --> homelab_root
+#+end_src
+
+Temp Root
+
++ separate trust chain, limited expiration window.
++ bootstrap TLS for automation & core services until longer trust chains can be
+  established.
++ requires deploying trust bundles to servers (or initializing images with them)
+  and unrolloing trust when no longer needed.
+
+#+begin_src plantuml :noweb-ref tempCA
+json temp_root {
+  "crt": "./temp_root.crt",
+  "basicConstraints": {
+    "isCA": true,
+    "maxPathLen": 3
+  }
+}
+
+json temp_piv_ca {
+  "key": "yubikey:&slot-id=101",
+  "crt": "./temp_piv_ca.crt",
+  "basicConstraints": {
+    "isCA": true,
+    "maxPathLen": 1
+  },
+  "kms": {
+    "type": "yubikey",
+    "uri": "yubikey:serial654321"
+  }
+}
+
+temp_piv_ca --> temp_root
+#+end_src
+
+** UML
+
+#+begin_src plantuml :noweb yes :file img/devops/harbor-tls.svg
+@startuml
+
+' !pragma layout smetana
+' '!pragma ratio 1
+skinparam backgroundcolor transparent
+' skinparam DefaultTextAlign left
+' skinparam packageTitleAlign left
+set namespaceSeparator none
+hide circle
+hide empty fields
+hide empty methods
+
+title Harbor TLS Configuration: /etc/harbor/tls/internal
+
+<<harborTLS>>
+
+namespace uswest.nomoneydown.cloud {
+  <<extRedis>>
+}
+
+namespace uswest.solidstate.nomoneydown.cloud {
+  <<extPostgres>>
+}
+
+core.harbor --> harbor.solidstate.nomoneydown.cloud
+job_service.harbor  --> harbor.solidstate.nomoneydown.cloud
+proxy.harbor  --> harbor.solidstate.nomoneydown.cloud
+portal.harbor  --> harbor.solidstate.nomoneydown.cloud
+registry.harbor  --> harbor.solidstate.nomoneydown.cloud
+registryctl.harbor  --> harbor.solidstate.nomoneydown.cloud
+trivy_adapter.harbor  --> harbor.solidstate.nomoneydown.cloud
+
+<<tempCA>>
+
+<<rootCA>>
+
+harbor.solidstate.nomoneydown.cloud --> homelab_cicd_ca
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/harbor-tls.svg]]
+
+
+
+** Harbor CA
+
+harbor_internal_ca
+
+#+begin_src plantuml :noweb-ref harborTLS
+  json harbor.solidstate.nomoneydown.cloud {
+    "key": "harbor_internal_ca.key",
+    "crt": "harbor_internal_ca.crt",
+    "pathLength": 0
+  }
+#+end_src
+
+core
+
+#+begin_src plantuml :noweb-ref harborTLS
+json core.harbor {
+  "key": "core.key",
+  "crt": "core.crt",
+  "CN": "core",
+  "SAN": ["core"]
+}
+#+end_src
+
+job_service
+
+#+begin_src plantuml :noweb-ref harborTLS
+json job_service.harbor {
+  "key": "job_service.key",
+  "crt": "job_service.crt",
+  "CN": "jobservice",
+  "SAN": ["jobservice"]
+}
+#+end_src
+
+proxy
+
+#+begin_src plantuml :noweb-ref harborTLS
+json proxy.harbor {
+  "key": "proxy.key",
+  "crt": "proxy.crt",
+  "CN": "proxy",
+  "SAN": ["proxy"]
+}
+#+end_src
+
+portal
+
+#+begin_src plantuml :noweb-ref harborTLS
+json portal.harbor {
+  "key": "portal.key",
+  "crt": "portal.crt",
+  "CN": "portal",
+  "SAN": ["portal"]
+}
+#+end_src
+
+registry
+
+
+#+begin_src plantuml :noweb-ref harborTLS
+json registry.harbor {
+  "key": "portal.key",
+  "crt": "portal.crt",
+  "CN": "registry",
+  "SAN": ["registry"]
+}
+#+end_src
+
+registryctl
+
+#+begin_src plantuml :noweb-ref harborTLS
+json registryctl.harbor {
+  "key": "portal.key",
+  "crt": "portal.crt",
+  "CN": "registryctl",
+  "SAN": ["registryctl"]
+}
+#+end_src
+
+trivy_adapter
+
+#+begin_src plantuml :noweb-ref harborTLS
+json trivy_adapter.harbor {
+  "key": "trivy_adapter.key",
+  "crt": "trivy_adapter.crt",
+  "CN": "trivy-adapter",
+  "SAN": ["trivy-adapter"]
+}
+#+end_src
+
+*** External Services
+
+ext_redis
+
+#+begin_src plantuml :noweb-ref extRedis
+json ext_redis {
+  "key": "/etc/harbor/tls/redis/root.key",
+  "crt": "/etc/harbor/tls/redis/root.crt",
+  "CN": "redis.uswest.bigmoney.cloud",
+  "SAN": ["1.redis.uswest.bigmoney.cloud","2.redis.uswest.bigmoney.cloud"]
+}
+
+json "<color:red> Redis' Root CA" as ext_redis_root {
+  "key": "/etc/harbor/tls/redis/root.key",
+  "crt": "/etc/harbor/tls/redis/root.crt"
+}
+
+ext_redis -> ext_redis_root
+#+end_src
+
+ext_postgres
+
++ handle replication between postgres service instances (probably don't need it
+  here mostly)
+
+#+begin_src plantuml :noweb-ref extPostgres
+json ext_postgres {
+  "key": "/etc/harbor/tls/postgres/root.key",
+  "crt": "/etc/harbor/tls/postgres/root.crt",
+  "CN": "postgres.uswest.bigmoney.cloud",
+  "SAN": ["1.postgres.uswest.bigmoney.cloud","2.postgres.uswest.bigmoney.cloud"]
+}
+
+json "<color:red> Postgres' Root CA" as ext_postgres_root {
+  "key": "/etc/harbor/tls/postgres/root.key",
+  "crt": "/etc/harbor/tls/postgres/root.crt"
+}
+
+ext_postgres -> ext_postgres_root
+#+end_src
