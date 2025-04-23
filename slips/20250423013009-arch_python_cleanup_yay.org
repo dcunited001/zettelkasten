@@ -1,0 +1,48 @@
+:PROPERTIES:
+:ID:       85e3ce88-3451-49fa-8640-cc28bc3a1329
+:END:
+#+TITLE: Arch Python: Cleanup yay
+#+CATEGORY: slips
+#+TAGS:
+
+TLDR: the problem is pyenv
+
+#+begin_example
+/data/lang/.pyenv/versions/3.12.1/bin/python: No module named build.__main__; 'build' is a package and cannot be directly executed
+#+end_example
+
+* Roam
+
+* Pyenv Issues
+
+Enter a directory not controlled by a =pyenv= python
+
++ Show all packages with =pip list | cut -f1 -d' '=
++ Show files for a specific package with =pip show -f $pkg | grep -e '^  '=
++ To determine where it's installed, =locate $file=, since paths are relative
++ To determine ownership, =pacman -Qo $pkgfile= if it's installed under =/usr/**=
+
+#+begin_src shell
+pacman -Qo /usr/lib/python3.13/site-packages/async_timeout/py.typed
+#+end_src
+
+#+RESULTS:
+: /usr/lib/python3.13/site-packages/async_timeout/py.typed is owned by python-async-timeout 4.0.3-6
+
+Possible offenders via =yay -Syu=, but only python-pyrsistent seems to actually
+be installed, according to pip. I'm guessing that maybe =pyenv= is leaking into
+=yay='s build or something.
+
+| aur/d-feet               |     0.3.16-3 | 0.3.17+r16+gf9bd211-3 |
+| aur/ntpdate              |  4.2.8.p17-1 |           4.2.8.p18-1 |
+| aur/python-async-timeout |      4.0.3-6 |               5.0.1-1 |
+| aur/python-future        |      1.0.0-1 |               1.0.0-4 |
+| aur/python-pyrsistent    |     0.19.3-4 |              0.20.0-7 |
+| aur/youtube-dl           | 2021.12.17-2 |          2021.12.17-4 |
+
+When pyenv activates a separate python... # otherwise
+
+#+begin_example
+/data/repo/.venv/bin/python: No module named build
+# /data/lang/.pyenv/versions/3.12.1/bin/python: No module named build.__main__; 'build' is a package and cannot be directly executed
+#+end_example
