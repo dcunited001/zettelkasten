@@ -1,0 +1,241 @@
+:PROPERTIES:
+:ID:       2a7f7e5d-c3bb-4cdf-b7a7-8cca12d2d53d
+:END:
+#+TITLE: BTRFS: Guix can't boot
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:d8216961-cd6a-47cd-b82a-8cd67fe7190f][BTRFS]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* Rearrange FS
+
+I have another drive full of steam games. I'll just buy a steam deck someday...
+Those are isolated to a disk outside of the main =lvm= group.
+
+#+begin_src shell :eval no
+disk=/dev/nvme0n1p3
+e2fsck -f $disk
+# unfortunately ... i have to move this partition.
+echo $((231*1024**3/512)) # current size (+1)
+sfdisk -J /dev/nvme0n1 # to get the current size, 484442111 (+1 for the full 231G)
+resize2fs $disk 64G # to make sector math easy
+e2fsck -f $disk # run again, just because
+#+end_src
+
+To get total file system size, get total blocks & block count:
+
+#+begin_src shell :eval no
+# no control over output?
+blkCount=$(tune2fs -l $disk | grep 'Block count' | sed -E 's/.*: +([0-9]+)/\1/g')
+blkSize=$(tune2fs -l $disk | grep 'Block size' | sed -E 's/.*: +([0-9]+)/\1/g')
+echo $((blkCount*blkSize/(1024**3))) # int division...
+#+end_src
+
+Close out the encrypted disk before editing the partition table it's on. There's
+a reference that holds it open, according to =dmsetup info= (even after I
+logout/login to close all/most files), i need to reboot to ensure that the
+encrypted LVM is closed.
+
+#+begin_src shell :eval no
+blkid /dev/nvme0n1p3
+#+end_src
+
+#+begin_example
+/dev/nvme0n1p3: LABEL="Steam" UUID="b0c13ac8-7208-47ab-8ae9-ce60c6766c30" BLOCK_SIZE="4096" TYPE="ext4" PARTUUID="fb993e5d-e82d-cf46-b19d-2c61f379ae15"
+#+end_example
+
+The new partition will give a new UUID, which would cause guix to fail. It will
+fail when it can't mount the last disk IIRC. The root fs was isolated from most
+everything else, so I'm probably just going to reinstall to get a clean system.
+
+Just used =cfdisk= and left 64G on the device
+
+** Fix LVM
+
+After =cfdisk=, unlocked luks.
+
+#+begin_src shell :eval no
+lvresize -L +50G $vg/root
+lvresize -L +20Gb $vg/home
+#+end_src
+
+Then resize ext4
+
+#+begin_src shell :eval no
+ext4disk=/dev/mapper/dmvolume-home
+e2fsck -f $ext4disk
+resize2fs $ext4disk
+e2fsck -f $ext4disk
+#+end_src
+
+Resize btrfs
+
+#+begin_src shell :eval no
+bDisk=/dev/mapper/dmvolume-root
+b=/mnt/sys
+mount $bDisk /mnt/sys
+btrfs device usage $b
+btrfs filesystem show # to get devid
+btrfs filesystem resize 1:max $b
+btrfs filesystem df $b
+umount $b
+btrfs check $bDisk
+#+end_src
+
+reboot
+
+* BTRFS
+
+The system fails to setup after unlocking and mounting =/dev/mapper/dmvolume-root=
+
+It tries linking something, but fails from lack of space. There are other
+similar space issues in =/var/log/messages= ... starting about a week ago. The log
+dies about three days ago. I'm worried there's something wrong with the RAM from
+drywall dust or something (there's slight discoloration in a lot of the
+copper.....)
+
+... even though =btrfs filesystem usage /mnt/sys= shows
+
+#+begin_example
+Overall:
+    Device size:                 140.00GiB
+    Device allocated:            140.00GiB
+    Device unallocated:            1.00MiB
+    Device missing:                  0.00B
+    Device slack:                    0.00B
+    Used:                        100.88GiB
+    Free (estimated):             38.52GiB      (min: 38.52GiB)
+    Free (statfs, df):            38.52GiB
+    Data ratio:                       1.00
+    Metadata ratio:                   2.00
+    Global reserve:              310.00MiB      (used: 32.00KiB)
+    Multiple profiles:                  no
+
+Data,single: Size:125.94GiB, Used:87.42GiB (69.42%)
+   /dev/mapper/dmvolume-root       125.94GiB
+
+Metadata,DUP: Size:7.00GiB, Used:6.73GiB (96.12%)
+   /dev/mapper/dmvolume-root        14.00GiB
+
+System,DUP: Size:32.00MiB, Used:16.00KiB (0.05%)
+   /dev/mapper/dmvolume-root        64.00MiB
+
+Unallocated:
+   /dev/mapper/dmvolume-root         1.00MiB
+#+end_example
+
+Running =btrfs scrub= changed nothing.
+
+Running the =btrfs defrag= confirms: something wierd is happening. It instantly
+notes "out of space", so i'm thinking:
+
++ that guix is using something like =cp --reflink= that prevents btrfs from
+  accurately accounting for usage.
++ and that it's just a bad idea to run =btrfs defrag=. I thought for a second, but
+  just hit =C-c= since it wasn't actually moving shit around.
+
+Followed up with =btrfs scrub=, which gives me output of "nothing at all wrong
+here" ... good enough for me. Will run another =btrfs check= to see if it triples
+my sectors.
+
+I think the other issue is that I downloaded some docker images to do a thing. I
+still haven't exactly set up =docker= and =containerd= to isolate their image
+storage. I don't want to use another partition for this, but guix does allow you
+to set up services so that they will... though simply creating a partition like
+this just gives you another bin-packing problem.
+
+** Weird output from =btrfs check=
+
+After unlock
+
+ #+begin_example
+nvme0n1                259:0    0 931.5G  0 disk
+├─nvme0n1p2            259:2    0   700G  0 part
+│ └─secrets            254:0    0   700G  0 crypt
+│   ├─dmvolume-swapvol 254:1    0    18G  0 lvm
+│   ├─dmvolume-root    254:2    0   140G  0 lvm
+│   ├─dmvolume-flatpak 254:3    0   100G  0 lvm
+│   ├─dmvolume-home    254:4    0   100G  0 lvm
+│   └─dmvolume-data    254:5    0   250G  0 lvm
+ #+end_example
+
+df -h looks right?
+
+#+begin_example
+/dev/mapper/dmvolume-root  140G  102G   39G  73% /mnt/sys
+#+end_example
+
+first =btrfs check=
+
+#+begin_example
+Opening filesystem to check...
+Checking filesystem on /dev/mapper/dmvolume-root
+UUID: bfdef47e-4ae7-47fb-a0a0-2ffec304f8c3
+[0/0] checking log skipped (none written)
+[0/0] checking root items
+[0/0] checking extents
+[0/0] checking free space tree
+[0/0] checking fs roots
+[0/0] checking only csums items (without verifying data)
+[0/0] checking root refs
+[0/0] checking quota groups skipped (not enabled on this FS)
+found 101090643968 bytes used, no error found
+total csum bytes: 91656572
+total tree bytes: 7224786944
+total fs tree bytes: 6899892224
+total extent tree bytes: 190464000
+btree space waste bytes: 1052004703
+file data blocks allocated: 113424519168
+ referenced 93416386560
+#+end_example
+
+Then =btrfs check --repair= without the warning
+
+#+begin_example
+Opening filesystem to check...
+Checking filesystem on /dev/mapper/dmvolume-root
+UUID: bfdef47e-4ae7-47fb-a0a0-2ffec304f8c3
+[0/0] checking log skipped (none written)
+[0/0] checking root items
+Fixed 0 roots.
+[0/0] checking extents
+super bytes used 101090906112 mismatches actual used 101090643968
+No device size related problem found
+[0/0] checking free space tree
+[0/0] checking fs roots
+[0/0] checking only csums items (without verifying data)
+[0/0] checking root refs
+[0/0] checking quota groups skipped (not enabled on this FS)
+found 202181550080 bytes used, no error found
+total csum bytes: 183313144
+total tree bytes: 14449836032
+total fs tree bytes: 13799784448
+total extent tree bytes: 380928000
+btree space waste bytes: 2104118168
+file data blocks allocated: 226849038336
+ referenced 186832773120
+#+end_example
+
+|------------------------+-------------------+-------------------+--------------------------|
+|                        |             first |            second | (extra)                  |
+|------------------------+-------------------+-------------------+--------------------------|
+| super bytes            | used 101090643968 | used 101090906112 | actual used 101090643968 |
+|------------------------+-------------------+-------------------+--------------------------|
+
+
+|------------------------+--------------+-------------+--------------|
+|                        |        first | second - x2 |       second |
+|------------------------+--------------+-------------+--------------|
+| found                  | 101090643968 |     -262144 | 202181550080 |
+| csum                   |     91656572 |           0 |    183313144 |
+| tree                   |   7224786944 |     -262144 |  14449836032 |
+| fs tree                |   6899892224 |           0 |  13799784448 |
+| extent tree            |    190464000 |           0 |    380928000 |
+| space waste            |   1052004703 |     -108762 |   2104118168 |
+| file data blocks alloc | 113424519168 |           0 | 226849038336 |
+| referenced             |  93416386560 |           0 | 186832773120 |
+|------------------------+--------------+-------------+--------------|
+#+TBLFM: $3=$2*2-$4
+
+..... everything is x2, more or less (bad feeling about this)

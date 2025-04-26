@@ -1,0 +1,118 @@
+#+title: DC Guix: Sourcetrail
+
+* Roam
+
++ [[id:706e72e2-575a-4c23-8410-bc14aa205140][Docs]]
++ [[id:38f43c0c-52ee-42d7-9660-af2511d19711][Modeling Language]]
++ [[id:3daa7903-2e07-4664-8a20-04df51b715de][C++]]
++ [[id:97ae00f5-9337-4108-b85f-1edfc7f86ed7][Java]]
+
+* Docs
++ Repo: [[https://github.com/petermost/sourcetrail][petermost/sourcetrail]]
+
+* Requirements
+
+#+begin_quote
+NOTE: it's building/running as is, but:
+
++ it doesn't run tests (i'm running the bin from =guix build --keep-failed=)
++ it needs =export LC_ALL=C= before invoking =./build/Sourcetree.sh=
++ it doesn't index anything (needs the CMake flags below)
++ configs do get stored in =~/.config/Sourcetrail= where you can find example
+  projects to index
++ you likely need to learn a bit about SourcetrailDB to index
+#+end_quote
+
+it ships with an example of tic tac toe. if you're polite, ChatGPT will let you
+win while making you feel smart about it.
+
+** Depedencies
+
+|----------------------+---------+-----------------+---+----------------+---+--------------+------------|
+| General              |         | C++             |   | Java           |   | Unit Test    |            |
+|----------------------+---------+-----------------+---+----------------+---+--------------+------------|
+| cmake                |         | clang-19        |   | maven          |   | catch2       | check      |
+| ninja-build          | ninja   | libclang-19-dev |   | openjdk-23-jdk |   | libgtest-dev | googletest |
+| libboost1.83-all-dev | boost   |                 |   |                |   |              |            |
+| qt6-base-dev         | qtbase  |                 |   |                |   |              |            |
+| qt6-svg-dev          | qtsvg   |                 |   |                |   |              |            |
+| libsqlite3-dev       | sqlite  |                 |   |                |   |              |            |
+| libtinyxml-dev       | tinyxml |                 |   |                |   |              |            |
+|----------------------+---------+-----------------+---+----------------+---+--------------+------------|
+
+** Config Flags
+
+From =system-ninja-release= in [[From][./CMakePresents.json]]
+
+|-------------------------------+---------|
+| BUILD_CXX_LANGUAGE_PACKAGE    | ON      |
+| BUILD_JAVA_LANGUAGE_PACKAGE   | ON      |
+| CMAKE_BUILD_TYPE              | Release |
+| CMAKE_VERBOSE_MAKEFILE        | FALSE   |
+| CMAKE_EXPORT_COMPILE_COMMANDS | FALSE   |
+| BUILD_UNIT_TESTS_PACKAGE      | OFF     |
+|-------------------------------+---------|
+
+* Package
+
+Run =watchexec -p -e *.scm -- guix build -f ./sourcetrail.scm= to rebuild on
+tangle.
+
+#+begin_src scheme :tangle ./sourcetrail.scm
+(use-modules (guix utils)
+             ((guix licenses) #:prefix license:)
+             (guix packages)
+             (guix git-download)
+             (guix build-system cmake)
+             (gnu)
+             (gnu packages)
+             (srfi srfi-1))
+
+;; maven openjdk-23-jdk (21.0...)
+(use-package-modules cmake ninja boost qt sqlite xml check pkg-config)
+
+(define sourcetrail
+  (let ((commit "59503c7449e9557fa43490f2fa8a0183d05480a2")
+        (version "2025.4.1"))
+    (package
+      (name "sourcetrail")
+      (version version)
+      (source
+       (origin
+         (method git-fetch)
+         (uri
+          (git-reference
+           (url "https://github.com/petermost/sourcetrail")
+           (commit version)))
+         (file-name (git-file-name name version))
+         (sha256 (base32 "1ml8gm0avcy3k3b9qhhfyr1pi6ackrj0vxzc3jn3pvss6hqjmb1w"))
+         ;; modules?
+         ;; snippet?
+         ))
+      (native-inputs
+       (list pkg-config ninja catch2 googletest))
+      (inputs (list boost qtbase qtsvg sqlite tinyxml))
+      (build-system cmake-build-system)
+      ;; pkg-config necessary?
+      (arguments
+       (list #:cmake cmake-3.30
+;             #:configure-flags
+;             #:tests #t
+;             #:phases
+             ))
+      (home-page "https://github.com/petermost/sourcetrail")
+      (synopsis
+       "Sourcetrail is a free and open-source interactive source explorer.")
+      (description
+       "Sourcetrail is a free and open-source cross-platform source explorer that
+ helps you get productive on unfamiliar source code. It offers an SDK to write
+ custom language extensions.")
+      (license license:gpl3))))
+
+sourcetrail
+#+end_src
+
+
+
+git clone https://github.com/petermost/Sourcetrail.git \
+--recurse-submodules --config core.symlinks=true
