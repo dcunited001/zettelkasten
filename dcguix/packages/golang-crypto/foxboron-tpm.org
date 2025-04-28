@@ -1,0 +1,160 @@
+:PROPERTIES:
+:ID:       415bd2f6-9770-46b6-9452-f7c9ca481ee0
+:END:
+#+title: DC Guix: Foxboron TPM
+
+Just the binary packages for now
+
+* Roam
++ [[id:abd2d6e9-fe5b-4ba4-8533-0e5a3d174743][Golang]]
++ [[id:a3a83227-d12f-4fd4-aa7b-700d7c51fc89][TPM]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
+
+* Docs
+** Sources
+
++ [[https://github.com/Foxboron/go-tpm-keyfiles][Foxboron/go-tpm-keyfiles]]: TPM 2.0 TSS keyfile library
+  - minimal deps: this would be a good one to start with (when actually building)
++ [[https://github.com/Foxboron/ssh-tpm-agent][Foxboron/ssh-tpm-agent]]: ssh-agent for TPMs
++ [[https://github.com/Foxboron/ssh-tpm-ca-authority][Foxboron/ssh-tpm-ca-authority]]: SSH Certificate Authority with device attestation
++ [[https://github.com/Foxboron/ssh-tpm-ca-authority][Foxboron/age-plugin-tpm]]: TPM 2.0 plugin for age
++ [[https://github.com/Foxboron/tpmkey-fido][Foxboron/tpmkey-fido]]: Store WebAuthn/FIDO keys in TPM
++ [[https://github.com/Foxboron/tpmkey-fido][Foxboron/sbctl]]: SecureBoot Key Manager
++ [[https://github.com/Foxboron/go-uefi][Foxboron/go-uefi]]: Linux UEFI library written in Go
+
+* Structure
+
+** ssh-tpm-agent
+
+A binary build for =ssh-tpm-ca-authority= isn't needed: it's already built into
+the =ssh-tpm-agent= release. Same for =go-tpm-keyfiles= and a few others.
+
+* Packages
+
+#+begin_src scheme :tangle ./foxboron-tpm.scm
+(use-modules ((guix licenses) #:prefix license:)
+             (guix gexp)
+             (guix utils)
+             (guix build utils)
+
+             (guix download)
+             (guix git-download)
+             (guix packages)
+
+             (guix build-system gnu)
+             (guix build-system go)
+             (guix build-system copy)
+             (nonguix build-system binary)
+
+             (gnu)
+             (gnu packages)
+
+             (gnu packages golang)
+             (srfi srfi-1))
+
+(use-package-modules base gcc commencement)
+
+(define-public age-plugin-tpm-bin
+  (let* ((platform "linux-amd64"))
+    (package
+      (name "age-plugin-tpm-bin")
+      (version "0.3.0")
+      (source (origin
+                (method url-fetch)
+                (uri (string-append
+                      "https://github.com/Foxboron/age-plugin-tpm/releases/download/v"
+                      version "/" "age-plugin-tpm" "-v" version "-" platform
+                      ".tar.gz"))
+                (sha256
+                 (base32
+                  "0x1kx2c77nkg7ivzlrvvzjwg7fp22kpqp597yrpw7f1y926dzr2j"))))
+      (build-system binary-build-system)
+      (inputs `((,gcc "lib")
+                ,gcc-toolchain))
+      (arguments
+       (list
+        #:install-plan #~'(("." "bin/" #:include ("age-plugin-tpm")))))
+      (home-page "https://github.com/Foxboron/age-plugin-tpm")
+      (synopsis "")
+      (description "")
+      (license license:expat))))
+#+end_src
+
+* Notes
+
+
+* UML
+
+This diagram is neither complete nor up-to-date (also the layout kinda makes it
+useless). It's missing =tpmkey-fido=
+
+#+begin_src plantuml :file ../../img/foxboron-deps.svg
+@startuml
+
+left to right direction
+'skinparam nodesep 10
+'skinparam ranksep 20
+
+skinparam backgroundcolor transparent
+set namespaceSeparator none
+hide empty fields
+hide empty methods
+
+namespace google {
+  class "<size:14>go-tpm<size:10>github.com/google/go-tpm" as go.tpm {}
+  class "<size:14>go-tpm-tools<size:10>github.com/google/go-tpm-tools" as go.tpm.tools {}
+  class "<size:14>go-attestation<size:10>github.com/google/go-attestation" as go.attestation {}
+}
+
+namespace tpm {
+  class "<size:14>ssh-tpm-agent<size:10>github.com/Foxboron/ssh-tpm-agent" as ssh.tpm.agent {}
+  class "<size:14>ssh-tpm-ca-authority<size:10>github.com/Foxboron/ssh-tpm-ca-authority" as ssh.tpm.ca.authority {}
+  class "<size:14>go-tpm-keyfiles<size:10>github.com/Foxboron/go-tpm-keyfiles" as go.tpm.keyfiles {}
+  class "<size:14>swtpm_test<size:10>github.com/Foxboron/swtpm_test" as swtpm.test {}
+}
+
+
+namespace uefi {
+  class "<size:14>sbctl<size:10>github.com/Foxboron/sbctl" as sbctl {}
+  class "<size:14>go-uefi<size:10>github.com/Foxboron/go-uefi" as go.uefi {}
+}
+
+class "<size:14>go-pinentry<size:10>github.com/twpayne/go-pinentry" as go.pinentry {}
+class "<size:14>cobra<size:10>github.com/spf13/cobra" as cobra {}
+
+class "<size:14>age-plugin-tpm<size:10>github.com/Foxboron/age-plugin-tpm" as age.plugin.yubikey {}
+class "<size:14>age<size:10>filippo.io/age" as age {}
+
+
+ssh.tpm.agent -> ssh.tpm.ca.authority
+ssh.tpm.agent -> go.tpm.keyfiles
+ssh.tpm.agent -> go.tpm
+ssh.tpm.agent -> go.tpm.tools
+' go-landlock
+
+ssh.tpm.ca.authority -> ssh.tpm.agent
+ssh.tpm.ca.authority -> go.tpm.keyfiles
+ssh.tpm.ca.authority -> go.tpm
+ssh.tpm.ca.authority -> go.tpm.tools
+
+go.tpm.keyfiles -> swtpm.test
+go.tpm.keyfiles -> go.tpm
+
+age.plugin.yubikey -> age
+age.plugin.yubikey -> swtpm.test
+age.plugin.yubikey -> go.tpm
+age.plugin.yubikey -> go.tpm.tools
+age.plugin.yubikey -> go.pinentry
+age.plugin.yubikey -> cobra
+
+sbctl -> go.uefi
+sbctl -> go.tpm
+sbctl -> go.tpm.keyfiles
+sbctl -> go.attestation
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:../../img/foxboron-deps.svg]]
+

@@ -1,0 +1,463 @@
+:PROPERTIES:
+:ID:       66cecf66-ecc5-449d-bba1-c2a1f6023946
+:END:
+#+title: DC Guix: Security Token
+
+* Roam
++ [[id:3daa7903-2e07-4664-8a20-04df51b715de][C/C++]]
++ [[id:a3a83227-d12f-4fd4-aa7b-700d7c51fc89][TPM]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
+
+* Docs
+
+** Sources
+
++ [[https://github.com/stefanberger/swtpm][stefanberger/libtpms]] and [[https://github.com/NixOS/nixpkgs/blob/1750f3c1c89488e2ffdd47cab9d05454dddfb734/pkgs/by-name/sw/swtpm/package.nix#L127][nixpkgs]]
+  - [[https://github.com/stefanberger/libtpms/tree/master/debian][./debian]] packaging scripts
++ [[https://github.com/stefanberger/swtpm][stefanberger/swtpm]] and [[https://github.com/NixOS/nixpkgs/blob/1750f3c1c89488e2ffdd47cab9d05454dddfb734/pkgs/by-name/li/libtpms/package.nix#L43][nixpkgs]]
+  - [[https://github.com/stefanberger/swtpm/tree/master/Dockerfile][./Dockerfile]] (for reference)
+  - [[https://github.com/stefanberger/swtpm/tree/master/debian][./debian]] packaging scripts
+
+* Requirements
+
+The =swtmp= package depends on =libtpms=
+
+** Depedencies
+
+*** libtpms
+
++
+
+|----------+---+---------------+---+--------------------+---|
+| inputs   |   | native-inputs |   | native-inputs-test |   |
+|----------+---+---------------+---+--------------------+---|
+| openssl  |   |               |   |                    |   |
+| tpm2-tss |   |               |   |                    |   |
+|----------+---+---------------+---+--------------------+---|
+
+*** swtpm
+
+|---------+---+---------------+---+--------------------+---|
+| inputs  |   | native-inputs |   | native-inputs-test |   |
+|---------+---+---------------+---+--------------------+---|
+| openssl |   |               |   |                    |   |
+|         |   |               |   |                    |   |
+|---------+---+---------------+---+--------------------+---|
+
+* Packages
+
+#+begin_src scheme :tangle ./swtpm.scm
+
+
+#+end_src
+
+* Notes
+
+The other TPM packages go in =./gnu/packages/hardware.scm=, but since =swtpm= and
+=libtpms= are software emulated TPM's, I would
+
+** swtpm
+
+From Dockerfile:
+
++ softhsm or certtool are crashing the pkcs11 test case
++ --with-cuse https://man.archlinux.org/man/swtpm_cuse.8.en
+
+
+*** --with-cuse
+
+this fails because [[https://github.com/stefanberger/swtpm/blob/9bdd62d1e96b5723920ffe9f09325d1ddad66905/configure.ac#L202-L213][pkg-config cannot find libfuse]]
+
+#+begin_example sh
+    LIBFUSE_CFLAGS=$(pkg-config fuse --cflags 2>/dev/null)
+#+end_example
+
+
+
+*** hmmmm
+
+shit...
+
+#+begin_src shell :results output
+guix shell -L ~/.dotfiles/ellipsis swtpm -- swtpm_setup --help
+#+end_src
+
+#+RESULTS:
+#+begin_example
+TPM emulator setup tool version 0.10.0
+Usage: swtpm_setup [options]
+
+The following options are supported:
+
+--runas <user>   : Run this program under the given user's account.
+
+--tpm-state <dir>: Path where the TPM's state will be written to;
+                   this is a mandatory argument. Prefix with dir:// to
+                   use directory backend, or file:// to use linear file.
+
+--tpmstate <dir> : This is an alias for --tpm-state <dir>.
+
+--tpm <executable>
+                 : Path to the TPM executable; this is an optional argument and
+                   by default 'swtpm' in the PATH is used.
+
+--swtpm_ioctl <executable>
+                 : Path to the swtpm_ioctl executable; this is deprecated
+                   argument.
+
+--tpm2           : Setup a TPM 2; by default a TPM 1.2 is setup.
+
+--createek       : Create the EK; for a TPM 2 an RSA and ECC EK will be
+                   created
+
+--allow-signing  : Create an EK that can be used for signing;
+                   this option requires --tpm2.
+                   Note: Careful, this option will create a non-standard EK!
+
+--decryption     : Create an EK that can be used for key encipherment;
+                   this is the default unless --allow-signing is given;
+                   this option requires --tpm2.
+
+--ecc            : This option allows to create a TPM 2's ECC key as storage
+                   primary key; a TPM 2 always gets an RSA and an ECC EK key.
+
+--take-ownership : Take ownership; this option implies --createek
+  --ownerpass  <password>
+                 : Provide custom owner password; default is ooo
+  --owner-well-known:
+                 : Use an owner password of 20 zero bytes
+  --srkpass <password>
+                 : Provide custom SRK password; default is sss
+  --srk-well-known:
+                 : Use an SRK password of 20 zero bytes
+--create-ek-cert : Create an EK certificate; this implies --createek
+
+--create-platform-cert
+                 : Create a platform certificate; this implies --create-ek-cert
+
+--create-spk     : Create storage primary key; this requires --tpm2; deprecated
+
+--lock-nvram     : Lock NVRAM access
+
+--display        : At the end display as much info as possible about the
+                   configuration of the TPM
+
+--config <config file>
+                 : Path to configuration file; default is /gnu/store/8xfx5ks8h0m84c4zk3a07nahappbchzy-swtpm-0.10.0/etc/swtpm_setup.conf
+
+--logfile <logfile>
+                 : Path to log file; default is logging to stderr
+
+--keyfile <keyfile>
+                 : Path to a key file containing the encryption key for the
+                   TPM to encrypt its persistent state with. The content
+                   must be a 32 hex digit number representing a 128bit AES key.
+                   This parameter will be passed to the TPM using
+                   '--key file=<file>'.
+
+--keyfile-fd <fd>: Like --keyfile but a file descriptor is given to read the
+                   encryption key from.
+
+--pwdfile <pwdfile>
+                 : Path to a file containing a passphrase from which the
+                   TPM will derive the 128bit AES key. The passphrase can be
+                   32 bytes long.
+                   This parameter will be passed to the TPM using
+                   '--key pwdfile=<file>'.
+
+--pwdfile-fd <fd>: Like --pwdfile but a file descriptor is given to to read
+                   the passphrase from.
+
+--cipher <cipher>: The cipher to use; either aes-128-cbc or aes-256-cbc;
+                   the default is aes-128-cbc; the same cipher must be
+                   used on the swtpm command line
+
+--overwrite      : Overwrite existing TPM state by re-initializing it; if this
+                   option is not given, this program will return an error if
+                   existing state is detected
+
+--not-overwrite  : Do not overwrite existing TPM state but silently end
+
+--vmid <vm id>   : Unique (VM) identifier to use as common name in certificate
+
+--pcr-banks <banks>
+                 : Set of PCR banks to activate. Provide a comma separated list
+                   like 'sha1,sha256'. '-' to skip and leave all banks active.
+                   Default: sha256
+
+--rsa-keysize <keysize>
+                 : The RSA key size of the EK key; 3072 bits may be supported
+                   if libtpms supports it.
+                   Default: 2048
+
+--write-ek-cert-files <directory>
+                 : Write EK cert files into the given directory
+
+--tcsd-system-ps-file <file>
+                 : This option is deprecated and has no effect.
+
+--print-capabilities
+                 : Print JSON formatted capabilities added after v0.1 and exit.
+
+--create-config-files [[overwrite][,root]]
+                 : Create swtpm_setup and swtpm-localca config files for a
+                   user account.
+                   overwrite: overwrite any existing files
+                   root: allow to create files under root's home directory
+                   skip-if-exist: if any file exists exit without error
+
+--reconfigure    : Reconfigure an existing swtpm by reusing existing state.
+                   The active PCR banks can be changed but no new keys will
+                   be created.
+
+--profile <json-profile>
+                 : Configure swtpm with the given profile.
+
+--profile-name <profile name | built-in profile name>
+                 : Search for a profile with the <name>.json in distro and
+                   local directories; if not found try it as a built-in.
+
+--profile-file <file>
+                 : Configure swtpm with a profile read from the given file.
+
+--profile-file-fd <fd>
+                 : Configure swtpm with a profile read from a file descriptor.
+
+--profile-remove-disabled check|fips-host
+                 : Instruct swtpm to remove algorithms that may be disabled by
+                   FIPS mode on the host from 'custom' profile.
+                   check: algorithms are tested.
+                   fips-host: no testing.
+
+--print-profiles : Display all local and distro-provided profile as well as
+                   the ones built into libtpms and exit.
+
+--version        : Display version and exit
+
+--help,-h        : Display this help screen
+
+#+end_example
+*** In-built user/group
+
+These config options hardcode user/group access into the produced binaries
+
++ --with-tss-user :: defaults to =tss= and set to =root= in the Dockerfile
++ --with-tss-group :: defaults to =tss= and set to =root= in the Dockerfile
+
+When using something like =ssh-tpm-agent=, the +process+ service should absolutely
+be isolated to /it's own user & group/. And (this kinda sucks, honestly) the
+socket that gets created by =ssh-tpm-agent= needs to be writable by the processes
+that set =SSH_AUTH_SOCK=
+
+The socket that gets created will need to be writable by the service connecting
+to the TPM
+*** Tests requiring network
+
+These tests (and maybe others) should be diabled, as they require network
+
+#+begin_src sh :results output :dir /tmp/guix-build-swtpm-0.10.0.drv-1/source
+grep -l port tests/*.log | sed -e 's/\(.*\)\.log/\1/g'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+tests/test_ctrlchannel
+tests/test_encrypted_state
+tests/test_getcap
+tests/test_hashing2
+tests/test_hashing
+tests/test_init
+tests/test_locality
+tests/test_migration_key
+tests/test_print_states
+tests/test_resume_volatile
+tests/test_save_load_encrypted_state
+tests/test_save_load_state
+tests/test_setbuffersize
+tests/test_swtpm_bios
+tests/test_tpm2_avoid_da_lockout
+tests/test_tpm2_derived_keys
+tests/test_tpm2_encrypted_state
+tests/test_tpm2_getcap
+tests/test_tpm2_hashing2
+tests/test_tpm2_hashing3
+tests/test_tpm2_hashing
+tests/test_tpm2_init
+tests/test_tpm2_locality
+tests/test_tpm2_migration_key
+tests/test_tpm2_print_states
+tests/test_tpm2_probe
+tests/test_tpm2_resume_volatile
+tests/test_tpm2_save_load_encrypted_state
+tests/test_tpm2_save_load_state_da_timeout
+tests/test_tpm2_save_load_state_locking
+tests/test_tpm2_save_load_state
+tests/test_tpm2_savestate
+tests/test_tpm2_setbuffersize
+tests/test_tpm2_swtpm_bios
+tests/test_tpm2_swtpm_setup_profile
+tests/test_tpm2_swtpm_setup_profile_name
+tests/test_tpm2_volatilestate
+tests/test_tpm2_wrongorder
+tests/test_tpm_probe
+tests/test_volatilestate
+tests/test_wrongorder
+#+end_example
+
+#+begin_src sh :results output :dir /tmp/guix-build-swtpm-0.10.0.drv-0/source
+
+#+end_src
+
+**** Removed tests
+
+#+begin_example scheme
+(add-after 'unpack 'patch-source
+            (lambda* (#:key inputs outputs #:allow-other-keys)
+              (let ((certtool (assoc-ref inputs "gnutls"))
+                    (out (assoc-ref outputs "out")))
+                ;; (substitute* "configure.ac"
+                ;;   (("^install-data-local") "do-not-execute:"))
+                (substitute* "samples/Makefile.am"
+                  (("^install-data-local:") "do-not-execute:"))
+                (substitute* "src/swtpm_localca/swtpm_localca.c"
+                  ;; the top is only used when __APPLE__
+                  (("#define CERTTOOL_NAME \"gnutls-certtool\"")
+                   (string-append
+                    "#define CERTTOOL_NAME \""
+                    (search-input-file inputs "bin/certtool") "\""))
+                  (("#define CERTTOOL_NAME \"certtool\"")
+                   (string-append
+                    "#define CERTTOOL_NAME \""
+                    (search-input-file inputs "bin/certtool") "\"")))
+
+                    ;; removed this:
+                (substitute* "tests/common"
+                  ;; the top is only used when __APPLE__
+                  (("CERTTOOL=gnutls-certtool;;")
+                   "CERTTOOL=certtool;;")))))
+
+(add-after 'unpack 'skip-network-tests
+            (lambda _
+              (substitute* "tests/Makefile.am"
+              ;; grep -l port tests/*.log | sed -e 's/\(.*\)\.log/\1/g'
+                (("    test_ctrlchannel") "")
+                (("    test_encrypted_state") "")
+                (("    test_getcap") "")
+                (("    test_hashing2") "")
+                (("    test_hashing") "")
+                (("    test_init") "")
+                (("    test_locality") "")
+                (("    test_migration_key") "")
+                (("    test_print_states") "")
+                (("    test_resume_volatile") "")
+                (("    test_save_load_encrypted_state") "")
+                (("    test_save_load_state") "")
+                (("    test_setbuffersize") "")
+                (("    test_swtpm_bios") "")
+                (("    test_tpm2_avoid_da_lockout") "")
+                (("    test_tpm2_derived_keys") "")
+                (("    test_tpm2_encrypted_state") "")
+                (("    test_tpm2_getcap") "")
+                (("    test_tpm2_hashing2") "")
+                (("    test_tpm2_hashing3") "")
+                (("    test_tpm2_hashing") "")
+                (("    test_tpm2_init") "")
+                (("    test_tpm2_locality") "")
+                (("    test_tpm2_migration_key") "")
+                (("    test_tpm2_print_states") "")
+                (("    test_tpm2_probe") "")
+                (("    test_tpm2_resume_volatile") "")
+                (("    test_tpm2_save_load_encrypted_state") "")
+                (("    test_tpm2_save_load_state_da_timeout") "")
+                (("    test_tpm2_save_load_state_locking") "")
+                (("    test_tpm2_save_load_state") "")
+                (("    test_tpm2_savestate") "")
+                (("    test_tpm2_setbuffersize") "")
+                (("    test_tpm2_swtpm_bios") "")
+                (("    test_tpm2_swtpm_setup_profile") "")
+                (("    test_tpm2_swtpm_setup_profile_name") "")
+                (("    test_tpm2_volatilestate") "")
+                (("    test_tpm2_wrongorder") "")
+                (("    test_tpm_probe") "")
+                (("    test_volatilestate") "")
+                (("    test_wrongorder") "")
+                (("    test_commandline") "")
+
+                ;; grep -l tcp tests/*.log | sed -e 's/\(.*\)\.log/\1/g'
+                (("    test_ctrlchannel2") "")
+                (("    test_ctrlchannel3") "")
+                (("    test_ctrlchannel") "")
+                (("    test_encrypted_state") "")
+                (("    test_getcap") "")
+                (("    test_hashing2") "")
+                (("    test_hashing") "")
+                (("    test_init") "")
+                (("    test_locality") "")
+                (("    test_migration_key") "")
+                (("    test_print_states") "")
+                (("    test_resume_volatile") "")
+                (("    test_save_load_encrypted_state") "")
+                (("    test_save_load_state") "")
+                (("    test_setbuffersize") "")
+                (("    test_swtpm_bios") "")
+                (("    test_tpm2_avoid_da_lockout") "")
+                (("    test_tpm2_ctrlchannel2") "")
+                (("    test_tpm2_ctrlchannel3") "")
+                (("    test_tpm2_derived_keys") "")
+                (("    test_tpm2_encrypted_state") "")
+                (("    test_tpm2_getcap") "")
+                (("    test_tpm2_hashing2") "")
+                (("    test_tpm2_hashing3") "")
+                (("    test_tpm2_hashing") "")
+                (("    test_tpm2_init") "")
+                (("    test_tpm2_locality") "")
+                (("    test_tpm2_migration_key") "")
+                (("    test_tpm2_print_states") "")
+                (("    test_tpm2_probe") "")
+                (("    test_tpm2_resume_volatile") "")
+                (("    test_tpm2_save_load_encrypted_state") "")
+                (("    test_tpm2_save_load_state_da_timeout") "")
+                (("    test_tpm2_save_load_state_locking") "")
+                (("    test_tpm2_save_load_state") "")
+                (("    test_tpm2_savestate") "")
+                (("    test_tpm2_setbuffersize") "")
+                (("    test_tpm2_swtpm_bios") "")
+                (("    test_tpm2_swtpm_setup_profile") "")
+                (("    test_tpm2_swtpm_setup_profile_name") "")
+                (("    test_tpm2_volatilestate") "")
+                (("    test_tpm2_wrongorder") "")
+                (("    test_tpm_probe") "")
+                (("    test_volatilestate") "")
+                (("    test_wrongorder") ""))))
+#+end_example
+
+
+** libtpms
+
+I disabled tests for now
+
+*** Running tests
+
+When the build runs =make check-local=, I get this error.
+
+#+begin_quote
+;; make  check-local
+;; make[2]: Entering directory '/tmp/guix-build-libtpms-0.10.0.drv-0/source/src'
+;; There are undefined symbols in libtpms (    )
+;; make[2]: *** [Makefile:4025: check-local] Error 1
+;; make[2]: Leaving directory '/tmp/guix-build-libtpms-0.10.0.drv-0/source/src'
+;; make[1]: *** [Makefile:3536: check-am] Error 2
+;; make[1]: Leaving directory '/tmp/guix-build-libtpms-0.10.0.drv-0/source/src'
+;; make: *** [Makefile:522: check-recursive] Error 1
+
+;; Test suite failed, dumping logs.
+;; error: in phase 'check': uncaught exception :
+;; %exception #<&invoke-error program: "make" arguments: ("check" "-j" "8") exit-status: 2 term-signal: #f stop-signal: #f>
+;; phase `check' failed after 0.2 seconds
+;; command "make" "check" "-j" "8" failed with status 2
+;; build process 18 exited with status 256
+;; builder for `/gnu/store/ianf67nmr3dvzzrygd5j0nxssb0lwp9l-libtpms-0.10.0.drv' failed with exit code 1
+;; build of /gnu/store/ianf67nmr3dvzzrygd5j0nxssb0lwp9l-libtpms-0.10.0.drv failed
+;; View build log at '/var/log/guix/drvs/ia/nf67nmr3dvzzrygd5j0nxssb0lwp9l-libtpms-0.10.0.drv.gz'.
+;; guix build: error: build of `/gnu/store/ianf67nmr3dvzzrygd5j0nxssb0lwp9l-libtpms-0.10.0.drv' failed
+#+end_quote
