@@ -492,13 +492,67 @@ This would require:
   The [[https://forums.gentoo.org/viewtopic-p-8740753.html?sid=027c05e0bb657a0e26c7c0d2f74586e0][gentoo thread]] has many answers
 
 * Issues
+** Kernel Builds
+
+*** Blowups on =/tmp= out of space (and limiting iso size)
+
+The =/tmp= mount usually consumes half ram, so you may run the following. Using
+75% for =/tmp= is probably excessive, lesser increases are probably safer.
+
+#+begin_src shell
+# for 16G => 24G,
+sudo mount -o remount,size=24G,noatime,mode=1777 /tmp
+#+end_src
+
+*** Kernel+Firmware builds
+
+The firmware packages all build on each other: the specific =*-firmware= packages
+inherit =linux-firmware=, then filter out the firmware.
+
+#+begin_example scheme
+(define (select-firmware keep)
+  "Modify linux-firmware copy list to retain only files matching KEEP regex."
+  #~(lambda _
+      (use-modules (ice-9 regex))
+      (substitute* "WHENCE"
+        (("^(File|RawFile|Link): *([^ ]*)(.*)" _ type file rest)
+         (string-append (if (string-match #$keep file) type "Skip") ": " file rest)))))
+
+(define-public amdgpu-firmware
+  (package
+    (inherit linux-firmware)
+    (name "amdgpu-firmware")
+    (arguments
+     (cons* #:license-file-regexp "LICENSE.amdgpu"
+            (substitute-keyword-arguments (package-arguments linux-firmware)
+              ((#:phases phases #~%standard-phases)
+               #~(modify-phases #$phases
+                   (add-after 'unpack 'select-firmware
+                     #$(select-firmware "^amdgpu/")))))))
+    (home-page "http://support.amd.com/en-us/download/linux")
+    (synopsis "Nonfree firmware for AMD graphics chips")
+    (description "Nonfree firmware for AMD graphics chips.  While most AMD
+graphics cards can be run with the free Mesa, many modern cards require a
+nonfree kernel module to run properly and support features like hibernation and
+advanced 3D.")
+    (license
+     (nonfree
+      (string-append
+       "https://git.kernel.org/pub/scm/linux/kernel/git/firmware"
+       "/linux-firmware.git/plain/LICENSE.amdgpu")))))
+#+end_example
+
+I'm not really sure how this affects the structure of the builds. I'm trying to
+determine, specifically, how this changes the structure of builds sent to the
+guix-daemon. (either way, my kernel build was blowing up on =/tmp= out of space,
+even when running =guix build linux= with no firmware)
+
+
 ** Locale
 
 *** Unicode Normalization
 
 [[https://stackoverflow.com/a/7934397][Everything you never wanted to know about unicode normalization]]
-
-
 ** Development Environments
 *** Customizations to a project's =guix.scm= or =manifest.scm= for =guix shell=
 This is a similar approach, but done with [[https://discourse.nixos.org/t/local-personal-development-tools-with-flakes/22714/6][nix flakes]].

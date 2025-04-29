@@ -1,0 +1,219 @@
+:PROPERTIES:
+:ID:       80e7c641-792b-4d55-a905-0da56d28e46c
+:END:
+#+TITLE: TPM: Using swtpm
+#+CATEGORY: slips
+#+TAGS:
+
+#+begin_quote
+I just realized that without the CUSE build of =swtpm=, unfortunately, interaction
+with a character device will likely require =root=, even though the device is a
+software implementation. So, without that capability (or root), you're limited
+to Unix socket and TCP/IP socket.
+#+end_quote
+
+
+* Roam
+
++ [[id:a3a83227-d12f-4fd4-aa7b-700d7c51fc89][TPM]]
++ [[id:66cecf66-ecc5-449d-bba1-c2a1f6023946][DC Guix: swtpm]]
+
+* Babel
+
+#+name: swtpmPath
+#+begin_src emacs-lisp :eval query
+(setq-local swtpm-path (or (bound-and-true-p swtpm-path)
+                           (read-string "Symbol’s value as variable is void: $1 path: " (make-temp-file "swtpm-" t))))
+                      #+end_src
+
+Start a session
+
+#+header: :dir swtpmPath
+#+begin_src sh :session *guix-swtpm* :results silent :eval query :async yes
+pkgs=(libtpms swtpm)
+guix shell -L $HOME/.dotfiles/ellipsis -L $HOME/.dotfiles/dc ${pkgs[@]}
+#+end_src
+
+Test session
+
+#+begin_src sh :session *guix-swtpm* :results silent :eval query
+swtpm ... ummm ...
+#+end_src
+
+#YAMLMemes You said 'only a few lines of +yaml+ bindmounts'
+
+[[file:img/k8s-you-said-a-few-bindmounts.jpg]]
+
+* Docs
+
+** Source
+
+[[https://github.com/stefanberger/swtpm/tree/master/samples][./examples]]: configs & config gen
+
+[[https://github.com/stefanberger/swtpm/tree/master/tests][./tests]]
+
++ The best resource for learning how to interface with an =swtpm= is likely the
+  test suite, since they are mostly templated bash scripts.
++ Modify (or extend) the =swtpm= package definition to fail the build, then use
+  =guix build --keep-failed= to find the source for test scripts after templates
+  are built.
+
+
+
+* Basics
+
+** Probing
+
+Note:
+
++ Some commands may alter the =swtpm= state: "when supplying a TPM state, one may
+  be created if none existed before"
+
+
+*** --print-info
+
+Dump emulated hardware details for default profile, without state (requires a
+running =swtpm= instance)
+
+#+begin_example shell
+swtpm socket --tpm2 --print-info 0xFF | jq -C
+#+end_example
+
+Values for =--print-info= are supplied as hex, which can be xor'd.
+
+|------+--------------------------------------------|
+|  0x1 | TPM implementation specification           |
+|  0x2 | manufacturer, model and version of the TPM |
+|  0x4 | supported RSA and Camellia key sizes       |
+|  0x8 | supported and enabled algorithms           |
+| 0x10 | supported and enabled commands             |
+| 0x20 | active profile                             |
+| 0x40 | all built-in profiles                      |
+| 0x80 | supported attributes                       |
+|------+--------------------------------------------|
+
+
+
+*** --print-profiles
+
+
+*** --print-states
+
+** Input
+
+** Config
+
+Use something like [[https://github.com/stefanberger/swtpm/blob/master/samples/swtpm-create-user-config-files.in][./samples/swtpm-create-user-config-files.in]] to genreate config
+
+#+begin_src shell :results output
+cat <<EOF | tree -a --fromfile .
+/etc/swtpm-localca.conf
+/etc/swtpm_setup.conf
+/home/user/.config/swtpm-localca.conf
+/home/user/.config/swtpm_setup.conf
+EOF
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+├── etc
+│   ├── swtpm-localca.conf
+│   └── swtpm_setup.conf
+└── home
+    └── user
+        └── .config
+            ├── swtpm-localca.conf
+            └── swtpm_setup.conf
+
+5 directories, 4 files
+#+end_example
+
+*** swtpm_setup.conf
+
+Generic Config
+
+|--------------------+-------------------------------------|
+| active_pcr_banks   | sha1, sha256, sha384, sha512        |
+| rsa_keysize        | 2048, max                           |
+| profile            | either JSON profile or profile name |
+| profile_file       |                                     |
+| local_profiles_dir |                                     |
+|--------------------+-------------------------------------|
+
+The =create_certs_tool= defines the transformation of config values into a format
+that another tool understands (likely also requiring a wrapper script).
+
+|---------------------------+-----------------------------------------------------|
+| create_certs_tool         | name of an executable that creates TPM certificates |
+| create_certs_tool_config  | sets =--configFile $file=                             |
+| create_certs_tool_options | sets =--optsfile $file=                               |
+|---------------------------+-----------------------------------------------------|
+
+The =create_certs_tool= receives these options:
+
+|---------------------------+---------------------------------------------|
+| --type $type              | type of cert: =ek= or =platform=                |
+| --dir $dir                | create cert as =$dir/$type.cert=              |
+| --ek $mod                 | modulus of endorsement key (ascii hex)      |
+| --vmid                    | ID of VM the cert is created for            |
+| --logfile $log            | otherwise =stdout= and =stderr=                 |
+| --configfile $cfg         | wrapper calls program with this config file |
+| --optsfile $opts          | wraper calls program with these opts        |
+|---------------------------+---------------------------------------------|
+| --tpm2                    | create a TPM2-compliant cert                |
+| --tpm-spec-family $family | spec followed for TPM, included in cert     |
+| --tpm-spec-level $level   | spec followed for TPM, included in cert     |
+| --tpm-spec-revision $rev  | spec followed for TPM, included in cert     |
+|---------------------------+---------------------------------------------|
+
+*** swtpm-localca.conf
+
+Generic config:
+
+#+begin_example conf
+statedir = /var/lib/swtpm_localca
+signingkey = /var/lib/swtpm_localca/signkey.pem
+# signingkey_password = PassWord
+issuercert = /var/lib/swtpm_localca/issuercert.pem
+certserial = /var/lib/swtpm_localca/certserial
+#+end_example
+
+When signing with GnuTLS TPM 1.2:
+
+#+begin_example conf
+TSS_TCSD_HOSTNAME = localhost
+TSS_TCSD_PORT = 8008135 # defaults 30003
+#+end_example
+
+**** PKCS#11 config
+
+ #+begin_example conf
+statedir = /var/lib/swtpm-localca
+signingkey = pkcs11:model=SoftHSM%20v2;manufacturer=SoftHSM%20project;serial=891b99c169e41301;token=mylabel;id=%00;object=mykey;type=public
+issuercert = /var/lib/swtpm-localca/swtpm-localca-tpmca-cert.pem
+certserial = /var/lib/swtpm-localca/certserial
+SWTPM_PKCS11_PIN = 1234
+env:MY_MODULE_PKCS11_CONFIG = /tmp/mymodule-pkcs11.conf # no trailing spaces
+#+end_example
+
+The =signingkey= URI includes info to be interpreted by a PKCS#11 lib
+
+|--------------+------------------|
+| model        | SoftHSM v2       |
+| manufacturer | SoftHSM project  |
+| serial       | 891b99c169e41301 |
+| token        | mylabel          |
+| id           | NULL ... ?       |
+| object       | mykey            |
+| type         | public           |
+|--------------+------------------|
+
+* Generating Docs
+
+** JSON => UML
+
+#+begin_src shell
+
+#+end_src
+
