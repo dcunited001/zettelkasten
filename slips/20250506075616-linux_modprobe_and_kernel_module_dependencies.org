@@ -1,0 +1,140 @@
+:PROPERTIES:
+:ID:       e406ef2c-5983-441c-b127-b0345973194f
+:END:
+#+TITLE: Linux: Modprobe and Kernel Module Dependencies
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:14e8fb0c-abda-4175-8fca-49f7b865b7b6][Serial (i2c, ddc, term)]]
+
+* Notes
+
+** Dependencies
+
+*** From =lsmod=
+
+#+name: kmods
+#+begin_src shell :results output verbatim silent
+lsmod | sed -E 's/( +)/\t/g' | tail -n+2 \
+    | cut -f1 | sed -E 's/(.*)$/"\1"/g' \
+    | sort | uniq # | rev
+# rev does it better
+#+end_src
+
+#+name: kmodDeps
+#+begin_src shell :results output verbatim silent
+lsmod | sed -E 's/( +)/\t/g' | tail -n+2 \
+    | cut -f1,4 | grep -e "	" \
+    | sed -E 's/^(.+)\t(.+)/{"\2"} -> "\1"/g' \
+    | sed -E 's/,/", "/g' \
+#    | rev | tac | rev
+# cut -s doesn't work
+# the 842_* modules force everything to be quoted
+#+end_src
+
+#+name: kmodsWithInbound
+#+begin_src shell :results output verbatim silent :var modDeps=kmodDeps
+echo -n "$modDeps" | sed -E 's/^.* -> //g' | sort | uniq # | rev | tac | rev
+#+end_src
+
+**** Filter clusters
+
+This won't actually work, since i'm implicitly defining the graphviz nodes.
+=$kmods= is too large and =$kmodsWithInbound= doesn't include leaf nodes (see babel
+blocks).
+
+#+name: sndModules
+#+begin_src shell :results output verbatim silent :var mods=kmodsWithInbound
+echo -n "$mods" | grep -E '^"(snd|soundcore)'
+#+end_src
+
+#+name: videoModules
+#+begin_src shell :results output verbatim silent :var mods=kmodsWithInbound
+echo -n "$mods" | grep -E '^"(mc|uvc|videodev|videobuf2)'
+#+end_src
+
+#+name: iptablesModules
+#+begin_src shell :results output verbatim silent :var mods=kmodsWithInbound
+echo -n "$mods" | grep -E '^"(nft_|nf_|nfnetlink|xt_|x_tables|ip_set|ip_tables)'
+#+end_src
+
+#+name: btModules
+#+begin_src shell :results output verbatim silent :var mods=kmodsWithInbound
+echo -n "$mods" | grep -E '^"(bt|bluetooth)'
+#+end_src
+
+**** Modules with dependencies
+
+Out of sfdp,fdp,neato,circo,etc... dot wins again.
+
+#+begin_src dot :file ./img/dot/kernelModules.svg :cmdline "-Tsvg -Kdot" :noweb yes
+digraph G {
+    rankdir=LR
+    <<kmodsWithInbound()>>
+    <<kmodDeps()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:./img/dot/kernelModules.svg]]
+
+Printable, but not easily grokable
+
+#+begin_src dot :file ./img/dot/kernelModulesCirco.svg :cmdline "-Tsvg -Kcirco" :noweb yes
+digraph G {
+    overlap=false
+    // overlap=compress
+    // overlap_scaling=10
+    // layout=circo
+    mindist=0.01
+    <<kmodsWithInbound()>>
+    <<kmodDeps()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:./img/dot/kernelModulesCirco.svg]]
+
+Grokable, but not easily readable
+
+#+begin_src dot :file ./img/dot/kernelModulesSfdp.svg :cmdline "-Tsvg -Ksfdp"  :noweb yes
+digraph G {
+    overlap=prism
+    //overlap_scaling=6
+    layout=sfdp
+    beautify=true
+    repulsiveforce=5
+    sep="+8"
+
+    <<kmodsWithInbound()>>
+    <<kmodDeps()>>
+} :noweb yes
+
+#+end_src
+
+#+RESULTS:
+[[file:./img/dot/kernelModulesSfdp.svg]]
+
+*** From =depmod -n=
+
+This produces a bit too much output to be useful
+
+**** Arch
+
+#+begin_example shell
+depmod -n | grep -v alias
+#+end_example
+
+**** Guix
+
+Guix has a different base directory, so you need:
+
+#+begin_example shell
+depmod -nb /run/current-system/kernel
+#+end_example
+
+The current system's compiled modules lists are in
+=/run/current-system/kernel/lib/modules/$version= with the top declarations of the
+graph in =./modules.dep=
