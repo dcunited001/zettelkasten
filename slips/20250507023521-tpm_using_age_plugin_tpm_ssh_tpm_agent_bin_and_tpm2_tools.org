@@ -1,0 +1,176 @@
+:PROPERTIES:
+:ID:       259e67ca-539b-4877-ae9e-86240dab7ca9
+:END:
+#+TITLE: TPM: Using age-plugin-tpm, ssh-tpm-agent and tpm2-tools
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:a3a83227-d12f-4fd4-aa7b-700d7c51fc89][TPM]]
+
+* Overview
+
+** age-plugin-tpm
+
+Interacts with =age= identities stored on a TPM backend
+
++ age-plugin-tpm
+
+** ssh-tpm-agent
+
++ ssh-tpm-add
++ ssh-tpm-agent
++ ssh-tpm-hostkeys
++ ssh-tpm-keygen
+
+** tpm2-tools
+
+Includes around 100 commands GLHF
+
+#+name: tpm2subcmds
+|--------------------------+----------------------------+------------------------------+----------------------------|
+| tpm2                     | tpm2_evictcontrol          | tpm2_nvsetbits               | tpm2_policytemplate        |
+| tpm2_activatecredential  | tpm2_flushcontext          | tpm2_nvundefine              | tpm2_policyticket          |
+| tpm2_certify             | tpm2_getcap                | tpm2_nvwrite                 | tpm2_print                 |
+| tpm2_certifycreation     | tpm2_getcommandauditdigest | tpm2_nvwritelock             | tpm2_quote                 |
+| tpm2_certifyX509certutil | tpm2_geteccparameters      | tpm2_pcrallocate             | tpm2_rc_decode             |
+| tpm2_changeauth          | tpm2_getekcertificate      | tpm2_pcrevent                | tpm2_readclock             |
+| tpm2_changeeps           | tpm2_getpolicydigest       | tpm2_pcrextend               | tpm2_readpublic            |
+| tpm2_changepps           | tpm2_getrandom             | tpm2_pcrread                 | tpm2_rsadecrypt            |
+| tpm2_checkquote          | tpm2_getsessionauditdigest | tpm2_pcrreset                | tpm2_rsaencrypt            |
+| tpm2_clear               | tpm2_gettestresult         | tpm2_policyauthorize         | tpm2_selftest              |
+| tpm2_clearcontrol        | tpm2_gettime               | tpm2_policyauthorizenv       | tpm2_send                  |
+| tpm2_clockrateadjust     | tpm2_hash                  | tpm2_policyauthvalue         | tpm2_sessionconfig         |
+| tpm2_commit              | tpm2_hierarchycontrol      | tpm2_policycommandcode       | tpm2_setclock              |
+| tpm2_create              | tpm2_hmac                  | tpm2_policycountertimer      | tpm2_setcommandauditstatus |
+| tpm2_createak            | tpm2_import                | tpm2_policycphash            | tpm2_setprimarypolicy      |
+| tpm2_createek            | tpm2_incrementalselftest   | tpm2_policyduplicationselect | tpm2_shutdown              |
+| tpm2_createpolicy        | tpm2_load                  | tpm2_policylocality          | tpm2_sign                  |
+| tpm2_createprimary       | tpm2_loadexternal          | tpm2_policynamehash          | tpm2_startauthsession      |
+| tpm2_dictionarylockout   | tpm2_makecredential        | tpm2_policynv                | tpm2_startup               |
+| tpm2_duplicate           | tpm2_nvcertify             | tpm2_policynvwritten         | tpm2_stirrandom            |
+| tpm2_ecdhkeygen          | tpm2_nvdefine              | tpm2_policyor                | tpm2_testparms             |
+| tpm2_ecdhzgen            | tpm2_nvextend              | tpm2_policypassword          | tpm2_unseal                |
+| tpm2_ecephemeral         | tpm2_nvincrement           | tpm2_policypcr               | tpm2_verifysignature       |
+| tpm2_encodeobject        | tpm2_nvread                | tpm2_policyrestart           | tpm2_zgen2phase            |
+| tpm2_encryptdecrypt      | tpm2_nvreadlock            | tpm2_policysecret            |                            |
+| tpm2_eventlog            | tpm2_nvreadpublic          | tpm2_policysigned            |                            |
+|--------------------------+----------------------------+------------------------------+----------------------------|
+
+One Punch Man
+
+#+begin_src shell :results output verbatim :var cmds=tpm2subcmds
+echo -n ${cmds[@]} |\
+    sed -E 's/tpm2_/tpm2\//g' |\
+    sed -E 's/certify(\w+)/certify\/\1/g' |\
+    sed -E 's/change(\w+)/change\/\1/g'  |\
+    sed -E 's/clear(\w+)/clear\/\1/g' |\
+    sed -E 's/create(\w+)/create\/\1/g' |\
+    sed -E 's/ecdh(\w+)/ecdh\/\1/g' |\
+    sed -E 's/get(\w+)/get\/\1/g' |\
+    sed -E 's/nvread(\w+)/nvread\/\1/g' |\
+    sed -E 's/nvwrite(\w+)/nvwrite\/\1/g' |\
+    sed -E 's/nv(\w+)/nv\/\1/g' |\
+    sed -E 's/pcr(\w+)/pcr\/\1/g' |\
+    sed -E 's/policyauthorize(\w+)/policyauthorize\/\1/g' |\
+    sed -E 's/policynv(\w+)/policynv\/\1/g' |\
+    sed -E 's/policy(\w+)/policy\/\1/g' |\
+    sed -E 's/read(\w+)/read\/\1/g' |\
+    sed -E 's/rsa(\w+)/rsa\/\1/g' |\
+    sed -E 's/set(\w+)/set\/\1/g' |\
+    tr ' ' '\n' |\
+    tree --fromfile .
+
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── tpm2
+    ├── evictcontrol
+    ├── flushcontext
+    ├── get
+    │   ├── cap
+    │   ├── commandauditdigest
+    │   ├── eccparameters
+    │   ├── ekcertificate
+    │   ├── policy
+    │   │   └── digest
+    │   ├── random
+    │   ├── sessionauditdigest
+    │   ├── testresult
+    │   └── time
+    ├── hash
+    ├── hierarchycontrol
+    ├── hmac
+    ├── import
+    ├── incrementalselftest
+    ├── load
+    ├── loadexternal
+    ├── makecredential
+    ├── nv
+    │   ├── certify
+    │   ├── define
+    │   ├── extend
+    │   ├── increment
+    │   ├── read
+    │   │   ├── lock
+    │   │   └── public
+    │   ├── set
+    │   │   └── bits
+    │   ├── undefine
+    │   └── write
+    │       └── lock
+    ├── pcr
+    │   ├── allocate
+    │   ├── event
+    │   ├── extend
+    │   ├── read
+    │   └── reset
+    ├── policy
+    │   ├── authorize
+    │   │   └── nv
+    │   ├── authvalue
+    │   ├── commandcode
+    │   ├── countertimer
+    │   ├── cphash
+    │   ├── duplicationselect
+    │   ├── locality
+    │   ├── namehash
+    │   ├── nv
+    │   │   └── written
+    │   ├── or
+    │   ├── password
+    │   ├── pcr
+    │   ├── restart
+    │   ├── secret
+    │   ├── signed
+    │   ├── template
+    │   └── ticket
+    ├── print
+    ├── quote
+    ├── rc_decode
+    ├── read
+    │   ├── clock
+    │   └── public
+    ├── rsa
+    │   ├── decrypt
+    │   └── encrypt
+    ├── selftest
+    ├── send
+    ├── sessionconfig
+    ├── set
+    │   ├── clock
+    │   ├── commandauditstatus
+    │   └── primarypolicy
+    ├── shutdown
+    ├── sign
+    ├── startauthsession
+    ├── startup
+    ├── stirrandom
+    ├── testparms
+    ├── unseal
+    ├── verifysignature
+    └── zgen2phase
+
+15 directories, 72 files
+#+end_example
