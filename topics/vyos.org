@@ -41,9 +41,25 @@ VyOS has =nftables= and a decent DSL with fairly good ansible support.
 + [[https://vyos.dev/][vyos.dev]]: Issue/Feature Tracking
 + Slack is for customers/contributors
 
+** Printable
+
+#+begin_src javascript
+document.querySelector('.copyDiv').forEach(el => el.remove())
+#+end_src
+
+whoa this is way to hard
+
+#+begin_src css
+
+#+end_src
+
 * Resources
 + [[https://blog.kroy.io/2019/11/21/battle-of-the-bare-metal-routers/][Battle of the Metal Routers]]
 + [[https://blog.kroy.io/2019/08/23/battle-of-the-virtual-routers/][Battle of the Virtual Routers]] (VyOS)
+
+** Kernel
+
++ Post with [[https://discourse.ubuntu.com/t/kernel-configuration-in-ubuntu/35857][Notes on Kernel Configuration in Ubuntu]] (not vyos-specific)
 
 ** OpenAPI
 
@@ -52,6 +68,56 @@ at https://muh.router.lab.local/redoc, so this is a good place to look for
 metaprogramming
 
 * Topics
+
+
+** From A Live ISO
+
+#+name: tmpdir
+#+begin_src sh :cache yes
+mktemp -d
+#+end_src
+
+#+RESULTS[d11bbe9264aafab22d88733f2c0f56e64bc0e8a9]: tmpdir
+: /tmp/tmp.FGNzBW0pUI
+
+*** Packages
+
+*** Services
+
+
+*** Kernel
+
+
+Fetch =/proc/config.gz=, then =gunzip=
+
+#+begin_example shell
+# this works, but tramp completion is problematic -- emacs close to locking :(
+# +begin_src shell :dir /ssh:vyostest:/home/vyos :results output file :file img/vyos.kconfig
+cat /proc/config.gz | gunzip -c
+#+end_example
+
+Just use scp
+
+#+begin_src shell :var d=tmpdir
+scp vyostest:/proc/config.gz $d
+#+end_src
+
+Run =gunzip= and save to =kconfig=
+
+#+begin_src shell :var d=tmpdir
+# total lines: 6390. without commented or empty lines: 3309
+cat $d/kconfig | grep -v '^#' | grep -ve '^$' | wc -l
+#+end_src
+
+#+RESULTS:
+: 3309
+
+Whereas for this hsot arch zen kernel, there are =9386= positively-defined kconfig
+settings (and =12192= total).
+
+*** Hardware
+
+Gonna want =hwinfo=
 
 ** Security
 
@@ -62,7 +128,6 @@ metaprogramming
 #+begin_example shell
 show configuration commands | strip-private
 #+end_example
-
 ** Source
 *** vyos-1x
 
@@ -115,6 +180,12 @@ XML in the respective subdirs of =./build=. This can be queried with =xq= et ali
 
 + [ ] building these requires having a compatible =libvyosconfig.so=
 
+***** XML Schema
+
+After building ISO, XML =RelaxNG= schemas are in
+=./build/vyos-1x/schema/*.{rnc,rng}=
+
+
 **** GraphQL API
 
 The API is implemented in python using Ariadne in the vyos-1x repo.
@@ -145,8 +216,148 @@ SCHEMA_PATH = directories['api_schema']
 CLIENT_OP_PATH = directories['api_client_op']
 DATA_DIR = directories['data']
 #+end_example
+** ISO Build
 
+It's a =debian-live= build
 
++ [[https://debian-live-config.readthedocs.io/][Debian Live Config Docs]]
+  - [[https://github.com/nodiscc/debian-live-config/blob/master/doc/md/custom.md][./doc/md/custom.md]]
++ [[https://packages.debian.org/bookworm/live-build][Live Build System Components]]
+
+*** Profiles
+
+There are several profiles to build, each with a =config.boot.default=
+
+#+begin_src shell :results output verbatim
+locate '/data/ecto/vyos*vyos*config*default' \
+    | sed -e 's/\/data\/ecto\/vyos\/vyos\///g'  \
+    | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+├── gh-action-test-vyos-1x
+│   ├── data
+│   │   └── config.boot.default
+│   └── tests
+│       └── data
+│           └── config.boot.default
+├── vyos
+│   └── configs
+│       └── etc
+│           └── vyos
+│               └── config.boot.default
+├── vyos-1x
+│   ├── data
+│   │   └── config.boot.default
+│   └── tests
+│       └── data
+│           └── config.boot.default
+├── vyos-build
+│   ├── build
+│   │   └── vyos-1x
+│   │       ├── data
+│   │       │   └── config.boot.default
+│   │       └── tests
+│   │           └── data
+│   │               └── config.boot.default
+│   └── tools
+│       ├── cloud-init
+│       │   └── AWS
+│       │       └── config.boot.default
+│       └── container
+│           └── config.boot.default
+└── vyos-workflow-test-temp
+    ├── data
+    │   └── config.boot.default
+    └── tests
+        └── data
+            └── config.boot.default
+
+27 directories, 11 files
+#+end_example
+
+*** Other Artifacts
+**** Interesting files
+
++ ./build/vyos-1x/schema/*.{rnc,rng} :: RelaxNG XML schemas for interface &
+  op-mode commands
++ ./build/config/hooks/{live,normal} ::
+
+**** Directory structure
+
+Without vyos-1x, cache or chroot directories, the file structure is compact
+
+#+begin_src shell :results output verbatim :dir /data/ecto/vyos/vyos/vyos-build
+tree -dI vyos-1x -I cache -I chroot build
+#+end_src
+
+#+RESULTS:
+#+begin_example
+build
+├── auto
+├── binary
+│   ├── boot
+│   │   └── grub
+│   │       ├── live-theme
+│   │       └── x86_64-efi
+│   ├── EFI
+│   │   └── boot
+│   ├── isolinux
+│   └── live
+├── config
+│   ├── apt
+│   ├── archives
+│   ├── bootloaders
+│   │   └── grub-pc
+│   │       └── live-theme
+│   ├── debian-installer
+│   ├── hooks
+│   │   ├── live
+│   │   └── normal
+│   ├── includes
+│   ├── includes.binary
+│   │   └── isolinux
+│   ├── includes.bootstrap
+│   ├── includes.chroot
+│   │   ├── etc
+│   │   │   ├── initramfs-tools
+│   │   │   │   └── hooks
+│   │   │   ├── modprobe.d
+│   │   │   ├── modules-load.d
+│   │   │   ├── sudoers.d
+│   │   │   └── systemd
+│   │   │       └── system
+│   │   │           └── getty@tty1.service.d
+│   │   ├── opt
+│   │   │   └── vyatta
+│   │   │       └── etc
+│   │   │           ├── grub
+│   │   │           └── install-image
+│   │   ├── usr
+│   │   │   └── share
+│   │   │       └── vyos
+│   │   │           └── keys
+│   │   └── var
+│   │       └── lib
+│   │           └── shim-signed
+│   │               └── mok
+│   ├── includes.chroot_after_packages
+│   ├── includes.chroot_before_packages
+│   ├── includes.installer
+│   ├── includes.source
+│   ├── package-lists
+│   ├── packages
+│   ├── packages.binary
+│   ├── packages.chroot
+│   ├── preseed
+│   └── rootfs
+└── local
+    └── bin
+
+60 directories
+#+end_example
 ** Org Babel
 
 It would be possible to run commands against a vyos interface.
@@ -256,8 +467,6 @@ run show interfaces
 exit
 EOF
 #+end_example
-
-
 
 ** Automation
 

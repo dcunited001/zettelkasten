@@ -8,6 +8,69 @@
 
 ** Transform PFSense backups from XML/YAML
 
+** Backdated Encryption using GPG =--fake-system-time=
+
+I just haven't gotten around to generating my new subkeys.
+
++ Open a file that's using emacs =epg= to manage transparent decryption.
++ In this case, it's a =.password-store= file for a noscopes token that contains
+  the token on the top line.
++ Create a backup the for the =pass= file.
++ Replace the token with the new one. Use =M-x duplicate-line= and mark only the
+  text in the second line, without a newline (though it doesn't matter for =pass=
+  because they only consider the topline for the secret)
++ Use the =C-u M-|= trick (to cat the mark)
+  - run =gpg --ascii -er $EMAIL --fake-system-time=. the =C-u= will replace the
+    marked text. With =--ascii= you can check over everything.
++ Eliminate everything from the file, except the top line (with the new token)
++ Use a different =M-|= trick, with the entire file as marked text
+  - but with =gpg -er $EMAIL --fake-system-time > ~/.passwordstore/$dns/$user.gpg= with
+    =--ascii= if your emacs has =auth-sources= set up that way.
++ Close the buffer without modifying the content. The buffer's underlying file
+  is modified, so it will warn about that. To avoid, maybe run a command from a
+  shell.
+
+However, doing it this way, I know that the token _never_ written to disk. Except
+maybe... hmmm.
+
++ You'll want to purge your =kill-ring= and ensure that you understand where each
+  of your Emacs packages writes cache to disk.
++ If I'm wrong, then there's essentially no benefit ... bc it's still _on-disk_
+  (worse than writing a temp file, then deleting)
++ You can find this by "fuzzing" through functions your IDE uses. Pick a unique
+  string that acts like a canary. Pass it through the interactive function
+  (using =call-interactively=), then have some other process check the cache.
+
+A lot of this cache seems like overkill, but using any technology is like "death
+by a thousand paper bullets." There are a million ways that render a lot of
+precautions useless ... So you want to rely on the network to insulate you. (the
+network can't really be a simple _flat_ LAN with a few subnets joined by one
+router connected to WAN)
+
++ When done completely from shell, you need some shell setup to avoid history
+  (or a profile-specific configured for your terminal app, like Konsole or
+  whatever)
++ Ideally, you could just use the Github API issue a token after a
+  signature/challenge (using something like the FIDO2-based =*-sk= keys for SSH).
+  JWK may work for this, but this is all additional setup, req. that the
+  service's authentication/etc APIs support the additional protocols (in the
+  end, it's more confusing)
++ Github does allow API tokens to be issued which can create/authorize other
+  tokens.
+  1. can you easily limit that token's scope? depends, but if this means you
+     have to reason about splitting out to new Github orgs ... that's too much
+  2. you have a new bottom-turtle problem, per service
+
+Caveats:
+
++ I'm creating a bit of work in the future: my old subkeys won't be on most of
+  my YK keyrings, so i still won't be able to easily decrypt these
++ Other tools in the =pass= ecosystem likely allow you to forward
+  =--fake-system-time= to overwrite a user's pass/token. However, they likely
+  operate on the lines corresponding to the pass/token you want to change
++ Plenty of other options too
+
+
 * Vanilla Emacs
 
 ** Emacs Docs

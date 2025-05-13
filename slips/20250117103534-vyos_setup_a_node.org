@@ -23,10 +23,13 @@ hygiene & implications of customizing a debian live build.
 
 Pull container & start
 
-#+begin_src sh
++ add =--sysctl net.ipv6.conf.lo.disable_ipv6=0= if needed
++ the volume needs to map from =vyos-build= to =/vyos=
+
+#+begin_src sh :dir /data/ecto/vyos/vyos/vyos.build
 docker pull vyos/vyos-build:current && docker run --rm -it \
   -v "$(pwd)":/vyos \
-  -w /vyos --privileged --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
+  -w /vyos --privileged \
   -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
   vyos/vyos-build:current bash
 
@@ -39,7 +42,7 @@ In container:
 
 #+begin_src sh
 sudo make clean
-image=generic # not iso, needs to match the generic.toml
+image=generic # must specify in generic.toml (or it otherwise doesn't produce an iso)
 sudo ./build-vyos-image $image --architecture amd64 --build-by "j.randomhacker@vyos.io"
 #+end_src
 
@@ -52,7 +55,7 @@ The build directory should be empty.
 ** Initial Startup Config
 
 In [[https://github.com/vyos/vyos-build/blob/2ab12b7566638996e055054577d33f72cbc2fd5d/scripts/image-build/build-vyos-image#L596][./scripts/image-build/build-vyos-image]], the build script mentions that you
-can load the ISO with a custom config file. You can:
+can load the ISO with a custom config file. Some options:
 
 + add a TOML file in =./data/build-flavors/*.toml= and specify that flavor when
   you run the build script in a container. this will overwrite
@@ -65,54 +68,60 @@ can load the ISO with a custom config file. You can:
 
 *** Default Boot Config
 
+A shimmed flavor at =./data/build-flavors/*.toml=
+
 #+begin_src toml
 # A slightly modified ISO image
 
 image_format = "iso"
+#+end_src
+
+The otherwise default config at =./tools/container/config.boot.default=
+
+#+begin_src toml
 
 # The default config
 default_config="""
 system {
-    host-name vyos
-    login {
-        user vyos {
-            authentication {
-                encrypted-password "*"
-                plaintext-password ""
-            }
-            level admin
-        }
+  host-name vyos
+  login {
+    user vyos {
+      authentication {
+        encrypted-password "*"
+        plaintext-password ""
+      }
+      level admin
     }
-    syslog {
-        global {
-            facility all {
-                level info
-            }
-            facility protocols {
-                level debug
-            }
-        }
+  }
+  syslog {
+    global {
+      facility all {
+        level info
+      }
+      facility protocols {
+        level debug
+      }
     }
-    ntp {
-        server "time1.vyos.net"
-        server "time2.vyos.net"
-        server "time3.vyos.net"
+  }
+  ntp {
+    server "time1.vyos.net"
+    server "time2.vyos.net"
+    server "time3.vyos.net"
+  }
+  console {
+    device ttyS0 {
+      speed 115200
     }
-    console {
-        device ttyS0 {
-            speed 115200
-        }
-    }
-    config-management {
-        commit-revisions 100
-    }
+  }
+  config-management {
+    commit-revisions 100
+  }
 }
 
 interfaces {
-    loopback lo {
-    }
+  loopback lo {
+}
 """
-
 #+end_src
 
 *** Setup a basic user with SSH auth
@@ -123,24 +132,24 @@ See [[https://docs.vyos.io/en/latest/configuration/system/login.html#local][Key-
 
 #+begin_src vyos
 system {
-    login {
-      user asdf {
-          authentication {
-              public-keys pubkeyComment {
-                  key "zebra"
-                  type "frr-bgp-123"
-                  options "from=0.0.0.0"
-              }
-              otp {
-                  // easy button
-              }
-          }
+  login {
+    user asdf {
+      authentication {
+        public-keys pubkeyComment {
+          key "zebra"
+          type "frr-bgp-123"
+          options "from=0.0.0.0"
+        }
+        otp {
+          // easy button
+        }
       }
     }
+  }
 
-    service ssh {
-      // restrict to CA-signed keys here for an expiry
-    }
+  service ssh {
+    // restrict to CA-signed keys here for an expiry
+  }
 }
 #+end_src
 

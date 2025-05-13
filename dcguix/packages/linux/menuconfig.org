@@ -1,0 +1,137 @@
+:PROPERTIES:
+:ID:       e28e9050-4321-4af4-89cc-ee4422e4f914
+:END:
+#+TITLE: DC Guix: Menuconfig (Linux)
+#+CATEGORY: dcguix
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+* Dependencies
+
+| inputs  | native-inputs |
+|---------+---------------|
+| ncurses | ninja         |
+|         | bison         |
+|         | flex          |
+
+* Package
+
+The project doesn't really use semantic versioning, so I don't think I'm going
+to submit a patch. if it doesn't have versions, IDK that the author really
+feels like adding them -- for other projects, I'd maybe ask.
+
+** AUR
+
+From the =prepare()= phase (neither should be needed AFAIK)
+
++ =sed -i "s/common_cflags =/common_cflags = $CFLAGS/" build.ninja=
++ =sed -i "s/common_ldflags =/common_ldlags = $LDFLAGS/" build.ninja=
+
+Deps.
+
++ ncurses (ncurses-gitAUR)
++ git (git-gitAUR, git-glAUR)  (make)
++ ninja (ninja-kitwareAUR, ninja-fuchsia-gitAUR, ninja-gitAUR, ninja-jobserverAUR, ninja-memAUR) (make)
+
+It also needs =bison= and =flex=, of which at least the former is covered in the
+"Pragmatic Programmer."
+
+** Guix
+
+For some reason, really wants to download a substitute of the archive. This was
+because of how I was specifying the URL to download.
+
+#+begin_src scheme :tangle menuconfig.scm
+(use-modules (gnu)
+             (gnu packages)
+             (gnu packages base)
+             ;; (gnu packages cmake)
+             (gnu packages ninja)
+             (gnu packages ncurses)
+             (gnu packages bison)
+             (gnu packages flex)
+             (gnu packages pkg-config)
+             (gnu packages python)
+             (gnu packages check)
+             (guix build-system gnu)
+             ;; (guix build-system meson)
+             (guix download)
+             (guix git-download)
+             (guix packages)
+             (guix utils)
+             (guix gexp)
+             ((guix licenses) #:prefix license:)
+             (srfi srfi-1))
+
+(use-package-modules linux)
+
+(define-public menuconfig
+  (let* ((commit "adb23e435283e76f17d173010bbf9d5f100b12dd")
+         (revision "0"))
+    (package
+      (name "menuconfig")
+      (version (string-append revision "-" commit))
+      (source (origin
+                (method git-fetch)
+                (uri (git-reference
+                      (url "https://github.com/anatol/menuconfig")
+                      (commit commit)))
+                ;; (file-name (git-file-name name version))
+                (sha256
+                 (base32
+                  "1lh9mnpxs17jwnd9s05dvs2gf4ib7ybzah7xsklwrm9s4hgmmxnr"))))
+      ;; (build-system meson-build-system)
+      (build-system gnu-build-system)
+      (inputs (list ncurses bison flex))
+      (native-inputs (list pkg-config ninja python python-pytest))
+      (arguments
+       (list
+        #:phases
+        #~(modify-phases %standard-phases
+            (delete 'configure)
+            (replace 'build
+              (lambda* (#:key parallel-build? #:allow-other-keys)
+                (let ((job-count (if parallel-build?
+                                     (number->string (parallel-job-count))
+                                     "1")))
+                  (invoke "ninja" "-j" job-count))))
+            (delete 'check)
+            (replace 'install
+              (lambda* (#:key outputs #:allow-other-keys)
+                (let* ((out (assoc-ref outputs "out"))
+                       (bin (string-append out "/bin")))
+                  (install-file "conf" bin)
+                  (install-file "mconf" bin))
+                #t))
+            )))
+      (home-page "https://github.com/anatol/menuconfig")
+      (synopsis "Out-of-tree version of Linux' kconfig tool.")
+      (description "KConfig is a flexible Linux project configuration
+mechanism. It allows to define and use set of configuration options and then
+build a @code{.config} file that takes all the Kconfig dependencies and restrictions
+into account.")
+      (license license:gpl2))))
+
+menuconfig
+#+end_src
+
+*** Problems
+
+Running the tests would go something like this, but the make rule deps are for
+things like =$(obj)/conf= ... idk why make at this point doesn't recognize that as
+the binary it just built.
+
+This is something that should be fixed if patch is submitted, but idk.
+
+#+begin_src scheme
+;; make: *** No rule to make target '/conf', needed by 'testconfig'.  Stop.
+
+(replace 'check
+  (lambda* (#:key tests? #:allow-other-keys)
+    (when tests?
+      (invoke "make" "testconfig"))))
+#+end_src
+
