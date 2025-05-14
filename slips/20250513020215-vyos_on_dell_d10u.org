@@ -136,19 +136,150 @@ Containers use =podman=
 
 *** Redis
 
-* Config
+* Issues
 
-** Problems
+Trying to test linking up to the extra port on my Linux desktop (not the
+gateway) with DHCP instead of static.
 
-+ The boot mounts the config files, then migrates the system to the declared config
++ I guess =DHCP= is the "adapter" I was looking for to avoid specifying any
+  details about the network the appliance would be connected to.
++ I don't have a wifi (either in the applicance or the orange pi)
++ In any case, i'd like to stream logs over the network back to the appliance.
+  - I'm not quite sure it'd be as simple as I'd like, esp. given that there's
+    little control over the networking details of the other devices.
+  - also, there are weird configs (multiple DHCP pools, multiple gateways)
+
+** Test DHCP with =dnsmasq=
+
+#+begin_src shell
+delete interfaces ethernet eth0 address 198.18.0.1/24
+set interfaces ethernet eth0 address dhcp
+commit
+save # ssh broken unless serial
+#+end_src
+
+On host, create =dnsmasq.conf=
+
+#+begin_example
+interface=enp5s0
+listen-address=198.18.0.10
+bind-interfaces
+dhcp-option=3,198.18.0.10
+dhcp-option=6,$addr
+dhcp-range=198.18.0.100,198.18.0.110,1h
+#+end_example
+
+Start dnsmasq with the conf (no output)
+
+#+begin_src shell
+sudo dnsmasq -k --conf-file=./dnsmasq.conf
+#+end_src
+
++ On =vyos= in =vt1= start =monitor traffic eth0=
+  - Then jump to =vt2= and run =renew dhcp interface ethernet=
++ Traffic is scrolling (vyos is asking), but =dnsmasq= is not responding
+  - Traceroute does not go out across the interface (though default route on
+    =eth0= interface...)
++ I'm guessing =dnsmasq= receives the message (no logs though), sends packets
+  which don't make it.
+  - ARP exchange comes through when flapping host =enp5s0= whose gateway is
+    =0.0.0.0= .... changed through several apps. I think it's unrouted by =enp5s0='s
+    host. It doesn't set in multiple apps,
+  - Maybe bc single-gateway per VRF?
++ =arp= seems to show nothing on either side... usually nice to see earlier, but
+  you never do... idk. I'm going to guess it works in a normal networking config.
++ an =mdns= packet made it through though.
+
+#+begin_src shell
+d=$(mktemp -d)
+p="$d/dnsmasq.pid"
+ifx=enp5s0
+addr="$(ip addr show dev enp5s0 | grep -e 'inet ' | tr -s ' ' | cut -f3 -d' ')"
+opts=(--no-hosts --no-resolve)
+dnsmasq ${opts[@]} --interface=$ifx --listen-address=$addr --pidfile=$p
+#+end_src
+
+hmmmm
+
+
+** Issues With ISO Creation
+
+This config format differs more than I first thought. I believe there are
+development tools for syntax validation (+ some semantic), but that's not going
+to catch everything.
+
++ The boot mounts the config files, then migrates vyos from a "pre-booted=
+  config to the config specified in the kernel boot argument.
 + This ISO build flavor mounts the files, config doesn't survive migration at boot
-+ This ends up locking out the =vyos= user
+  - This ends up locking out the =vyos= user. idk if there's a decent way to
+    address this. best to use =set= and =delete= commands, then extract with =show
+    configuration=
 
+I found this format elsewhere, but =show conf= produces something else.
+
+#+begin_example
+    interface-route 10.12.34.0/24 {
+      next-hop-interface eth1 {
+        distance 20
+      }
+    }
+#+end_example
+
+* Flavor
+
+** To Add
+
+*** mDNS
+
++ permit through firewall
++ vyos can curl =photonvision.local:5800=
+
+**** Testing with tunnel
+
+With tunnel =ssh -fN -R 127.0.0.1:58000:photonvision.local:5800 vyostest=, I can
+almost get photonvision to respond over the hop via mDNS ... or so I thought. I
+was capturing mDNS requests being advertised over =enp5s0= to =vyostest=, but
+without any way for an ip resolution to be routed.
+
+Instead, what may work is to briefly route the mDNS multicast over the tunnel,
+if it doesn't reject the address (maybe in netns). Then, the SSH process has the
+name/ip mapping and may decide to jump through the proxy.
+
+Also, this apparently runs tcpdump where "host photonvision.local" is a pcap
+filter: =monitor traffic interface eth0 filter "host photonvision.local"=
+
+It's been awhile since i've used the tunnel (this is more of an SSH thing than a
+vyos thing)
+
+*** DHCP and DNS via Uplink (WAN)
+
+OPNSense is blocking DNS requests for now
+
+#+begin_example conf
+system {
+    name-server 192.0.2.1
+    name-server 192.0.2.2
+    name-server 2001:db8:200::1
+    name-server 2001:db8:200::2
+}
+interfaces {
+  ethernet eth0 {
+    address dhcp
+    description "WAN Interface"
+    offload {
+      gro
+      gso
+      sg
+      tso
+    }
+  }
+}
+#+end_example
 ** Flavor
 
 ./data/build-flavors/generic.toml
 
-#+begin_src toml
+#+begin_src toml :tangle /data/ecto/vyos/vyos/vyos-build/data/build-flavors/generic.toml
 image_format = "iso"
 packages = [
   "lvm2",
@@ -162,20 +293,19 @@ packages = [
 default_config="""
 system {
   host-name vyos
+  time-zone America/New_York
   login {
     user vyos {
       authentication {
         encrypted-password "*"
         plaintext-password ""
-        public-keys {
-          cardno:19294239 {
-            key AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBGE6wqFapBOKBA2wCTB22nG+GANmh9JXNG54tBajKNu/Fh61ywzilEI6MYLpvolCuS0YWGAgv4h5MHzk45KnWXKJ1NSNTLJ4koa+NvAAHIVXKA19IZ+s6UyX7eyCWLx58w==
-            type ecdsa-sha2-nistp384
-          }
-          cardno:7699336 {
-            key AAAAB3NzaC1yc2EAAAADAQABAAACAQDS6PQ1NqAptAIzcfJLNRxy81yqaF4gc/RAXa6e7lQw2qD4UydYIDgGoD/EYIvVq6qH7g8VXncB7RHLUfnH96Ctod3wd8nb/d8HmFNS7J1PGhvFPjS2/MIT+eZQN1cqQWyohcbJpxT1d0ynsPYrtyEREmutdpJfBg8RDSViWh7gsfXyJlVir7IIIPokJPE0KY0vNyn/sZw6dnTGFyrigCsq9TzAMvnf8ToX1neYQ0ZBS1HNQucVQ7+Xq5ehDClJ5OeeP95uH4DXe22SlZBEGEo2W4ClaXrXVgiUneF46SnfQiEORJnqKWwcr3O1Zdof+oJWIROk9CiYET9yhV58aw2uC5RoxkxE8+2TlpDaVLsi9rHYDnq9Ky2J0vRFXJJCb5PMPKiHbN2elx77rhHckVMpYl4LYA1fLEV6p2oSVoG7Rtqc8MmTf9PZCANNozaO7Y+k/XuzxjJOO4gk33lT8vhopCGvzl7hiYXBkQSolaJmh4jKYJsKngCYBzDgGUx6LSyGUCQSyujBxdlJaoH/wgAhFB/CZYQv7ISA5cmz9jiEQ2/8KuNvkcZzVcUdcfwX2wbItZ5gwnxpQar0Ea2qbE6q7iYY+zxbw7EpLtGIUHjft0I5dFqYv53ADinFyvmN1mRZ34S6+LITall3JHOA0uJ7l1iHDjBnuvPDKej8PJhc0w==
-            type ssh-rsa
-          }
+        public-keys cardno:25019591 {
+          key AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBGE6wqFapBOKBA2wCTB22nG+GANmh9JXNG54tBajKNu/Fh61ywzilEI6MYLpvolCuS0YWGAgv4h5MHzk45KnWXKJ1NSNTLJ4koa+NvAAHIVXKA19IZ+s6UyX7eyCWLx58w==
+          type ecdsa-sha2-nistp384
+        }
+        public-keys cardno:25019591 {
+          key AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBGE6wqFapBOKBA2wCTB22nG+GANmh9JXNG54tBajKNu/Fh61ywzilEI6MYLpvolCuS0YWGAgv4h5MHzk45KnWXKJ1NSNTLJ4koa+NvAAHIVXKA19IZ+s6UyX7eyCWLx58w==
+          type ecdsa-sha2-nistp384
         }
       }
       level admin
@@ -199,30 +329,38 @@ system {
   config-management {
     commit-revisions 100
   }
-
 }
 
 interfaces {
   loopback lo {
   }
   ethernet eth0 {
-    address 192.18.0.1/24
+    address 198.18.0.1/24
     description "WAN Interface"
+    offload {
+      gro
+      gso
+      sg
+      tso
+    }
   }
   ethernet eth1 {
     address 10.12.34.12/24
     description "LAN Interface"
+    offload {
+      gro
+    }
   }
 }
 
 protocols {
   static {
     route 0.0.0.0/0 {
-      next-hop 192.18.0.10 {
+      next-hop 198.18.0.10 {
       }
     }
-    interface-route 10.12.34.0/0 {
-      next-hop-interface eth1 {
+    route 10.12.34.0/24 {
+      interface eth1 {
         distance 20
       }
     }
@@ -232,53 +370,45 @@ protocols {
 service {
   ssh {
     port 22
-    listen-address 192.18.0.1
+    listen-address 198.18.0.1
     disable-password-authentiation
     disable-host-validation
     loglevel info
   }
 
-  ntp {
-    server "3.us.pool.ntp.org" {
-    }
-    server "2.us.pool.ntp.org" {
-    }
-    server "1.us.pool.ntp.org" {
-    }
-    server "0.us.pool.ntp.org" {
+  dhcp-server {
+    shared-network-name LAN {
+      subnet 10.12.34.0/24 {
+        option {
+          default-router 10.12.34.1
+          name-server 198.18.0.1
+        }
+        range 0 {
+          start 10.12.34.20
+          stop 10.12.34.199
+        }
+        subnet-id 1234
+      }
     }
   }
 
+  ntp {
+    server 3.us.pool.ntp.org {
+    }
+    server 2.us.pool.ntp.org {
+    }
+    server 1.us.pool.ntp.org {
+    }
+    server 0.us.pool.ntp.org {
+    }
+  }
 }
 """
 #+end_src
 
-+ TODO: DHCP on eth1
-+ time-zone America/NewYork
+* Misc
 
-dns (needs to be from DHCP)
-
-    name-server 192.0.2.1
-    name-server 192.0.2.2
-    name-server 2001:db8:200::1
-    name-server 2001:db8:200::2
-
-encrypted-password $6$QxPS.uk6mfo$9QBSo8u1FkH16gMyAVhus6fU3LOzvLR9Z9.82m3tiHFAxTtIkhaZSWssSgzt4v4dGAL8rhVQxTg0oAG9/q11h/
-
-# +begin_src text :tangle img/vyos/config.boot.default
-  dhcp-server {
-    shared-network-name LAN {
-
-    }
-  }
-# +end_src
-
-
-* Config Options
-
-** SSH
-
-**** Algorithms
+** SSH Algorithms
 
 ciphers
 
