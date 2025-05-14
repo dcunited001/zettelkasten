@@ -216,6 +216,7 @@ SCHEMA_PATH = directories['api_schema']
 CLIENT_OP_PATH = directories['api_client_op']
 DATA_DIR = directories['data']
 #+end_example
+
 ** ISO Build
 
 It's a =debian-live= build
@@ -224,59 +225,61 @@ It's a =debian-live= build
   - [[https://github.com/nodiscc/debian-live-config/blob/master/doc/md/custom.md][./doc/md/custom.md]]
 + [[https://packages.debian.org/bookworm/live-build][Live Build System Components]]
 
-*** Profiles
+Other build projects (apparently the support isn't great)
 
-There are several profiles to build, each with a =config.boot.default=
++ [[https://github.com/grahamhayes/vyos-build/][grahamhayes/vyos-build]] (containers, but old)
++ [[https://github.com/mcbridematt/vyos-arm64-builder][mcbridematt/vyos-arm64-builder]] (without containers)
++ [[https://www.google.com/url?sa=t&source=web&rct=j&opi=89978449&url=https://www.youtube.com/watch%3Fv%3DpbCQ5DXwUhI&ved=2ahUKEwimnNHcgaKNAxVzEFkFHTrZMG4QtwJ6BAgUEAI&usg=AOvVaw0mxO4FE6gLKe1cgbZzdZJc][Video: successfully installed VyOS on custom ARM64]]
 
-#+begin_src shell :results output verbatim
-locate '/data/ecto/vyos*vyos*config*default' \
-    | sed -e 's/\/data\/ecto\/vyos\/vyos\///g'  \
-    | tree --fromfile .
+*** Directories
+
+According to [[https://github.com/vyos/vyos-build?tab=readme-ov-file][vyos/vyos-build]], the directories used:
+
+#+begin_quote
++ build :: Used for temporary files used for the build and for build artifacts
++ data :: Data required for building the ISO (e.g. boot splash/configs)
++ packages :: This directory can hold arbitrary *.deb packages which will be
+  embeded into the resulting ISO. Among other things those packages will be:
+  Linux Kernel, FRR, Netfiler...
++ scripts :: Scripts that are used for the build process
++ tools :: Scripts that are used for maintainer's tasks automation and other
+  purposes, but not during ISO build process
+#+end_quote
+
+*** Customization
+
+The [[https://github.com/vyos/vyos-build/blob/247e810339294218876922d6cc015c8bbc746c39/scripts/image-build/build-vyos-image#L201-L223][options passed to build-vyos-image]] can also be customized in
+=./data/build-flavors/*.toml=, where the most complete defaults are seen in
+[[https://github.com/vyos/vyos-build/blob/247e810339294218876922d6cc015c8bbc746c39/data/defaults.toml#L1][./data/defaults.toml]]
+
+**** Add Packages
+
+When added to the =build-flavor=, these should append.
+
+#+begin_src toml
+packages = [
+  "lvm2",
+  "hwinfo",
+  "yubico-piv-tool",
+  "opensc-pkcs11",
+  "opensc",
+  "age"
+]
 #+end_src
 
-#+RESULTS:
-#+begin_example
-.
-├── gh-action-test-vyos-1x
-│   ├── data
-│   │   └── config.boot.default
-│   └── tests
-│       └── data
-│           └── config.boot.default
-├── vyos
-│   └── configs
-│       └── etc
-│           └── vyos
-│               └── config.boot.default
-├── vyos-1x
-│   ├── data
-│   │   └── config.boot.default
-│   └── tests
-│       └── data
-│           └── config.boot.default
-├── vyos-build
-│   ├── build
-│   │   └── vyos-1x
-│   │       ├── data
-│   │       │   └── config.boot.default
-│   │       └── tests
-│   │           └── data
-│   │               └── config.boot.default
-│   └── tools
-│       ├── cloud-init
-│       │   └── AWS
-│       │       └── config.boot.default
-│       └── container
-│           └── config.boot.default
-└── vyos-workflow-test-temp
-    ├── data
-    │   └── config.boot.default
-    └── tests
-        └── data
-            └── config.boot.default
+*** Permanent Installation
 
-27 directories, 11 files
-#+end_example
+Running =install image= eventually spawns =sudo
+${vyos_op_scripts_dir}/image_installer.py --action install=
+
++ This is built into the ISO at ./build/vyos-1x/src/op_mode/image_installer.py
++ And sourced from the vyos-1x repo at [[https://github.com/vyos/vyos-1x/blob/572400156976a5fc36e1dbe2fcdaf12d61510e13/src/op_mode/image_installer.py#L4][src/op_mode/image_installer.py]]
++ It basically transfers the ISO contents onto the Root and EFI partitions. See
+  [[https://github.com/vyos/vyos-1x/blob/572400156976a5fc36e1dbe2fcdaf12d61510e13/src/op_mode/image_installer.py#L791-L963][image_install]]
++ For the bootloader, it relies on [[https://github.com/vyos/vyos-1x/blob/572400156976a5fc36e1dbe2fcdaf12d61510e13/python/vyos/system/grub.py][grub]] and [[https://github.com/vyos/vyos-1x/blob/572400156976a5fc36e1dbe2fcdaf12d61510e13/python/vyos/system/grub_util.py][grub_util]] from =import vyos.system=
+  - grub_util :: handles ={set,update}_console_speed= and
+    ={set,update}_kernel_cmdline_options=
+  - grub ::
 
 *** Other Artifacts
 **** Interesting files
@@ -285,7 +288,14 @@ locate '/data/ecto/vyos*vyos*config*default' \
   op-mode commands
 + ./build/config/hooks/{live,normal} ::
 
-**** Directory structure
+
+**** Structure of =build=
+
+The files at =data/live-build-config/hooks/live= run when the ISO is mounted, so
+=data/live-build-config/hooks/live/00-manifest.binary= writes to
+=./live/packages.txt=, found at =/usr/lib/live/mount/medium/live/packages.txt=
+
+***** Directories
 
 Without vyos-1x, cache or chroot directories, the file structure is compact
 
@@ -358,6 +368,75 @@ build
 
 60 directories
 #+end_example
+
+** Config
+
+*** Default Profiles
+
+There are several profiles to build, each with a =config.boot.default=, though
+some of the profiles below are CI/CD (not in the =vyos-build= project)
+
+#+begin_src shell :results output verbatim
+locate '/data/ecto/vyos*vyos*config*default' \
+    | sed -e 's/\/data\/ecto\/vyos\/vyos\///g'  \
+    | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+├── gh-action-test-vyos-1x
+│   ├── data
+│   │   └── config.boot.default
+│   └── tests
+│       └── data
+│           └── config.boot.default
+├── vyos
+│   └── configs
+│       └── etc
+│           └── vyos
+│               └── config.boot.default
+├── vyos-1x
+│   ├── data
+│   │   └── config.boot.default
+│   └── tests
+│       └── data
+│           └── config.boot.default
+├── vyos-build
+│   ├── build
+│   │   └── vyos-1x
+│   │       ├── data
+│   │       │   └── config.boot.default
+│   │       └── tests
+│   │           └── data
+│   │               └── config.boot.default
+│   └── tools
+│       ├── cloud-init
+│       │   └── AWS
+│       │       └── config.boot.default
+│       └── container
+│           └── config.boot.default
+└── vyos-workflow-test-temp
+    ├── data
+    │   └── config.boot.default
+    └── tests
+        └── data
+            └── config.boot.default
+
+27 directories, 11 files
+#+end_example
+
+*** Snippets
+
+Lots of snippets tests (mostly jinja templates), though some of these are
+standard =.conf= files. The jinja is a bit hard to parse.
+
+#+begin_src sh
+find ./vyos/vyos-workflow-test-temp/ -name '*.conf*' -type f
+#+end_src
+
++ vrf-basic: lots of static routes
+
 ** Org Babel
 
 It would be possible to run commands against a vyos interface.

@@ -23,13 +23,14 @@ hygiene & implications of customizing a debian live build.
 
 Pull container & start
 
-+ add =--sysctl net.ipv6.conf.lo.disable_ipv6=0= if needed
++ adding =--sysctl net.ipv6.conf.lo.disable_ipv6=0= is needed when building the
+  main =vyos-1x=
 + the volume needs to map from =vyos-build= to =/vyos=
 
 #+begin_src sh :dir /data/ecto/vyos/vyos/vyos.build
 docker pull vyos/vyos-build:current && docker run --rm -it \
   -v "$(pwd)":/vyos \
-  -w /vyos --privileged \
+  -w /vyos --privileged --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
   -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
   vyos/vyos-build:current bash
 
@@ -43,7 +44,7 @@ In container:
 #+begin_src sh
 sudo make clean
 image=generic # must specify in generic.toml (or it otherwise doesn't produce an iso)
-sudo ./build-vyos-image $image --architecture amd64 --build-by "j.randomhacker@vyos.io"
+sudo ./build-vyos-image --architecture amd64 --build-by "j.randomhacker@vyos.io" $image
 #+end_src
 
 *** TODO is =sudo= necessary here (with GOSU_UID)

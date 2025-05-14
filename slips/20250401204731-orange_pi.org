@@ -44,6 +44,61 @@ I'll create headings for those.
 
 * Topics
 
+** FRC Photovision
+
+*** Image
+
+OrangePi .img files are in the [[https://github.com/PhotonVision/photonvision/releases/tag/v2025.3.1][photovision releases]]. See PV docs [[https://docs.photonvision.org/en/latest/docs/quick-start/quick-install.html#install-the-latest-image-of-photonvision-for-your-coprocessor][Install
+photovision .img for your coprocessor]] for other images.
+
+
+
+**** Build
+
+[[https://github.com/PhotonVision/photonvision?tab=readme-ov-file#out-of-source-dependencies][Out-of-source deps]] included:
+
++ JNI code for [[https://mrcal.secretsauce.net/][mrcal]]: [[https://github.com/PhotonVision/mrcal-java][PhotonVision/mrcal-java]]
++ [[https://github.com/PhotonVision/thirdparty-opencv][OpenCV for Java with GStreamer/Protobuf/etc custom flags]]
+
+It gets built by [[https://github.com/PhotonVision/photon-image-modifier][PhotonVision/photon-image-modifier]].
+
++ cloud-init :: ./OPi5_CIDATA/{[[https://github.com/PhotonVision/photon-image-modifier/blob/main/OPi5_CIDATA/meta-data][meta-data]],[[https://github.com/PhotonVision/photon-image-modifier/blob/main/OPi5_CIDATA/network-config][network-config]],[[https://github.com/PhotonVision/photon-image-modifier/blob/main/OPi5_CIDATA/user-data][user-data]]}
+  - brings up networking, handles "en" vs "eth" interfaces
+  - sets hostname, ubuntu user/pass/groups, ssh (pass auth)
++ [[https://github.com/PhotonVision/photon-image-modifier/blob/main/install.sh][install.sh]] calls [[https://github.com/PhotonVision/photon-image-modifier/blob/main/install_opi5.sh][install_opi5.sh]]
+  - The latter would serve as a good guide for installing into a Debian.
++ [[https://github.com/PhotonVision/photon-image-modifier/blob/main/.github/workflows/main.yml#L36-L53][GH Workflows]] build on [[https://github.com/Joshua-Riek/ubuntu-rockchip][Joshua-Riek/ubuntu-rockchip]]
+  - uses this board profile: [[https://github.com/Joshua-Riek/ubuntu-rockchip/blob/main/config/boards/orangepi-5-pro.sh][./config/boards/orangepi-5-pro.sh]]
+  - with this u-boot package: [[https://github.com/Joshua-Riek/ubuntu-rockchip/tree/main/packages/u-boot-radxa-rk3588/debian][./packages/u-boot-radxa-rk3588/debian]]
+
+**** Installation
+
+Write to an SD card. If the OrangePi is new and boots to TF(SD), eMMC, or NVMe,
+then it will boot. Also copy =*.img= to a USB.
+
+TODO: After boot, mount the USB (unless...). And flash to eMMC. Then reboot.
+
+Check BIOS settings to ensure that eMMC has priority. Disabling other boot makes
+this process more complicated -- the device will always prefer the configured
+boot sequence. When there are multiple methods, it stops at the first it finds
+
++ This can cause issues with u-boot & device tree if it u-boot points the next
+  boot phase to a dev-tree on the wrong disk.
+
+**** Networking
+
+The image expects 1+ LAN interfaces and a wifi interface.
+
++ Since it's ARM, you'll need only the NVMe for the OPe or a USB WiFi ...
+  Anything connected to the CPU may necessitate building u-boot (with
+  reconfigured drivers)
+  - rpi-blacklist.conf :: broadcom wifi (brcmfmac, brcmutil); bluetooth (btbcm);
+    hci_uart. the file's only referenced by RPi builds (but idk)
++ The ISOs Photonvision services are preconfigured to bind to =photovision.local:5800=
+  - Outside of the bound subnet, requires =mDNS= connectivity/forwarding
+
+TODO: verify what they bind to when WiFi's missing
+
 ** Kernel
 
 *** ubuntu-rockchip
