@@ -301,6 +301,8 @@ interfaces {
 
 ./data/build-flavors/generic.toml
 
++ Password doesn't work for login without hash, but ssh does
+
 #+begin_src toml :tangle /data/ecto/vyos/vyos/vyos-build/data/build-flavors/generic.toml
 image_format = "iso"
 packages = [
@@ -309,19 +311,22 @@ packages = [
   "yubico-piv-tool",
   "opensc-pkcs11",
   "opensc",
-  "age"
+  "age",
+  "emacs-nox",
+  "tmux"
 ]
 
 default_config="""
 system {
   host-name vyos
   time-zone America/New_York
+  name-server 10.8.16.1
   login {
     user vyos {
       authentication {
         encrypted-password "*"
         plaintext-password ""
-        public-keys cardno:25019591 {
+        public-keys cardno:19294239 {
           key AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBGE6wqFapBOKBA2wCTB22nG+GANmh9JXNG54tBajKNu/Fh61ywzilEI6MYLpvolCuS0YWGAgv4h5MHzk45KnWXKJ1NSNTLJ4koa+NvAAHIVXKA19IZ+s6UyX7eyCWLx58w==
           type ecdsa-sha2-nistp384
         }
@@ -333,29 +338,26 @@ system {
       level admin
     }
   }
-  syslog {
-    global {
-      facility all {
-        level info
-      }
-      facility protocols {
-        level debug
-      }
-    }
+  config-management {
+    commit-revisions 100
   }
   console {
     device ttyS0 {
       speed 115200
     }
   }
-  config-management {
-    commit-revisions 100
+  syslog {
+    local {
+      facility all {
+        level info
+      }
+      facility local7 {
+        level debug
+      }
+    }
   }
 }
-
 interfaces {
-  loopback lo {
-  }
   ethernet eth0 {
     address 198.18.0.1/24
     description "WAN Interface"
@@ -373,12 +375,14 @@ interfaces {
       gro
     }
   }
+  loopback lo {
+  }
 }
 
 protocols {
   static {
     route 0.0.0.0/0 {
-      next-hop 198.18.0.10 {
+      interface eth0 {
       }
     }
     route 10.12.34.0/24 {
@@ -397,12 +401,11 @@ service {
     disable-host-validation
     loglevel info
   }
-
   dhcp-server {
     shared-network-name LAN {
       subnet 10.12.34.0/24 {
         option {
-          default-router 10.12.34.1
+          default-router 10.12.34.12
           name-server 198.18.0.1
         }
         range 0 {
@@ -422,6 +425,12 @@ service {
     server 1.us.pool.ntp.org {
     }
     server 0.us.pool.ntp.org {
+  }
+  dns {
+    forwarding {
+      allow-from 10.12.34.0/24
+      cache-size 0
+      listen-address 198.18.0.1
     }
   }
 }
