@@ -1,0 +1,377 @@
+:PROPERTIES:
+:ID:       492ca0ad-ca58-46ec-a3ff-3dc10712dc1f
+:END:
+#+TITLE: Vyos: SSH Algorithms
+#+CATEGORY: slips
+#+TAGS:
+
+do not use tables with shell in org babel (often, it's an anti-pattern to reach
+for shell anyways when python & anylang are available)
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][Vyos]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
++ [[id:133c1418-9705-4528-8856-ccaea4a3d0ff][Security]]
+
+* Tables
+
+ #+ name: sshCiphersListed
+
+| 3des-cbc   | blowfish-cbc | cast128-cbc |
+| aes128-cbc | aes192-cbc   | aes256-cbc  |
+| aes128-ctr | aes192-ctr   | aes256-ctr  |
+| arcfour    | arcfour128   | arcfour256  |
+
+ #+ name: sshMacsListed
+
+|--------------------------------+-------------------------------|
+| hmac-md5                       | hmac-md5-96                   |
+| hmac-ripemd160                 |                               |
+| hmac-sha1                      | hmac-sha1-96                  |
+| hmac-sha2-256                  | hmac-sha2-512                 |
+| umac-64@openssh.com            | umac-128@openssh.com          |
+| hmac-md5-etm@openssh.com       | hmac-md5-96-etm@openssh.com   |
+| hmac-ripemd160-etm@openssh.com |                               |
+| hmac-sha1-etm@openssh.com      | hmac-sha1-96-etm@openssh.com  |
+| hmac-sha2-256-etm@openssh.com  | hmac-sha2-512-etm@openssh.com |
+| umac-64-etm@openssh.com        | umac-128-etm@openssh.com      |
+|--------------------------------+-------------------------------|
+
+ #+ name: sshKexListed
+
+|--------------------------------------+-------------------------------|
+| diffie-hellman-group1-sha1           | diffie-hellman-group14-sha1   |
+| diffie-hellman-group14-sha256        |                               |
+| diffie-hellman-group16-sha512        | diffie-hellman-group18-sha512 |
+| diffie-hellman-group-exchange-sha1   |                               |
+| diffie-hellman-group-exchange-sha256 |                               |
+| ecdh-sha2-nistp256                   | ecdh-sha2-nist                |
+| ecdh-sha2-nistp521                   |                               |
+| curve25519-sha256                    | curve25519-sha256@libssh.org  |
+|--------------------------------------+-------------------------------|
+
+ #+ name: sshPubkeyListed
+
+|---------------------------------------------+---------------------------------------------|
+| ssh-ed25519                                 | ssh-ed25519-cert-v01@openssh.com            |
+| sk-ssh-ed25519@openssh.com                  | sk-ssh-ed25519-cert-v01@openssh.com         |
+| ecdsa-sha2-nistp256                         | ecdsa-sha2-nistp256-cert-v01@openssh.com    |
+| ecdsa-sha2-nistp384                         | ecdsa-sha2-nistp384-cert-v01@openssh.com    |
+| ecdsa-sha2-nistp521                         | ecdsa-sha2-nistp521-cert-v01@openssh.com    |
+| sk-ecdsa-sha2-nistp256@openssh.com          | sk-ecdsa-sha2-nistp256-cert-v01@openssh.com |
+| webauthn-sk-ecdsa-sha2-nistp256@openssh.com |                                             |
+| ssh-dss                                     | ssh-dss-cert-v01@openssh.com ssh-rsa        |
+| ssh-rsa-cert-v01@openssh.com                |                                             |
+| rsa-sha2-256                                | rsa-sha2-512                                |
+| rsa-sha2-256-cert-v01@openssh.com           | rsa-sha2-512-cert-v01@openssh.com           |
+|---------------------------------------------+---------------------------------------------|
+
+* Misc
+
+Use only the following in =.ssh/config= as defaults, if possible, unless a host
+requires something else. Use =ssh -Q $type= to enumerate available options your
+platform supports.
+
++ Ciphers :: =chacha20-poly1305@openssh.com,aes256-gcm@openssh.com=
++ MACs :: =hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com=
++ KexAlgorithms :: =curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256=
++ HostKeyAlgorithms :: =ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-ed25519,ssh-rsa=
+
+The =services ssh {}= section in vyos corresponds to =man sshd_config= however, so
+customizing algorithms limits the options for potential hosts that connect to it
+... which is good. As long as you know that it may affect the Vyos host key
+generation, then you should be alright -- I don't think it does, since this
+should happen once and changing config options should not regenerate all host
+keys and regenerating subsets of host keys is confusing. In any case, for a
+fairly local vyos host, you should be able to redress.
+
+Just need to ensure that the algorithms in =services ssh {}= contains enough of
+those in your =.ssh/config= defaults listed above.
+
+
++ Ciphers :: =chacha20-poly1305@openssh.com,aes256-gcm@openssh.com=
+  - vyos: =chacha20-poly1305@openssh.com,aes256-gcm@openssh.com=
+  - running =ssh -Q ciphers= does list these (otherwise i wouldn't be able to
+    connect by default)
++ MACs :: =hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com=
+  - vyos: hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
++ KexAlgorithms :: =curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256=
+  - vyos: curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
++ HostKeyAlgorithms ::
+  =ssh-ed25519-cert-v01@openssh.com,ssh-rsa-cert-v01@openssh.com,ssh-ed25519,ssh-rsa=
+
+
+** SSH Algorithms
+
+*** Ciphers
+
+Listed
+
+#+name: sshCiphersListed
+| 3des-cbc     |
+| aes128-cbc   |
+| aes128-ctr   |
+| arcfour      |
+| blowfish-cbc |
+| aes192-cbc   |
+| aes192-ctr   |
+| arcfour128   |
+| cast128-cbc  |
+| aes256-cbc   |
+| aes256-ctr   |
+| arcfour256   |
+
+Actual
+
+#+name: sshCiphers
+#+call: sshAlgs(algType="ciphers")
+
+#+RESULTS: sshCiphers
+| 3des-cbc               | aes128-cbc                    | aes192-cbc | aes256-cbc             |
+| aes128-ctr             | aes192-ctr                    | aes256-ctr | aes128-gcm@openssh.com |
+| aes256-gcm@openssh.com | chacha20-poly1305@openssh.com |            |                        |
+
+=diff $listed $actual=
+
+#+call: diffLists(list1=sshCiphersListed, algType="ciphers")
+
+#+RESULTS:
+#+begin_example diff
+3a4
+> aes128-gcm@openssh.com
+8,12c9,10
+< arcfour
+< arcfour128
+< arcfour256
+< blowfish-cbc
+< cast128-cbc
+---
+> aes256-gcm@openssh.com
+> chacha20-poly1305@openssh.com
+#+end_example
+
+
+*** Macs
+
+Listed
+
+#+name: sshMacsListed
+|--------------------------------|
+| hmac-md5                       |
+| hmac-ripemd160                 |
+| hmac-sha1                      |
+| hmac-sha2-256                  |
+| umac-64@openssh.com            |
+| hmac-md5-etm@openssh.com       |
+| hmac-ripemd160-etm@openssh.com |
+| hmac-sha1-etm@openssh.com      |
+| hmac-sha2-256-etm@openssh.com  |
+| umac-64-etm@openssh.com        |
+| hmac-md5-96                    |
+|                                |
+| hmac-sha1-96                   |
+| hmac-sha2-512                  |
+| umac-128@openssh.com           |
+| hmac-md5-96-etm@openssh.com    |
+|                                |
+| hmac-sha1-96-etm@openssh.com   |
+| hmac-sha2-512-etm@openssh.com  |
+| umac-128-etm@openssh.com       |
+
+Actual
+
+#+name: sshMacs
+#+call: sshAlgs(algType="macs")
+
+#+RESULTS: sshMacs
+| hmac-sha1                 | hmac-sha1-96                 | hmac-sha2-256                 | hmac-sha2-512                 |
+| hmac-md5                  | hmac-md5-96                  | umac-64@openssh.com           | umac-128@openssh.com          |
+| hmac-sha1-etm@openssh.com | hmac-sha1-96-etm@openssh.com | hmac-sha2-256-etm@openssh.com | hmac-sha2-512-etm@openssh.com |
+| hmac-md5-etm@openssh.com  | hmac-md5-96-etm@openssh.com  | umac-64-etm@openssh.com       | umac-128-etm@openssh.com      |
+
+=diff $listed $actual=
+
+#+call: diffLists(list1=sshMacsListed, algType="macs")
+
+#+RESULTS:
+#+begin_example diff
+5,6d4
+< hmac-ripemd160
+< hmac-ripemd160-etm@openssh.com
+#+end_example
+
+*** Kex
+
+Listed
+
+#+name: sshKexListed
+|--------------------------------------|
+| diffie-hellman-group1-sha1           |
+| diffie-hellman-group14-sha256        |
+| diffie-hellman-group16-sha512        |
+| diffie-hellman-group-exchange-sha1   |
+| diffie-hellman-group-exchange-sha256 |
+| ecdh-sha2-nistp256                   |
+| ecdh-sha2-nistp521                   |
+| curve25519-sha256                    |
+| diffie-hellman-group14-sha1          |
+| ecdh-sha2-nist                       |
+| diffie-hellman-group18-sha512        |
+| curve25519-sha256@libssh.org         |
+|--------------------------------------|
+
+Actual
+
+#+name: sshKex
+#+call: sshAlgs(algType="kex")
+
+#+RESULTS: sshKex
+| diffie-hellman-group1-sha1    | diffie-hellman-group14-sha1        | diffie-hellman-group14-sha256        | diffie-hellman-group16-sha512 |
+| diffie-hellman-group18-sha512 | diffie-hellman-group-exchange-sha1 | diffie-hellman-group-exchange-sha256 | ecdh-sha2-nistp256            |
+| ecdh-sha2-nistp384            | ecdh-sha2-nistp521                 | curve25519-sha256                    | curve25519-sha256@libssh.org  |
+| sntrup761x25519-sha512        | sntrup761x25519-sha512@openssh.com |                                      |                               |
+
+Diff
+
+#+call: diffLists(list1=sshKexListed, algType="kex")
+
+#+RESULTS:
+#+begin_example diff
+10d9
+< ecdh-sha2-nist
+11a11
+> ecdh-sha2-nistp384
+12a13,14
+> sntrup761x25519-sha512
+> sntrup761x25519-sha512@openssh.com
+#+end_example
+
+*** pubkey-accepted-algorithm
+
+Listed
+
+#+name: sshPubkeyListed
+|---------------------------------------------|
+| ssh-ed25519                                 |
+| sk-ssh-ed25519@openssh.com                  |
+| ecdsa-sha2-nistp256                         |
+| ecdsa-sha2-nistp384                         |
+| ecdsa-sha2-nistp521                         |
+| sk-ecdsa-sha2-nistp256@openssh.com          |
+| webauthn-sk-ecdsa-sha2-nistp256@openssh.com |
+| ssh-dss                                     |
+| ssh-rsa-cert-v01@openssh.com                |
+| rsa-sha2-256                                |
+| rsa-sha2-256-cert-v01@openssh.com           |
+| ssh-ed25519-cert-v01@openssh.com            |
+| sk-ssh-ed25519-cert-v01@openssh.com         |
+| ecdsa-sha2-nistp256-cert-v01@openssh.com    |
+| ecdsa-sha2-nistp384-cert-v01@openssh.com    |
+| ecdsa-sha2-nistp521-cert-v01@openssh.com    |
+| sk-ecdsa-sha2-nistp256-cert-v01@openssh.com |
+| ssh-dss-cert-v01@openssh.com ssh-rsa        |
+| rsa-sha2-512                                |
+| rsa-sha2-512-cert-v01@openssh.com           |
+|---------------------------------------------|
+
+Actual
+
+#+name: sshPubkey
+#+call: sshAlgs(algType="pubkeyacceptedkeytypes")
+
+#+RESULTS: sshPubkey
+| ssh-ed25519                                 | ssh-ed25519-cert-v01@openssh.com         | sk-ssh-ed25519@openssh.com         | sk-ssh-ed25519-cert-v01@openssh.com         |
+| ecdsa-sha2-nistp256                         | ecdsa-sha2-nistp256-cert-v01@openssh.com | ecdsa-sha2-nistp384                | ecdsa-sha2-nistp384-cert-v01@openssh.com    |
+| ecdsa-sha2-nistp521                         | ecdsa-sha2-nistp521-cert-v01@openssh.com | sk-ecdsa-sha2-nistp256@openssh.com | sk-ecdsa-sha2-nistp256-cert-v01@openssh.com |
+| webauthn-sk-ecdsa-sha2-nistp256@openssh.com | ssh-dss                                  | ssh-dss-cert-v01@openssh.com       | ssh-rsa                                     |
+| ssh-rsa-cert-v01@openssh.com                | rsa-sha2-256                             | rsa-sha2-256-cert-v01@openssh.com  | rsa-sha2-512                                |
+| rsa-sha2-512-cert-v01@openssh.com           |                                          |                                    |                                             |
+
+=diff $listed $actual= (none)
+
+#+call: diffLists(list1=sshPubkeyListed, algType="pubkeyacceptedkeytypes")
+
+#+RESULTS:
+#+begin_example diff
+#+end_example
+
+*** Babel
+This differs a bit from what's listed
+
+#+name: sshAlgs
+#+begin_src shell :var algType="ciphers" :eval query
+ssh vyostest ssh -Q $algType | tr "\n" "," | sed -E "s/([^,]+),([^,]+),([^,]+),([^,]+),/\1, \2, \3, \4\n/g" && echo
+#+end_src
+
+#+name: diffLists
+#+begin_src shell :results output code :wrap example diff :var list1=sshCiphersListed algType="ciphers"
+# list2=sshCiphers
+diff <(echo ${list1[@]} | tr ' ' '\n' | sort | uniq) \
+    <(ssh vyostest ssh -Q $algType | tr ' ' '\n' | sort | uniq)
+
+# babel bug
+#    <(echo ${list2[@]} | tr ' ' '\n' | sort | uniq)
+#+end_src
+
+#+RESULTS: diffLists
+#+begin_example diff
+3a4
+> aes128-gcm@openssh.com
+8,12c9,10
+< arcfour
+< arcfour128
+< arcfour256
+< blowfish-cbc
+< cast128-cbc
+---
+> aes256-gcm@openssh.com
+> chacha20-poly1305@openssh.com
+#+end_example
+
+Not all of the =-Q= arg types are documented, but this seems to cover the keys
+
+#+begin_src shell :results output verbatim
+echo -Qkey-{plain,sig,cert}
+echo -Qkey-{plain,sig,cert} | xargs -n1 ssh | sort | uniq | wc -l
+echo -Qpubkeyacceptedkeytypes
+ssh -Qpubkeyacceptedkeytypes | wc -l
+
+# no diff
+diff <(echo -Qkey-{plain,sig,cert} | xargs -n1 ssh | sort | uniq) \
+    <(ssh -Q pubkeyacceptedkeytypes | sort | uniq)
+#+end_src
+
+#+RESULTS:
+: -Qkey-plain -Qkey-sig -Qkey-cert
+: 19
+: -Qpubkeyacceptedkeytypes
+: 19
+
+[[https://raw.githubusercontent.com/dfeich/org-babel-examples/refs/heads/master/shell/shell-babel.org][Babel bugs in tables, but only with shell]]......
+
+#+begin_src shell :results output verbatim :var list1=sshCiphersListed list2=sshCiphers
+# list2=sshCiphers
+for cipher in ${list1[@]}; do
+    echo $cipher
+done
+
+# produces 8 entries somehow (it completely drops the first column)
+#+end_src
+
+#+RESULTS:
+: arcfour128
+: arcfour256
+: blowfish-cbc
+: cast128-cbc
+: aes192-ctr
+: aes256-ctr
+: aes192-cbc
+: aes256-cbc
+
+#+ call: diffLists(list1=sshCiphersListed, list2=sshCiphers)
+
+#+ call: diffLists(list1=sshMacsListed, list2=sshMacs)
+
+#+ call: diffLists(list1=sshKexListed, list2=sshKex)
+
+#+ call: diffLists(list1=sshPubkeyListed, list2=sshPubkey)
