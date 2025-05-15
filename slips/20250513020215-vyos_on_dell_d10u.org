@@ -236,8 +236,11 @@ I found this format elsewhere, but =show conf= produces something else.
 
 **** Testing with tunnel
 
-With tunnel =ssh -fN -R 127.0.0.1:58000:photonvision.local:5800 vyostest=, I can
-almost get photonvision to respond over the hop via mDNS ... or so I thought. I
+This apparently runs tcpdump where "host photonvision.local" is a pcap filter:
+=monitor traffic interface eth0 filter "host photonvision.local"=
+
+With tunnel +ssh -fN -R 127.0.0.1:58000:photonvision.local:5800 vyostest+, I can
+almost get photonvision to respond over the hop via mDNS ... or so I thought. It
 was capturing mDNS requests being advertised over =enp5s0= to =vyostest=, but
 without any way for an ip resolution to be routed.
 
@@ -245,11 +248,30 @@ Instead, what may work is to briefly route the mDNS multicast over the tunnel,
 if it doesn't reject the address (maybe in netns). Then, the SSH process has the
 name/ip mapping and may decide to jump through the proxy.
 
-Also, this apparently runs tcpdump where "host photonvision.local" is a pcap
-filter: =monitor traffic interface eth0 filter "host photonvision.local"=
+It's been awhile since i've used the tunnel. Testing this was more of an SSH
+thing than a vyos thing.
 
-It's been awhile since i've used the tunnel (this is more of an SSH thing than a
-vyos thing)
+#+begin_src shell
+# -L 224.0.0.251:5353:198.18.0.1:5353 # resorts to ipv6
+ssh -fN -L 127.0.0.1:58000:photonvision.local:5800 vyostest
+#+end_src
+
+DNS is handled by lower level C libs & services (halfway built into =openssh=).
+I'm pretty sure the name lookup happens out-of-band from the rest of the ssh
+setup... I guess to prep the TCP socket to a reified IP address.
+
+***** Nevermind...
+
+Nvm, I tried this, but just got a bunch of ARP requests to root servers.
+weird... probably skills issue (vyos DNS not configured)
+
+#+begin_src
+ssh -fN -L 224.0.0.251:5353:198.18.0.1:5353 \
+  -L [ff02::fb]:5353:[ffff:c612:1]:5353 \
+  -L 127.0.0.1:58000:photonvision.local:5800 vyostest
+#+end_src
+
+=channel_setup_fwd_listener_tcpip: getaddrinfo(ff02::fb): Address family for hostname not supported=
 
 *** DHCP and DNS via Uplink (WAN)
 
