@@ -72,7 +72,7 @@ included with the kernel.
 
 *** Setup
 
-OrangePi .img files are in the [[https://github.com/PhotonVision/photonvision/releases/tag/v2025.3.1][photovision releases]]. See PV docs [[https://docs.photonvision.org/en/latest/docs/quick-start/quick-install.html#install-the-latest-image-of-photonvision-for-your-coprocessor][Install
+OrangePi .img files are in the [[https://github.com/PhotonVision/photonvision/releases/tag/v2025.3.1][photovision releases]]. See PV docs [[https://docs.photonvision.org/en/latest/docs/quick-start/quick-install.html$t \in \left{0, t_a, T − t_a, T \right}$n-for-your-coprocessor][Install
 photovision .img for your coprocessor]] for other images.
 
 **** Build
@@ -93,9 +93,106 @@ It gets built by [[https://github.com/PhotonVision/photon-image-modifier][Photon
   - uses this board profile: [[https://github.com/Joshua-Riek/ubuntu-rockchip/blob/main/config/boards/orangepi-5-pro.sh][./config/boards/orangepi-5-pro.sh]]
   - with this u-boot package: [[https://github.com/Joshua-Riek/ubuntu-rockchip/tree/main/packages/u-boot-radxa-rk3588/debian][./packages/u-boot-radxa-rk3588/debian]]
 
+***** Extra Functionality
+
++ [[https://github.com/Joshua-Riek/ubuntu-rockchip/issues/1242][How to enable CAN BUS?]]
+
+***** Add SSH keys:
+
+#+begin_src shell :eval no
+sudo losetup -P --find $image
+lsblk
+d=/dev/loop0p2
+m=/mnt/foob
+sudo mkdir -p $m
+sudo mount $d $m # (fortunately there's 600M free)
+pushd $m
+cp ~/.ssh/authorized_keys # ensure user/group
+sudo ln -s /usr/lib/systemd/system/ssh.service etc/systemd/system/multi-user.target.wants/ssh.service
+sudo ln -s /usr/lib/systemd/system/ssh.service etc/systemd/system/sshd.service
+sudo losetup --detach $d
+# reimage device & cross fingers
+#+end_src
+
+.... nevermind, it adds SSH keys after boot. It didn't overwrite mine though. It
+mentions this in =vt1= ... but takes 20 minutes to burn lol.
+
+It's not getting an IP via DHCP
+
 ***** Extra Packages
 
 + traceroute/ping (in dev? ICMP can run from other hosts)
+
+
+**** Image Management
+
+The SPI Flash images use partition table (for image stored on SPI Flash) as a
+kind of checksum: the =tfa= firmware and =u-boot= firmware image sizes must match
+what it expects.
+
+***** SPI Flash and u-boot
+
+You'll probably want =rkdeveloptool= and other cli tools for managing the image
+on the spiflash, though it doesn't look like you /need/ them to boot, _per se_.
+
+Now, if you don't mess with SPI Flash:
+
++ the board will use the original factory =tfa/uboot= images in SPI Flash to load
+  an image from: SD, eMMC or NVMe.
++ U-Boot needs at least the device-tree & drivers necessary for bootstrapping
+  the CPU's run context: the CPU needs to internalize state for communicating
+  with on-board devices at a hardware level.
++ When control is passed from u-boot to kernel, the device tree stays in memory
+  and (afaik) is merged with the upstream Kernel device-tree. At this point:
+  - it would be extremely difficult (if not impossible) to get on-board devices
+    to come up if they weren't initialized by u-boot.
+  - if the kernel image contains drivers for off-board devices and if =modprobe.d=
+    starts the modules properly, then you get USB devices, potentially NVMe wifi
+    devices (see notes elsewhere on OrangePI NVMe =iwlwifi= module)
+    - I'm not 100% sure whether/how the upstream kernel's additional devicetree
+      files are merged in. So, like USB is an abstraction pattern that decouples
+      the CPU/PCIe bus from needing to have interrupts/etc configured for these
+      devices (i.e. they are "plug and play")
+    - I don't think you can dynamically pop in a new eMMC/NVMe while an ARM/x86
+      board is running (though hot-swappable NVMe, i think, is a BIOS config I
+      saw... if not, then nope.)
+
+***** Boot devices
+
+The way =debian-live= images boot: the bootloader bootstraps a running image (w/
+isolinux?), then copies over a filetree in memory, chroots to it and (at some
+point) begins the systemd init process.
+
+
+
+***** File systems
+
+
+
+***** Problems
+
+Mainly, I'd prefer a traditional boot in the end.
+
+I don't think this applies to the images on SD/eMMC/NVMe, since that's a
+separate GPT table. Still, the problem is that your file-system is size-bound
+when using =dd= to simply burn the available photon-vision images, derived from
+=Joshua-Riek/ubuntu-rockchip=
+
++ you can add new file systems after boot, but your selection of mount-points is
+  limited
+  - e.g. if running docker/podman, you may need to update storage/containers/etc
+    configs, then restart those services, then check for necessary images, THEN
+    start container-based services
+  - changing that requires custom build of ISO or complicated/brittle tree of
+    systemd targets (building a custom ISO is a problem that you have ONE time,
+    whereas the other customization is a potential problem ONCE PER BOOT)
++ The image is still an =in-RAM= file-system (I think), which restricts the amount
+  of RAM available.
+  - This doesnt matter for prototyping, but for tuning the
+    device to maximize one memory-intensive set of processes, it absolutely
+    matters.
+  - If changing the image up is a final step, then it means your benchmarking up
+    to that point isn't entirely accurate.
 
 **** Installation
 
@@ -128,6 +225,7 @@ TODO: verify what they bind to when WiFi's missing
 *** Configure
 
 + WorkingDirectory :: /opt/photonvision
++  ::
 
 
 ** Kernel
