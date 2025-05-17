@@ -1,0 +1,143 @@
+:PROPERTIES:
+:ID:       65ca09ba-b595-4d14-b511-c72d606fe551
+:END:
+#+TITLE: Using Nix and Guix for Embedded Development
+#+CATEGORY: slips
+#+TAGS:
+* Resources
+
++ [[https://www.youtube.com/watch?v=rJtlAi8rxgs][Implementing State-of-the-Art U-Boot Port, 2018 Edition - Marek Vasut,
+  Self-employed]]: The u-boot workflow (a bit old, but still mostly true though
+  there's less friction now)
++ [[https://www.youtube.com/watch?v=rJtlAi8rxgs&t=4s][Rethinking U-Boot Devicetree Story]] Development with a canonical devicetree
+  (i.e. Linux kernel as u-boot source of truth)
++ From r/Chromecast: [[https://www.reddit.com/r/Chromecast/comments/1j7caui/did_google_just_brick_the_2nd_gen_chromecast/][Did Google Just Brick The 2nd Gen Chromecast?]]
+  - You don't have unlimited options for device updates in the future.
+
+* Motivation
+
+See "Image Management" in [[id:40dcb082-52a4-436c-b13a-975d3bd27cef][Orange Pi: Firmware, u-boot, rkdevtool and SPI Flash]]
+for context. Particularly:
+
+#+begin_quote
++ you can add new file systems after boot, but your selection of mount-points is
+  limited
+  - e.g. if running docker/podman, you may need to update storage/containers/etc
+    configs, then restart those services, then check for necessary images, THEN
+    start container-based services
+  - changing that requires custom build of ISO or complicated/brittle tree of
+    systemd targets (building a custom ISO is a problem that you have ONE time,
+    whereas the other customization is a potential problem ONCE PER BOOT)
++ The image is still an =in-RAM= file-system (I think), which restricts the amount
+  of RAM available.
+  - This doesnt matter for prototyping, but for tuning the
+    device to maximize one memory-intensive set of processes, it absolutely
+    matters.
+  - If changing the image up is a final step, then it means your benchmarking up
+    to that point isn't entirely accurate.
+#+end_quote
+
+The problem isn't the difficulty, but the cost and how it limits the available
+personel who can tune/customize these IoT appliances using SoC Linux.
+
+1) There just wouldn't be many people who can perform/adjust these steps and
+   those people are now tied up doing busywork with slow tools.
+2) The existing tooling for this stuff also limit collaboration (i.e. fewer
+  people with the skills ... who can't easily collaborate using Git to produce
+  reproducible firmware artifacts)
+3) it's difficult to build debuggable versions (of packages included on firmware
+   artifacts) and the deltas in those versions just aren't
+4) The lifecycle of these devices is inflexible to some changes (even when those
+   changes may occur 3-20 years later). Secureboot is the main obvious factor
+   here, but mainly engineers in the future will want these updates to go
+   smoothly -- they will "stick to the script(s)".
+
+The updates are inflexible because different versions must be "aware of" past &
+future constraints -- basically the same motivation behind "Path Smoothing
+Functions for Robotics" that requires seven degrees of constraints woven into
+the parameterization: you want to avoid "jerk" for some metaphorical
+interpretation of jerk.
+
+From [[https://hades.mech.northwestern.edu/images/7/7f/MR.pdf][Modern Robotics 9.2.2]] S-Curve Time Scalings:
+
+#+begin_quote
+Just as cubic polynomial time scalings lead to infinite jerk at the beginning
+and end of the motion, trapezoidal motions cause discontinuous jumps in ac-
+celeration at $t \in \{ 0, t_a , T - t_a, T \}$. A solution is a smoother
+S-curve time scaling, a popular motion profile in motor control because it
+avoids vibrations or oscillations induced by step changes in acceleration. An
+S-curve time scaling consists of seven stages:
+
+1) constant jerk d3s/dt3 = J until a desired acceleration š = a is achieved;
+2) constant acceleration until the desired ṡ = v is being approached;
+3) constant negative jerk −J until š equals zero exactly at the time ˙s reaches
+   v;
+4) coasting at constant v;
+5) constant negative jerk −J;
+6) constant deceleration −a; and
+7) constant positive jerk J until š and ṡ reach zero exactly at the time s
+   reaches 1.
+#+end_quote
+
+* Specific Benefits
+
+One main issue is that Guix produces artifacts with arbitary paths (e.g.
+LD_LIBRARY/rpath, shebangs, etc). So in the context of firmware artifacts, these
+benefits apply mainly for static builds all the way down. You're selecting blobs
+from vendors anyways, so it doesn't matter much. The u-boot image doesn't have
+things like =shebangs= or =rpath= or dynamic linking. In most cases, it doesn't have
+threads.
+
+Nix, Guix, Nixnixnix, Guix, and Nix etc.... extremely useful for embedded
+development. Most people don't get it. I saw it in my first readthrough of the
+Guix manual, though I didn't anticipate these specifics (just things /like/ them,
+given I had an admittedly fingerpaintish understanding of the lower level
+details).
+
+A few issues:
+
+1) managing spiflash is somewhat manual outside of a factory, though you could
+   build a separate bootable image containing
+   - the SPIFlash image payload (Guix, an =image= with =file-system= artifacts + GPT
+     table)
+   - the payload wrapped in a =package=
+   - itself included on an =operating-system= that has a custom =bootloader= with a
+     filesystem containing the payload
+   - where the bootloader runs commands in a limited busybox-like environment
+     and runs CLI for =rkdeveloptool= on boot to burn the bootloader onto
+     SPIFlash.
+   - That's like a ruby-goldberg machine, so its more likely you'd build the
+     payload as an =image= in a =package=, then hand that off to someone or
+     something that just uses the MaskROM process, one after the other.
+2) merging devicetree patches is complex & somewhat continual
+   - See the other bootloaders in Guix source/channel for pinebook64 & orangepi
+3) building u-boot requires downloading blobs during the NixOS/Guix build
+   process which is, again, somewhat continual.
+
+Still, once you get it to boot, then it should continually build from that
+checkout of Guix (via =guix time-machine=) -- even if it's more difficult for
+someone else to add patches or select alternate driver releases for u-boot, they
+should be able to get it to build. Selecting alternate drivers is much easier
+than managing devicetree patches -- after 12-24 months after device release
+should settle down and u-boot would be entirely buildable from the kernel's
+devicetree sources.
+
+Keep in mind that I basically flunked out of my mechatronics program college so
+that I could build my own Linux ISOs using "weird idiosyncratic linux
+distribution". The problem is that people who want to do things differently are
+penalized by the system (despite the efforts/intentions of a mostly
+well-adjusted education system). It's unlikely for someone to be
+explicitly/extremely correct about novel software/technologies... but whether
+they are or not correct has nothing to do with yielding the typical outcome of
+failure.
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:35cdd063-b646-4141-83ea-fcac8b337875][Orange Pi]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
++ [[id:708d6f59-64ad-473a-bfbb-58d663bde4f0][IoT]]
+
+** Docs
+*** Resources
+**** Issues
+***** Projects
