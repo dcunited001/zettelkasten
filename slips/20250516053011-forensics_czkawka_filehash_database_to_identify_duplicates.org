@@ -1,0 +1,341 @@
+:PROPERTIES:
+:ID:       c25e908e-3223-4eca-b75c-173a4742c337
+:END:
+#+TITLE: Forensics: Czkawka Filehash Database To Identify Duplicates
+#+CATEGORY: slips
+#+TAGS:
+
+May just want to use the GUI. Also =fclones= apparently has better CLI tools. This
+is fairly good, but "requires some assembly" to transform JSON. The author seems
+to think =czkawka= is fast, but it only hashes 14GB in 50 seconds.
+
+* Roam
++ [[id:45b0ba21-fb20-44dc-9ee9-c4fed32aba9c][Forensics]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:22a7c273-2fa0-4675-bd33-da3e5b90792a][LVM]]
+
+* Docs
+* Resources
+** Czkawka
++ [[https://github.com/qarmin/czkawka/blob/master/instructions/Instruction.md][Instructions]]
+
+Features
+
++ Duplicates: by name, size, name+size, hash
++ Similar Music
++ [[https://github.com/qarmin/czkawka/blob/master/instructions/Instruction.md#similar-images][Similar Images]]
++ [[https://github.com/qarmin/czkawka/blob/master/instructions/Instruction.md#similar-video-finder][Similar Videos]]
++ Broken Files/Links
+
+* Setup
+
+** CLI Process
+
++ basic app config
++ mount disks
++ execute dry runs to build the hash database on the mounted disk
++ use GUI to examine/compare
++ exec command to dump results to =json=
++ run =jq= queries to check
++ pipe =jq= commands to delete (or use CLI/GUI for this)
+
+** GUI Process
+
+
++ It seems you can't import the results of CLI scans (doesn't matter).
++ Setting a directory as "referenced" disables those results' checkboxes
++ Once scan is complete, use the "select" button to narrow things down
++ When files are identified by hash, it's 100% a duplicate, so the =-d $dir= and =-r
+  $refdir= mostly match, then as long as you're moving "from source to sink",
+  delete the excess files.
++ This narrows down almost everything. At this point =tree -d --prune $dir= should
+  show you everything you don't have, likely too much.
++ The folder structures don't _need_ to match, but it makes moving files "from
+  source to sink" much easier.
+  - Running =czkawka_cli empty-folders -d $subdir= on a folder in the source =-d
+    $dir= thin out the directory tree, helping reduce ambiguity.
++ Once the files move, their timestamps may change (depending on whether you
+  copied or moved). Generally, if you don't plan on writing to files, you always
+  mount read-only.
+
+At this point, =diff -r $dir/Music $refdir/Music= only shows songs in the =$refdir/Music=
+directory, since everything deleted in =$dir/Music= was a duplicated:
+
+#+begin_example diff
+Only in $refdir/Music: mixes
+Only in $refdir/Music/reidspeed-speed-of-sound: '01 SPEED OF SOUND 022.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed presents Speed of Sound 001_ Drum & Bass for 2015.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 002.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 003.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 004.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 005.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - SPEED OF SOUND 006.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'REID SPEED - SPEED OF SOUND 007.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Speed of Sound 012.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 013.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 023.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 031.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 033.mp3'
+#+end_example
+
+Grepping for the source helps clarify what's left
+
+#+begin_src shell
+diff -r $dir/Documents/cheatsheets/ $refdir/Documents/cheatsheets/ \
+    | grep $dir
+#+end_src
+
+#+begin_example diff
+Only in $dir/Documents/cheatsheets/: bluetooth
+Only in $dir/Documents/cheatsheets/: cloud
+Only in $dir/Documents/cheatsheets/: cmd
+Only in $dir/Documents/cheatsheets/: data
+Only in $dir/Documents/cheatsheets/data-science: design
+Only in $dir/Documents/cheatsheets/latex: scala
+Only in $dir/Documents/cheatsheets/linux: passt_overview.png~
+Only in $dir/Documents/cheatsheets/linux: pasta_overview.png~
+Only in $dir/Documents/cheatsheets/medical: tmj-radical-oxygen-species.pdf
+Only in $dir/Documents/cheatsheets/: ml
+Only in $dir/Documents/cheatsheets/python: bw_sheets
+Only in $dir/Documents/cheatsheets/python: color_sheets
+Only in $dir/Documents/cheatsheets/: redhat
+#+end_example
+
+** Config
+
+Use a wrapper script with =.envrc= to contain the databases.
+
+You can save settings to =$CZKAWKA_CONFIG_PATH= from GUI. (idk if they are shared
+with CLI settings though)
+
++ may want to disable image previews
++ adjust delete settings
+
+The GUI ignores these paths:
+
++ =*/.git/*=
++ =*/node_modules/*=
++ =*/lost+found/*=
++ =*/Trash/*=
++ =*/.Trash-*/*=
++ =*/snap/*=
++ =/home/*/.cache/*=
+
+** Disks
+
+Use a consistent mount-point, though relative paths can be configured.
+
+#+begin_src shell
+disk=/dev/sdd
+sudo blkid | grep $disk # check UUID, use luks
+m=/mnt/$uuid
+lsblk # to find mapperid
+
+sudo cryptsetup open $disk $mapperid # unlocking with file-explorer avoids mapperid
+
+sudo mount $mapperid-$lvroot $m
+sudo mount $mapperid-$lvdata $m/data
+sudo mount $mapperid-$lvdata $m/foob
+sudo mount $mapperid-$lvdata $m/arbaz
+#+end_src
+
++ The disk/luks/lvm uuid's are uniq. Using the disk changes if the partition
+  mounts somewhere else, so ideally use the luks uuid.
++ The hash database acts as a compressed snapshot of the files (with uniqueness
+  & metadata). So you can compare the same file system at two points in time to
+  spot major file changes
+  - in the ideal, similar tools can reconstruct or profile a timeline of
+    activity from multiple snapshots/sources & merge these timelines (see
+    Autopsy & TSK)
++ Mount the disks to: recreate the file/system and/or to match the file/system
+  you're comparing against.
++ If absolute paths are wrong or change: you miss files; name-search may not
+  work correctly; maybe clear cache & rescan
+
+** Hash Db
+
+I believe these can be diffed/merged, but some scripting may be necessary
+
+* Ckawka Usage
+
+Czkawka creates a database of file-hashes to expedite finding duplicates and
+mutations between file systems.
+
+** Features
+
++ perceptual hashes via =image_hasher=
+
+** Config
+
+can create a portable version
+
++ CZKAWKA_CONFIG_PATH :: =$XDG_CONFIG_PATH/czkawka=
++ CZKAWKA_CACHE_PATH :: =$XDG_STATE_HOME/czkawka=
+
+** Scripting
+
+#+begin_src shell
+relPath=data/xdg
+outJson=data-xdg.json
+czkawka_cli dup -d $m/$relpath -r /$relpath -e .git -p $outJson
+#+end_src
+
+this pipes a list of raw files to tree -d which limits directories to those
+containing duplicates.
+
++ map(.value) :: get each value for k/v
++ nth(0) :: the values are wrapped in an array
++ nth(1)[] :: get the -d $dup files (not the references)
++ .path :: the [] preps for map(.path)
+
+#+begin_src shell
+jq -r 'to_entries
+| map(.value
+  | nth(0)
+  | nth(1)[]
+| .path) | join("\n")' $out \
+    | tree -d --fromfile .
+#+end_src
+
+This instead counts the duplicates & returns a csv (splices a few commas though)
+
+#+begin_src shell :results output verbatim :wrap example csv
+jq -r 'to_entries | map(.value | nth(0)
+| [(nth(0) | .path),
+   (nth(1) | length),
+   (nth(1) | map(.path) | sort)]
+  | flatten | @csv)
+| join("\n")' $out
+#+end_src
+
+#+begin_example csv
+"/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 033.mp3",1,"$m/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 033.mp3"
+"/$relPath/Music/reidspeed-speed-of-sound/Reid Speed - Speed of Sound 003.mp3",1,"$m/$relPath/Music/reidspeed-speed-of-sound/Reid Speed - Speed of Sound 003.mp3"
+"/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 031.mp3",1,"$m/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 031.mp3"
+#+end_example
+
+Unfortunately, the =-M= and =-N= arguments don't eliminate all output (it can't pipe
+to =jq= or produce pure lists). Still a great tool.
+
+#+begin_src shell
+# czkawka_cli empty-folders -p /dev/fd/1 -d $d -MN
+czkawka_cli empty-folders -p empty-source-dirs.json -d $d
+# empty all the way through
+jq -r 'join("\n")' empty-source-dirs | xargs -n1 tree
+# so delete
+jq -r 'join("\n")' empty-source-dirs
+#+end_src
+
+
+* CLI
+
+** consistent args
+
+| -T | --thread-number              | $n     |
+| -d | --directories                | $dirs  |
+| -e | --excluded-directories       | $dirs  |
+| -E | --excluded-items             | $items |
+| -x | --allowed-extensions         | $exts  |
+| -P | --excluded-extensions        | $exts  |
+| -f | --file-to-save               | $file  |
+| -C | --compact-file-to-save       | $file  |
+| -p | --pretty-file-to-save        | $file  |
+| -R | --not-recursive              |        |
+| -X | --exclude-other-filesystems  |        |
+| -N | --do-not-print-results       |        |
+| -M | --do-not-print-messages      |        |
+| -W | --ignore-error-code-on-found |        |
+| -H | --disable-cache              |        |
+
+Contextual
+
+| -D | --delete-ish    |
+| -r | --reference-ish |
+|    | --dry-run       |
+
+** Misc
+
+empty-folders
+
+| -D | --delete-found |
+
+big
+
+| -n | --number-of-files |
+| -J | --smallest-mode   |
+|    | --dry-run         |
+
+** Dup
+
+| -H | --disable-cache                   |                                  |
+| -r | --reference-directories           | $dirs                            |
+| -Z | --minimal-prehash-cache-file-size | $min                             |
+| -u | --use-prehash-cache               |                                  |
+| -m | --minimal-file-size               | 8192                             |
+| -i | --maximal-file-size               | 18446744073709551615             |
+| -c | --minimal-cached-file-size        | 257144                           |
+| -s | --search-method                   | name,size,(hash)                 |
+| -D | --delete-method                   | AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD |
+| -t | --hash-type                       | (blake3), crc32, xxh3            |
+| -l | --case-sensitive-name-comparison  |                                  |
+| -L | --allow-hard-links                |                                  |
+|    | --dry-run                         |                                  |
+
+** Image
+
+| -s | --similarity-preset |                                                              | Minimal,VerySmall,Small,Medium,(High),VeryHigh,Original |
+| -D | --delete-method     | AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD                             |                                                         |
+| -L | --allow-hard-links  |                                                              |                                                         |
+| -J | --ignore-same-size  |                                                              |                                                         |
+| -g | --hash-alg          | (Gradient),Mean,Blockhash,VertGradient,DoubleGradient,Median |                                                         |
+| -z | --image-filter      | (Nearest),Lanczos3,Triangle,Faussian,Catmullrom              |                                                         |
+| -c | --hash-size         | 8,16,32,64                                                   |                                                         |
+|    | --dry-run           |                                                              |                                                         |
+
+** Music
+
+| -r | --reference-directories    |                                                      |
+| -D | --delete-method            |                     AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD |
+| -a | --approximate-comparison   |                                                      |
+| -z | --music-similarity         | (track_title,track_artist),year,bitrate,genre,length |
+| -s | --search-method            |                                       content,(tags) |
+| -m | --minimal-file-size        |                                                 8192 |
+| -i | --maximal-file-size        |                                 18446744073709551615 |
+| -l | --minimum-segment-duration |                                                 10.0 |
+| -Y | --maximum-difference       |                                                  2.0 |
+|    | --dry-run                  |                                                      |
+
+also =-c,--compare-fingerprints-only-with-similar-titles=
+
+** Video
+
+| -r | --reference-directories |                                  |
+| -D | --delete-method         | AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD |
+| -H | --disable-cache         |                                  |
+| -L | --allow-hard-links      |                                  |
+| -J | --ignore-same-size      |                                  |
+| -m | --minimal-file-size     |                             8192 |
+| -i | --maximal-file-size     |             18446744073709551615 |
+| -t | --tolerance             |                  0 <= (10) <= 20 |
+|    | --dry-run               |                                  |
+
+** Broken
+
+| -H | --disable-cache |                         |
+| -D | --delete-files  |                         |
+| -c | --checked-types | PDF,AUDIO,IMAGE,ARCHIVE |
+
+** Examples
+
+#+begin_example shell
+czkawka dup -d $d -e $exdir -m $min -x 7z rar IMAGE -s hash -f $res -D aeo
+czkawka empty-folders -d ${d[@]} -f $res
+czkawka big -d /home/rafal/ /home/piszczal -e /home/rafal/Roman -n 25 -x VIDEO -f results.txt
+czkawka empty-files -d /home/rafal /home/szczekacz -e /home/rafal/Pulpit -R -f results.txt
+czkawka temp -d /home/rafal/ -E */.git */tmp* *Pulpit -f results.txt -D
+czkawka image -d /home/rafal -e /home/rafal/Pulpit -f results.txt
+czkawka music -d /home/rafal -e /home/rafal/Pulpit -z "artist,year, ARTISTALBUM, ALBUM___tiTlE"  -f results.txt
+czkawka symlinks -d /home/kicikici/ /home/szczek -e /home/kicikici/jestempsem -x jpg -f results.txt
+czkawka broken -d /home/mikrut/ -e /home/mikrut/trakt -f results.txt
+czkawka extnp -d /home/mikrut/ -e /home/mikrut/trakt -f results.txt
+#+end_example
