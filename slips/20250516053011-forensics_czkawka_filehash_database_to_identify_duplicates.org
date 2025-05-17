@@ -1,0 +1,744 @@
+:PROPERTIES:
+:ID:       c25e908e-3223-4eca-b75c-173a4742c337
+:END:
+#+TITLE: Forensics: Czkawka Filehash Database To Identify Duplicates
+#+CATEGORY: slips
+#+TAGS:
+
+May just want to use the GUI. Also =fclones= apparently has better CLI tools. This
+is fairly good, but "requires some assembly" to transform JSON. The author seems
+to think =czkawka= is fast, but it only hashes 14GB in 50 seconds.
+
+* Roam
++ [[id:45b0ba21-fb20-44dc-9ee9-c4fed32aba9c][Forensics]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:22a7c273-2fa0-4675-bd33-da3e5b90792a][LVM]]
+
+* Docs
+* Resources
+** Czkawka
++ [[https://github.com/qarmin/czkawka/blob/master/instructions/Instruction.md][Instructions]]
+
+Features
+
++ Duplicates: by name, size, name+size, hash
++ Similar Music
++ [[https://github.com/qarmin/czkawka/blob/master/instructions/Instruction.md#similar-images][Similar Images]]
++ [[https://github.com/qarmin/czkawka/blob/master/instructions/Instruction.md#similar-video-finder][Similar Videos]]
++ Broken Files/Links
+
+* Setup
+
+** CLI Process
+
++ basic app config
++ mount disks
++ execute dry runs to build the hash database on the mounted disk
++ use GUI to examine/compare
++ exec command to dump results to =json=
++ run =jq= queries to check
++ pipe =jq= commands to delete (or use CLI/GUI for this)
+
+** GUI Process
+
+
++ It seems you can't import the results of CLI scans (doesn't matter).
++ Setting a directory as "referenced" disables those results' checkboxes
++ Once scan is complete, use the "select" button to narrow things down
++ When files are identified by hash, it's 100% a duplicate, so the =-d $dir= and =-r
+  $refdir= mostly match, then as long as you're moving "from source to sink",
+  delete the excess files.
++ This narrows down almost everything. At this point =tree -d --prune $dir= should
+  show you everything you don't have, likely too much.
++ The folder structures don't _need_ to match, but it makes moving files "from
+  source to sink" much easier.
+  - Running =czkawka_cli empty-folders -d $subdir= on a folder in the source =-d
+    $dir= thin out the directory tree, helping reduce ambiguity.
++ Once the files move, their timestamps may change (depending on whether you
+  copied or moved). Generally, if you don't plan on writing to files, you always
+  mount read-only.
+
+At this point, =diff -r $dir/Music $refdir/Music= only shows songs in the =$refdir/Music=
+directory, since everything deleted in =$dir/Music= was a duplicated:
+
+#+begin_example diff
+Only in $refdir/Music: mixes
+Only in $refdir/Music/reidspeed-speed-of-sound: '01 SPEED OF SOUND 022.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed presents Speed of Sound 001_ Drum & Bass for 2015.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 002.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 003.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 004.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - Speed of Sound 005.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Reid Speed - SPEED OF SOUND 006.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'REID SPEED - SPEED OF SOUND 007.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'Speed of Sound 012.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 013.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 023.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 031.mp3'
+Only in $refdir/Music/reidspeed-speed-of-sound: 'SPEED OF SOUND 033.mp3'
+#+end_example
+
+Grepping for the source helps clarify what's left
+
+#+begin_src shell
+diff -r $dir/Documents/cheatsheets/ $refdir/Documents/cheatsheets/ \
+    | grep $dir
+#+end_src
+
+#+begin_example diff
+Only in $dir/Documents/cheatsheets/: bluetooth
+Only in $dir/Documents/cheatsheets/: cloud
+Only in $dir/Documents/cheatsheets/: cmd
+Only in $dir/Documents/cheatsheets/: data
+Only in $dir/Documents/cheatsheets/data-science: design
+Only in $dir/Documents/cheatsheets/latex: scala
+Only in $dir/Documents/cheatsheets/linux: passt_overview.png~
+Only in $dir/Documents/cheatsheets/linux: pasta_overview.png~
+Only in $dir/Documents/cheatsheets/medical: tmj-radical-oxygen-species.pdf
+Only in $dir/Documents/cheatsheets/: ml
+Only in $dir/Documents/cheatsheets/python: bw_sheets
+Only in $dir/Documents/cheatsheets/python: color_sheets
+Only in $dir/Documents/cheatsheets/: redhat
+#+end_example
+
+** Config
+
+Use a wrapper script with =.envrc= to contain the databases.
+
+You can save settings to =$CZKAWKA_CONFIG_PATH= from GUI. (idk if they are shared
+with CLI settings though)
+
++ may want to disable image previews
++ adjust delete settings
+
+The GUI ignores these paths:
+
++ =*/.git/*=
++ =*/node_modules/*=
++ =*/lost+found/*=
++ =*/Trash/*=
++ =*/.Trash-*/*=
++ =*/snap/*=
++ =/home/*/.cache/*=
+
+** Disks
+
+Use a consistent mount-point, though relative paths can be configured.
+
+#+begin_src shell
+disk=/dev/sdd
+sudo blkid | grep $disk # check UUID, use luks
+m=/mnt/$uuid
+lsblk # to find mapperid
+
+sudo cryptsetup open $disk $mapperid # unlocking with file-explorer avoids mapperid
+
+sudo mount $mapperid-$lvroot $m
+sudo mount $mapperid-$lvdata $m/data
+sudo mount $mapperid-$lvdata $m/foob
+sudo mount $mapperid-$lvdata $m/arbaz
+#+end_src
+
++ The disk/luks/lvm uuid's are uniq. Using the disk changes if the partition
+  mounts somewhere else, so ideally use the luks uuid.
++ The hash database acts as a compressed snapshot of the files (with uniqueness
+  & metadata). So you can compare the same file system at two points in time to
+  spot major file changes
+  - in the ideal, similar tools can reconstruct or profile a timeline of
+    activity from multiple snapshots/sources & merge these timelines (see
+    Autopsy & TSK)
++ Mount the disks to: recreate the file/system and/or to match the file/system
+  you're comparing against.
++ If absolute paths are wrong or change: you miss files; name-search may not
+  work correctly; maybe clear cache & rescan
+
+** Hash Db
+
+I believe these can be diffed/merged, but some scripting may be necessary
+
+* Ckawka Usage
+
+Czkawka creates a database of file-hashes to expedite finding duplicates and
+mutations between file systems.
+
+** Features
+
++ perceptual hashes via =image_hasher=
+
+** Config
+
+can create a portable version
+
++ CZKAWKA_CONFIG_PATH :: =$XDG_CONFIG_PATH/czkawka=
++ CZKAWKA_CACHE_PATH :: =$XDG_STATE_HOME/czkawka=
+
+** Scripting
+
+#+begin_src shell
+relPath=data/xdg
+outJson=data-xdg.json
+czkawka_cli dup -d $m/$relpath -r /$relpath -e .git -p $outJson
+#+end_src
+
+this pipes a list of raw files to tree -d which limits directories to those
+containing duplicates.
+
++ map(.value) :: get each value for k/v
++ nth(0) :: the values are wrapped in an array
++ nth(1)[] :: get the -d $dup files (not the references)
++ .path :: the [] preps for map(.path)
+
+#+begin_src shell
+jq -r 'to_entries
+| map(.value
+  | nth(0)
+  | nth(1)[]
+| .path) | join("\n")' $out \
+    | tree -d --fromfile .
+#+end_src
+
+This instead counts the duplicates & returns a csv (splices a few commas though)
+
+#+begin_src shell :results output verbatim :wrap example csv
+jq -r 'to_entries | map(.value | nth(0)
+| [(nth(0) | .path),
+   (nth(1) | length),
+   (nth(1) | map(.path) | sort)]
+  | flatten | @csv)
+| join("\n")' $out
+#+end_src
+
+#+begin_example csv
+"/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 033.mp3",1,"$m/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 033.mp3"
+"/$relPath/Music/reidspeed-speed-of-sound/Reid Speed - Speed of Sound 003.mp3",1,"$m/$relPath/Music/reidspeed-speed-of-sound/Reid Speed - Speed of Sound 003.mp3"
+"/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 031.mp3",1,"$m/$relPath/Music/reidspeed-speed-of-sound/SPEED OF SOUND 031.mp3"
+#+end_example
+
+Unfortunately, the =-M= and =-N= arguments don't eliminate all output (it can't pipe
+to =jq= or produce pure lists). Still a great tool.
+
+#+begin_src shell
+# czkawka_cli empty-folders -p /dev/fd/1 -d $d -MN
+czkawka_cli empty-folders -p empty-source-dirs.json -d $d
+# empty all the way through
+jq -r 'join("\n")' empty-source-dirs | xargs -n1 tree
+# so delete
+jq -r 'join("\n")' empty-source-dirs
+#+end_src
+
+
+* CLI
+
+** consistent args
+
+| -T | --thread-number              | $n     |
+| -d | --directories                | $dirs  |
+| -e | --excluded-directories       | $dirs  |
+| -E | --excluded-items             | $items |
+| -x | --allowed-extensions         | $exts  |
+| -P | --excluded-extensions        | $exts  |
+| -f | --file-to-save               | $file  |
+| -C | --compact-file-to-save       | $file  |
+| -p | --pretty-file-to-save        | $file  |
+| -R | --not-recursive              |        |
+| -X | --exclude-other-filesystems  |        |
+| -N | --do-not-print-results       |        |
+| -M | --do-not-print-messages      |        |
+| -W | --ignore-error-code-on-found |        |
+| -H | --disable-cache              |        |
+
+Contextual
+
+| -D | --delete-ish    |
+| -r | --reference-ish |
+|    | --dry-run       |
+
+** Misc
+
+empty-folders
+
+| -D | --delete-found |
+
+big
+
+| -n | --number-of-files |
+| -J | --smallest-mode   |
+|    | --dry-run         |
+
+** Dup
+
+| -H | --disable-cache                   |                                  |
+| -r | --reference-directories           | $dirs                            |
+| -Z | --minimal-prehash-cache-file-size | $min                             |
+| -u | --use-prehash-cache               |                                  |
+| -m | --minimal-file-size               | 8192                             |
+| -i | --maximal-file-size               | 18446744073709551615             |
+| -c | --minimal-cached-file-size        | 257144                           |
+| -s | --search-method                   | name,size,(hash)                 |
+| -D | --delete-method                   | AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD |
+| -t | --hash-type                       | (blake3), crc32, xxh3            |
+| -l | --case-sensitive-name-comparison  |                                  |
+| -L | --allow-hard-links                |                                  |
+|    | --dry-run                         |                                  |
+
+** Image
+
+| -s | --similarity-preset |                                                              | Minimal,VerySmall,Small,Medium,(High),VeryHigh,Original |
+| -D | --delete-method     | AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD                             |                                                         |
+| -L | --allow-hard-links  |                                                              |                                                         |
+| -J | --ignore-same-size  |                                                              |                                                         |
+| -g | --hash-alg          | (Gradient),Mean,Blockhash,VertGradient,DoubleGradient,Median |                                                         |
+| -z | --image-filter      | (Nearest),Lanczos3,Triangle,Faussian,Catmullrom              |                                                         |
+| -c | --hash-size         | 8,16,32,64                                                   |                                                         |
+|    | --dry-run           |                                                              |                                                         |
+
+** Music
+
+| -r | --reference-directories    |                                                      |
+| -D | --delete-method            |                     AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD |
+| -a | --approximate-comparison   |                                                      |
+| -z | --music-similarity         | (track_title,track_artist),year,bitrate,genre,length |
+| -s | --search-method            |                                       content,(tags) |
+| -m | --minimal-file-size        |                                                 8192 |
+| -i | --maximal-file-size        |                                 18446744073709551615 |
+| -l | --minimum-segment-duration |                                                 10.0 |
+| -Y | --maximum-difference       |                                                  2.0 |
+|    | --dry-run                  |                                                      |
+
+also =-c,--compare-fingerprints-only-with-similar-titles=
+
+** Video
+
+| -r | --reference-directories |                                  |
+| -D | --delete-method         | AEN,AEO,ON,OO,AEB,AES,OE,OS,HARD |
+| -H | --disable-cache         |                                  |
+| -L | --allow-hard-links      |                                  |
+| -J | --ignore-same-size      |                                  |
+| -m | --minimal-file-size     |                             8192 |
+| -i | --maximal-file-size     |             18446744073709551615 |
+| -t | --tolerance             |                  0 <= (10) <= 20 |
+|    | --dry-run               |                                  |
+
+** Broken
+
+| -H | --disable-cache |                         |
+| -D | --delete-files  |                         |
+| -c | --checked-types | PDF,AUDIO,IMAGE,ARCHIVE |
+
+** Examples
+
+#+begin_example shell
+czkawka dup -d $d -e $exdir -m $min -x 7z rar IMAGE -s hash -f $res -D aeo
+czkawka empty-folders -d ${d[@]} -f $res
+czkawka big -d /home/rafal/ /home/piszczal -e /home/rafal/Roman -n 25 -x VIDEO -f results.txt
+czkawka empty-files -d /home/rafal /home/szczekacz -e /home/rafal/Pulpit -R -f results.txt
+czkawka temp -d /home/rafal/ -E */.git */tmp* *Pulpit -f results.txt -D
+czkawka image -d /home/rafal -e /home/rafal/Pulpit -f results.txt
+czkawka music -d /home/rafal -e /home/rafal/Pulpit -z "artist,year, ARTISTALBUM, ALBUM___tiTlE"  -f results.txt
+czkawka symlinks -d /home/kicikici/ /home/szczek -e /home/kicikici/jestempsem -x jpg -f results.txt
+czkawka broken -d /home/mikrut/ -e /home/mikrut/trakt -f results.txt
+czkawka extnp -d /home/mikrut/ -e /home/mikrut/trakt -f results.txt
+#+end_example
+
+* Sessions
+
+(maybe deleted subdirectories of links that target absolute paths.....)
+
+#+begin_example shell
+520  sudo mkdir /mnt/luks-c6684f7e-a5e2-4096-a7d0-a0970221c971
+521  blkid
+522  blkid /dev/sdd
+523  blkid /dev/sdd2
+524  blkid /dev/sdd1
+525  blkid --help
+526  blkid -i
+527  blkid -p
+528  blkid -p /dev/sdd
+529  sudo blkid
+530  sudo blkid  | grep sdd
+531  fdisk -l
+532  sudo fdisk -l
+533  cat .config/czkawka/czkawka_gui_config_4.txt
+534  ls -al /mnt
+535  sudo blkid  | grep sdd
+536  sudo mkdir $luksMount
+537  sudo mount /dev/mapper/matrix-root $luksMount
+538  sudo mount /dev/mapper/matrix-data $luksMount/data/
+539  sudo mount /dev/mapper/matrix-home $luksMount/home/dc
+540  sudo mkdir $luksMount/home/dc
+541  sudo chown dc:dc $luksMount/home/dc
+542  sudo mount /dev/mapper/matrix-home $luksMount/home/dc
+543  ls -al $luksMount/home/dc
+544  ls -al $luksMount/home/dc/dc/
+545  ls -al $luksMount/home/dc/
+546  ls -al $luksMount/home/
+547  ls -al $luksMount/home/greeter/
+548  sudo ls -al $luksMount/home/greeter/
+549  sudo ls -al $luksMount/home/jovyan/
+550  umount $luksMount/home/dc/dc/
+551  umount $luksMount/home/dc/
+552  sudo umount $luksMount/home/dc/
+553  sudo mount /dev/mapper/matrix-home $luksMount/home
+554  ls -al $luksMount/home
+555  ls -al $luksMount/homedc
+556  ls -al $luksMount/home/dc/
+557  ls -al $luksMount/home/greeter/
+558  sudo ls -al $luksMount/home/greeter/
+559  sudo ls -al $luksMount/home/jovyan/
+560  sudo mount /dev/mapper/matrix-flatpak $luksMount/flatpak
+#+end_example
+
+session 1
+
+#+begin_example shell
+561  ls -al $luksMount/flatpak
+562  ls -al $luksMount/flatpak/agenda/
+563  ls -al $luksMount/flatpak/steam/
+564  ls -al $luksMount/flatpak/agenda/.local/
+565  ls -al $luksMount/flatpak/agenda/.local/flatpak/
+566  ls -al $luksMount/flatpak/agenda/.local/flatpak/.changed
+567  ls -al $luksMount/flatpak/agenda/.local/flatpak/repo/
+568  ls -al $luksMount/flatpak/agenda/.local/flatpak/
+569  ls -al $luksMount/flatpak/agenda/.local/
+570  ls -al $luksMount/flatpak/agenda/.
+571  ls -al $luksMount/flatpak/agenda/
+572  cat $luksMount/flatpak/agenda/README.org
+573  ls -al $luksMount/flatpak/agenda/README.org
+574  ls -al $luksMount/flatpak/agenda/
+575  ls -al $luksMount/flatpak/
+sudo rm -rf  $luksMount/flatpak/agenda/
+577  ls -al   $luksMount/flatpak/steam/
+sudo rm -rf    $luksMount/flatpak/steam/
+579  ls -al    $luksMount/flatpak/
+580  ls -al    $luksMount/flatpak/src/flathub/com.valvesoftware.Steam/
+581  ls -al    $luksMount/flatpak/src/flathub/com.valvesoftware.Steam/build.sh
+582  cat $luksMount/flatpak/src/flathub/com.valvesoftware.Steam/build.sh
+583  cat $luksMount/flatpak/src/flathub/com.valvesoftware.Steam/.git
+584  cat $luksMount/flatpak/src/flathub/com.valvesoftware.Steam/.git/config
+585  cat $luksMount/flatpak/src/flathub/com.valvesoftware.Steam/README.md
+586  ls -al $luksMount/flatpak/src
+rm -rf $luksMount/flatpak/src
+sudo rm -rf $luksMount/flatpak/src
+589  ls -al $luksMount/flatpak/
+590  ls -al $luksMount/flatpak/matlab/
+591  ls -al $luksMount/flatpak/matlab/projects/
+592  ls -al /flatpak/dc/matlab/
+593  ls -al /flatpak/dc/matlab/pkg/
+594  ls -al /flatpak/dc/matlab/pkg/MATLABROOT/
+595  ls -al $luksMount/flatpak/matlab/projects/
+596  ls -al $luksMount/flatpak/matlab/
+597  ls -al $luksMount/flatpak/matlab/projects/projects/
+rm -rf $luksMount/flatpak/matlab/
+599*
+600  cat $luksMount/flatpak/.config/flatpak/installations.d/flatpak.conf
+601  ls -al $luksMount/flatpak/.config/flatpak/installations.d/flatpak.conf
+602  ls -al $luksMount/flatpak/.config/flatpak/
+603  ls -al $luksMount/flatpak/.config/
+604  ls -al $luksMount/flatpak/
+rm -rf  $luksMount/flatpak/.config/
+sudo rm -rf  $luksMount/flatpak/.config/
+607  ls -al  $luksMount/flatpak/
+608  ls -al  $luksMount/flatpak/dc/
+609  ls -al  $luksMount/flatpak/dc/.var/
+610  ls -al  $luksMount/flatpak/dc/.var/app/
+611  ls -al
+612  tree -d -al
+613  tree -d  $luksMount/flatpak/dc/.var/app/
+614  tree -d -L3  $luksMount/flatpak/dc/.var/app/
+615  tree -d -L2  $luksMount/flatpak/dc/.var/app/
+616  tree -ad -L2  $luksMount/flatpak/dc/.var/app/
+617  tree -ad -L2  $luksMount/flatpak/dc/.var/app/*
+618  tree -ad -L2  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/
+619  tree -ad -L3  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/
+620  tree -ad -L2  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/
+621  tree -ad -L3 --prune -P config  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/
+622  tree -ad -L3 --prune -I cache  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/
+623  tree -a -L3 --prune -I cache  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/.local
+624  tree -a -L3 --prune -I cache  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/.local/state
+625  tree -a -L3 --prune -I cache  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/data
+626  tree -a -L3 --prune -I cache  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/.thunderbird/
+627  tree -a -L3 --prune -I cache -P ".sqlite"  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/.thunderbird/
+628  tree -a -L3 --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/.thunderbird/
+629  tree -a --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/.thunderbird/
+630  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/
+631  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.local/share/flatpak/app
+632  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.local/share/flatpak/app/com.discordapp.DiscordCanary/
+633  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.local/share/flatpak/app/com.discordapp.DiscordCanary/x86_64/beta/
+634  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.local/share/flatpak/app/com.discordapp.DiscordCanary/x86_64/beta/8db119c8b94eb1c8512ef64220b5732bee8ec1068e1b206be626f8444a3d0e8d/
+635  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.local/share/flatpak/app/com.discordapp.DiscordCanary/x86_64/beta/8db119c8b94eb1c8512ef64220b5732bee8ec1068e1b206be626f8444a3d0e8d/files/
+636  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/config/
+637  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/config/discord
+638  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/config/discordcanary/
+639  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/data/
+640  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/.local/
+641  tree -L1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/.local/state/
+642  tree -aL1 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/
+643  tree -a -L3 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/
+644  tree -a -L4 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/
+645  tree -a -L4 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/
+646  tree -a -L4 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.DiscordCanary/
+647  mv $luksMount/flatpak/dc/.var/app/org.mozilla.Thunderbird/ $luksMount/flatpak/dc/
+648  tree -a -L4 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.Discord/data/
+649  tree -a -L4 -d --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/com.discordapp.Discord/
+650  tree -a -L4 --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/org.quassel_irc.QuasselClient/config/
+651  tree -a -L4 --prune -I cache -P "*.sqlite"  $luksMount/flatpak/dc/.var/app/org.quassel_irc.QuasselClient/
+652  tree -a -L4 --prune /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/.var/app/org.quassel_irc.QuasselClient
+653  tree -a -L4 --prune /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/.var/app/org.quassel_irc.QuasselClient/
+654  tree -a -L4 --prune /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/.var/app/org.quassel_*
+655  tree -L4 --prune /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/.var/app/org.quassel_*
+656  tree --prune /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/.var/app/org.quassel_*
+657  ls -al /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/.var/app/org.quassel_*
+658  ls -al /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/.var/app/
+659  ls -al /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/dc/
+660  ls -al /c6684f7e-a5e2-4096-a7d0-a0970221c971/flatpak/
+661  ls -al /c6684f7e-a5e2-4096-a7d0-a0970221c971/
+662  tree -a -L4 --prune $luksMount/flatpak/dc/.var/app/org.quassel_irc.QuasselClient/
+rm -rf  $luksMount/flatpak/dc/.var/
+rm -rf  $luksMount/flatpak/dc/.local/
+665  ls -al  $luksMount/flatpak/dc/opera
+666  less  $luksMount/flatpak/dc/opera
+rm  $luksMount/flatpak/dc/opera
+668  less  $luksMount/flatpak/dc/mr/
+669  tree  $luksMount/flatpak/dc/mr/
+670  tree -a  $luksMount/flatpak/dc/mr/
+671  tree -a  $luksMount/data/mr/.config/
+672  tree -a  $luksMount/data/mr/.config/chromium/
+673  tree -a  $luksMount/flatpak/dc/mr/.config/chromium/
+674  ls -al  $luksMount/flatpak/dc/mr/.config/chromium/
+675  ls -al  $luksMount/flatpak/dc/mr/.config/chromium/
+rm -rf  $luksMount/flatpak/dc/mr/
+rm -rf  $luksMount/data/mr/.config
+678  ls -al  $luksMount/flatpak/
+679  ls -al  $luksMount/flatpak/dc
+680  ls -al  $luksMount/
+681  ls -al  $luksMount/usr/
+682  ls -al  $luksMount/usr/bin/
+683  ls -al  $luksMount/sys/
+684  ls -al  $luksMount/media/
+685* ls -al  $luksMount/
+686  ls -al  $luksMount/etc/
+rm -rf  $luksMount/etc/
+sudo rm -rf  $luksMount/etc/
+sudo rm -rf  $luksMount/sys
+sudo rm -rf  $luksMount/proc
+691  ls -al  $luksMount/opt/
+692  sudo ls -al  $luksMount/opt/
+693  sudo ls -al  $luksMount/opt/containerd
+694  sudo ls -al  $luksMount/opt/containerd/lib
+695  sudo ls -al  $luksMount/opt/containerd/bin
+sudo rm -rf  $luksMount/opt
+697  ls -al  $luksMount/mnt/*
+698  sudo ls -al  $luksMount/dev/
+sudo rm -rf  $luksMount/dev/
+sudo rm -rf  $luksMount/bin
+sudo rm -rf  $luksMount/gnu/
+sudo rm -rf  $luksMount/tmp/
+sudo rm -rf  $luksMount/usr/
+sudo rm -rf  $luksMount/lib64/
+sudo rm -rf  $luksMount/var/
+sudo rm -rf  $luksMount/media/
+sudo rm -rf  $luksMount/run/
+708  tree -a  $luksMount/root/
+709  sudo tree -a  $luksMount/root/
+sudo rm -rf  $luksMount/root/{.cache,.emacs.d,.local,.config,.dbus}
+711  sudo tree -a  $luksMount/root/
+712  sudo tree -a  $luksMount/root/{.ansible,nmcli-history,.guile,.guile_history}
+sudo rm -rf  $luksMount/root/{.ansible,nmcli-history,.guile,.guile_history}
+714  sudo tree -a  $luksMount/root/
+sudo rm -rf  $luksMount/root/{.Xdefaults,.nmcli-history}
+sudo rm -rf  $luksMount/root/.guix-profile
+717  ls -al $luksMount/root/.guix-profile
+718  ls -al $luksMount/
+719  ls -al $luksMount/home/
+720  ls -al $luksMount/home/greeter/
+sudo rm -rf  $luksMount/home/{greeter,joyvan}
+rm -rf  $luksMount/home/dc/.xsession*
+rm -rf  $luksMount/home/dc/.zprofile
+rm -rf  $luksMount/home/dc/.zoom/
+rm -rf  $luksMount/home/dc/kubernetes-core-2.4.0.tar.gz
+rm -rf  $luksMount/home/dc/.sqlite_history
+rm -rf  $luksMount/home/dc/.gradle/
+rm -rf  $luksMount/home/dc/emacs-sbt-mode/
+rm -rf  $luksMount/home/dc/Desktop/
+rm -rf  $luksMount/home/dc/Mail/
+rm -rf  $luksMount/home/dc/.local/lib/
+732*
+rm -rf  $luksMount/home/dc/.local/bin/
+rm -rf  $luksMount/home/dc/.local/share/C*
+rm -rf  $luksMount/home/dc/.local/share/data/
+rm -rf  $luksMount/home/dc/.local/share/direnv/
+rm -rf  $luksMount/home/dc/.local/share/fcitx5/
+rm -rf  $luksMount/home/dc/.local/share/flatpak/
+rm -rf  $luksMount/home/dc/.local/share/fonts/
+rm -rf  $luksMount/home/dc/.local/share/FreeCAD/
+rm -rf  $luksMount/home/dc/.local/share/gitg/
+rm -rf  $luksMount/home/dc/.local/share/gvfs-metadata/
+rm -rf  $luksMount/home/dc/.local/share/kicad/
+rm -rf  $luksMount/home/dc/.local/share/konsole/
+rm -rf  $luksMount/home/dc/.local/share/mime/
+rm -rf  $luksMount/home/dc/.local/share/nyxt*
+rm -rf  $luksMount/home/dc/.local/share/octave/
+rm -rf  $luksMount/home/dc/.local/share/org-roam/
+rm -rf  $luksMount/home/dc/.local/share/qutebrowser/
+rm -rf  $luksMount/home/dc/.local/share/recently-used.xbel
+rm -rf  $luksMount/home/dc/.local/share/syncthing/
+rm -rf  $luksMount/home/dc/.local/share/jupyter/
+rm -rf  $luksMount/home/dc/.local/share/icons/
+754  ls -al  $luksMount/home/dc/.local/share/keyrings/
+rm -rf  $luksMount/home/dc/.local/share/keyrings/
+rm -rf  $luksMount/home/dc/.local/share/systemd/user/
+rm -rf  $luksMount/home/dc/.local/share/uv/
+rm -rf  $luksMount/home/dc/.local/share/virtualenv/
+rm -rf  $luksMount/home/dc/.local/share/webkitgtk/
+rm -rf  $luksMount/home/dc/.local/share/webkitgtk-4.1/
+rm -rf  $luksMount/home/dc/.local/share/zathura/
+rm -rf  $luksMount/home/dc/.local/share/xorg/
+rm -rf  $luksMount/home/dc/.local/share/
+rm -rf  $luksMount/home/dc/.local/
+rm -rf  $luksMount/home/dc/.julia/
+rm -rf  $luksMount/home/dc/.jupyter/
+rm -rf  $luksMount/home/dc/.java/
+rm -rf  $luksMount/home/dc/.fdsa/
+rm -rf  $luksMount/home/dc/.npm
+rm -rf  $luksMount/home/dc/.npm-global/
+rm -rf  $luksMount/home/dc/.pyenv
+rm -rf  $luksMount/home/dc/.python-version
+rm -rf  $luksMount/home/dc/.regpg/
+rm -rf  $luksMount/home/dc/.shared-ringdb/
+rm -rf  $luksMount/home/dc/.swp
+rm -rf  $luksMount/home/dc/.swt/
+rm -rf  $luksMount/home/dc/.ansible/
+rm -rf  $luksMount/home/dc/.cache/
+sudo rm -rf  $luksMount/home/dc/.cache/
+780  cat  $luksMount/home/dc/.docker/config.json
+rm -rf  $luksMount/home/dc/.docker/
+rm -rf  $luksMount/home/dc/.dbus/
+rm -rf  $luksMount/home/dc/.ccls-cache
+rm -rf  $luksMount/home/dc/.FreeCAD/
+rm -rf  $luksMount/home/dc/.guix-profile/
+sudo rm -rf  $luksMount/home/dc/.guix-profile/
+787  sudo ls -al  $luksMount/home/dc/.guix-profile/
+sudo rm -rf  $luksMount/home/dc/.guix-profile/
+sudo rm -rf  $luksMount/home/dc/.guix-extra-profiles/{academic,desktop,devdebug,devtools,doomemacs,emacs-g,fonts,gnupg,gpgagent,guix-build,i3,ibus,k8s,kicad,mon,netdebug,nodejs,octave,office,pipewire,pythondev,raise3d,tree-sitter,vscode,vscodium,xdg,dkb,browsers,clojure}
+790  ls -al $luksMount/home/dc/.guix-extra-profiles/{academic,desktop,devdebug,devtools,doomemacs,emacs-g,fonts,gnupg,gpgagent,guix-build,i3,ibus,k8s,kicad,mon,netdebug,nodejs,octave,office,pipewire,pythondev,raise3d,tree-sitter,vscode,vscodium,xdg,dkb,browsers,clojure}
+791  ls -al $luksMount/home/dc/.guix-extra-profiles
+sudo rm -rf $luksMount/home/dc/.guix-extra-profiles/{xkb,yubikey,fcitx}
+sudo rm -rf $luksMount/home/dc/.guix-extra-profiles/
+sudo rm -rf $luksMount/home/dc/.anthy/
+795  sudo ls -al $luksMount/home/dc/.config/
+796  sudo ls -alf $luksMount/home/dc/.config/
+797  man ls
+798  sudo ls -al --file-type $luksMount/home/dc/.config/
+799   ls -al --file-type $luksMount/home/dc/.config/ | grep "->"
+800   ls -al --file-type $luksMount/home/dc/.config/ | grep -e"->"
+801   ls -al --file-type $luksMount/home/dc/.config/ | grep -ve"->"
+802   ls -al --file-type $luksMount/home/dc/.config/ | grep -ve"->"
+#+end_example
+
+#+begin_example shell
+501  cd $luksMount/home/dc/
+502  tree .config
+503  tree .config/tilix/
+rm -rf .config/tilix/
+rm -rf .config/xfce4/
+rm -rf .config/Thunar/
+rm -rf .config/syncthing/
+rm -rf .config/syncthing-gtk/
+rm -rf .config/Snorenotify/
+rm -rf .config/s-tui/
+511  cat .config/QtProject.conf
+rm -rf .config/QtProject.conf
+rm -rf .config/pulse/
+rm -rf .config/loxodo/
+rm -rf .config/LightBurn/
+rm -rf .config/libreoffice/
+rm -rf .config/Lens/
+rm -rf .config/kicad/
+rm -rf .config/jgit/
+rm -rf .config/ibus/
+521  cat .config/i3-scrot.conf
+rm -rf .config/i3-scrot.conf
+523  ls -al .config/i3/
+524  ls -al .config/
+525  ls -al .config/i3
+rm -rf .config/gtk-3.0/
+rm -rf .config/glib-2.0/
+rm -rf .config/enchant/
+529  cat .config/d-feet/config
+rm -rf .config/d-feet/
+531  cat .config/configstore/update-notifier-npm.json
+rm -rf .config/configstore/
+533  cat .config/code-server/config.yaml
+534* rm -rf .config/
+535  cat .config/astro/config.json
+536  cat .config/byobu/.screenrc
+537  cat .config/byobu/.tmux.conf
+538  cat .config/byobu/profo;e
+539  cat .config/byobu/profile
+540  cat .config/byobu/profile.tmux
+541  cat .config/byobu/backend
+542  cat .config/byobu/status
+543  cat .config/byobu/statusrc
+rm -rf .config/byobu/
+rm -rf .config/font-manager/
+546  ls -al .config
+547  ls -al .config/packer/
+rm -rf .config/packer/
+rm -rf .config/octave/
+rm -rf .config/fontconfig/
+551  cat .config/gcloud/
+552  ls -al .config/gcloud/
+553  ls -al .config/procps/
+554*
+555  ls -al .config/dconf/
+556  cat .config/dconf/user
+rm -rf .config/dconf/
+558  cat .config/pavucontrol.ini
+rm -rf .config/pavucontrol.ini
+560  cat .config/konsolesshconfig
+rm .config/konsolesshconfig
+562  ls -al
+rm .tramp_history
+rm The_Role_of_Aortic_Stiffness_Parameters_in_Evaluat.pdf
+565  ls -al *pdf
+566  xdg-open 2-MR-Abuse\ and\ Neglect\ Signs\ and\ Symptoms\ Resource.pdf
+rm -rf src/pytest/
+rm -rf src/Python-3.11.3
+569  cat src/loc.sh
+570  cat .emacs.d/README.org
+571  cat .emacs.d/init.el
+572  cat .emacs.d/early-init.el
+573  cd .emacs.doom2/
+574  git status
+575  git log
+576  cd ..
+rm -rf .emacs.doom2
+rm -rf .julia
+579  ls -al .local
+580  ls -al .local/
+rm .local
+582  cd .doom.d
+583  ls -a l
+584  ls -al
+585  cat config.el
+586  cd ..
+rm -rf .doom.d
+rm -rf .pki/
+589  ls -al .var
+590  ls -al .var/
+591  ls -al .var/app/
+592  ls -al .var
+593  ls -al /flatpak/dc/
+594  ls -al /flatpak/dc/.var/
+595  ls -al /flatpak/dc/.var/app/
+rm .var
+597  ls -al .keras/
+598  cat .keras/keras.json
+599  ls -al .keras
+rm .keras/keras.json
+rm -rf .texlive2021
+rm -rf .keras/
+603  ls -al .guix-profile
+rm -rf .guix-profile
+605  history
+#+end_example
