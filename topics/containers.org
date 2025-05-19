@@ -30,6 +30,110 @@ The basic implementation of the spec from OCI (Open Container Initiative)
 + [[https://github.com/wagoodman/dive][wagoodman/dive]]
 
 ** Topics
+*** Volume Cleanup
+
+Mirantis kinda sucks. No offense, but seriously? And if there was some way I
+could run the GUI app on Linux ... I would never hear about it. Studid crap like
+this is a PITA, but obvious if you use the GUI, since it makes you aware of the
+abstractions ... though you'll find it difficult to name pieces of data or
+construct automation.
+
+#+begin_src shell
+# find where docker puts its volumes (nice to know you can have alternate
+# storage locations now ... I guess I missed that update)
+mountpoint=$(docker volume inspect schema | jq -r 'nth(0).Mountpoint')/../..
+
+compose=docker/docker-compose.yml # yeh you may have more than one of these
+docker volume ls | grep ivme
+
+# lol,
+docker volume rm --force docker_ivre{conf,db}
+
+# nope, try again
+docker compose -f $compose down --volumes # make sure it's down
+docker volume rm --force docker_ivre{conf,db} # or this fails
+
+# tell docker compose where to put it's volumes
+sudo rm -rf $mountpoint/../../docker_ivre{conf,db}
+
+# sometimes it be like that, sometimes it don't. your LLM training set is
+# composed of 95% erroneous parameters. if you get this wrong, everyone at work
+# will abandon you and claim you're worthless with zero experience.
+sudo mkdir -p $mountpoint/../../docker_ivre{conf,db}/_data
+
+# still want to avoid windows? we've got money
+docker volume rm --force docker_ivre{conf,db}
+#+end_src
+
+Don't fuck with docker, just reinstall it. what's the problem? It's not like
+you're using those images or containers-as-services, right? You probably didn't
+system-dunit that or anything.
+
+Now, ensure you created that single file to bindmount BEFORE you create it. Or
+docker's going to tase you. Just kidding. Get back to stack overflow, where
+everything is clearly defined and recognizably formatted. Like man pages.
+
+#+begin_example text
+Error response from daemon: failed to populate volume: error while mounting volume '/data/vm/docker/volumes/docker_ivreconf/_data': failed to mount local volume: mount /data/ecto/hacknet/ivre/ivre/docker/ivre.conf:/data/vm/docker/volumes/docker_ivreconf/_data,flags: 0x1000: not a directory
+#+end_example
+
+Now, why would you want to be an advanced user of containers anyways? When the
+GUI can just spoonfeed you all day? There's no way that could go wrong, right?
+
+Wouldn't it be nice if you could (idk...) like declare configuration for Linux
+services as data, but didn't need 5+ decent x86, 800 Watts/month and etc to run
+kubernetes? And you could like develop on your local machine? And if you ran of
+out storage or spent hundreds of hours on service customization you'd just "Make
+it so" and reset configuration the way you want?
+
+Well... that's too bad. Not getting that so easily on Arch/Ubuntu/Fedora. I mean
+kinda, if you really like esoteric tooling, obscurant documentation and ... yeh.
+
+#+begin_quote
+12-Factor is nice to have. It's too bad I don't use an operating system that
+writes to my UEFI forcing me to carry multiple USBs around everywhere I go -- so
+I can boot up, run a single command and have it happen all over again where I
+can't access my files without paying for custom software to open a LUKS
+filesystem in windows -- ALL so the encryption/permissions are worthless. Keep
+in mind that this is a world where no one really uses ventoy or mbusb -- or
+knows a damn thing about Grub (or how the Linux CLI flags differ between
+distributions). GLHF you ironic wannabe "skilled at things" try-hard. You voted
+wrong, remember?
+#+end_quote
+
+It just keeps creating the volume, like [[https://www.reddit.com/r/portainer/comments/1egyose/mounting_a_single_file_via_docker_compose/][this reddit post]]. It may have something
+to do with hashing a volume's contents and manually deleting the volume. I have
+no idea. There's few examples in docker compose docs and no links to a
+comprehensive description of =driver= and =driver_opts=, except the man pages. This
+is why the expectation of obfuscated container internals is bad for users.
+
+**** Get you an IVRE SQL Schema
+
+I've now wasted like 2.5 hours dicking around with getting small single files
+into my ship-in-a-bottle.
+
++ Top-level volumes are needed because multiple services rely on the same files
+  (not explained in IVRE docs... meh).
++ The application also seems to be shimming in the default config -- when =env
+  IVRE_CONF=$somefile= then it may find that file elsewhere.
++ Only one container attaches. Tried adding =tty: true= to check ... no dice. No
+  way to inspect environment, other than =/etc/ivre.conf= is NOT the file I'm
+  looking for.
++ it expects a mongo service ... every time. It takes about 60 seconds to
+  "trick" the HTTP service into erroring out to let me know. Super fun. I
+  manually overwrote the config file. I do not need a mongo service. I NEED A
+  SQLITE SCHEMA.
+
+What's fucked up is conflating the feeling of frantic working with productivity.
+When you're isolated, it just doesn't matter. You better conform.
+
+#+begin_quote
+Try to 12-Factor things. You learn faster & work your way up to connecting more
+complicated container deployments.
+#+end_quote
+
+Oh my bad. I should've used windows? Like the servers at FAANG-fdshajfldshavkl?
+
 *** Daemon Configuration
 [[https://docs.docker.com/engine/reference/commandline/dockerd/#environment-variables][Environment Variables]]
 
