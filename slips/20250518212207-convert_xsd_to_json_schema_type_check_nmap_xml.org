@@ -1,0 +1,114 @@
+:PROPERTIES:
+:ID:       33584cf8-181a-4781-a1b5-a7085d0b7981
+:END:
+#+TITLE: Convert XSD to JSON Schema: Type-Check NMap XML
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:bb8bbe7c-6d49-4088-9161-2ae2edb4abd6][Ontology]]
++ [[id:e0880f60-63db-4f34-b478-c3b733f1ab96][XML]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
++ [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team#XML Format for nmap]]
+
+* Resources
+
+** Schema
+
++ [[https://qodex.ai/blog/convert-xml-schema-to-json-schema#:~:text=Converting%20XML%20Schema%20(XSD)%20to%20JSON%20Schema,traditional%20XML%2Dbased%20systems%20with%20modern%20JSON%2Dbased%20applications][Convert XML Schema (XSD) to JSON Schema: A Comprehensive Guide]].
++ [[https://github.com/fnogatz/xsd2json][fnogatz/xsd2json]]
++ [[https://github.com/ajv-validator/ajv][ajv-validator/ajv]]
++ [[https://json-schema.org/understanding-json-schema/reference/type#built-in-formats][JSON Schema Built-in Formats]]
+
+** NMap
+
++ [[https://github.com/savon-noir/python-libnmap/tree/master][savon-noir/python-libnmap]] and the doc for [[https://libnmap.readthedocs.io/en/latest/parser.html][libnmap.parser]]
++ nmap can be [[https://seclists.org/nmap-dev/2021/q1/4][built using =--with-json= to format output]] (but that's only half of
+  what I need)
+
+* Notes
+
+For a packet-routing, TCP-socket-connecting system, the nmap schema
+declaratively describes the intended behavior of traffic streams according to
+their origination & termination. Therefore, it may be helpful for specifying
+config for layers 3/4/5 in a network (which then allows you to ... well wouldn't
+you like to know).
+
+The nmap schema contains these abstractions:
+
++ hosts (this is the nexus of the schema)
++ services
++ traffic paths (without intermediaries) between origination (implicit via
+  runner) and destination (explicit via host configuration)
+
+Traffic routes differently (to/from dest and everywhere else it may go). a data
+structure including hops would be fantastic, but that requires a custom
+"pseudo-traceroute" (and cooperative hops). There are likely network/devops
+tracing tools (like those in K8S), but they're specific to the host network,
+tooling and cloud platform.
+
+It doesn't do layer 2 though.
+
+** Clone =nmap= and convert =DTD= to =XSD=
+
+You need =swi-prolog= (before =npm install=)
+
+#+begin_src shell
+# yay -Syu trang # no guix package
+cd $(mktemp -d)
+git clone https://github.com/nmap/nmap
+trang -I ./nmap/docs/nmap.dtd -O xsd nmap.dtd nmap.xsd
+# make the rng as well, if you want to read it in an editor
+trang -I dtd -O rng ./docs/nmap.dtd nmap.rng # usually this comes with the rnc file too
+#+end_src
+
+** Install =xsd2json= and generate
+
+Same dir. If your =swi-prolog=
+
+#+begin_src shell
+guix shell swi-prolog
+npm install --save-dev xsd2prolog
+node_modules/.bin/xsd2json nmap.xsd > nmap.schema.json
+# please be patient, prolog ... has to solve a very hard sudoku problem
+sed -ie 's/	/  /g' # replace the tabs
+cp !$ /some/where/else
+# ...
+#+end_src
+
+After using =ajv= to test quickly (and then checking the input/output...), the
+conversion isn't working properly at all, which may be a result of the =DTD ->
+XSD= conversion.
+
++ It may give an alright starting point if taking the output into a visual
+  editor. Everything is also a giant unary type.
++ =xsd2json= doesn't recognize =xs:string= or =xs:token= as proper JSON types, though
+  1:1 conversion would be difficult. If it was, =sed= may fix up the output.
++ It set =additionalProperties: false= for everything and also misses many
+  attributes, mostly those that include less information -- maybe an artifact of
+  running prolog against underdetermined logic (or bad XSD).
+
+[[https://github.com/nmap/nmap/issues/635#issuecomment-362834808][Someone's been here before: nmap/nmap#635]]
+
+** Validate with =ajv=
+
+Save as =validate.js=
+
+#+begin_src javascript
+const Ajv = require("ajv")
+const ajv = new Ajv()
+
+const schema = require("./nmap.schema.json");
+const emptyNmapRun = {hosts: []};
+const check = ajv.validate() && console.log(check.errors);
+#+end_src
+
+Check
+
+#+begin_src shell
+# in guix shell running in the temp dir
+npm install --save-dev ajv
+node validate.js
+#+end_src
+
+Now we can make emacs aware of this file and bam we have completion.
