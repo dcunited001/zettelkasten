@@ -1,0 +1,413 @@
+:PROPERTIES:
+:ID:       1ecf174d-5ab0-4465-936e-50c37c3cd466
+:END:
+#+TITLE: OPNSense: Extract Config Data From XML With jq,yq,xq
+#+CATEGORY: slips
+#+TAGS:
+
+Yes, "learning in public" for a great good. Well, it would otherwise be if it
+weren't for that meddling LLM.
+
+* Roam
+
++ [[id:265a53db-5aac-4be0-9395-85e02027e512][PFSense and OPNSense]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Notes
+:PROPERTIES:
+:header-args:shell+: :dir $theXMLdir
+:END:
+
+See raw org for =:shell+: :dir $babel_pwd=
+
+** Query config.xml
+
+#+name: opnxml
+#+begin_src shell :results output verbatim silent
+gpg -d $theXMLdotGPG
+#+end_src
+
+System Tunables
+
+#+name: opnTunables
+#+begin_src shell :var xml=opnxml :results output verbatim
+echo $xml | xq -y '
+.opnsense.sysctl.item
+| map("\(.tunable)=\(.value)")
+| {sysctl: .}'
+#+end_src
+
+#+RESULTS: opnTunables
+#+begin_example
+sysctl:
+  - vfs.read_max=default
+  - net.inet.ip.portrange.first=default
+  - net.inet.tcp.blackhole=default
+  - net.inet.udp.blackhole=default
+  - net.inet.ip.random_id=default
+  - net.inet.ip.sourceroute=default
+  - net.inet.ip.accept_sourceroute=default
+  - net.inet.icmp.log_redirect=default
+  - net.inet.tcp.drop_synfin=default
+  - net.inet6.ip6.redirect=default
+  - net.inet6.ip6.use_tempaddr=default
+  - net.inet6.ip6.prefer_tempaddr=default
+  - net.inet.tcp.syncookies=default
+  - net.inet.tcp.recvspace=default
+  - net.inet.tcp.sendspace=default
+  - net.inet.tcp.delayed_ack=default
+  - net.inet.udp.maxdgram=default
+  - net.link.bridge.pfil_onlyip=default
+  - net.link.bridge.pfil_local_phys=default
+  - net.link.bridge.pfil_member=default
+  - net.link.bridge.pfil_bridge=default
+  - net.link.tap.user_open=default
+  - kern.randompid=default
+  - hw.syscons.kbd_reboot=default
+  - net.inet.tcp.log_debug=default
+  - net.inet.icmp.icmplim=default
+  - net.inet.tcp.tso=default
+  - net.inet.udp.checksum=default
+  - kern.ipc.maxsockbuf=default
+  - vm.pmap.pti=default
+  - hw.ibrs_disable=default
+  - security.bsd.see_other_gids=default
+  - security.bsd.see_other_uids=default
+  - net.inet.ip.redirect=default
+  - net.inet.icmp.drop_redirect=1
+  - net.local.dgram.maxdgram=default
+#+end_example
+
+** Script
+
+Tangle this. The files are named according to the XML. Where simple, I retained
+the config keys, so it can be splatted =cat= while maintaining at least some of
+the XML tag names
+
+=cat $today/unbound*.yml | yq -y '.unbound.hosts'=
+
+Whether YAML lets you do this for ={network,port,host}-aliases.yml= which have the
+same top-level key depends on the implementation (it happens sometimes, I think)
+*** Extract
+**** Config
+
+#+begin_src shell :tangle opnsenseExtract :shebang #!/bin/bash :tangle-mode o744
+# export opnxml=$theXMLdotGPG
+today=$(date +%Y%m%d)
+[[ ! -d "$today" ]] && mkdir -p $today
+
+# sysctl
+gpg -d $opnxml | xq -y '
+.opnsense.sysctl.item
+| map("\(.tunable)=\(.value)")
+| {sysctl: .}' > "$today/sysctl.yml"
+#+end_src
+
+**** Services
+
+#+begin_src shell :tangle opnsenseExtract :shebang #!/bin/bash :tangle-mode o744
+# also, <dnsserver/> and <dns#gw/>
+
+# unbound dns
+columns="general,advanced"
+gpg -d $opnxml | xq -y '
+.opnsense.OPNsense.unboundplus
+| {'"$columns"'} | {unboundplus: .}' > "$today/unboundplus.yml"
+
+gpg -d $opnxml | xq -y '
+.opnsense.OPNsense.unboundplus.hosts.host
+| {hosts: .} | {unboundplus: .}' > "$today/unboundplus.hosts.yml"
+
+# ssh
+gpg -d $opnxml | xq -y '
+.opnsense.system | {ssh}' > "$today/ssh.yml"
+#+end_src
+
+**** Route/Switch
+
+#+begin_src shell :tangle opnsenseExtract :shebang #!/bin/bash :tangle-mode o744
+# gateways
+gpg -d $opnxml | xq -y '
+.opnsense | {gateways}' > "$today/gateways.yml"
+
+# vlans
+gpg -d $opnxml | xq -y '
+.opnsense.vlans.vlan | {vlans: .}' > "$today/vlans.yml"
+
+# interfaces
+gpg -d $opnxml | xq -y '
+.opnsense | {interfaces}' > "$today/interfaces.yml"
+#+end_src
+
+**** Firewall
+
+#+begin_src shell :tangle opnsenseExtract :shebang #!/bin/bash :tangle-mode o744
+# aliases
+columns="name,type,content,description"
+gpg -d $opnxml | xq -y '
+.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "network"))
+| map({'"$columns"'})
+| {network: .} | {aliases: .}' > "$today/aliases.network.yml"
+
+columns="name,type,content,description"
+gpg -d $opnxml | xq -y '.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "port"))
+| map({'"$columns"'})
+| {port: .} | {aliases: .}' > "$today/aliases.port.yml"
+
+columns="name,type,content,description"
+gpg -d $opnxml | xq -y '.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "host"))
+| map({'"$columns"'})
+| {host: .} | {aliases: .}' > "$today/aliases.host.yml"
+#+end_src
+
+***** Filter Rules
+
+I just need to start over here...
+
+**** Plugins
+
+IDS: whoa TMI, but interesting
+
+#+begin_src shell :tangle opnsenseExtract :shebang #!/bin/bash :tangle-mode o744
+gpg -d $opnxml | xq -y '.opnsense.OPNsense | {IDS}' > "$today/IDS.yml"
+#+end_src
+
+Squid: didn't end up using it, but customized. Not enabled (there would
+otherwise be passwords in here).
+
+#+begin_src shell :tangle opnsenseExtract :shebang #!/bin/bash :tangle-mode o744
+gpg -d $opnxml | xq -y '.opnsense.OPNsense | {proxy}' > "$today/proxy.yml"
+#+end_src
+
+**** UI
+#+begin_src shell :tangle opnsenseExtract :shebang #!/bin/bash :tangle-mode o744
+gpg -d $opnxml | xq -y '.opnsense.OPNsense.Firewall.Category.categories.category
+| {categories: .}' > "$today/proxy.yml"
+#+end_src
+
+** Queries
+
+*** DNS
+
+**** Unbound Hosts
+
+#+name: opnUnboundHosts
+#+begin_src shell :var xml=opnxml :results output verbatim :wrap example yaml
+echo $xml | xq -y '
+.opnsense.OPNsense.unboundplus.hosts'
+#+end_src
+
+
+
+**** Unbound Config
+
+#+name: opnUnboundConfig
+#+begin_src shell :var xml=opnxml :results output verbatim :wrap example yaml
+columns="general,advanced"
+echo $xml | xq -y '
+.opnsense.OPNsense.unboundplus
+| {'"$columns"'}'
+#+end_src
+
+#+RESULTS: opnUnboundConfig
+#+begin_example yaml
+general:
+  enabled: '1'
+  port: '53'
+  stats: '0'
+  active_interface: opt4,opt3,opt5,opt1,opt6,opt7,opt2,opt8
+  dnssec: '1'
+  dns64: '0'
+  dns64prefix: 64:ff9b::/96
+  noarecords: '0'
+  regdhcp: '0'
+  regdhcpdomain: null
+  regdhcpstatic: '0'
+  noreglladdr6: '0'
+  noregrecords: '0'
+  txtsupport: '0'
+  cacheflush: '1'
+  local_zone_type: transparent
+  outgoing_interface: wan
+  enable_wpad: '0'
+advanced:
+  hideidentity: '0'
+  hideversion: '0'
+  prefetch: '0'
+  prefetchkey: '0'
+  dnssecstripped: null
+  serveexpired: '0'
+  serveexpiredreplyttl: null
+  serveexpiredttl: null
+  serveexpiredttlreset: '0'
+  serveexpiredclienttimeout: null
+  qnameminstrict: '0'
+  extendedstatistics: '0'
+  logqueries: '0'
+  logreplies: '0'
+  logtagqueryreply: '0'
+  logservfail: '0'
+  loglocalactions: '0'
+  logverbosity: '1'
+  valloglevel: '0'
+  privatedomain: null
+  privateaddress: 0.0.0.0/8,10.0.0.0/8,100.64.0.0/10,169.254.0.0/16,172.16.0.0/12,192.0.2.0/24,192.168.0.0/16,198.18.0.0/15,198.51.100.0/24,203.0.113.0/24,233.252.0.0/24,::1/128,2001:db8::/32,fc00::/8,fd00::/8,fe80::/10
+  insecuredomain: null
+  msgcachesize: null
+  rrsetcachesize: null
+  outgoingnumtcp: null
+  incomingnumtcp: null
+  numqueriesperthread: null
+  outgoingrange: null
+  jostletimeout: null
+  cachemaxttl: null
+  cachemaxnegativettl: null
+  cacheminttl: null
+  infrahostttl: null
+  infrakeepprobing: '0'
+  infracachenumhosts: null
+  unwantedreplythreshold: null
+#+end_example
+*** Gateways
+
+Gateways
+
+#+name: opnGateways
+#+begin_src shell :var xml=opnxml :results output verbatim :wrap example yaml
+echo $xml | xq -y '.opnsense.gateways | map(.)'
+#+end_src
+
+#+RESULTS: opnGateways
+#+begin_example yaml
+- descr: Interface WAN Gateway
+  defaultgw: '1'
+  ipprotocol: inet
+  interface: wan
+  gateway: 10.108.0.2
+  monitor_disable: '1'
+  name: WAN_GW
+  interval: '1'
+  weight: '1'
+#+end_example
+
+*** Interfaces
+
+#+name: opnInterfaces
+#+begin_src shell :var xml=opnxml :results output verbatim :wrap example yaml
+columns="name,type,content,description"
+echo $xml | xq -y '.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "network"))
+| map({'"$columns"'})'
+#+end_src
+
+Nope, not committing that.
+
+*** Firewall
+
+#+begin_quote
+You need to juggle UUID to automate these (probably going to /want/ UUID to
+automate firewall rules, but you don't want to /need/ it)
+#+end_quote
+
+*** Aliases
+
+**** Networks
+
+#+name: opnAliasNetworks
+#+begin_src shell :var xml=opnxml :results output verbatim :wrap example yaml
+columns="name,type,content,description"
+echo $xml | xq -y '.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "network"))
+| map({'"$columns"'})'
+#+end_src
+
+#+RESULTS: opnAliasNetworks
+#+begin_example yaml
+- name: ip4_oxelio
+  type: network
+  content: 10.123.0.0/16
+  description: oxelio networks
+- name: ip4_home
+  type: network
+  content: 10.116.0.0/13
+  description: oxelio networks
+- name: ip4_xelio
+  type: network
+  content: 10.108.0.0/12 # hmmm... route summarization
+  description: oxelio networks
+- name: ip4_10dot
+  type: network
+  content: 10.0.0.0/8
+  description: 10dot networks
+#+end_example
+
+**** Hosts
+
+#+name: opnAliasHosts
+#+begin_src shell :var xml=opnxml :results output verbatim :wrap example yaml
+columns="name,type,content,description"
+echo $xml | xq -y '.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "host"))
+| map({'"$columns"'})'
+#+end_src
+
+#+RESULTS: opnAliasHosts
+#+begin_example yaml
+- name: dns_aws
+  type: host
+  content: dns-external-master.amazon.com root.amazon.com
+  description: null
+- name: pkg_ansible
+  type: host
+  content: galaxy.ansible.com ansible-galaxy.s3.amazonaws.com
+  description: null
+- name: reg_fedora
+  type: host
+  content: registry.fedoraproject.org registry.centos.org
+  description: null
+- name: hkps_keyservers
+  type: host
+  content: keys.openpgp.org hpks.pool.sks-keyservers.net pgp.ocf.berkely.net
+  description: null
+- name: pkg_debian
+  type: host
+  content: ftp.us.debian.org security.debian.org enterprise.proxmox.com downloads.proxmox.com
+    mirror.cogentco.com debian.uchicago.edu mirror.keystealth.org mirror-new.csail.mit.edu
+    debian.gtisc.gatech.edu mirror.us.oneandone.net
+  description: null
+- name: pkg_fedora
+  type: host
+  content: fedoraproject.org centos.org mirrors.centos.org mirror.centos.org mirror.stream.centos.org
+    download.cf.centos.org dl.fedoraproject.org registry.fedoraproject.org
+  description: null
+- name: pkg_guix
+  type: host
+  content: ci.guix.gnu.org git.savannah.gnu.org bordeaux.guix.gnu.org
+  description: null
+- name: pkg_nonguix
+  type: host
+  content: substitutes.nonguix.org
+  description: null
+- name: pkg_proxmox
+  type: host
+  content: download.proxmox.org
+  description: null
+- name: reg_docker
+  type: host
+  content: docker.io auth.docker.io registry-1.docker.io index.docker.io production.cloudflare.docker.io
+  description: null
+  #+end_example
+
+...
+
+#+begin_quote
+Don't do that ^^^
+#+end_quote
+
+**** Ports
+
++ /etc/services :: =man services= [[https://linux.die.net/man/5/services][IANA Service Name and Transport Protocol Port
+  Number Registry]]!
