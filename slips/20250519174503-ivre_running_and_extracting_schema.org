@@ -13,7 +13,7 @@
 * Docs
 
 + [[https://doc.ivre.rocks/en/latest/overview/principles.html#purposes][IVRE Purposes]] an important concept for large parts of the codebase & service
-  integration
+  integration.
 
 ** Multi Stage Builds
 
@@ -31,6 +31,206 @@ a build stage? (without a dynamic image name). I'm so sorry to hear about that+
     just less of a thing you do.
 
 * Notes
+
+** Status
+
+*** Config
+
+**** Docker images
+
+I build the images with these commands (after generating the tar)
+
+#+begin_src shell
+docker pull debian:12
+docker build -t ivre/base docker/base-local
+for img in client agent web web-doku web-uwsgi ; do
+    docker build -t "ivre/$img" "docker/$img";
+done
+#+end_src
+
+I made these changes to the =./docker/base-local/Dockerfile=
+
+#+begin_example diff
+diff --git a/docker/base-local/Dockerfile b/docker/base-local/Dockerfile
+index 23e639b3..f35496ed 100644
+--- a/docker/base-local/Dockerfile
++++ b/docker/base-local/Dockerfile
+@@ -13,7 +13,7 @@
+#
+# You should have received a copy of the GNU General Public License
+# along with IVRE. If not, see <http://www.gnu.org/licenses/>.
+-
++# ARG PIPREQ=requirements-sqlite.txt
+FROM debian:12 AS builder
+
+ENV DEBIAN_FRONTEND noninteractive
+@@ -21,9 +21,8 @@ ENV DEBIAN_FRONTEND noninteractive
+# Install pip then install IVRE
+ADD ivre.tar ./
+RUN apt-get -q update && \
+-    apt-get -qy --no-install-recommends install python3-pip && \
+-    pip3 install --break-system-packages /ivre
+-
++    apt-get -qy --no-install-recommends install build-essential python3.11-dev libpq-dev python3-pip && \
++    pip3 install --break-system-packages -r "/ivre/requirements-all.txt" /ivre
+
+FROM debian:12
+LABEL maintainer="Pierre LALET <pierre@droids-corp.org>"
+@@ -45,4 +44,4 @@ COPY --from=builder /usr/local/share/ivre /usr/local/share/ivre
+RUN sed -ri 's#$#-docker#' /usr/local/lib/python*/dist-packages/ivre/VERSION && \
+sed -ri 's#(VERSION = .*)(['\''"])$#\1-docker\2#' /usr/local/lib/python*/dist-packages/ivre/__init__.py
+
+-RUN echo 'DB = "mongodb://ivredb/"' > /etc/ivre.conf
++RUN echo 'DB = "mongodb://ivredb"' > /etc/ivre.conf
+#+end_example
+
+**** File Tree
+
+The volumes are in the =./docker= directory
+
+#+begin_src
+ls -al docker
+#+end_src
+
+#+begin_example
+drwxr-xr-x 13 1000   1000   4096 May 20 13:15 .
+drwxr-xr-x 14 1000   1000   4096 May 19 21:34 ..
+drwxr-xr-x  2 1000   1000   4096 May 19 11:51 agent
+drwxr-xr-x  2 1000   1000   4096 May 19 11:51 base
+drwxr-xr-x  2 1000   1000   4096 May 19 19:57 base-local
+drwxr-xr-x  2 1000   1000   4096 May 19 11:51 client
+drwxr-xr-x  4 1000   1000   4096 May 20 14:59 data
+-rw-r--r--  1 1000   1000   2416 May 20 14:51 docker-compose.yml
+drwxr-xr-x 14 http http 4096 May 19 12:22 dokuwiki_data
+drwxr-xr-x  2 root root 4096 May 19 12:22 ivre-share
+-rw-r--r--  1 1000   1000   2807 May 19 11:51 Vagrantfile
+drwxr-xr-x  4  999 root 4096 May 20 15:15 var_lib_mongodb
+drwxr-xr-x  2 1000   1000   4096 May 19 11:51 web
+drwxr-xr-x  2 1000   1000   4096 May 19 11:51 web-doku
+drwxr-xr-x  2 1000   1000   4096 May 19 11:51 web-uwsgi
+#+end_example
+**** ivre.conf
+
+This DB configuration is needed, but the image needs to install
+=requirements-all.txt=
+
+#+begin_example python
+DEBUG = True
+IPDATA_URLS = {
+    'GeoLite2-City.tar.gz':
+    'https://ivre.rocks/data/tests/db/GeoLite2-City.tar.gz',
+    'GeoLite2-City-CSV.zip':
+    'https://ivre.rocks/data/tests/db/GeoLite2-City-CSV.zip',
+    'GeoLite2-Country.tar.gz':
+    'https://ivre.rocks/data/tests/db/GeoLite2-Country.tar.gz',
+    'GeoLite2-Country-CSV.zip':
+    'https://ivre.rocks/data/tests/db/GeoLite2-Country-CSV.zip',
+    'GeoLite2-ASN.tar.gz':
+    'https://ivre.rocks/data/tests/db/GeoLite2-ASN.tar.gz',
+    'GeoLite2-ASN-CSV.zip':
+    'https://ivre.rocks/data/tests/db/GeoLite2-ASN-CSV.zip',
+    'iso3166.csv': 'https://ivre.rocks/data/tests/db/iso3166.csv',
+    'BGP.raw': 'https://ivre.rocks/data/tests/db/data-raw-table',
+}
+NMAP_SCAN_TEMPLATES["default"]["pings"] = []
+NMAP_SCAN_TEMPLATES["default"]["scans"] = "T"
+NMAP_SCAN_TEMPLATES["default"]["osdetect"] = False
+NMAP_SCAN_TEMPLATES["default"]["traceroute"] = False
+NMAP_SCAN_TEMPLATES["http"] = NMAP_SCAN_TEMPLATES["default"].copy()
+NMAP_SCAN_TEMPLATES["http"]["ports"] = "T:80"
+NMAP_SCAN_TEMPLATES["http"]['scripts_categories'] = []
+NMAP_SCAN_TEMPLATES["http"]['scripts_exclude'] = []
+NMAP_SCAN_TEMPLATES["http"]['scripts_force'] = ["http-title", "http-screenshot"]
+NMAP_SCAN_TEMPLATES["http"]['extra_options'] = ["--open"]
+AGENT_MASTER_PATH = "/tmp/var_lib/ivre/master"
+#+end_example
+
+This =./docker/data/ivre.conf= is based on [[https://github.com/ivre/ivre/blob/master/.github/workflows/files/ivre.conf#L1][.github/workflows/files/ivre.conf]]. I
+added what's below to the above, hoping to start with some basic nmap scan data.
+
+#+begin_example python
+# mongo is required for DB
+DB="mongodb:///ivre"
+DB_PASSIVE="sqlite:///data/ivre.passive.sqlite"
+# DB_NMAP="sqlite:///data/ivre.nmap.sqlite" # fails (see below in "Failures")
+# DB_VIEW="sqlite:///data/ivre.view.sqlite" # fails (see below in "Failures")
+DB_DATA = "maxmind:///share/data/ivre/geoip"
+# DB_DATA = "maxmind:///$shareData/ivre/geoip"
+#+end_example
+
+**** Compose
+
+#+begin_example yaml
+version: "3"
+services:
+  ivredb:
+    image: mongo
+    container_name: ivredb
+    restart: always
+    ports: ["27017:27017"]
+    volumes:
+      - ivre:/data
+      - ./var_lib_mongodb:/data/db
+  ivreuwsgi:
+    image: ivre/web-uwsgi
+    container_name: ivreuwsgi
+    restart: always
+    depends_on:
+      - ivredb
+    volumes:
+      - ./dokuwiki_data:/var/www/dokuwiki/data
+      - ivre:/data
+    environment:
+      - "IVRE_CONF=/data/ivre.conf"
+      - "DEBUG_DB=1"
+  ivredoku:
+    image: ivre/web-doku
+    container_name: ivredoku
+    restart: always
+    volumes:
+      - ./dokuwiki_data:/var/www/dokuwiki/data
+    #   - ivre:/data
+    # environment:
+    #   - "IVRE_CONF=/data/ivre.conf"
+    #   - "DEBUG_DB=1"
+  ivreweb:
+    image: ivre/web
+    container_name: ivreweb
+    restart: always
+    ports: ["80:80"]
+    depends_on:
+      - ivreuwsgi
+      - ivredoku
+    volumes:
+      - ./dokuwiki_data:/var/www/dokuwiki/data
+    #   - ivre:/data
+    # environment:
+    #   - "IVRE_CONF=/data/ivre.conf"
+    #   - "DEBUG_DB=1"
+  ivreclient:
+    image: ivre/client
+    container_name: ivreclient
+    depends_on:
+      - ivredb
+    working_dir: /data
+    volumes:
+      - ./ivre-share:/ivre-share
+      - ivre:/data
+    environment:
+      - "IVRE_CONF=/data/ivre.conf"
+      - "DEBUG_DB=1"
+    stdin_open: true
+    tty: true
+
+volumes:
+  ivre:
+    driver: local
+    driver_opts:
+      type: bind
+      device: ${PWD}/docker/data
+      o: bind
+#+end_example
+
 * Configuration
 
 The configs merge (see docs on [[https://doc.ivre.rocks/en/latest/install/config.html][IVRE_CONF]], which has highest priority)
@@ -49,19 +249,6 @@ Can't get the service dependencies to acknowledge config changes
 
 This seems to only affect =ivreclient= (this is because =ivreweb-uwsgi= runs as
 =nobody= and I was mounting under root)
-
-**** Initialization
-
-Need to resolve =sqlachemy= issues first. From =docker attach ivreclient=
-
-#+begin_src shell
-# yes | oh infinite whys
-yes | ivre ipinfo --init # --to-db="sqlite://data/ivre.sqlite
-yes | ivre scancli --init
-yes | ivre view --init
-yes | ivre flowcli --init
-yes | ivre runscansagentdb --init
-#+end_src
 
 **** Can't Import sqlalchemy
 
@@ -111,7 +298,7 @@ diff /data/ecto/hacknet/ivre/ivre/docker/base/Dockerfile /data/ecto/hacknet/ivre
 #+end_example
 
 The =requirements{,sqlite}.txt= files only differ by exchanging =pymongo= for
-=sqlalchemy<2=. This is sufficent for running the client only.
+=sqlalchemy<2=. +This is sufficent for running the client only.+ (see below)
 
 #+begin_src shell :results output verbatim code :wrap example diff
 diff /data/ecto/hacknet/ivre/ivre/requirements-{all,sqlite}.txt && echo
@@ -147,6 +334,79 @@ diff /data/ecto/hacknet/ivre/ivre/requirements-{all,sqlite}.txt && echo
 ---
 > bottle
 #+end_example
+
+**** Need to ensure mongodb also exists
+
+Mongo is needed because the =sqlite= and =postgresql= backends +can't+ may not
+function without it.
+
+#+begin_quote
+correction: i may have built the derivative images on top of =--target builder=.
+Completing the install for =requirements-all.txt= avoids this, but results in
+significantly inflated derivative images.
+#+end_quote
+
++ The =base-local= image needs to build with =requirements-all.txt= which requires
+  adding =build-essential python3.11-dev libpq-dev= to the second layer's =apt-get
+  install=.
++ Adding =python3{,.11}-dev= is insufficient: it needs =build-essential=
+  - =error: command 'x86_64-linux-gnu-gcc' failed: No such file or directory=
+
+*** Initialization
+
+Need to resolve =sqlachemy= and =mongodb= issues first.
+
+#+begin_quote
+Didn't really resolve the above.
+#+end_quote
+
+From =docker attach ivreclient=
+
+#+begin_src shell
+# yes | oh infinite whys
+yes | ivre ipinfo --init # --to-db="sqlite://data/ivre.sqlite
+yes | ivre scancli --init
+yes | ivre view --init
+yes | ivre flowcli --init
+yes | ivre runscansagentdb --init
+#+end_src
+
+**** Failures
+
+Services
+
++ From =mongo= container doesn't seem to record any data. it also doesn't accept
+  connections (always times out, even when port mapping is set)
+  - From host, =mongosh localhost:27017= succeeds, but =show dbs= does not list =ivre=
+    database (because other containers via =docker-compose.yml= cannot connect,
+    they also cannot init the local)
+
+Initialization
+
++ I /think/ that using sqlite url's requires separate database files, but wow the
+  product is really trying to shoo you away from sqlite entirely.
+
+Initialization
+
++ ivre ipinfo --init :: only succeeds from =ivre/base=, not =ivre/client=
+  - =File "/usr/local/lib/python3.11/dist-packages/sqlalchemy/engine/default.py", line 598, in connect=
+    - =return self.dbapi.connect(*cargs, **cparams)=
+  - =sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) unable to open
+    database file=
+  - in ivre/base, its fine
++ ivre scancli --init :: fails
+  - =ivre:Cannot get database for DBNmap from sqlite:/data/ivre.sqlite=
+  - modulename, classname = cls.backends[db_type] :: swallows the error, no
+    =cls.backend[db_type]=
++ ivre view --init :: fails
+  - =ivre:Cannot get database for DBView from sqlite:/data/ivre.sqlite=
+  - modulename, classname = cls.backends[db_type] :: swallows the error, no
+    =cls.backend[db_type]=
++ ivre flowcli --init :: timeout if run from =ivre/base= or =ivre/client= because
+  it's trying to reach =localhost:27017= via docker network, unless port mapping
+  is setup in =docker_compose.yml=
++ ivre runscansagentdb --init :: same timeout for =mongodb=
+
 
 * Images
 
