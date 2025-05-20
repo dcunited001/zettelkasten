@@ -1,0 +1,257 @@
+:PROPERTIES:
+:ID:       141adfa6-e58a-4b39-a812-02863ebf5428
+:END:
+#+TITLE: IVRE: Running and Extracting Schema
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team]]
++ [[id:afe1b2f0-d765-4b68-85d0-2a9983fa2127][Containers]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Docs
+
++ [[https://doc.ivre.rocks/en/latest/overview/principles.html#purposes][IVRE Purposes]] an important concept for large parts of the codebase & service
+  integration
+
+** Multi Stage Builds
+
+[[https://medium.com/@tonistiigi/advanced-multi-stage-build-patterns-6f741b852fae][Advanced Multi Stage Build Patterns]]: +you can't substitute images for layers to
+a build stage? (without a dynamic image name). I'm so sorry to hear about that+
++ Nevermind . . . you just use the "magic" build tag. Nice (yeh, I really had no
+  contact with the outside world for about a decade).
++ Still, it's somewhat elsewhere in Guix (it's also reproducible). Different
+  aspects are more manageable.
+  - 100x easier to manage compile flags & branches for lower level dependencies.
+  - With Guix you actually compile the software. Smaller images are easier,
+    though there are some isues there.
+  - It's somewhat more difficult to manage canonical names for images & tags
+    (though who knows how those got up in the cloud like that) although it's
+    just less of a thing you do.
+
+* Notes
+* Configuration
+
+The configs merge (see docs on [[https://doc.ivre.rocks/en/latest/install/config.html][IVRE_CONF]], which has highest priority)
+
+** Docker Compose
+
+*** Doesn't recognize configs
+
+Can't get the service dependencies to acknowledge config changes
+
++ DEBUG_DB :: doesn't seem to do anything.
+  - this is bc it only affects those services connecting to the database
++ IVRE_CONF :: is recognized by the =ivreclient= service only
+
+*** Database
+
+This seems to only affect =ivreclient= (this is because =ivreweb-uwsgi= runs as
+=nobody= and I was mounting under root)
+
+**** Initialization
+
+Need to resolve =sqlachemy= issues first. From =docker attach ivreclient=
+
+#+begin_src shell
+# yes | oh infinite whys
+yes | ivre ipinfo --init # --to-db="sqlite://data/ivre.sqlite
+yes | ivre scancli --init
+yes | ivre view --init
+yes | ivre flowcli --init
+yes | ivre runscansagentdb --init
+#+end_src
+
+**** Can't Import sqlalchemy
+
++ Likely means the image is specific to mongo. May need to extend a =Dockerfile=
+  or two.
++ The service dependencies isolate the software running in the container: they
+  only have what they need (& connect to services). These connect to the db
+  - ivre/web-uwsgi :: needs sqlalchemy and?
+  - ivre/{client,agent} :: need sqlalchemy only
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff /data/ecto/hacknet/ivre/ivre/docker/base{,-local} && echo
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+diff /data/ecto/hacknet/ivre/ivre/docker/base/Dockerfile /data/ecto/hacknet/ivre/ivre/docker/base-local/Dockerfile
+16a17,27
+> FROM debian:12 AS builder
+>
+> ENV DEBIAN_FRONTEND noninteractive
+>
+> # Install pip then install IVRE
+> ADD ivre.tar ./
+> RUN apt-get -q update && \
+>     apt-get -qy --no-install-recommends install python3-pip && \
+>     pip3 install --break-system-packages /ivre
+>
+>
+22c33
+< # Install pip, get IVRE, uninstall pip
+---
+> # Install Python
+24,26c35
+<     apt-get -qy --no-install-recommends install python3 python3-pip git ca-certificates && \
+<     pip3 install --break-system-packages git+https://github.com/ivre/ivre && \
+<     apt-get -qy --purge autoremove python3-pip git && \
+---
+>     apt-get -qy --no-install-recommends install python3 ca-certificates && \
+27a37,42
+>
+> COPY --from=builder /usr/local/etc/bash_completion.d/ivre /usr/local/etc/bash_completion.d/ivre
+> COPY --from=builder /usr/local/lib/python3.11 /usr/local/lib/python3.11
+> COPY --from=builder /usr/local/bin/ivre /usr/local/bin/ivre
+> COPY --from=builder /usr/local/share/doc/ivre /usr/local/share/doc/ivre
+> COPY --from=builder /usr/local/share/ivre /usr/local/share/ivre
+#+end_example
+
+The =requirements{,sqlite}.txt= files only differ by exchanging =pymongo= for
+=sqlalchemy<2=. This is sufficent for running the client only.
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff /data/ecto/hacknet/ivre/ivre/requirements-{all,sqlite}.txt && echo
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1,4c1
+< bandit
+< black
+< bottle
+< codespell
+---
+> sqlalchemy<2
+6,14d2
+< docutils!=0.18
+< elasticsearch
+< elasticsearch-dsl
+< flake8
+< mypy
+< psycopg2
+< pylint
+< pymongo>=3.7
+< pymongo[srv]>=3.7
+16,22c4
+< rstcheck[sphinx]
+< Sphinx
+< sphinxcontrib-httpdomain
+< sphinx_rtd_theme
+< sphinx-lint
+< sqlalchemy<2
+< tinydb
+---
+> bottle
+#+end_example
+
+* Images
+
++ base, from =debian:12=
+  - =RUN echo 'DB = "mongodb://ivredb/"' > /etc/ivre.conf=
+  - removes =python3= and =pip3=
++ base-local, from =debian:12 as builder= (and also =debian:12= again)
+  - =RUN echo 'DB = "mongodb://ivredb/"' > /etc/ivre.conf=
+  - does not extend base, retains =python3= and =pip3=
++ ivre/web, from =ivre/base:${TAG} as base= and =debian:12=
++ ivre/web-doku, from =ivre/base:${TAG} as base= and =debian:12=
++ ivre/web-uwsgi, from =ivre/base:${TAG} as base=
+  - =RUN echo 'WEB_GET_NOTEPAD_PAGES = ("localdokuwiki",
+    ("/var/www/dokuwiki/data/pages",))' >> /etc/ivre.conf=
+  - =uwsgi= runs as =nobody=
++ ivre/client, from =ivre/base:${TAG} as base= and =debian:12=
++ ivre/agent, from =ivre/base:${TAG} as base=
++ mongo
+  - runs as? required?
+
+** Build from =base-pip=
+
+The docs mention this, but it's missing the [[https://github.com/ivre/ivre/pull/4/files#diff-381c7e4c459be5294e8c1d8d54751474eef6b1dbdc1bb37d2c2b928a37b1fc3d][base-pip piece: removed before 2022]]
+(see other PR)
+
+#+begin_example
+cd ./docker
+docker pull debian:12
+docker build -t ivre/base base-pip
+# ERROR: unable to prepare context: path "base-pip" not found
+#+end_example
+
+** Build from Local Archive
+
+[[https://doc.ivre.rocks/en/latest/install/docker.html#alternative-builds-for-the-base-image][Replacing ivre.tar]] in =./docker/base-local/ivre.tar= is probably the way to go.
+
++ For an alternate DB, you'll need to replace ... the local copy of csrv tar.
++ Copy =requirements-all.txt= into =requirements.txt= with from the docker image or
+  from a GH release.
+  - Then Commit so =HEAD= moves ... no need for this either.
++ Make the tar, copy it, then rebuild the images in the tree.
++ Don't skip embedding the version into =tar rf= steps (though idk how my python
+  version relates to anything else)
+  - don't build it this way if you're using this for bad things:
+    timestamps+hash+version
++ Replace your local copy of the image tag with the build:
+  - =docker build -t ivre/base docker/base-local=
+
+Then rebuild the other image tags: ivre/web*, ivre/client, ivre/agent
+
+#+begin_src shell
+tmp=`mktemp | sed 's#^/##'`; python setup.py --version | tr -d '\n' > "/$tmp"
+tar rf docker/base-local/ivre.tar --transform="s#$tmp#ivre/ivre/VERSION#" /$tmp
+docker build -t ivre/base docker/base-local
+# using base-local
+for img in client agent web web-doku web-uwsgi ; do
+ docker build -t "ivre/$img" "docker/$img"
+done
+#+end_src
+
+Then test
+
+#+begin_src shell
+image=ivre/client # or ivre/base
+docker run -it --rm  --volume "docker_ivre:/data" \
+  -e "IVRE_CONF=/data/ivre.conf" $image
+#+end_src
+
+It fails because pip soothesayes so. Something circumvents the =requirements.txt=
+file in the =tar=. Someone who used python 1.9 might now (I love how I never
+actually get to write a single line of python. That's my favorite part).
+
+Add this to =./docker/base-local/Dockerfile=, rebuild =base= & dependent images.
+Write it down, so you can prune your packages with zero vodka.
+
+#+begin_src sh
+
+# pip3 install --break-system-packages /ivre
+pip3 install --break-system-packages -r "/ivre/requirements-sqlite.txt" /ivre
+#+end_src
+
+Now =^^^^= initialize the database.
+
+** ivre/rebase-local
+:PROPERTIES:
+:header-args:shell+: :dir /data/ecto/hacknet/ivre/ivre
+:END:
+
+#+name: rebaseLocal
+#+begin_src dockerfile :tangle docker/rebase-local.Dockerfile
+ARG TAG=latest
+FROM ivre/base-local:${TAG}
+ENV DEBIAN_FRONTEND noninteractive
+
+# hmm not enough in here.
+
+# ivre.db
+RUN sed -ir 's/^DB = "mongodb://.*$/DB = sqlite:\/\/data\/ivre.db//g' /etc/ivre.conf
+#+end_src
+
+... yeh nevermind.
+
+#+name: genRebaseLocal
+#+begin_src shell :results output verbatim :var name=client
+sed -r 's/^FROM ivre\/base:.* AS base//g'
+#+end_src
+
+Then =#+call: genRebaseLocal(name=web)=
