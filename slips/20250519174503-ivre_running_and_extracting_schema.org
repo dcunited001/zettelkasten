@@ -5,6 +5,11 @@
 #+CATEGORY: slips
 #+TAGS:
 
+I was able to dump the postgres schema using the processes described in
+[[#uv-docker][UV/Docker]] and [[#postgres-db-schema][Postgres DB Schema]] (the last section)
+
+[[file:img/ivre-schema.svg]]
+
 * Roam
 + [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team]]
 + [[id:afe1b2f0-d765-4b68-85d0-2a9983fa2127][Containers]]
@@ -17,6 +22,7 @@
   - Only now do i notice the graphviz on the purposes page... lmao
 + File Paths for IVRE are set [[https://github.com/ivre/ivre/blob/master/ivre/config.py#L354-L379][here in config.py]]
 + maxmind is a geoip database (req. license)
+
 
 ** Data
 
@@ -137,13 +143,13 @@ GEOIP_PATH="./data/geoip"
 
 **** DB Setup
 
-| command                     | tables      |                   |   |
-|-----------------------------+-------------+-------------------+---|
-| ivre ipinfo --init          |             |                   |   |
-| ivre scancli --init         | ivre.hosts  |                   |   |
-| ivre view --init            | ivre.views  |                   |   |
-| ivre flowcli --init         | ivre.flows  |                   |   |
-| ivre runscansagentdb --init | ivre.agents | ivre.runningscans |   |
+| command                     | tables      |                   |
+|-----------------------------+-------------+-------------------|
+| ivre ipinfo --init          |             |                   |
+| ivre scancli --init         | ivre.hosts  |                   |
+| ivre view --init            | ivre.views  |                   |
+| ivre flowcli --init         | ivre.flows  |                   |
+| ivre runscansagentdb --init | ivre.agents | ivre.runningscans |
 
 
 
@@ -153,6 +159,61 @@ Use the following options to move data to/from databases
 
 + --from-db=mongodb:///ivre :: extract from a running db
 + --to-db=sqlite:///data/some.sqlite :: import into a sqlite
+
+* UV/Docker
+
+** Update configs
+
+Change the =docker-compose.yaml=
+
+#+begin_src yaml
+# add ivrepg service:
+services:
+  ivrepg:
+    image: postgres
+    container_name: ivrepg
+    restart: always
+    shm_size: 256mb
+    ports: ["5432:5432"]
+    environment:
+      POSTGRES_DB: ivre
+      POSTGRES_USER: ivre
+      POSTGRES_PASSWORD: ivre
+  # ...
+  # update depends (ivreuwsgi,ivreclient) -> ivrepg
+  ivreuwsgi:
+    depends_on:
+      - ivredb
+      - ivrepg
+  # ...
+  ivreclient:
+    # ...
+    depends_on:
+      - ivredb
+      - ivrepg
+#+end_src
+
+Change both configs: =ivre.conf= and =ivre.arch.conf=
+
+#+begin_src python
+DEBUG = True
+DEBUG_DB = True
+
+# mongo is required for DB
+DB="mongodb:///ivre"
+DB_PASSIVE="postgresql://ivre:ivre@localhost/ivre"
+DB_NMAP="postgresql://ivre:ivre@localhost/ivre"
+DB_VIEW="postgresql://ivre:ivre@localhost/ivre"
+
+# DB_PASSIVE="sqlite:///data/ivre.passive.sqlite"
+# DB_NMAP="sqlite:///data/ivre.nmap.sqlite"
+# DB_VIEW="sqlite:///data/ivre.view.sqlite"
+# DB_DATA = "data/geoip"
+DB_DATA = "maxmind:data/geoip"
+#+end_src
+
+Start =docker compose=
+
 * Notes
 
 ** Status
@@ -645,3 +706,163 @@ sed -r 's/^FROM ivre\/base:.* AS base//g'
 #+end_src
 
 Then =#+call: genRebaseLocal(name=web)=
+
+* Postgres DB Schema
+
+Dump
+
+#+begin_src shell
+pg_dump -d ivre -U ivre -h localhost -W -s > docker/pg.sql
+#+end_src
+
+DB Schema to SQLite, using [[https://github.com/caiiiycuk/postgresql-to-sqlite][caiiiycuk/postgresql-to-sqlite]]
+
+#+begin_src shell
+export t=$(mktemp -d)
+git clone https://github.com/caiiiycuk/postgresql-to-sqlite $t
+cd $t
+docker build -t postgresql-to-sqlite .
+# copy docker/pg.sql to pg.sql
+docker run -it -v $t:/dbdata \
+    -e psource='/dbdata/pg.sql' \
+    -e starget='/dbdata/pg.sqlite' postgresql-to-sqlite:latest
+# cross fingers & hope it doesn't have typed columns
+# ...
+# eliminate +BTREE indices+ ... nvm: remove "public."
+cp pg.sql pg2.sql
+sed -ie 's/public.//g' pg.sql
+# docker run again, then check output schema
+sqlite3 pg.sqlite '.schema'
+# it gets the indices, but there aren't foreign keys ... or types (oh well)
+#+end_src
+
+Make diagram via [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][gitlab:ScrewTapello/sqlite-schema-diagram]]
+
+#+begin_src shell :results output verbatim file :file img/ivre-schema.svg
+sqltool=/tmp/tmp.yLqVwIRly1
+dot=img/ivre-schema.dot
+db=img/ivre-schema.sqlite
+sqlite3 $db -init "$sqltool/sqlite-schema-diagram.sql" "" > $dot 2>/dev/null
+dot -Tsvg -Kdot -G"rankdir='LR'" $dot # > $dot.svg
+#+end_src
+
+#+RESULTS:
+[[file:img/ivre-schema.nokeys.svg]]
+
+** Fix SQLite Foreign Keys
+
+Add the foreign keys into the table definitions, which (this time) are
+conveniently compact on a single line each.
+
++ Get a frequency count of column names
++ Don't need the =id= columns (there are seven) or the =name= columns
++ Probably don't need the columns with =count==1=
++ Also, the =v_*= tables mirror the =n_*= tables
++ type ::
+  - tag.type :: not polymorphic (i don't think)
+  - hostname.type :: hmmm the DNS record?
+  - not the enums in nmap
+    - scan.type :: syn,acl,bounce,connect,etc..
+    - port.type :: ip,tcp,udp,stcp
++ =tag= is polymorphic?
+
+#+begin_src shell :results output table
+db=img/ivre-schema.sqlite
+sqlite3 $db '.schema' | grep 'CREATE TABLE \[n_' \
+    | sed -e 's/CREATE TABLE .* (\[\(.*\)\]);/\1/g' \
+    | sed -e 's/\], \[/\n/g' | sort | uniq -c \
+    | grep -v ' 1 ' | grep -v ' id' | grep -v ' name'
+#+end_src
+
+#+RESULTS:
+| 2 | domains          |
+| 2 | info             |
+| 3 | port             |
+| 2 | protocol         |
+| 6 | scan             |
+| 2 | state            |
+| 2 | state_reason     |
+| 2 | state_reason_ttl |
+| 2 | type             |
+
+Also, the fields are used in the queries (don't curl this at home)
+
+#+begin_src shell :results output verbatim
+pgPy=https://raw.githubusercontent.com/ivre/ivre/refs/heads/master/ivre/db/sql/postgres.py
+curl -s $pgPy | grep -nE '(where\(|join\()' \
+    | sed -E 's/^([0-9]+: ) +/\1/g'
+# ignoring group_by, though that really depends on the query plan
+# some of this is a migration, so that's confusing
+#+end_src
+
+** FK Foreign Keys
+
+extra column bc org-babel
+
+#+name: fkForeign
+| script                    | port     | port     | id   |
+| port                      | scan     | scan     | id   |
+| hostname                  | scan     | scan     | id   |
+| tag                       | scan     | scan     | id   |
+| trace                     | scan     | scan     | id   |
+| hop                       | trace    | trace    | id   |
+| association_scan_category | scan     | scan     | id   |
+| association_scan_category | category | category | id   |
+| association_scan_hostname | scan     | scan     | id   |
+| association_scan_hostname | hostname | hostname | id   |
+| hop                       | ipaddr   | scan     | addr |
+
+#+begin_src emacs-lisp :results value :var keys=fkForeign[,] :colnames
+(string-join (mapcar
+              (lambda (fk)
+                (apply #'format ", FOREIGN KEY (%s) REFERENCES n_%s(%s));" (cdr fk))) keys) "\n")
+#+end_src
+
+Manually add to EoL... and add primary keys. The resulting schema, without indexes
+
+#+begin_src shell :results output verbatim code :wrap src sql
+cat img/ivre-schema.sql | grep 'CREATE TABLE' \
+    | sed -E 's/(CREATE TABLE)/\n\1/g' \
+    | sed -E 's/(FOREIGN KEY)/\n  \1/g' \
+#+end_src
+
+#+RESULTS:
+#+begin_src sql
+
+CREATE TABLE [n_association_scan_category] ([scan], [category],
+  FOREIGN KEY (category) REFERENCES n_category(id),
+  FOREIGN KEY (scan) REFERENCES n_scan(id));
+
+CREATE TABLE [n_association_scan_hostname] ([scan], [hostname],
+  FOREIGN KEY (hostname) REFERENCES n_hostname(id),
+  FOREIGN KEY (scan) REFERENCES n_scan(id));
+
+CREATE TABLE [n_category] ([id integer PRIMARY KEY], [name]);
+
+CREATE TABLE [n_hop] ([id integer PRIMARY KEY], [trace], [ipaddr], [ttl], [rtt], [host], [domains],
+  FOREIGN KEY (trace) REFERENCES n_trace(id),
+  FOREIGN KEY (ipaddr) REFERENCES n_scan(addr));
+
+CREATE TABLE [n_hostname] ([id integer PRIMARY KEY], [scan], [domains], [name], [type],
+  FOREIGN KEY (scan) REFERENCES n_scan(id));
+
+CREATE TABLE [n_port] ([id integer PRIMARY KEY], [scan], [port], [protocol], [state], [state_reason], [state_reason_ip], [state_reason_ttl], [service_name], [service_tunnel], [service_product], [service_version], [service_conf], [service_devicetype], [service_extrainfo], [service_hostname], [service_ostype], [service_fp],
+  FOREIGN KEY (scan) REFERENCES n_scan(id));
+
+CREATE TABLE [n_scan] ([id integer PRIMARY KEY], [addr], [info], [time_start], [time_stop], [state], [state_reason], [state_reason_ttl], [schema_version], [source]);
+
+CREATE TABLE [n_script] ([port], [name], [output], [data],
+  FOREIGN KEY (port) REFERENCES n_port(id));
+
+CREATE TABLE [n_tag] ([id integer PRIMARY KEY], [scan], [value], [type], [info],
+  FOREIGN KEY (scan) REFERENCES n_scan(id));
+
+CREATE TABLE [n_trace] ([id integer PRIMARY KEY], [scan], [port], [protocol],
+  FOREIGN KEY (scan) REFERENCES n_scan(id));
+
+CREATE TABLE [passive] ([id integer PRIMARY KEY], [addr], [sensor], [count], [firstseen], [lastseen], [port], [recontype], [source], [targetval], [value], [info], [moreinfo], [schema_version]);
+#+end_src
+
+Then generate SVG again
+
+[[file:img/ivre-schema.svg]]
