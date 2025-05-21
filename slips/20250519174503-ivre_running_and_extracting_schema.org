@@ -14,6 +14,16 @@
 
 + [[https://doc.ivre.rocks/en/latest/overview/principles.html#purposes][IVRE Purposes]] an important concept for large parts of the codebase & service
   integration.
+  - Only now do i notice the graphviz on the purposes page... lmao
++ File Paths for IVRE are set [[https://github.com/ivre/ivre/blob/master/ivre/config.py#L354-L379][here in config.py]]
++ maxmind is a geoip database (req. license)
+
+** Data
+
++ [[https://datatracker.ietf.org/doc/draft-dulaunoy-dnsop-passive-dns-cof/][PassiveDNS: Common Output Format]] used for =view= purpose (also used by PyPDNS)
++ [[https://github.com/phaag/nfdump][Netflow]] used for =flow= purpose: collect with zeek, argus or [[https://github.com/phaag/nfdump][phaag/nfdump]]
+  - Could also visualize using [[https://github.com/ntop/ntopng][ntop/ntopng]] with [[https://github.com/ntop/nprobe][ntop/nprobe]]. See [[https://www.ntop.org/guides/ntopng/using_with_other_tools/nprobe.html][ntop with
+    nprobe]] and [[https://www.ntop.org/guides/ntopng/using_with_other_tools/nprobe_collector_mode.html][ntop with nprobe (collector mode)]]
 
 ** Multi Stage Builds
 
@@ -30,6 +40,119 @@ a build stage? (without a dynamic image name). I'm so sorry to hear about that+
     (though who knows how those got up in the cloud like that) although it's
     just less of a thing you do.
 
+* IVRE Commands
+
+#+begin_src shell
+ivre ipcalc 127.0.0.1 # 2130706433
+ivre ipcalc 127.0.0.2 # 2130706434 lol
+
+# (that is what it is, after all: isomorphic to integers;
+#   the dots are an illusion)
+#+end_src
+
++ See [[https://doc.ivre.rocks/en/latest/overview/principles.html#storing-data][Storing Data]] for subcommands like =scan2db= and =passiverecon2db=
++ See [[https://doc.ivre.rocks/en/latest/overview/principles.html#accessing-data][Accessing Data]] for subcommands like =ipdata=, =flowcli= and =view=
+
+Some interesting commands
+
+| localscan | generate scan results via =netstat= or =ss=                 |
+| macdata   | query passive db to perform ARP resolution (see ipdata) |
+| macinfo   | query vendors for specified MAC (see ipinfo)            |
+| ipdata    | manage metadata assoc. to ip (e.g. AS number)           |
+| iphost    | translate IP to DNS via passive lookup                  |
+| getmoduli | use with fastgcd                                        |
+| auditdom  | produce a scan result for DNS                           |
+
+Scans
+
+| runscans | Run +massive+ nmap/zmap scans with input *and output* transformation (don't scan massive) |
+
+To database
+
+| airodump2db     |                                        |
+| arp2db          | I import data from ARP; requires =scapy= |
+| flow2db         |                                        |
+| p0f2db          |                                        |
+| passiverecon2db |                                        |
+| scan2db         |                                        |
+| weblog2db       |                                        |
+| zeek2db         |                                        |
+
+
+* UV Build
+
+arch builds without =sqlalchemy= ... so I went with =uv=
+
+#+begin_src shell
+ln -s docker/data/ivre.arch.conf data/ivre.arch.conf
+
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements-all.txt
+
+# check deps
+tree -d -L1 .venv/lib/python3.13/site-packages/
+
+# build
+./setup.py build
+./setup.py install # no sudo required (installs to $VIRTUAL_ENV/bin/ivre)
+#+end_src
+
+** Config
+
++ Need to set =KNOWN_PORTS=
+
+**** Updated Config
+
+Edit config in =./docker/data/ivre.arch.conf=, but host data in =./data=. Same as the
+conf for =docker-compose.yml= except the paths are relative (except for sqlite
+paths ... damit)
+
++ +link from another data directory: =ln -s docker/data/ivre.arch.conf
+  data/ivre.arch.conf=.+
++ Can't link the config files (the =IVRE_CONF= file will be silently ignored)
+
+So here, the paths are set as below, using the same =NMAP.*= and =IPDATA_URLS=
+config below... I can ingest data with my =uv= environment, then compare the
+=./data= and =./docker/data= directories, merging in what I need to view the results
+in the web ... maybe.
+
+#+begin_src python
+DEBUG = True
+DEBUG_DB = True
+
+# mongo is required for DB
+DB="mongodb:///ivre"
+DB_PASSIVE="sqlite:///data/ivre.passive.sqlite"
+# DB_NMAP="sqlite:///data/ivre.nmap.sqlite" # mongo/postgres only?
+# DB_VIEW="sqlite:///data/ivre.view.sqlite" # mongo/postgres only?
+DB_DATA = "maxmind:data/geoip"
+
+AGENT_MASTER_PATH="./data/agent"
+NMAP_SHARE_PATH="./data/nmap"
+DATA_PATH="./data"
+GEOIP_PATH="./data/geoip"
+#+end_src
+
+
+**** DB Setup
+
+| command                     | tables      |                   |   |
+|-----------------------------+-------------+-------------------+---|
+| ivre ipinfo --init          |             |                   |   |
+| ivre scancli --init         | ivre.hosts  |                   |   |
+| ivre view --init            | ivre.views  |                   |   |
+| ivre flowcli --init         | ivre.flows  |                   |   |
+| ivre runscansagentdb --init | ivre.agents | ivre.runningscans |   |
+
+
+
+**** DB Usage
+
+Use the following options to move data to/from databases
+
++ --from-db=mongodb:///ivre :: extract from a running db
++ --to-db=sqlite:///data/some.sqlite :: import into a sqlite
 * Notes
 
 ** Status
@@ -149,13 +272,21 @@ This =./docker/data/ivre.conf= is based on [[https://github.com/ivre/ivre/blob/m
 added what's below to the above, hoping to start with some basic nmap scan data.
 
 #+begin_example python
+DEBUG = True
+DEBUG_DB = True
+
 # mongo is required for DB
 DB="mongodb:///ivre"
 DB_PASSIVE="sqlite:///data/ivre.passive.sqlite"
-# DB_NMAP="sqlite:///data/ivre.nmap.sqlite" # fails (see below in "Failures")
-# DB_VIEW="sqlite:///data/ivre.view.sqlite" # fails (see below in "Failures")
-DB_DATA = "maxmind:///share/data/ivre/geoip"
+DB_NMAP="sqlite:///data/ivre.nmap.sqlite"
+DB_VIEW="sqlite:///data/ivre.view.sqlite"
+DB_DATA = "/data/geoip"
 # DB_DATA = "maxmind:///$shareData/ivre/geoip"
+
+AGENT_MASTER_PATH="/data/agent"
+NMAP_SHARE_PATH="/data/nmap"
+DATA_PATH="/data"
+GEOIP_PATH="/data/geoip"
 #+end_example
 
 **** Compose
@@ -230,7 +361,6 @@ volumes:
       device: ${PWD}/docker/data
       o: bind
 #+end_example
-
 * Configuration
 
 The configs merge (see docs on [[https://doc.ivre.rocks/en/latest/install/config.html][IVRE_CONF]], which has highest priority)
