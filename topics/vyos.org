@@ -168,6 +168,13 @@ Running =make all= runs these tasks
 + generate-configd-include-json :: generates JSON from the results of
   =interface_definitions= and =op_mode_definitions=
 
+**** Build
+
+[[https://docs.vyos.io/en/latest/contributing/build-vyos.html#build-packages][This section]] explains how to build the =*.deb= package, but it's not clear how the
+dependencies are expected to be provided so =python/setup.py= can do it's thing.
+It seems you need to use =vyos-build= to prep the =vyos-1x= code in order to run -- or
+run scripts that include the
+
 **** VyShim
 
 + vyos-configd-service :: 0MQ server
@@ -188,6 +195,8 @@ vyos-configd-service via 0MQ socket:
 8. <py service file>
 #+end_quote
 
+See [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/data/vyos-configd-env-set#L1][./data/vyos-configd-env-set]]
+
 **** XML Spec
 
 Transclusion for XML specs in [[https://github.com/vyos/vyos-1x/blob/4d3e976271e30d70c8b2660d869a220de98d8c59/op-mode-definitions/][./op-mode-definitions]] and
@@ -195,6 +204,9 @@ Transclusion for XML specs in [[https://github.com/vyos/vyos-1x/blob/4d3e976271e
 
 Running =make op_mode_definitions= and =make interface_definitions= will generate
 XML in the respective subdirs of =./build=. This can be queried with =xq= et alias.
+
+The vyos =*.xml.in= files [[https://docs.vyos.io/en/latest/contributing/development.html#gnu-preprocessor][use the GNU Preprocessor]], merged in [[https://vyos.dev/T1843][T1843]]. The [[https://docs.vyos.io/en/latest/contributing/development.html#c-backend-code][CLI
+parser is C++]] and found in [[https://github.com/vyos/vyatta-cfg][vyos/vyatta-cfg]]
 
 ***** Op Mode Definitions
 
@@ -208,7 +220,6 @@ XML in the respective subdirs of =./build=. This can be queried with =xq= et ali
 
 After building ISO, XML =RelaxNG= schemas are in
 =./build/vyos-1x/schema/*.{rnc,rng}=
-
 
 **** GraphQL API
 
@@ -239,6 +250,75 @@ OP_MODE_PATH = directories['op_mode'] #
 SCHEMA_PATH = directories['api_schema']
 CLIENT_OP_PATH = directories['api_client_op']
 DATA_DIR = directories['data']
+#+end_example
+
+
+**** Config Parser
+
+Config language seems loosely modeled on =*.nft= files from nftables
+
++ Config is loaded here [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/configtree.py#L187-L210][./python/vyos/configtree.py]] at line 187, after the FFI
+  functions for =cdll= bindings are bound to the =ConfigTree= object.
+  - it can be instantiated from a =config_string= ... or an =internal= or an =address=
++ [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/config.py#L17][./python/vyos/config.py]]
+  - The python files in =./src/= handle parsing modified config, validation and
+    reconfiguration (see [[https://docs.vyos.io/en/latest/contributing/development.html#configuration-script-structure-and-behaviour][Configuration Script Structure/Behavior]]) ... but these
+    are scripts invoked at runtime that depend on the library in =./python=
+  - They are executed in [[https://docs.vyos.io/en/latest/contributing/development.html#other-considerations-vyos-configd][the vyos-configd context]]
++ [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/migrate.py#L40][./python/vyos/migrate.py]] is a good starting point for scripting
+  - [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/component_version.py#L152-L159][./python/vyos/component_version.py]] reads the config file here (and splits it
+    into parts)
++ [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/compose_config.py#L34][./python/vyos/compose_config.py]] will =apply_func= (Callable) or =apply_file= (with
+  =func_file= and =func_name=) and dump the updated =config_tree= to a string.
+
+Anyways ... using the =ConfigTree= directly in scripts should allow merging fairly
+minimal configuration snippets in order to produce larger trees, which are
+rendered to a final configuration object.
+
+You'll need to run the vyos python code within a container that's built vyos
+(set a tag to the build result, but ensuring critical files are present)
+
+***** Merge from Jinja -> config strings -> config trees
+
+e.g. with templates for the the config
+
+#+begin_example conf
+interfaces {
+  ethernet en0 {
+    address {% en0.address %}
+    description "WAN Interface"
+    offload {% en0.offload | join(' ') %}
+  }
+}
+#+end_example
+
+And a system
+
+#+begin_example conf
+system {
+  host-name vyos
+  time-zone America/New_York
+  name-server 10.123.0.1
+}
+#+end_example
+
++ This approach isn't much better than =set= commands via ssh.
++ Still suffers from managing/transforming config
++ Can't sequence configuration transformations (to validate and attempt to
+  =commit= config, rolling back transactions if subsequent =commit= is invalid or
+  problematic after commit) ... i.e. it's all-or-nothing
+
+**** Data
+
+***** Protobufs
+
++ Need to build straight outta the vyos-1x directory
+
+#+begin_example gitignore
+# autogenerated vyos-commitd protobuf files
+python/vyos/proto/*pb2.py
+python/vyos/proto/*.desc
+python/vyos/proto/vyconf_proto.py
 #+end_example
 
 ** ISO Build
@@ -290,6 +370,9 @@ packages = [
   "age"
 ]
 #+end_src
+**** Smoketests
+
+See [[https://docs.vyos.io/en/latest/contributing/testing.html#smoketests][Testing]] for info on enabling smoketests during ISO build
 
 *** Permanent Installation
 

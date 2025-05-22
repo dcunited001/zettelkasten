@@ -1,0 +1,1089 @@
+:PROPERTIES:
+:ID:       344b4933-204b-4beb-883e-d06675d17c7d
+:END:
+#+TITLE: VyOS: Homelab Deployment
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][Vyos]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
++ [[id:133c1418-9705-4528-8856-ccaea4a3d0ff][Security]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:23716a1b-7937-4cd1-923d-9adae1286601][Debian]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Docs
+
+** Interfaces
++ [[https://developers.redhat.com/blog/2018/10/22/introduction-to-linux-interfaces-for-virtual-networking][Red Hat: Intro to Linux Interfaces for Virtual Networking]] great overview on
+  the lower-level differences between interface types.
+
+|---------+--------+----------------------------------------------------------------------|
+| type1   | type2  | desc                                                                 |
+|---------+--------+----------------------------------------------------------------------|
+| bridge  | veth   |                                                                      |
+| vlan    | vxlan  | 802.1q (+ QinQ)                                                      |
+| vcan    | vxcan  | Virtual CAN Bus?                                                     |
+| [[https://docs.rs/nmstate/latest/nmstate/struct.MacVlanInterface.html][macvlan]] | [[https://docs.rs/nmstate/latest/nmstate/struct.IpVlanInterface.html][ipvlan]] | macvlan (direct connect to phys net), ipvlan (same MAC; L2+L3 types) |
+| [[https://docs.rs/nmstate/latest/nmstate/struct.MacVtapInterface.html][macvtap]] | ipvtap | gets direct char dev. from kernel                                    |
+|---------+--------+----------------------------------------------------------------------|
+
+Not all of these are available on vyos -- or on most distributions (in a
+practical sense), since configuration/automation usually req. nmstate which
+hasn't updated to include all types. If it's in [[https://galaxy.ansible.com/ui/standalone/roles/linux-system-roles/network/documentation/][linux-system-roles.network]],
+there's a good chance nmstate on other distributions can manage it.
+
++ [[https://nmstate.io/][NMState docs]]
++ [[https://docs.rs/nmstate/latest/nmstate/index.html][NMState Rust Docs]]
+
+Mixing VyOS configuration with other configuration automation is a bad idea.
+
+
+** VRF
+
+I'm missing a piece here. This may require =QinQ= or tunnels (from default VRF to
+vrfmgmt's bridge on the other device ... or something) since idk how to ensure
+the bridge appears as a layer2 subnet on multiple devices.
+
++ [[https://docs.vyos.io/en/latest/configuration/interfaces/virtual-ethernet.html#example][Example of inter-VRF routing with veth]]
++ VRF and VRF+NAT examples
+
+* Babel
+
+Use this to avoid relative paths. =-tangle-dir= can be a Tramp url
+
+#+begin_src emacs-lisp
+(setq-local -tangle-dir-
+            (expand-file-name "vyos/vyos/vyos-build/data/build-flavors"
+                              (getenv "_ECTO")))
+
+(defun -out- (f)
+  "Expand :tangle path with a default `-tangle-dir-'."
+  (expand-file-name f (or (bound-and-true-p -tangle-dir-) ".")))
+#+end_src
+
+Ideas
+
++ =:tangle /scp:vyostest:/tmp/vyostest1.conf= to load config onto an otherwise
+  disconnected test instance to validate config, generate set commands &
+  rollback.
+  - for an instance with =config.boot.defaults=, SSH and an interface (or VM +
+    serial), then loading a small config generates only the =set= commands needed
++ =#+begin_src sh :session *vyos-build*= to start a docker container to run
+  commands with vyos python scripts
++ screen/tmux profile to open connections & tcpdump or ping-back
+
+** Tasks
+
+** TODO Re-IP SVC interface/vlan (or share interface with LAB)
+
+* Design
+
+#+begin_src shell
+
+#+end_src
+
+** Management Plane
+
+Goals:
+
++ enable setup/teardown of small subnets in the =lab= ip addressing space.
++ never lose connectivity, while never sharing connectivity with non-admin
+  traffic (much easier to log/firewall)
+
+*** VRF
+
++ Bootstrapp with a temp. redundant management plane, which gets removed once
+  the =MGMT-VRF= functions as expected.
++ Having the VRF isn't 100% necessary, but it helps to reduce overhead in VyOS
+  route/firewall configuration:
+  - Without a separate default gateway, you can't easily say /you/ (MGMT sessions)
+    go this way and /nothing else/ gets in
+    - not without leveraging cumbersome abstractions that are very difficult to
+      juggle in a GUI (and the whole point of the MGMT plane is that you never
+      lose connectivity)
+  - it's exhausting to whitelisting traffic that =MGMT-VRF= routed traffic may
+    connect to. A local registry helps, but HTTP/S is impossible to firewall. A
+    proxy gives you a false sense of security with caching problems.
+  - Interface groups help somewhat, but with a VRF, you create a virtual
+    bottleneck where it's very simple to define /ONLY/ what may initiate/run
+    sessions.
+
+*** Servers
+
+I would likely use LSR/network Ansible Role to configure the server side
+interfaces -- or just =guix deploy= which is easier IMO, but requires external
+build server, a channel (don't break the PGP), local Guix substitutes and can be
+tricky to restart services after system updates.
+
+Ideally, the MGMT servers should be completely isolated to:
+
++ switch interfaces on VLANs whose trunks don't transit non-MGMT vlans.
++ and thus only to router interfaces owned by the non-MGMT interfaces
++ ... if it extends into the servers, it's probably not worth it.
+
+All that's needed for servers are VLANs. If the VRF needs to be extended into
+the servers, then VMs implicitly give you a VRF.
+
+* Config
+:PROPERTIES:
+:header-args:conf+: :comments none :noweb yes
+:END:
+
+The =load $file= command will validate/load a configuration update (via
+scp,ssh,https,etc). You can also diff revisions with =compare=
+
+** Main
+
+#+begin_src conf :tangle (-out- "homelab.conf")
+system {
+  host-name vyos
+  time-zone America/New_York
+  name-server 10.8.16.1
+  login {
+    user vyos {
+      authentication {
+        encrypted-password "*"
+        plaintext-password ""
+        public-keys cardno:19294239 {
+          key AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBGE6wqFapBOKBA2wCTB22nG+GANmh9JXNG54tBajKNu/Fh61ywzilEI6MYLpvolCuS0YWGAgv4h5MHzk45KnWXKJ1NSNTLJ4koa+NvAAHIVXKA19IZ+s6UyX7eyCWLx58w==
+          type ecdsa-sha2-nistp384
+        }
+        public-keys cardno:25019591 {
+          key AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBGE6wqFapBOKBA2wCTB22nG+GANmh9JXNG54tBajKNu/Fh61ywzilEI6MYLpvolCuS0YWGAgv4h5MHzk45KnWXKJ1NSNTLJ4koa+NvAAHIVXKA19IZ+s6UyX7eyCWLx58w==
+          type ecdsa-sha2-nistp384
+        }
+      }
+      level admin
+    }
+  }
+  config-management {
+    commit-revisions 100
+  }
+  console {
+    device ttyS0 {
+      speed 115200
+    }
+  }
+  syslog {
+    local {
+      facility all {
+        level info
+      }
+      facility local7 {
+        level debug
+      }
+    }
+  }
+}
+
+interfaces {
+  # bridge br123 {
+  #   address 12.34.56.78/24
+  #   member interface eth11
+  #   member interface eth12
+  #   vrf blue
+  # }
+
+<<vyRawInterfaces>>
+<<vyVrfInterfaces>>
+  loopback lo { }
+}
+
+vrf {
+<<vyVrfMgmt>>
+}
+
+protocols {
+<<vyStatic>>
+}
+
+services {
+<<vySsh>>
+<<vyNtp>>
+  dns {
+<<vyDnsFwd>>
+<<vyDnsRecords>>
+  }
+  dhcp-server {
+<<vyDhcpLan>>
+<<vyDhcpDev>>
+<<vyDhcpSvc>>
+# vyDhcp...
+  }
+}
+#+end_src
+
+** Interfaces
+
+Raw Interfaces =vyRawInterfaces=
+
+#+begin_src conf :noweb-ref vyRawInterfaces
+  ethernet en0 {
+    address 10.123.4.11/24
+    description "WAN Interface"
+    offload { gro gso sg tso }
+  }
+  ethernet eth0 {
+    # address 10.123..11/24
+    description "LAN Interface"
+    offload { gro }
+    vif 10 { address 10.123.10.11/24 }
+    vif 10 { address 10.123.10.11/24 }
+  }
+  ethernet eth1 {
+    # address 10.123..11/24
+    description "DEV,SVC Interface"
+    offload { gro }
+    vif 110 { address 10.123.148.11/24 }
+    # TODO: re-ip
+    vif 210 { address 10.123.164.11/24 }
+  }
+  ethernet eth2 {
+    # address 10.123..11/24
+    description "LAB Interface"
+    offload { gro }
+    vif 220 { address 10.123.168.11/24 }
+  }
+  # TODO: restrict to VRF
+  ethernet eth3 {
+    # address 10.123..11/24
+    description "MGMT,ADMIN Interface"
+    offload { gro }
+    vif 410 { address 10.123.192.11/24 }
+    vif 420 { address 10.123.200.11/24 }
+  }
+#+end_src
+
+** Routing
+
+#+begin_src conf :noweb-ref vyStatic
+  static {
+    route 0.0.0.0/0 {
+      interface en0 { }
+    }
+    route 10.123.10.0/24 {
+      description "To LAN: v#10"
+      interface eth0.10 { distance 20 }
+      # next-hop 10.123.10.11 { distance 20 }
+      # next-hop 10.123.10.11 { distance 20 interface eth0.10 }
+    }
+    # TODO: these are all directly connected
+    route 10.123.148.0/24 {
+      description "To DEV: v#110"
+      interface eth1.110 { distance 20 }
+    }
+    route 10.123.164.0/24 {
+      description "To SVC: v#210"
+      interface eth1.210 { distance 20 }
+    }
+    route 10.123.168.0/24 {
+      description "To LAB: v#220"
+      interface eth2.220 { distance 20 }
+    }
+    route 10.123.192.0/24 {
+      description "To MGMT: v#410"
+      interface eth3.410 { distance 20 }
+    }
+    route 10.123.168.0/24 {
+      description "To ADMIN: v#420"
+      interface eth3.420 { distance 20 }
+    }
+  }
+#+end_src
+
+*** VRF
+
+VRF Interfaces =vyVrfInterfaces=
+
+#+begin_src conf :noweb-ref vyVrfInterfaces
+  virtual-ethernet veth4mgmtif {
+    address 10.123.224.1/28
+    peer-name veth4mgmtgw
+  }
+  virtual-ethernet veth4mgmtgw {
+    address 10.123.224.11/28
+    peer-name veth4mgmtif
+    vrf vrfmgmt
+  }
+#+end_src
+
+VRF Management =vyVrfMgmt=
+
+#+begin_src conf :noweb-ref vyVrfMgmt
+  name mgmt {
+    table 192
+    protocols static route 10.123.224.1/24 interface veth4mgmtgw vrf mgmt
+  }
+#+end_src
+
+There's only one instance of SSH. Setting a per-VRF SSH will cut allow
+connection to persist, but any new connections will need routing to the VRF to
+function. A tunnel/vpn may help. (I needed to check)
+
+#+begin_src shell
+set service ssh vrf $vrfName
+#+end_src
+
+** Services
+
+*** NTP
+
+NTP =vyNtp=
+
+#+begin_src conf :noweb-ref vyNtp
+  ntp {
+    server 3.us.pool.ntp.org { }
+    server 2.us.pool.ntp.org { }
+    server 1.us.pool.ntp.org { }
+    server 0.us.pool.ntp.org { }
+  }
+#+end_src
+
+*** SSH
+
+SSH =vySsh=
+
+#+begin_src conf :noweb-ref vySsh
+  ssh {
+    port 22
+    # TODO: configure proxy-jump
+    listen-address 10.123.10.11    # LAN (for now)
+    listen-address 10.123.148.11   # DEV
+    listen-address 10.123.164.11   # SVC
+    # listen-address 10.123.168.11 # LAB
+    listen-address 10.123.192.11   # MGMT
+    # listen-address 10.123.200.11 # ADMIN
+    disable-password-authentication
+    disable-host-validation
+    loglevel info
+    ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+    macs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+    key-exchange curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+    pubkey-accepted-algorithm ecdsa-sha2-nistp521-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp256-cert-v01@openssh.com,ssh-ed25519-cert-v01@openssh.com,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,ssh-ed25519,sk-ecdsa-sha2-nistp256-cert-v01@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,rsa-sha2-512,rsa-sha2-256
+  }
+#+end_src
+
+*** DHCP
+
+LAN DHCP =vyDhcpLan=
+
+#+begin_src conf :noweb-ref vyDhcpLan
+    shared-network-name LAN {
+      subnet 10.123.10.0/24 {
+        option {
+          default-router 10.123.10.11
+          name-server 10.123.5.11
+          name-server 10.123.5.12
+        }
+        range 0 {
+          start 10.123.10.64
+          stop 10.123.10.127
+        }
+        subnet-id 10
+      }
+    }
+#+end_src
+
+DEV DHCP =vyDhcpDev=
+
+#+begin_src conf :noweb-ref vyDhcpDev
+    shared-network-name DEV {
+      subnet 10.123.148.0/24 {
+        option {
+          default-router 10.123.148.11
+          name-server 10.123.148.11
+          name-server 10.123.148.12
+        }
+        range 0 {
+          start 10.123.148.64 # 64
+          stop 10.123.148.127
+        }
+        subnet-id 110
+      }
+    }
+#+end_src
+
+SVC DHCP =vyDhcpSvc=
+
+#+begin_src conf :noweb-ref vyDhcpSvc
+    shared-network-name SVC {
+      subnet 10.123.164.0/24 {
+        option {
+          default-router 10.123.164.11
+          name-server 10.123.164.11
+          name-server 10.123.164.12
+        }
+        range 0 {
+          start 10.123.164.48 # 16
+          stop 10.123.164.63
+        }
+        subnet-id 210
+      }
+    }
+#+end_src
+
+For now:
+
++ LAB :: No DHCP
++ MGMT :: No DHCP
++ ADMIN :: No DHCP
+
+*** DNS
+
+DNS Forwarding =vyDnsFwd=
+
+#+begin_src conf :noweb-ref vyDnsFwd
+  forwarding {
+    system
+    dhcp eth0
+
+    # allow-from $dnsIp4space and $dnsIp6space
+    # - at least include $dhcpNets
+    allow-from 10.123.0.0/16
+
+    # listen on interface
+    #
+    listen-address 10.123.5.11
+    listen-address 10.123.148.11
+    listen-address 10.123.10.11
+
+    # source-address needs to cross firewalls (needed for most configs?)
+    source-address 10.123.5.11
+
+    # ignore-hosts-file # relevant for VRF (probably)
+    cache-size 0 # default 10000
+    timeout 3600 # default 3600
+  }
+#+end_src
+
+DNS Records =vyDnsRecords=
+
+#+begin_src conf :noweb-ref vyDnsRecords
+  # TODO: more complex DHCP configuration with reservations
+  authoritative-domain home.eg.tld {
+    records {
+      # aaaa vy1 { address ipv6 }
+      # aaaa vy2 { address ipv6 }
+
+      # =============================================
+      # via.home.eg.tld
+      # Route/Switch A Records
+
+      # vy1
+      a       vy1.via { address 10.123.5.11   }
+      a   lan.vy1.via { address 10.123.10.11  }
+      a   dev.vy1.via { address 10.123.148.11 }
+      a   svc.vy1.via { address 10.123.164.11 }
+      a   lab.vy1.via { address 10.123.168.11 }
+      a  mgmt.vy1.via { address 10.123.192.11 }
+      a admin.vy1.via { address 10.123.200.11 }
+
+      # vy1 mgmt veth
+      a  mgmtif.vy1.via { address 10.123.224.1  }
+      a  mgmtgw.vy1.via { address 10.123.224.11 }
+
+      # vy2
+      a       vy2.via { address 10.123.5.12   }
+      a   lan.vy2.via { address 10.123.10.12  }
+      a   dev.vy2.via { address 10.123.148.12 }
+      a   svc.vy2.via { address 10.123.164.12 }
+      a   lab.vy2.via { address 10.123.168.12 }
+      a  mgmt.vy2.via { address 10.123.192.12 }
+      a admin.vy2.via { address 10.123.200.12 }
+
+      # vy2 mgmt veth
+      a  mgmtif.vy2.via { address 10.123.224.2  }
+      a  mgmtgw.vy2.via { address 10.123.224.12 }
+
+      # svc1
+      a  svc.svc1.via { address 10.123.164.21 }
+      a  lab.svc1.via { address 10.123.168.21 }
+      a mgmt.svc1.via { address 10.123.192.31 }
+
+      # svc2
+      a  svc.svc2.via { address 10.123.164.22 }
+      a  lab.svc2.via { address 10.123.168.22 }
+      a mgmt.svc2.via { address 10.123.192.32 }
+
+      # sw1/sw2
+      a    mgmt.sw1.via { address 10.123.192.1 }
+      a    mgmt.sw2.via { address 10.123.192.2 }
+
+      # mgmt1
+      a  mgmt.mgmt1.via { address 10.123.192.21 }
+      a admin.mgmt1.via { address 10.123.200.31 }
+
+      # mgmt2
+      a  mgmt.mgmt2.via { address 10.123.192.22 }
+      a admin.mgmt2.via { address 10.123.200.32 }
+
+      # admin1/admin2
+      a admin.admin1.via { address 10.123.200.21 }
+      a admin.admin2.via { address 10.123.200.22 }
+
+      # =============================================
+      # Service A Records
+    }
+  }
+#+end_src
+
++ admin1,admin2 :: doesn't listen on mgmt, internal routing via VRF only
++ mgmt1,mgmt2 :: fdsa...
+
+*** tangle/noweb
+
+hmmm emacslisp or shell
+
+#+begin_src shell :vars domain=eg.tld name=home type=cname args='()
+d=$domain
+n=$name
+a=${args[@]}
+keywords=
+set service dns forwarding authoritative-domain \
+    $d records $t $n target "${a[@]}"
+#+end_src
+
+
+* Addressing
+
+More than half these addresses can be generated from the others
+
++ =10.subnet.x2.addr= is =10.subnet.x1.addr + 1=
+  - e.g. vy2's address on most vlans is 12, vy1's is 11
++ =10.subnet.x1.upstream= is =10.subnet.x1.downstream - 10=
+  - usually holds, but sometimes flips (WAN, switch).
+    - doesn't work for multi-point.
+  - e.g. =mgmt= interface on =svc2= server is =.32= but it connects to =mgmt1= and =mgmt2=
+    interfaces on vlan (=.21= and =.22=, resp.)
+    - likewise for =mgmt= servers' links to =adminN= interfaces on =admin= subnet.
+
+#+name: vyosViaAddr
+|---------+------------------+---------------+------+-----+-------|
+| net     | name             |           ip4 | cidr | ip6 | cidr6 |
+|---------+------------------+---------------+------+-----+-------|
+| dns     | dns.vy1.via      |   10.123.5.11 |   24 |     |       |
+| lan     | lan.vy1.via      |  10.123.10.11 |   24 |     |       |
+| dev     | dev.vy1.via      | 10.123.148.11 |   24 |     |       |
+| svc     | svc.vy1.via      | 10.123.164.11 |   24 |     |       |
+| lab     | lab.vy1.via      | 10.123.168.11 |   24 |     |       |
+| mgmt    | mgmt.vy1.via     | 10.123.192.11 |   24 |     |       |
+| admin   | admin.vy1.via    | 10.123.200.11 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| mgmtgw1 | mgmtif.vy1.via   |  10.123.224.1 |   28 |     |       |
+| mgmtgw1 | mgmtgw.vy1.via   | 10.123.224.11 |   28 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| dns     | dns.vy2.via      |   10.123.5.12 |   24 |     |       |
+| lan     | lan.vy2.via      |  10.123.10.12 |   24 |     |       |
+| dev     | dev.vy2.via      | 10.123.148.12 |   24 |     |       |
+| svc     | svc.vy2.via      | 10.123.164.12 |   24 |     |       |
+| lab     | lab.vy2.via      | 10.123.168.12 |   24 |     |       |
+| mgmt    | mgmt.vy2.via     | 10.123.192.12 |   24 |     |       |
+| admin   | admin.vy2.via    | 10.123.200.12 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| mgmtgw2 | mgmtif.vy2.via   |  10.123.224.2 |   28 |     |       |
+| mgmtgw2 | mgmtgw.vy2.via   | 10.123.224.12 |   28 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| svc     | svc.svc1.via     | 10.123.164.21 |   24 |     |       |
+| lab     | lab.svc1.via     | 10.123.168.21 |   24 |     |       |
+| mgmt    | mgmt.svc1.via    | 10.123.192.31 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| svc     | svc.svc2.via     | 10.123.164.22 |   24 |     |       |
+| lab     | lab.svc2.via     | 10.123.168.22 |   24 |     |       |
+| mgmt    | mgmt.svc2.via    | 10.123.192.32 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| mgmt    | mgmt.sw1.via     |  10.123.192.1 |   24 |     |       |
+| mgmt    | mgmt.sw2.via     |  10.123.192.2 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| mgmt    | mgmt.mgmt1.via   | 10.123.192.21 |   24 |     |       |
+| admin   | admin.mgmt1.via  | 10.123.200.31 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| mgmt    | mgmt.mgmt2.via   | 10.123.192.22 |   24 |     |       |
+| admin   | admin.mgmt2.via  | 10.123.200.32 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+| admin   | admin.admin1.via | 10.123.200.21 |   24 |     |       |
+| admin   | admin.admin2.via | 10.123.200.22 |   24 |     |       |
+|---------+------------------+---------------+------+-----+-------|
+
+These are the networking layer DNS addresses only. Any service endpoints would
+have their own A/AAAA records (and probably CNAMEs for SOA).
+
++ The DNS names are exactly as complex as the dictionary needed to contain the
+  datapoints. (The =A/AAAA= records form a hierarchy after all).
++ The interfaces (esp. on servers) can support multiple IP addresses, but these
+  are the gateways to be used for routing.
++ For a small network, rigidly defined DNS/addressing removes dependence on DNS
+  for firewall rules (which is overkill, so for critical services only). This
+  relieves required cache/memory and reduces firewall decisions to what should
+  be synchronous ip-masking.
++ I also don't like the dynamic nature of routing protocols, so decoupling
+  routing interfaces from DHCP allows for an outline of the network to be
+  sketched out. Then the more dynamic, service-reliant stuff can be brought in.
+  - Ordinarily, this would be ridiculous, but with a management plane, it's
+    really not that hard for a small, single-site network.
+  - RIP is pointless, OSPF & OSPF3 are meant for tree-like networks (can't
+    loop), potentially connected by WAN. BGP on internal networks is crazy. BGP
+    makes sense when opening persistent tunnels to cloud networks.
+  - The routing protocols are needed once your network structure is dynamic, but
+    are a potential source of problems. These routes are also difficult to
+    propagate into VM Hosts AFAIK.
+
+#+name: i4
+#+begin_src emacs-lisp :var tblAddr=vyosAddr host=dns.vy1.via
+;; https://www.gnu.org/software/emacs/manual/html_node/elisp/Misc-Network.html
+;; (format-network-address address &optional omit-port)
+#+end_src
+
+#+name: n4
+#+begin_src emacs-lisp :var tblAddr=vyosAddr net=dns.vy1.via
+;; (network-lookup-address-info name &optional family hints)
+;; returns vector ([127 0 0 1 'port]) where 'port == 0
+
+;; for ip4:
+;; - reduce over cidr, masking bits in each octet until < 8 ... (nvm)
+;; - construct 32b int as ((2**32 - 1) - (2**(32-mask) - 1))
+;; for ip6, break into four 32b blocks
+#+end_src
+
+A little too intense maybe. The idea was to select from this table (or jq/yq),
+then render with =<< i4(host=aaa.bbb.tl) >>= and similar quick templating (which
+is still fairly rigid.
+
+* Background
+
++ I migrated from PFSense to OPNSense for better automation. There wasn't a real
+  API for PFSense at the time, though this may have changed (or still may change).
++ The Ansible module for PFSense basically reconfigures the XML (afaik), whereas
+  the OPNSense option uses its HTTP API. That requires some certificate setup,
+  which stalled me out.
++ VyOS almost doesn't need Ansible (but can), it can run also containers.
+  - This, in combination with trusted (mostly on-box) networking alleviates /some/
+    of the security concerns, generally but also with automation.
++ As a router, VyOS doesn't seem like a 1:1 replacement for Kubernetes -- it's
+  not and it only overlaps with some of K8S. Sounds a bit WTF, but for a
+  homelab, this checks a lot of boxes so you can have tight control over
+  networking that then
+
+** Pros/Cons
+
+*** Over BSD
+
+You get containers a bit more easily, though BSD afficionado's would claim you
+don't need them.
+
++ You don't need to wait for plugins or worry about esoteric PHP
++ If it runs in a container, it extends your capablities, but with more typical
+  automation/programming interfaces: shell (on Linux), packages, etc. So
+  extending your prometheus/monitoring/etc should feel more familiar.
+
+For some, like beginners & BSD experts, OPNSense/PFSense would be better here.
+
++ If you like the Cisco DSL and you don't like GUI tools, VyOS is way better.
++ If you want more automation (standup/teardown VLANs on router + switch + VMs
+  without unplugging networking), VyOS is way better.
+
+*** Containers, etc
+
+Actually using containers on VyOS in production would require significant
+evaluation.
+
++ Can you really trust the network isolation? Where would using =vrf= be
+  warranted? What about inter-networking issues?
++ Orchestration would be difficult.
+  - For backups, you need to manage labeling/permssions.
+  - Migrating applications isn't necessarily more work (for simple
+    applications)
++ You may need kernel customization ... in _some_ cases, though the
+  more I learn, the more I'm thinking I wouldn't need as much. I haven't run
+  into it yet, but expect to if:
+  - I launch =podman= containers that need direct hardware access (or need to
+    share it)
+  - I run it on an ARM box (definitely need it here with u-boot as well)
+  - I need to run =qemu= or =virtd= alongside the containers. The latter wouldn't
+    work well, as it independently manages namespaces (and networks). But
+    =qemu+kvm= may.
+    - SystemD's virtual machines may be a better alternative here. They can boot
+      at init and aren't orchestrated in the same way. Unclear how that systemd
+      would mesh with vyos networking though.
+
+* Graphics
+
+** Addressing
+
+VLANs, VRFs, Addressing
+
+#+begin_src dot :file img/vyos/homelab.svg :cmdline "-Tsvg"
+graph G {
+    ranksep=equally
+    compound=true;
+    //    rankdir=LR;
+    //    ranksep=
+    //    rank=source;
+    //    rank=sink
+    node [style=filled,fillcolor=white,shape=rect];
+    edge [color=gray64]
+
+
+    // subgraph cluster_legend {
+    //     e0[label="§ server"]
+    //     e1[label="¶ Port"]
+    //     e2[label="ß Bridge"]
+    //     e3[label="# VLAN"]
+    //     e4[label="® VRF"]
+    // }
+    subgraph cluster_NET_wan {
+        label="WAN"; bgcolor=papayawhip; fillcolor=white;
+        wan_uplink [label="123.45.67.100/30"]
+        //-- cluster_vy1VRF_WAN
+        //    vlan10_net -- cluster_vy1VRF_WAN
+    }
+
+    subgraph cluster_vyos1 {
+        label="§vy1"
+
+        // subgraph cluster_vy1VRF_WAN {
+        //     label="~WAN"; bgcolor=papayawhip; fillcolor=white;
+        // }
+
+        subgraph cluster_vy1VRF_VRRP {
+            edge [color=gray16]
+            label="~VRRP:\n10.124.0/24"; bgcolor=gray64;
+            vy1_vrrp[label="VRRP\n.111"]
+        }
+
+        subgraph cluster_vy1VRF {
+            label="~"; bgcolor=palegreen1;
+            fillcolor=mintcream;
+            vy1_wan[label="WAN\n.101"]
+            vy1_dns [label=".5.11\nDNS\n#5"]
+            vy1_lan [label=".10.11\nLAN\n#10"]
+            // vy1_home [label=".11.11\nHOME\n#10"]
+            // vy1_wifi [label=".12.11\nWIFI\n#20"]
+            vy1_dev [label=".148.11\nDEV\n#110"]
+            vy1_svc [label=".164.11\nSVC\n#210"]
+            vy1_lab [label=".168.11\nLAB\n#220"]
+        }
+
+        subgraph cluster_vy1VRF_MGMT {
+            label="~MGMT"; bgcolor=thistle2;
+            vy1_mgmt [label=".192.11\nMGMT\n#410"]
+            vy1_admin [label=".200.11\nADMIN\n#420"]
+        }
+
+        subgraph cluster_vy1NET_pihole {
+            // label="¢ \nvy1net_pihole"
+            vy1_pihole [label="© pihole\n1.pihole."]
+            vy1_pihole -- vy1_dns
+        }
+
+    }
+
+    subgraph cluster_vyos2 {
+        label="§vy2"
+
+        // subgraph cluster_vy2VRF_WAN {
+        //     label="~WAN"; bgcolor=papayawhip; fillcolor=white;
+        // }
+
+        subgraph cluster_vy2VRF_VRRP {
+            label="~VRRP\n10.124.0/24"; bgcolor=gray64; fillcolor=gray48;
+            vy2_vrrp[label="VRRP\n.222"]
+        }
+
+        subgraph cluster_vy2VRF {
+            label="~"; bgcolor=palegreen1;
+            vy2_wan[label="WAN\n.102"]
+            vy2_dns [label=".5.11\nDNS\n#5"]
+            vy2_lan [label=".10.12\nLAN\n#10"]
+            // vy2_home [label=".11.12\nHOME\n#10"]
+            // vy2_wifi [label=".12.12\nWIFI\n#20"]
+            vy2_dev [label=".148.12\nDEV\n#110"]
+            vy2_svc [label=".164.12\nSVC\n#210"]
+            vy2_lab [label=".168.12\nLAB\n#220"]
+        }
+
+        subgraph cluster_vy2VRF_MGMT {
+            label="~MGMT"; bgcolor=thistle2;
+            vy2_mgmt [label=".192.12\nMGMT\n#410"]
+            vy2_admin [label=".200.12\nADMIN\n#420"]
+        }
+
+        subgraph cluster_vy2NET_pihole {
+            // label="¢ \nvy1net_pihole"
+            vy2_pihole [label="© pihole\n2.pihole."]
+            vy2_pihole -- vy2_dns
+        }
+    }
+
+//    subgraph cluster_vlans {
+        subgraph cluster_VLAN_5 {
+            label="#5 DNS\n10.123.5.0/24"; bgcolor=lightsteelblue1;
+            vlan5_net[label=".0"];
+        }
+        subgraph cluster_VLAN_10 {
+            label="#10 LAN\n10.123.10.0/24"; bgcolor=lightsteelblue1;
+            vlan10_net[label=".0"];
+        }
+        // subgraph cluster_VLAN_10 {
+        //     label="#10\n10.123.11.0/24"; bgcolor=lightsteelblue1;
+        //     vlan10_net[label=".0"];
+        // }
+        // subgraph cluster_VLAN_20 {
+        //     label="#20\n10.123.12.0/24"; bgcolor=lightsteelblue1;
+        //     vlan20_net[label=".0"];
+        // }
+        // 128+16+4
+        subgraph cluster_VLAN_110 {
+            label="#110 DEV\n10.123.168.0/24"; bgcolor=lightsteelblue1;
+            vlan110_net[label=".0"];
+        }
+        // 128+32+4
+        subgraph cluster_VLAN_210 {
+            label="#210 SVC\n10.123.164.0/24"; bgcolor=lightsteelblue1;
+            vlan210_net[label=".0"];
+        }
+        // 128+32+8
+        subgraph cluster_VLAN_220 {
+            label="#220 LAB\n10.123.168.0/24"; bgcolor=lightsteelblue1;
+            vlan220_net[label=".0"];
+        }
+        subgraph cluster_VLAN_410 {
+            label="#410 MGMT\n10.123.192.0/24"; bgcolor=lightsteelblue1;
+            vlan410_net[label=".0"];
+        }
+        subgraph cluster_VLAN_420 {
+            label="#420 ADMIN\n10.123.208.0/24"; bgcolor=lightsteelblue1;
+            vlan420_net[label=".0"];
+        }
+   // }
+
+    subgraph cluster_ddwrt {
+        label="§ddwrt1"
+        // \n(looks like mdns \nis not in the cards)"
+        ddwrt_lan[label=".10.10\nHOME\n#10"]
+        ddwrt_home[label=".11.10\nHOME\n#10"]
+        ddwrt_wifi[label=".12.10\nWIFI\n#11"]
+    }
+
+    vy1_vrrp -- vy2_vrrp
+
+    vlan10_net -- ddwrt_home
+    vlan10_net -- ddwrt_wifi
+
+    vlan5_net -- vy1_dns
+    vlan10_net -- vy1_lan
+    // vlan10_net -- vy1_home
+    // vlan20_net -- vy1_wifi
+    vlan110_net -- vy1_dev
+    vlan210_net -- vy1_svc
+    vlan220_net -- vy1_lab
+    vlan410_net -- vy1_mgmt
+    vlan420_net -- vy1_admin
+
+    vlan5_net -- vy2_dns
+    vlan10_net -- vy2_lan
+    // vlan10_net -- vy2_home
+    // vlan20_net -- vy2_wifi
+    vlan110_net -- vy2_dev
+    vlan210_net -- vy2_svc
+    vlan220_net -- vy2_lab
+    vlan410_net -- vy2_mgmt
+    vlan420_net -- vy2_admin
+
+    subgraph cluster_svc1 {
+        label="§svc1";
+        subgraph cluster_svc1VRF {
+            label="~"; bgcolor=palegreen1;
+            svc1_vif_svc [label=".164.21\nSVC\n#210"]
+            svc1_vif_lab [label=".168.21\nLAB\n#220"]
+            svc1_vif_vm1 [label="vm11"]
+            svc1_vif_vm2 [label="vm12"]
+        }
+        subgraph cluster_svc1VRF_MGMT {
+            label="~MGMT"; bgcolor=thistle2;
+            svc1_vif_mgmt [label=".192.31\nSVC\n#410"]
+        }
+    }
+
+    subgraph cluster_svc2 {
+        label="§svc2"; // bgcolor=;
+        subgraph cluster_svc2VRF {
+            label="~"; bgcolor=palegreen1;
+            svc2_vif_svc [label=".164.21\nSVC\n#210"]
+            svc2_vif_lab [label=".168.21\nLAB\n#220"]
+            svc2_vif_vm1 [label="vm21"]
+            svc2_vif_vm2 [label="vm22"]
+        }
+        subgraph cluster_svc2VRF_MGMT {
+            label="~MGMT"; bgcolor=thistle2;
+            svc2_vif_mgmt [label=".192.32\nSVC\n#410"]
+        }
+    }
+
+    vlan210_net -- svc1_vif_svc
+    vlan210_net -- svc2_vif_svc
+    vlan220_net -- svc1_vif_lab
+    vlan220_net -- svc2_vif_lab
+
+    // mgmt vlan
+    vlan410_net -- svc1_vif_mgmt
+    vlan410_net -- svc2_vif_mgmt
+
+    subgraph cluster_mgmt1 {
+        label="§mgmt1";
+        subgraph cluster_mgmt1VRF {
+        }
+        subgraph cluster_mgmt1VRF_MGMT {
+            label="vrf~MGMT"; bgcolor=thistle2;
+            mgmt1_vif_mgmt [label=".192.21\nMGMT\n#410"]
+            mgmt1_vif_admin [label=".200.31\nADMIN\n#420"]
+        }
+    }
+
+    subgraph cluster_mgmt2 {
+        label="§mgmt2";
+        subgraph cluster_mgmt2VRF {
+        }
+        subgraph cluster_mgmt2VRF_MGMT {
+            label="vrf~MGMT"; bgcolor=thistle2;
+            mgmt2_vif_mgmt [label=".192.22\nMGMT\n#410"]
+            mgmt2_vif_admin [label=".200.32\nADMIN\n#420"]
+        }
+    }
+
+    vlan410_net -- mgmt1_vif_mgmt
+    vlan410_net -- mgmt2_vif_mgmt
+    vlan420_net -- mgmt1_vif_admin
+    vlan420_net -- mgmt2_vif_admin
+
+    subgraph cluster_admin1 {
+        label="§admin1";
+        subgraph cluster_admin1VRF_MGMT {
+            label="vrf~MGMT"; bgcolor=thistle2;
+            //admin1_vif_mgmt [label=".192.21\nMGMT\n#410"]
+            admin1_vif_admin [label=".200.21\nADMIN\n#420"]
+        }
+    }
+
+    vlan420_net -- admin1_vif_admin
+
+    //    cluster_VLAN_10 -- cluster_vy1VRF
+
+    wan_uplink -- vy1_wan // [ltail=cluster_NET_wan,lhead=cluster_vy1VRF]
+    wan_uplink -- vy2_wan // [ltail=cluster_NET_wan,lhead=cluster_vy2VRF]
+    // vy1 -- vy2 [label="3" lhead="cluster_vrrp"];
+
+    legend[fontsize=24,shape=rectangle,label="§ server\n¶ Port\nß Bridge\n# VLAN\n® VRF\n© Container Net\n¢ Container "]
+
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/vyos/homelab.svg]]
+
+
+* Use Cases
+*** Pentesting scenarios
+
+If you're a hacker practicing in Linux networks, VyOS is way better.
+
+The monitor command runs against =tcpdump= and =vyos= comes with screen.
+
++ Start a =screen/tmux= session that runs the appropriate =tcpdump= with =pcap=
+  filters. Given a list of pcap filters, this can easily be autogenerated
+  (using jinja + screen config, a superset of bash)
++ You can use the =script= CLI tooling (literally, script) to record screen
+  sessions AFAIK (for bonus points on your hollywood hacker setup)
+
+Setup/teardown networks & applications
+
++ Write scripts to setup/teardown network, assert services running.
++ Write scripts to setup/teardown subnets/vlans/containers/VMs. These would
+  run =set/delete= commands, then you transactionally apply config with
+  =commit=.
++ Assuming containers (and that managing artifacts like volumes isn't too much
+ of an issue), then =compose.yml= describes the application state you want.
+  - This isn't necessary, but is more of an outline (and data structure you can
+    pull from along with =.env= files).
+  - The vyos =container= cli gives you binding points for objects that mostly
+    exist elsewhere (podman volumes; linux sysctl, caps; etc). In a lot of
+    cases, these need to be created, but are only bound to the service
+    instantation runtime.
+
++ Start the services/tunnels that correspond to the attacks you want to test.
+  - An =nmap= config that runs at a particular point can
+
+The automation can run from a management network, which doesn't leak into your
+lab networks (both should be =vrf=).
+
++ These connections should be as isolated as possible, but your management plane
+  may be separate other planes in your network -- plane being a planar subgraph.
+  an [[https://en.wikipedia.org/wiki/Apex_graph][apex graph]] demonstrates this when an apex node has connectivity to a planar
+  subgraph (here, the apex could either be a subnet/server). If it's for admin,
+  the apex shouldn't permit inbound traffic. The edges that connect it to other
+  nodes are traffic paths ... (it's really difficult to get these ideas to
+  correspond 1:1)
+
+Container subcommands
+
+|---------------------+----------------------------------------------------------------------------|
+| allow-host-networks | Allow sharing host networking with container                               |
+| allow-host-pid      | Allow sharing host process namespace with container                        |
+| arguments           | The command's arguments for this container                                 |
+| capability          | Grant individual Linux capability to container instance                    |
+| command             | Override the default CMD from the image                                    |
+| cpu-quota           | This limits the number of CPU resources the container can use (default: 0) |
+| description         | Description                                                                |
+| device              | Add a host device to the container                                         |
+| disable             | Disable instance                                                           |
+| entrypoint          | Override the default ENTRYPOINT from the image                             |
+| environment         | Add custom environment variables                                           |
+| gid                 | Group ID this container will run as                                        |
+| host-name           | Container host name                                                        |
+| image               | Container image to use                                                     |
+| label               | Add label variables                                                        |
+| memory              | Memory (RAM) available to this container (default: 512)                    |
+| name-server         | Domain Name Servers (DNS) addresses                                        |
+| network             | Attach user defined network to container                                   |
+| port                | Publish port to the container                                              |
+| privileged          | Grant root capabilities to the container                                   |
+| restart             | Restart options for container (default: on-failure)                        |
+| shared-memory       | Shared memory available to this container (default: 64)                    |
+| sysctl              | Configure namespaced kernel parameters of the container                    |
+| tmpfs               | Mount a tmpfs filesystem into the container                                |
+| uid                 | User ID this container will run as                                         |
+| volume              | Mount a volume into the container                                          |
+|---------------------+----------------------------------------------------------------------------|
+
+Complex networks can be simulated with VRF + networks + routing protocols.
+
++ VPN tunnels can run between VRFs in vyos (in theory) and VRFs are mostly
+  isolated.
+
+I'm getting a bit ahead of myself, since there usually are better tools, but
+they're usually far more expensive ... worse, they're more static.
+
++ usually, you'd prefer to run it in the cloud, since that's where your target
+  will be running, but that's about as expensive as a small startup's cloud
+  bill (for 100-10000+ users)
++ Or you'd have a more traditional cyberrange running on Openstack (looking at
+  $25,000-$50,000 without considering the IT support)
+
+The use-case I'd have in mind is for testing whether network-level problems
+exist in some deeper network that you don't have access to (where
+applications/services either modify the network infrastructure or at least run
+on it)
+
++ Global configuration can prevent leakage of public IP traffic off the box(s)
++ Actually testing against scenarios larger than the box itself would be
+  difficult (testing larger SaaS service integrations, testing K8S/Operator
+  vulnerabilities, cloud platform-level problems)
++ but testing Application level vulnerabilities, even when there are concepts
+  of "multi-site" deployments is much more practical
+
+Here, you'd have a set of config scripts to run against a few boxes to
+setup/teardown routing & VRFs. Then you setup containers. it would look like the
+vyos smoketests. One of the more complicated aspects is getting data into the
+applications, since many useful vectors are dependent on actual application
+state (& subsequent config drift) created by users/admins.
