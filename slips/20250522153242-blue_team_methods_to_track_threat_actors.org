@@ -1,0 +1,119 @@
+:PROPERTIES:
+:ID:       57e8146d-6860-48f8-81f7-1fb52f8bf812
+:END:
+#+TITLE: Blue Team: Methods to Track Threat Actors
+#+CATEGORY: slips
+#+TAGS:
+
+From [[https://www.youtube.com/watch?v=beh5VUKc2EU&t=407s][24 Techniques to Gather Threat Intel and Track Actors]] (and [[https://www.blackhat.com/docs/asia-17/materials/asia-17-Huang-24-Techniques-to-Gather-Threat-Intel-And-Track-Actors.pdf][slides]])
+
+* Roam
++ [[id:29d8222b-618f-454e-8a76-6fa38f8ff1f6][Blue Team]]
++ [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team]]
+
+* Notes
+
+** From beacons -> address/traffic analysis -> discover open file stashes -> C2
+
+|---+-------------------+-------------------------------------------------------------------------------|
+| n | Technique         | Wins                                                                          |
+|---+-------------------+-------------------------------------------------------------------------------|
+| 1 | Beacons           | Identify open traffic analytics (sidechannel to collect data on targets/bots) |
+| 2 | Open Dirs         | Recover information about attacker's collection/intent                        |
+| 3 | Fuzz Common Files | Identify attackers/methods; identify C2 servers;                              |
+|---+-------------------+-------------------------------------------------------------------------------|
+
+Examples
+
+|---+----------------------+-------------------------------------------------------------------|
+| n | Technique            | Example                                                           |
+|---+----------------------+-------------------------------------------------------------------|
+| 1 | Beacons              | Nurjax (adware/malware) that leveraged superfish (vuln by lenovo) |
+| 2 | Open Dirs            | Spam tool, email harvestor, databases                             |
+| 3 | Fuzz Common Files    |                                                                   |
+|---+----------------------+-------------------------------------------------------------------|
+
+
+** Find Server, Banner -> Logs to Identify Stack -> Find Attack Surface, Leaky Configs
+
+|---+--------------------+-----------------------------------------------------------------------------------------------------------|
+| n | Technique          | Example                                                                                                   |
+|---+--------------------+-----------------------------------------------------------------------------------------------------------|
+| 4 | Find Server        | C2: Cryptowall; Apache =server-status= module, logs contained C2 URL                                        |
+| 5 | Error Logs         | Controlled Processes/Services (PHP, Django), Find weak modules/packages/versions, find behavioral signals |
+| 6 | Application Config | Django App (running with debug), discovered marketplace, stolen accounts/shells (by calling API)          |
+|---+--------------------+-----------------------------------------------------------------------------------------------------------|
+
+** Get Access -> Lateral to Adjacent Users/C2 -> Get More Creds
+
+|----+----------------------------+-------------------------------------------------|
+|  n | Technique                  | Example                                         |
+|----+----------------------------+-------------------------------------------------|
+|  7 | Get Creds/Access           |                                                 |
+|  8 | Session fixation (Keybase) | PHP vulnerability (no-auth);                    |
+|  9 | Weak Passwords             | Gained CPanel admin access: gained WSO Webshell |
+| 10 | Hardcoded Passwords        | IRC bot                                         |
+|----+----------------------------+-------------------------------------------------|
+
+Used screenshots to get insight into "BEC" (business email compromise:
+compromise buyer & seller to intercept/forge details like payments, delivery,
+etc)
+
+** Code Review -> Cross Site (Lateral) -> Backdoor -> Remote Exec -> SQL Injection
+
+|----+------------------+--------------------------------------------------------------------------------|
+|  n | Technique        | Example                                                                        |
+|----+------------------+--------------------------------------------------------------------------------|
+| 11 | Code Review      | fuzzed folder names to trace dataflow (anticipate in prod); fuzzed all C2 URLs |
+| 12 | CSS              | Steal Cookie to Access "ISR Stealer" panel (predicted unique future DNS name)  |
+| 13 | Backdoor         | CLI call in PHP (omfg),                                                        |
+| 14 | Remote Code Exec |                                                                                |
+| 15 | SQL Injection    | Dumped C2 Panel Database                                                       |
+|----+------------------+--------------------------------------------------------------------------------|
+
++ Fuzzing traces data flow through app, but obfuscation of DNS/URLs uses weak
+  maps (can't be too =L33t3d-0ut=). Reversible. This lead to cookie interception
+  (via DNS/HTTPS redirect; nolog, noviz, TMI)
+
+** Root <-> Remote Code Injection
+
+|----+------------------+---------|
+|  n | Technique        | Example |
+|----+------------------+---------|
+| 16 | Rooted           |         |
+| 17 | Shellshock       |         |
+| 18 | Java Unserialize |         |
+|----+------------------+---------|
+
+** Discovery -> =**/*= Traversal
+
+Don't Bell the Cat
+
+|----+----------------------------------+----------------------------------------------------------------------------------------|
+|  n | Technique                        | Example                                                                                |
+|----+----------------------------------+----------------------------------------------------------------------------------------|
+| 19 | Analyze                          | Webalizer/AWStat (understand C2 infrastructure)                                        |
+| 20 | Path Traversal                   | MagikPOS -> Gives Shell (software vuln)                                                |
+| 21 | File Upload                      | Jahoo Spambot (uploaded shell script; wrong =umask= + some exec)                         |
+| 22 | File Upload (0 day)              | Neutrino HTTP: On admin upload of Malware->C2 (before distribution)                    |
+| 23 | File Upload (via hardcoded keys) | From malware reversal -> key extraction -> injection into C2 -> bots.do(this.backHack) |
+|----+----------------------------------+----------------------------------------------------------------------------------------|
+
++ On file-write, modify running code to reveal instance IP/Domain (via PHP Info)
+
+** C2 DNS <-> C2 IP
+
+|----+-----------------------+------------------------------------------------------------------|
+|  n | Technique             | Example                                                          |
+|----+-----------------------+------------------------------------------------------------------|
+| 24 | Set-Cookie            | Cookies need to be cleansed in =Set-Cookie= HTTP Header (can't be) |
+| 25 | PHPinfo -> IP Address | From PHP Info on Nginx reverse proxies                           |
+|----+-----------------------+------------------------------------------------------------------|
+
++ Rev. Proxy provides login (mTLS or obfuscation/tunneling via
+  proxychains/etc/idk)... these feel safe, but still need a webserver.
+  - Fast to stand up, easy to overlook, esp. when put into a bind(...)
+  - The website is down!
++ The =Set-Cookie= sets up the session on the client side, which is organized by
+  domain so your browser can carefully bundle up your privacy to neatly hand it
+  over.

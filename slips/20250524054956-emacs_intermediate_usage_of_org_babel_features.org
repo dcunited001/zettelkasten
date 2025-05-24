@@ -1,0 +1,357 @@
+:PROPERTIES:
+:ID:       8b268da3-60ae-417a-8cf4-557d164a8ed8
+:END:
+#+TITLE: Emacs: Intermediate Usage of Org Babel Features
+#+CATEGORY: slips
+#+TAGS:
+
+Here be dragons. They're not that bad, but you should probably be able to bench
+your own weight before you try.
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:29d8222b-618f-454e-8a76-6fa38f8ff1f6][Blue Team]]
+
+* Docs
+
++ Org Manual and Ref Card (this is table stakes)
++ [[https://org-babel.readthedocs.io/en/latest/][Org Babel Docs]]
++ [[https://github.com/dfeich/org-babel-examples][dfeich/org-babel-examples]]
++ [[https://github.com/fniessen/refcard-org-babel][fniessen/refcard-org-babel]]
+
+If you're interested in tangling code, the best place to start (after a bit of
+exposure) is [[https://www-cs-faculty.stanford.edu/~knuth/cweb.html][Donald Knuth's CWeb]] and [[https://github.com/plotnick/clweb][plotnik/clweb]]. See my notes below on
+regarding their selection of chars/tokens for lexxing.
+
+Also maybe look at [[id:56c9c21b-3db7-4ad7-bb74-aba0f9c33ee0][Emacs: Use Emacs for X?]]
+
+* Overview
+
+But =org= and =org-babel= are pretty great for mixing notes with bits of code to be
+reused in the future. Obviously, putting your ideas/configs online is stupid (I
+guess), but it's hard to find real-life applications that _synthesize_ usage of
+enough tools as to convey their actual "telos". This answers the /how/, but not
+the /why/, which always costs more GPT tokens (and is likely inaccurate bc of the
+"lost in the middle" problem)
+
+The Org Babel docs are pretty good and everything's pretty well-thought out.
+Still, it takes a lot of persistence. It would help to be able to ask or
+collaborate with other people using Org Babel. There are several small issues
+with many options/methods to resolve them -- picking a sufficient/correct &
+simple method is crucial.
+
+To get a feel for the range of what's possible or how to approach things,
+grepping through these two repositories is extremely helpful.
+
++ [[https://github.com/dfeich/org-babel-examples][dfeich/org-babel-examples]]
++ [[https://github.com/fniessen/refcard-org-babel][fniessen/refcard-org-babel]]
+
+* Common Features
+
+I typically use these features
+
++ noweb :: Babel's =<< nowebRef >>=
+  - =nowebRef= is an included text-only template, which may eval some =namedBlock=
+  - distinguishing how =noweb= produces results is a bit confusing when tangling
+    blocks, so accidental evaluation will almost certainly happen
++ namedBlock :: idk what Emacs calls this, but =<< namedBlock(args=foo) >>= will
+  eval the chain of dependent blocks, whose args/signature are cached for a
+  future invocations during functions like =org-babel-tangle(-file)=
++ #+call: namedBlock(args=otherargs) :: call the block somewhere else
++ :eval when :: this helps control invocation & prevent accidental eval
+  - values: ={yes,no,cache,sometimes,almost,never}= idk
++ :export when :: this helps control invocation & prevent accidental eval.
+  Someone else's project/config may be set to =:export= files under different
+  circumstances
+  - values: ={yes,no,cache,sometimes,almost,never}=
++ :cache :: the cache for results can be controlled so they persist for as long
+  as the buffer is open. Usually this is local to the memory
++ auth-sources :: this can provide secrets through the Linux keychain (via
+  =libsecret=) if you set it up, but I'd recommend using =pass.el= and
+  =auth-sources-pass=.
+  - You need call =M-x auth-source-forget-all-cached= to manage whether a
+    key/token is cached in emacs
+  - Access to other secrets (e.g. via =gpg-agent= or =age= and its related agents)
+    may require processes/sockets (usually just process invocation)
++ setq-local :: local variables to manage the environment can be set here, but
+  emacs invokes Babel blocks (usually) with an environment that inherits its
+  shell variables, which is another reason why loading a separate Emacs server
+  may be a good idea (though env variables aren't a great idea for that)
++ org-babel-lob-ingest :: you can load blocks from other included org files (or
+  add directives in your org file that include org raw). I'm not using this now,
+  but given you have enough experience with Emacs, it's definitely the way to go
+  eventually
+
+* Cached Data in Emacs
+
+It's also something you need quite a bit of experience with Emacs for:
+
++ Babel cache/tmp files
++ Emacs cache/tmp files: kill-ring, etc. The [[https://github.com/emacscollective/no-littering/blob/main/no-littering.el#L121][no-littering package source]]
+  contains a list of these files
++ You should use a containerized Emacs environment with disposable volumes. Guix
+  makes this somewhat simple, but could persist local volumes to =/gnu/store=
+
+* Some minor issues
+
+These cause a bit of friction in workflow. Not huge.
+
++ idiosyncracies with ingesting data from tables into shell blocks
++ a tendency to start things in Bash that are simple in isolation, but more
+  difficult to link together (via named tables or block)
++ it's irritating to need a programming environment. python is nice, but
+  managing pip is not. Using a named =:session *this-py-right-here*= or
+  =#+begin_src jupyter ...= works for this
++ occasional (& rapid) warnings/errors about org-cache, usually occuring after
+  surrounding text with some brackets. if this happens, ignore the warnings
+  (maybe report), ensure the buffer is selected, run =M-x org-element-cache-reset=
+  and it should fix it. If you don't know this, you'll have to restart your
+  emacs (or find some other way to kill the buffer)
++ The org table formulas are really hard to use if you don't use the
+  keybindings/functions. The indices are auto-updated, which requires some kind
+  of witchcraft. Once things require =org-sbe=, it's probably time to step back
+  and +get a six pack+ query sqlite or flat-files. When it works, that's great ...
+  see =org-table-export= to convert to CSV, etc.
++ It would be nice to use =<(process substitution)= for variables that would be
+  used as a file-descriptor in bash blocks, but it requires =read= and a loop or
+  whatever (see snippets or you better Bash real quicklike).
++ Values are passed as strings, unless:
+  - the =ob-xyz= extension modifies the input
+  - or there exists some =namedBlock= that Babel is aware of. so =:var avar
+  namedBlock= works.
+  - or babel interprets that the string is =(lisp-like)= or ='symbol-like=, where it
+    passes the evaluated expression. so to pass the value of a =lisp-variable=,
+    use =(identity lisp-variable)= in true fn-programming fashion (see common-lisp
+    source for loop). There's a better answer to that last one that avoids
+    =identity= but idk.
++ Deciding on variable names: just use =:var whateverThisCase=isCalled= (even in
+  =emacs-lisp=): it avoids worrying about how other languages will interpret your
+  symbols. Shell doesn't like the =#+name: my-emacs-lisp-table=, for example, but
+  most languages interpret =[a-zA-Z]+= as a contiguous symbol name.
+  - knowing this ahead of time just makes it easier. if I know that it stays in
+    =emacs-lisp=, then I name it accordingly.
+
+When discovering the solution for these issues, it helps to create a snippet ...
+but not all of the problems are technical. You kinda gotta know enough about
+what's possible (and how it's possible) in order to avoid wandering aimlessly
+through various patterns of usage (then templatizing the wrong patterns...)
+
+* Handy Techniques
+
++ mapping keys for popups and window placement.
+
+** Output generation
+
++ C-u M-| :: Prompt for command, =cat= highlighted txt & pipe to command. =C-u=
+  replaces highlighted text with output
++ C-u M-: :: Same, but for emacs.
+
+** Static Files
+
++ =#+begin_src= doesn't work for =yaml= or =json= or anything that's not in
+  =org-babel-load-languages= that has a proper interpreter.
++ =#+begin_example= does work and can be used as input to something that expects a
+  file (like =jq=)
++ Tables won't be used for input to anything if they're not named. Same for the
+  =#+begin_example= blocks above.
+
+Running a block that generates
+
+** Session Management
+
+Connecting to a =:session=, which is necessary to restart or to avoid killing
+processes. You should pick a somewhat unique name for the session, but they also
+could be intentionally reused across files.
+
+|             | org-babel-pop-to-session              | Switch to the session of the current code block or block defined by INFO. |
+| =C-c C-v l=   | org-babel-load-in-session             | Load the body of the current source-code block.                           |
+|             | org-babel-initiate-session            | Initiate session for current code block or the block defined by INFO.     |
+| =C-c C-v C-z= | org-babel-switch-to-session           | Switch to the session of the current code block or block defined by INFO. |
+|             | org-babel-pop-to-session-maybe        | Conditionally pop to a session.                                           |
+|             | org-babel-load-in-session-maybe       | Conditionally load a source block in a session.                           |
+| =C-c C-v z=   | org-babel-switch-to-session-with-code | Switch to code buffer and display session.                                |
+
+** Embark
+
+Simple usage of =embark= (what I did above; requires =consult= UI)
+
++ embark-act :: act on data in the minibuffer
++ embark-collect :: collect it to a list/table (to copy/paste)
++ embark-export :: export =M-x= commands or whatever into a buffer with metadata
++ With the right =consult= setup (see these lines and a few others in my
+  [[https://github.com/dcunited001/ellipsis/blob/master/.emacs.console/init.el#L128-L145][.emacs.console]] config), then you can filter with a subset of regexp
+  characters.
+
+* Snippets
+
+Snippets aren't 100% necessary, but ... You'll want them.
+
+** Examples
+*** Guix Session
+
+I'll probably edit this over time, but I certainly don't want to remember the
+significance of each char/symbol. I wouldn't be surprised if the Github HTML
+export doesn't include the lines at the top.
+
+#+begin_example org
+#+begin_src snippet
+# -*- mode: snippet -*-
+# name: src-shell-guix-session
+# uuid: src-shell-guix-session
+# key: <sgsh
+# condition: t
+# --
+
+Make temp directory with a local emacs-lisp variable to use as :dir in blocks
+
+#+name: $1Path
+#+begin_src emacs-lisp :eval query
+(setq-local $1-path (or (bound-and-true-p $1-path)
+                          (read-string "`(capitalize-word $1)` path: " (make-temp-file "$1-" t))))
+#+end_src
+
+start a session
+
+#+header: :dir $1Path
+#+begin_src sh :session *guix-$1* :results silent :eval query :async yes
+pkgs=($2)
+guix shell -L \$HOME/.dotfiles/ellipsis -L \$HOME/.dotfiles/dc \${pkgs[@]}
+#+end_src
+
+test session
+
+#+begin_src sh :session *guix-$1* :results silent :eval query
+$0
+#+end_src
+#+end_src
+
+Snippet ends here
+
+#+end_example
+
+*** Restclient + JQ Thing
+
+This runs restclient, connects to the Github API, queries based on =:gh-org= and
+collects the sizes of +most+ some of that organizations repositories. The
+responses aren't as accurate/current as their GraphQL repository
+
+It includes the =(auth-source-pass-get 'secret "api.github.com/user^ghub")= which
+extracts a *read-only* GH token.
+
+#+begin_example org
+#+begin_src snippet
+# -*- mode: snippet -*-
+# name: srcrcjq
+# uuid: srcrcjq
+# key: srcrcjq
+# condition: t
+# --
+
+#+begin_src restclient :jq "map([.owner.login, .name, .size])[] | @csv" :results table :jq-args "--raw-output"
+:gh-graphql-url = https://api.github.com/graphql
+:gh-url-base = https://api.github.com
+:gh-org = vyos
+:gh-url-path = orgs/:gh-org/repos
+:gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+
+:headers = <<
+Accept: application/vnd.github+json
+Authorization: Bearer :gh-token
+X-GitHub-Api-Version: 2022-11-28
+User-Agent: Emacs
+#
+
+GET :gh-url-base/:gh-url-path
+:headers
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "\(.owner.login)")
+#+end_src
+#+end_example
+
+
+** Usage
+
++ They are easy to capture & maybe edit later to extend with params.
+
+| C-c & i   | Insert snippet          | C-c & c | Temp snippet with highlighted text =aya-create=             |
+| C-c & n   | Create a new snippet    | C-c & e | Use temp snippet =aya-expand=                               |
+| C-c & C-v | View a specific snippet | ...     | To persist current template, use =aya-persist-snippet=      |
+| C-c & r   | Reload snippets         |         | To persist template from history, use =aya-persist-snippet= |
+
+
++ Ensure that your =yas-snippets-dir= lists your personal snippets path first (it
+  may not). Using =C-c C-c= when editing will load it to be used (and ensure the
+  current version's on top after subsequent edits)
++ Naming the snippets is important, but usually won't matter much unless
+  =yasnippet= provides many for the mode's language. The =uuid= just needs to be
+  unique, often the same as the =name=. The key should be simple and mnemonic with
+  a stem character that doesn't overlap.
++ Your snippets are filtered by mode, but can sometimes have child-modes, so the
+  stem-character isn't worth overthinking.
++ If your configuration is in Git, the snippets files can usually remain unadded
+  in the index until you want to retain them.
+  - An alternative is [[https://github.com/abo-abo/auto-yasnippet/blob/master/auto-yasnippet.el#L54-L68][aya-snippets]]
++ To name a snippet, pick a character to stem from, which isn't widely used in
+  the snippet's language. This way I can leave the yasnippet autocompletion on,
+  which is occasionally annoying.
+  + For me, I use the =altgr= keyboard with dead keys. There's a few keys on the
+    =altgr= layer that are mnemonic. Stemming off of =<§= for =<§ervice= or =<¶= for
+    =subsection?= is pretty simple.
+  + Doesn't work for if your keyboard is set to =this-week-dvorak=, if you
+    actually type in non-latin charsets, if your keyboard config software
+    actually manages these chars (or if you reconfigure QMK more often than you
+    use these chars.)
+  + I've never touched a QMK keyboard, so i have no idea whether it's coding
+    collides with the codes that XKB or libxkbcommon interpret.
++ You should get familiar with the syntax for =yasnippet=. This allows you to
+  capture useful bits of Org Babel blocks that otherwise take a bit of typing.
++ If you're using Doom Emacs, it extends the =yasnippet= behavior slightly. It's
+  just nice to know, to avoid running into it. You can't use all the templates
+  in =doom-snippets= unless you load =doom-snippets-lib= which is a bit wonky to do
+  outside of Doom.
+
+Maybe it's archiac, since ChatGPT or whatever will do this for you
+(non-deterministically). Actually generating useful snippets is something I
+would use ChatGPT for
+
+** Snippet Tokens, CWeb and CLWeb
+
+Snippets are intrinsically multi-language, but it's a very thin modification of
+interpreted syntax where the same snippet-text is interpreted only as a snippet
+or a rendered snippet. TLDR: =yasnippet= needs a minimal symbol set that doesn't
+overlap (or at least escapes cleanly). The special chars are =`(for lisp
+retaining $1)=, =$=, and a few cases of lexxed tokens starting with =$=.
+
+... if a template-based syntax language doesn't have a restricted charset, it's
+(1) designed badly and (2) is also hard to remember. Knowing that ahead-of-time
+is nice because it's also useful to /just know/ there isn't much to remember.
+
+[[https://www-cs-faculty.stanford.edu/~knuth/cweb.html][Donald Knuth's CWeb]] and [[https://github.com/plotnick/clweb][plotnik/clweb]]. These also required very precise
+selection of characters -- otherwise the text-escaping would be overly
+cumbersome. Knowing this is also a critical time-saver -- in case of "weave and
+tangle for x-lang" -- but it's also interesting food-for-thought.
+
++ For some reason, org doesn't run into many text-escaping issues (one is found
+  below.) I'm guessing the lack of collisions is because they picked a common =#=
+  comment char
+  + ^# .*: :: to interpret specially as an Org comment, but only as a first char
+  + #^: .*$ :: as an alternate comment, extending to the end of line (was the =:=
+    arbitary?), but again only as a first character.
+  + ^#+(?key:[^a-zA-Z0-9_]+): (?value:[^a-zA-Z0-9:_ ]+) :: to interpret as a
+    property or as arguments to a directive, which extends to multiple lines.
+    also, notice =:=, itself a comment char, terminates the property name.
++ This is a problem involving string-space and monoids ... somehow. Basically,
+  you're chunking up string-space by placing rules on how sequences of
+  characters/binary results in sequences of lexxed tokens. You'd like the result
+  of lexxing to satisfy specific properties, though I'm not sure what to name
+  them.
+
+I've seen code that relates to it, but the multi-mode syntax highlighting is
+broken when an org-example recursively includes src-blocks. It may break on the
+Github export (what doesn't?), but this is close to the end-of-doc.
+
+If you're not at least a little interested in this... well you stopped reading a
+long time ago anways
+

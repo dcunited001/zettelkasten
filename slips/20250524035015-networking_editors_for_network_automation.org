@@ -1,0 +1,294 @@
+:PROPERTIES:
+:ID:       b082f37e-5426-4d6f-9d65-6f6b3a808776
+:END:
+#+TITLE: Networking: Editors for network automation
+#+CATEGORY: slips
+#+TAGS:
+
+Not really complete, so also probably confusing.
+
+* Roam
++ [[id:a0ef7bfe-1587-4fec-ac87-f7dda5dc0d27][Maths: Statistics]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
++ [[id:d499b4e5-4ac0-4b86-a907-dc2af2e99c00][Emacs]]
+
+* Tools for NetOps
+
+Why are =putty= and =notepad++= so popular with Route/Switch folks?
+
+Ever notice how boring the Cisco folks are? They don't use exotic text
+editors/etc. It's a cultural thing ... but a combination of these factors:
+
++ They don't need those tools to do the work
++ They're a bit isolated from other IT folks & busier
++ They need acceptably portable tools that run on/in many networks. Sometimes
+  these are client networks where they are not guaranteed to know all details or
+  even all the contacts there which set policy. (e.g. they need to work _on_ the
+  router/switch, through Kerberos/Radius etc, which often is separate from other
+  authorization/LDAP)
++ "Acceptably portable" _and_ runs on platforms like MIPS (Not even =vi= runs on
+  MIPS ... well it probably does, but good luck extracting, reversing,
+  reimplementing those drivers)
++ They work on laptops requiring Group Policy configuration for specific
+  applications ... i.e. they use Windows, so they get updated cert-stores/etc.
++ They're configs have plain-text values, where the configs are stored on small
+  NVRAM and Flash-based file-systems where physical security was always assumed
+  (a little tough to unlock the switch closet to pull one out and hack into the
+  proprietary hardware/firmware/software ... without pulling some plug or
+  another)
+
+Anyways, it's not an accident that this is so consistent through the networking
+industry. It's also not a rigid rule. However, it's critical that this
+information is managed without leaving a footprint (Roam: [[id:73ca345d-7307-4912-b0ce-b07527d273fe][Networking:
+Conditional Dependencies and Services]])
+
+** Personal tooling
+
+In general, some of the critical categories to defend for network ops:
+
++ files and cache: anything with secrets should be encrypted at rest (or /quickly/
+  deleted, since your FS does things which should make you feel uncomfortable)
++ you should rotate your PINs & passwords. when you access some things, they
+  provide some logging for external visibility.
++ you _must_ *know* that the network is secure:
+  - you're not a junior in the coffee shop (nobody told him? wtf that's wierd)
+  - for this category to be covered ... you *must also* _have a network_. LoL
+    there's the problem. Eventually, given enough running time: "hey i'll just
+    connect to this wifi for a second."
++ You should be able to fat-finger something and not take down someone's GRE
+  tunnels (or render a template to the wrong file path/server)
+  - when using babel/tramp, it's a bit easy to do this (or it could be, if you
+    don't slow down)
+
+** Why not use vi and ed
+
+You probably should. It depends. I don't want to smack talk my editor of choice,
+but it's the main editor where I'm aware of many areas of its attack surface.
+AFAIK, most of them share these problems.
+
+It's best to keep your editor configuration ad-hoc to what you're doing. You
+should be able to setup/teardown from the Debian/RPM standard version of the
+editor (or maybe from a newer version). This means that
+
++ you have more than one editor configuration directory (or you create/destroy
+  VMs or cloud instances as needed)
++ you install only the packages necessary (and you don't share the =elpa=
+  directory in =~/.emacs.d/=) for the kind of work done in that environment
++ you probably don't use Doom Emacs (or worry about evil mode, since there's too
+  many moving parts & dynamic functionality)
++ you're perfectly comfortable working at a Linux console.
++ you have an opinion on tmux plugins that tends towards cynical selectivity
+
+
+** Containerized editor environments
+
+This can be difficult, since an application may have requirements for X11
+socket, etc. Satisfying these requirements can undermind exposure.
+
+Ideally, you'd be using Qubes or Whonix, actually. But, still, you need to have
+intermediate skill in several domains before you can set it up -- likely
+exhausting. You don't want to predicate someone's success on being able to use
+these environments because you'd need to have:
+
++ at least some exposure with "rings 0,-1,-2"
++ configuration of hypervisor layers
++ much skill in networking/applications
++ some logging/visibility
++ certificate lifecycle management
+
+Someone with the potential to learn that /could/ be coached through three phases,
+each lasting 2 weeks intensive training, 16 weeks of on-the-job experience,
+potentially with 1-4 weeks of training where you expedite/hire/fire.
+
+Regardless, with hypervisor-based isolation, then the application-layer problems
+are just in their little box, maybe trying to get out if they can't determine
+that they're running in a VM. That's cute (why you want logging/visibility)
+because now you know.
+
+*** A Containerized Emacs
+
+Containerized Emacs environment:
+
+#+begin_src shell
+export initEl=$(mktemp -d)
+touch init.el $initEl # or source some basic packages
+# you need to share specific variables/files into the guix container
+# and understand when & where /gnu/store may persist files
+guix shell emacs -- emacs -nw --init-directory $initEl
+#+end_src
+
+** Problems with Editor Secrets Handling
+
+For security, I'd happier with it than VS Code, though the secrets storage for
+MacOS and Windows is maybe bit better -- but I'll bet that:
+
++ /not only do you not know your passwords & secrets tokens are protected by
+  OS/Keychain/
++ but that you also don't care
++ and that, _furthermore_, you'd consciously get pissed at anyone at work who
+  started directing people's attention towards =$HOME=, editor and dev-local
+  tooling problems.
+
+I know this bc it's implied by the level of usage for specific tooling.
+
++ I've never used the =gh= CLI
++ I've basically never used any CLI tool with cookie/token auth that gets stored
+  in =$HOME= or =$XDG_*=.
++ I had a big problem with Ansible because it's a minor PITA to get it to source
+  it's =ansible-vault= secret from another source (where it's possible to use the
+  OS Keychain)
+
+Why does Ansible mandate vault?
+
++ Team cooperation: the team manages and distributes secrets
++ AWX/Tower compatibility (multiple environments, similar YAML schema)
++ Vendor lock-in via friction when integrating other tools.
++ And (my favorite) -- not everyone you work with is intelligent enough to
+  handle adhoc integration. =ansible vault= is a tool for newer & less experienced
+  devs where the Dev UI/UX makes it /somewhat more difficult/ to make mistakes and
+  (critically) where you can quickly hire/train less experienced labor.
+
+So no, absolutely no one cares.
+
+Maybe Red Hat and IBM do ... but then again, they set up the YAML Completion to
+use Watson, which is hilarious.
+
+* GUI Apps
+
+It's for similar rationale (to editor/tool selection by network engineers) among
+other reasons that the IT industry uses so many applications with service
+dependencies instead of =El1t3 h4x0r= tools, but this has just as many problems as
+maybe it prevents. You get dashboards/alerts, but the expanded range of
+interdependencies between services can cause problems. It certainly doesn't
+solve/prevent problems if you're team doesn't know these tools at a low level.
+They do isolate the data (& interactions with data) and they can log your teams'
+interactions with systems/data, but mostly in the language of abstractions that
+the system speaks.
+
+
+#+begin_quote
+Most applications have a limited number of root models in their database schema
+
+e.g. your ticketing system models things in terms of tickets and connections to
+tickets. NMap has the "Host" right under "Scan". This is fairly ordinary and
+difficult to design around. The root of the models' UML/Schema will typically
+correspond to:
+
++ The most frequent tables referred to by a count of foreign keys in the
+  database
++ The first requests submitted by a script that needs multiple API calls
+
+These are the objects of primary interest in the problem domain the
+product/service solves from the database schema, this ripples outward into the
+Webapp & API routes and onward into consuming applications/scripts. When the
+application itself logs information, the highest levels with the least
+information will be the most strongly networked nodes in the database schema.
+#+end_quote
+
+
+How stovepiped the services/tools are will influence how stovepiped your
+IT administration's solutions & internal products will, which then influences
+the sets of workflows you may use when solving particular problems.
+
++ There are generalist tools, which interface with many other tools or many
+  types of information sources
++ There are specialist tools, which solve one problem very well, but can be hard
+  to glue together.
++ These tools need to interface with networks/platforms/deployments.
+
+Using the terminology of the "Five Senses" discussion from Plato's Republic,
+there are many ways to become aware which each have qualities/idiosyncracies
+downstream from their phenomenology
+
++ you can look for, see problems
+  - your head/eyes have to be oriented so what's important is visible
++ things can be seen (intransitive)
+  - you need the object to be visible
++ you can hear (or be listening for; intransitive)
+  - you can't hear everything at once
+  - experiencing sound implicitly depends on time
+  - reasoning about sound requires memory, is "CPU intensive" bc "fourier
+    transform".
++ things can be listened for
+  - they need to be loud enough, you need to be in the same room,
++ things can falsely sound like something else,
+  - the curse of dimensionality makes it easier to successfully mimic sounds
+    than to mimic the appearance of an object subject to further inspection.
++ If you're smart, then you (or you dog) can likely smell a problem.
+  - information has a "scent" which is highly characteristic (hard to fake) but
+    not highly scrutable in, with vision, that you can look more closely at a
+    camoflaged animal and use the same visual sense to clarify. Here, you'd need
+    to use another sense.
+
+Here, the metaphor is that you "look/search through logs" but "hear
+notifications/alerts". Your manager "smells a bad deal from their sales rep then
+susses it out". As an average foot soldier, you're more likely to use the
+metaphorical "visual sense" for problem solving because it offers a direct,
+low-level representation of the problem/situation ... but where experiencing
+that low-level representation saturates your attention. low-level managers need
+a bigger picture and more event-driven means of "listening for" what needs to be
+acted on.
+
+#+begin_quote
+hmmm not quite sure how to complete what i'm describing here, so that it fully
+connects the phenomology to how you may think about structuring (and balancing)
+event log notificaitons
+
+The fourier transform is also relevant in statistics, where it
+describes (in more abstract terms) how the measure of a probability function
+relates to its domain. the connection here is between "hearing sounds" and
+"hearing event alerts/notifications" as types of events with frequency (thus
+probability)
+#+end_quote
+
+
+**** The Critical Point (no punn, i swear)
+
+When data changes, when you move platforms, when you acquire products/data --
+this changes the effectiveness of your tooling for visibility/notifications.
+
+The pun: a critical point is an equilibrium point where matter repeatedly cycles
+through phases ... the "situation" here is one where data is constantly changing
+forms and as undefinable/nonlocatable, then makes the design of processes to
+handle it a bit pointless to concretize.
+
+Anyways, the core domain models of your application can either be neatly
+collected/indexed in a limited set one places or not. Whether it can is not
+necessarily a question of scale.
+
+How you may automate processes, process event logs, set notifications, loop in
+extra hands from other departments, report quantifiable success to managers, etc
+... this all depends on:
+
+- collecting data: /is it countable?/ are the sources even countable?
+- extracting useful bits: /is it a known type/ or anomalous?
+- reporting: there's assumed consensus on meaning/syntax/semantics between you
+  and whoever receives your reports
+
+Which itself depends on the countability of connections between data sources
+(Facebook limits you to 5,000 friends because it's an n^2 problem)
+
+
+
+
+*** Cloud Domain Model
+
+At this point, the domain model of cloud compute has affected how we all think
+about these problems. It's not that different from how people typically thought
+about Devops or "Netops" problems, but the cloud has simplified so many things
+that some of the simple problems can be more difficult:
+
++ certificate lifecycle management
++ DNS design
++ IP Addressing
+
+Most of the time, you can just instantly re-try to create network objects (using
+terraform or whatever) or at least the migration paths are obvious & less
+costly. e.g. CIDR for Virtual Network vs "Woops those 10.0.0.0/18 network
+addresses are in every router/firewall and I kinda want hybrid cloud where each
+site can share IP Space. that don't need to care about how '10.' address space
+gets used." Stupid maybe, but also expensive.
+
+The problem is not the difficulty, but the minimal level of exposure to
+bare-metal computing problems.

@@ -16,6 +16,7 @@
 * Docs
 
 ** Interfaces
+
 + [[https://developers.redhat.com/blog/2018/10/22/introduction-to-linux-interfaces-for-virtual-networking][Red Hat: Intro to Linux Interfaces for Virtual Networking]] great overview on
   the lower-level differences between interface types.
 
@@ -38,8 +39,6 @@ there's a good chance nmstate on other distributions can manage it.
 + [[https://docs.rs/nmstate/latest/nmstate/index.html][NMState Rust Docs]]
 
 Mixing VyOS configuration with other configuration automation is a bad idea.
-
-
 ** VRF
 
 I'm missing a piece here. This may require =QinQ= or tunnels (from default VRF to
@@ -49,7 +48,66 @@ the bridge appears as a layer2 subnet on multiple devices.
 + [[https://docs.vyos.io/en/latest/configuration/interfaces/virtual-ethernet.html#example][Example of inter-VRF routing with veth]]
 + VRF and VRF+NAT examples
 
-* Babel
+* Templating Ideas
+
++ A good method for templating is here in [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/template.py#L28-L39][./python/vyos/template.py]], but needs
+  to run within a container or image build.
++ If your naming is consistent across abstractions, then you can select values
+  from a running configuration using [[https://github.com/vyos-contrib/pyvyos/blob/main/pyvyos/device.py#L274-L284][pyvyos]]
+  - POST to [[https://docs.vyos.io/en/latest/automation/vyos-api.html#retrieve][/retrieve]]
+    - use =retrieve_return_values([*path])= to select values for a multi-valued
+    - use [[https://github.com/vyos-contrib/pyvyos/blob/main/pyvyos/device.py#L197-L219][retrieve_config_path([path, ...])]] to select the descendents of =path=
+  - [[https://docs.vyos.io/en/latest/automation/vyos-api.html#generate][/generate]] data via =generate([*path])=
+  - pyvyos doesn't include =/exists=
+
+** Generally
+
+Determine a dependency graph for configurations & from that a minimal Vyos boot
+config (to set initial state or build ISO)
+
++ Query the VyOS API between each step (bind API to +loopback+ some interface
+  and use ssh tunnel)
+  - or =ssh -t vyostest vbash -ilc '"show config json | strip-private"'= though
+    dumping the config this sends TMI and sends too much to your local
+    terminal/fs/tmp etc. =jq= should be used on-host (not piped from =ssh=)
+    - apparently you need to source [[https://github.com/vyos/vyatta-cfg/blob/9217434e24d362da4165eafc95a41730e4c2e161/functions/wrapper/script-template#L21][/opt/vyatta/etc/functions/script-template]]
+      for remote shells (see [[https://docs.vyos.io/en/latest/automation/command-scripting.html#run-commands-remotely][docs]])
+    - and run with =ssh 192.0.2.1 'vbash -s' <(echo "or EOF")=
+  - there are other available vyos commands (query config, etc), but once you
+    pull the wrong info, it's too late ... (don't babel this at home)
++ From the dep. graph, determine the load order for features
+  - Raw interfaces + vlans + ntp (& maybe default/route)
+  - dns + dhcp + interfaces (possibly per-interface)
+    - perhaps with interfaces disabled (still need firewall)
+
+** Workflow (for automation)
+
+*** Docker
++ [[https://docs.vyos.io/en/latest/installation/virtual/docker.html#deploy-container-from-iso][Running in Docker Container]] to unsquash the ISO and repack into an image
+  (requires =docker network create --ipv6 ...=)
++ =#+begin_src sh :session *vyos-build*= to start a docker container to run
+  commands with vyos python scripts. This could also be
+
+#+begin_example org
+Start container & =su=
+
+#+begin_src shell :session *vyos-config*
+docker run -d --rm --name vyos --privileged \
+  -v /lib/modules:/lib/modules \
+  -v my/scripts:/scripts \
+  --net ipv6VyosConfig
+docker exec -ti su - vyos
+#+end_src
+
+Use =:session *vyos-config*= to run commands, prefixed with =docker exec=
+if you can't =docker attach=
+
+#+begin_src shell :session *vyos-config*
+docker exec /scripts/configtreeMerge.py 'some data'
+#+end_src
+#+end_example
+
+** Babel
 
 Use this to avoid relative paths. =-tangle-dir= can be a Tramp url
 
@@ -63,17 +121,12 @@ Use this to avoid relative paths. =-tangle-dir= can be a Tramp url
   (expand-file-name f (or (bound-and-true-p -tangle-dir-) ".")))
 #+end_src
 
-Ideas
-
 + =:tangle /scp:vyostest:/tmp/vyostest1.conf= to load config onto an otherwise
   disconnected test instance to validate config, generate set commands &
   rollback.
   - for an instance with =config.boot.defaults=, SSH and an interface (or VM +
     serial), then loading a small config generates only the =set= commands needed
-+ =#+begin_src sh :session *vyos-build*= to start a docker container to run
-  commands with vyos python scripts
 + screen/tmux profile to open connections & tcpdump or ping-back
-
 ** Tasks
 
 ** TODO Re-IP SVC interface/vlan (or share interface with LAB)
@@ -203,8 +256,8 @@ services {
 <<vySsh>>
 <<vyNtp>>
   dns {
-<<vyDnsFwd>>
-<<vyDnsRecords>>
+  <<vyDnsFwd>>
+  <<vyDnsRecords>>
   }
   dhcp-server {
 <<vyDhcpLan>>
@@ -326,9 +379,14 @@ function. A tunnel/vpn may help. (I needed to check)
 set service ssh vrf $vrfName
 #+end_src
 
-** Services
+** Vyos Core Services
 
-*** NTP
+To bootstrap layers 2, 3, and 4, just run core services on one/both routers.
+Later, =CNAME= records and small config changes can point to external services
+
+*** Layer 3
+
+**** NTP
 
 NTP =vyNtp=
 
@@ -341,7 +399,7 @@ NTP =vyNtp=
   }
 #+end_src
 
-*** SSH
+**** SSH
 
 SSH =vySsh=
 
@@ -365,7 +423,7 @@ SSH =vySsh=
   }
 #+end_src
 
-*** DHCP
+**** DHCP
 
 LAN DHCP =vyDhcpLan=
 
@@ -430,7 +488,7 @@ For now:
 + MGMT :: No DHCP
 + ADMIN :: No DHCP
 
-*** DNS
+**** DNS
 
 DNS Forwarding =vyDnsFwd=
 
@@ -480,6 +538,8 @@ DNS Records =vyDnsRecords=
       a  mgmt.vy1.via { address 10.123.192.11 }
       a admin.vy1.via { address 10.123.200.11 }
 
+      a  util.vy1.via { address 10.123.180.11 }
+
       # vy1 mgmt veth
       a  mgmtif.vy1.via { address 10.123.224.1  }
       a  mgmtgw.vy1.via { address 10.123.224.11 }
@@ -492,6 +552,7 @@ DNS Records =vyDnsRecords=
       a   lab.vy2.via { address 10.123.168.12 }
       a  mgmt.vy2.via { address 10.123.192.12 }
       a admin.vy2.via { address 10.123.200.12 }
+      a  util.vy2.via { address 10.123.180.12 }
 
       # vy2 mgmt veth
       a  mgmtif.vy2.via { address 10.123.224.2  }
@@ -532,9 +593,9 @@ DNS Records =vyDnsRecords=
 + admin1,admin2 :: doesn't listen on mgmt, internal routing via VRF only
 + mgmt1,mgmt2 :: fdsa...
 
-*** tangle/noweb
+**** tangle/noweb
 
-hmmm emacslisp or shell
++hmmm emacslisp or shell+ docker, python/http/jq and remote shell
 
 #+begin_src shell :vars domain=eg.tld name=home type=cname args='()
 d=$domain
@@ -544,7 +605,6 @@ keywords=
 set service dns forwarding authoritative-domain \
     $d records $t $n target "${a[@]}"
 #+end_src
-
 
 * Addressing
 
@@ -559,6 +619,9 @@ More than half these addresses can be generated from the others
     interfaces on vlan (=.21= and =.22=, resp.)
     - likewise for =mgmt= servers' links to =adminN= interfaces on =admin= subnet.
 
+
+** via.home.eg.tld
+
 #+name: vyosViaAddr
 |---------+------------------+---------------+------+-----+-------|
 | net     | name             |           ip4 | cidr | ip6 | cidr6 |
@@ -568,6 +631,7 @@ More than half these addresses can be generated from the others
 | dev     | dev.vy1.via      | 10.123.148.11 |   24 |     |       |
 | svc     | svc.vy1.via      | 10.123.164.11 |   24 |     |       |
 | lab     | lab.vy1.via      | 10.123.168.11 |   24 |     |       |
+| util    | util.vy1.via     | 10.123.180.11 |   24 |     |       |
 | mgmt    | mgmt.vy1.via     | 10.123.192.11 |   24 |     |       |
 | admin   | admin.vy1.via    | 10.123.200.11 |   24 |     |       |
 |---------+------------------+---------------+------+-----+-------|
@@ -579,6 +643,7 @@ More than half these addresses can be generated from the others
 | dev     | dev.vy2.via      | 10.123.148.12 |   24 |     |       |
 | svc     | svc.vy2.via      | 10.123.164.12 |   24 |     |       |
 | lab     | lab.vy2.via      | 10.123.168.12 |   24 |     |       |
+| util    | util.vy2.via     | 10.123.180.12 |   24 |     |       |
 | mgmt    | mgmt.vy2.via     | 10.123.192.12 |   24 |     |       |
 | admin   | admin.vy2.via    | 10.123.200.12 |   24 |     |       |
 |---------+------------------+---------------+------+-----+-------|
@@ -605,6 +670,12 @@ More than half these addresses can be generated from the others
 | admin   | admin.admin1.via | 10.123.200.21 |   24 |     |       |
 | admin   | admin.admin2.via | 10.123.200.22 |   24 |     |       |
 |---------+------------------+---------------+------+-----+-------|
+
+*** util.via.home.eg.tld
+
+Hosting network-related utilities
+
+*** Notes
 
 These are the networking layer DNS addresses only. Any service endpoints would
 have their own A/AAAA records (and probably CNAMEs for SOA).
@@ -649,7 +720,6 @@ have their own A/AAAA records (and probably CNAMEs for SOA).
 A little too intense maybe. The idea was to select from this table (or jq/yq),
 then render with =<< i4(host=aaa.bbb.tl) >>= and similar quick templating (which
 is still fairly rigid.
-
 * Background
 
 + I migrated from PFSense to OPNSense for better automation. There wasn't a real

@@ -1,0 +1,266 @@
+:PROPERTIES:
+:ID:       c9ecf21a-2c50-4a78-8b12-e616fe9dedff
+:END:
+#+TITLE: VyOS: Extract OPNSense Default Firewall Rules Logic
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+* Docs
+
+The core filter rules aren't in the firewall's XML, but they are found in
+[[https://github.com/opnsense/core/blob/265c86ad567fd40e3d347b8d5a2c9a8bbd8cf3ce/src/etc/inc/filter.lib.inc#L203][opnsense/core at ./src/etc/inc/filter.lib.inc]].
+
+** Source Provides the Best Docs
+
+I can always find so much information by searching local copies of repositories
+for packages/builds/sources or for linux/bsd distributions. Here, I grep'd for
+=IPv6 RFC4890 requirements= the description on the generated floating firewall
+rules ...
+
+Typical AIKALWJAR ... (all i know and love was just an RFC) which by the way,
+has its own CLI tools (=ietf= and =rfc=) that [[https://github.com/paulehoffman/ietf-cli][sync a local mirror]] of all the current
+RFCs. To read these docs, there's also [[https://sha256.net/emacs-ietf.html][rfc-mode]], an emacs reader mode. Quite a
+bit of confusion/clutter in your repetoire of abstractions/patterns/concepts can
+be cleared up by reading the right RFC.
+
+... Like RFC1918, which expresses quite a bit of what I'm thinking for larger
+route/switch automation (it expresses ideas for large deployments of
+route/switch benchmarking on the public internet). It covers a ton of ideas
+about problems encountered when distributing custom configurations for isolated
+address spaces to sample/quantify the affects of design pattners. I don't have
+"private BGP exchange or virtual private BGP exchange" problems, but what I'd
+like to do is a version of similar patterns, limited to private address space.
+
+* Overview
+
+Vyos likely provides a lot of similar functionality to the auto-generated
+"floating rules" of OPNSense, which are reconsituted (I believe) whenever the
+firewall is restarted/reloaded. There are many jinja =*.j2= templates generating
+=nftables= in a manner similar to the =php= code generating OPNSense fw rules.
+
+** Org Babel
+
+Anyways, here I'm going to generate templates that reflect the following. I'll
+generate a mix of the CLI and DSL:
+
++ The logic of the OPNSense floating firewall rules, so that they can be used to
+  modify state of a running VyOS firewall.
++ Patterns for Network-essential services; NTP, DNS, DNSsec, DHCP, DHCPv6
+
+I'm using some of =org-babel='s features, which means this workflow depends on
+environment-specific features, which I don't have time to containerize/etc. If
+using for network automation or devops, you should ensure you understand what's
+included in:
+
++ [[id:8b268da3-60ae-417a-8cf4-557d164a8ed8][Emacs: Intermediate Usage of Org Babel Features]]
++ [[id:b082f37e-5426-4d6f-9d65-6f6b3a808776][Networking: Editors for network automation]]...
+
+The links don't work in github (and much of the Org content like headers aren't
+exported into HTML, so that's confusing)
+
+** VyOS DSL
+
+The VyOS DSL _should not_ support variables. All values are strings and, in a
+sense, the interface names like =eth0= (and naming conventions =eth0.123= for VLANs)
+are /like/ variables ... but they're not. This makes it easy to anticipate
+evaluation for generated jinja templates or other templates for regexp-replace.
+
+So, I will likely generate jinja templates that emit VyOS conf.
+
++ These will get bundled into a "build" with a build script that's executed
+  entirely on a the VyOS host itself (on built with at least jinja, jq, yq and
+  xq).
++ The host would have some default config in the image, but a system of task
+  management (like =make= or =rake=) may be needed to coordinate what loads and what
+  doesn't ... probably something to do later.
++ This could be done with Ansible, but that's sadly heavy with too much
+  boilerplate. Ansible does provide hooks for asserting whether its tasks/plays
+  run, but the CLI is cumbersome when usage needs specificity.
+
+* Auto Filter Rules
+
+
+***** TODO More Auto Filter Rules
+
++ Lockout Rules: these use the =<sshlockout>= alias=
++ Virus Prot: these use the =<virusprot>= alias=
++ Bogon Rules: these use the =<sshlockout>= alias=
+  - only on interfaces where bogons are set to block
+  - block+log: from <bogons> -in-> $interface
+  - block+log: from <bogonsv6> -in-> $interface
++ block private networks inbound to firewall
+
+
+** Default state tracking
+
+#+name: opnAllowTrackedSessions
+#+begin_example yaml
+filter:
+  rule:
+    - type: block
+      interface: all
+      ipprotocol: inet46
+      # statetype: default
+      descr: Default deny / state violation rule
+      # add state violation logic
+      direction: in
+      floating: yes
+      quick: false
+      protocol: ipv6-icmp6
+      source:
+        any: true
+      destination:
+        any: true
+#+end_example
+
+** RFC4890: ipv6-imcp6
+
+#+name: opnAllowRFC4890
+#+begin_example yaml
+    # ipv6-icmp6[1,2,135,136]: (*) -in/out-> (*)
+    - type: pass
+      interface: all
+      ipprotocol: inet6
+      statetype: keep
+      descr: 'RFC4890: ipv6-icmp6[1,2,135,136]: (*) -in/out-> (*)'
+      # direction: in/out
+      floating: yes
+      quick: true
+      protocol: ipv6-icmp6
+      icmp6-type: 1,2,135,136
+      source:
+        any: true
+      destination:
+        any: true
+    # ipv6-icmp6[128,129,133,134,135,136] -> out
+    # (self) -out-> (all-nodes,link-local)
+    - type: pass
+      interface: all
+      ipprotocol: inet6
+      statetype: keep
+      descr: 'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (self) -out-> (all-nodes,link-local)'
+      direction: out
+      floating: yes
+      quick: true
+      protocol: ipv6-icmp6
+      icmp6-type: 128,129,133,134,135,136
+      source:
+        network: (self)
+      destination:
+        network: fe80::/10,ff02::/16
+    # ipv6-icmp6[128,129,133,134,135,136]
+    # (all-nodes) -in-> (all-nodes,link-local)
+    - type: pass
+      interface: all
+      ipprotocol: inet6
+      statetype: keep
+      descr: 'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (all-nodes) -in-> (all-nodes,link-local)'
+      direction: in
+      floating: yes
+      quick: true
+      protocol: ipv6-icmp6
+      icmp6-type: 128,129,133,134,135,136
+      source:
+        network: fe80::/10
+      destination:
+        network: fe80::/10,ff02::/16
+    # ipv6-icmp6[128,129,133,134,135,136]
+    # (link-local) -in-> (all-nodes)
+    - type: pass
+      interface: all
+      ipprotocol: inet6
+      statetype: keep
+      descr: 'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (link-local) -in-> (all-nodes)'
+      direction: in
+      floating: yes
+      quick: true
+      protocol: ipv6-icmp6
+      icmp6-type: 128,129,133,134,135,136
+      source:
+        network: fe02::/16
+      destination:
+        network: fe80::/10
+    # ipv6-icmp6[128,129,133,134,135,136]
+    # (::) -in-> (link-local)
+    - type: pass
+      interface: all
+      ipprotocol: inet6
+      statetype: keep
+      direction: in
+      descr: 'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (::) -in-> (link-local)'
+      floating: yes
+      quick: true
+      protocol: ipv6-icmp6
+      icmp6-type: 128,129,133,134,135,136
+      source:
+        network: '::'
+      destination:
+        network: fe02::/16
+#+end_example
+
+** Block all targeting port 0
+
+#+begin_example yaml
+    - type: block
+      interface: all
+      ipprotocol: inet46
+      descr: 'Block from port 0'
+      # direction: in/out
+      floating: yes
+      quick: true
+      protocol: tcp/udp
+      source:
+        any: true
+        port: 0
+      destination:
+        any: true
+    - type: block
+      interface: all
+      ipprotocol: inet46
+      descr: 'Block to port 0'
+      # direction: in/out
+      floating: yes
+      quick: true
+      protocol: tcp/udp
+      source:
+        any: true
+      destination:
+        any: true
+        port: 0
+#+end_example
+
+** Block private networks
+
+#+begin_example yaml
+    - type: block
+      interface: '$interface'
+      ipprotocol: inet
+      descr: 'Block private ipv4 inbound on $interface'
+      # direction: in/out
+      floating: yes
+      quick: true
+      source:
+        network: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,127.0.0.0/8,100.64.0.0/10,169.254.0.0/16"
+      destination:
+        any: true
+    - type: block
+      interface: '$interface'
+      ipprotocol: inet6
+      descr: 'Block private ipv6 inbound on $interface'
+      # direction: in/out
+      floating: yes
+      quick: true
+      source:
+        network: "fd00::/8,fe80::/10,::/128"
+      destination:
+        any: true
+#+end_example
+
+** Interface Configuration

@@ -1,0 +1,77 @@
+:PROPERTIES:
+:ID:       8211ee55-ff54-4e7e-8907-d273f6baafc5
+:END:
+#+TITLE: Vyos: Configure PXE, Netboot and a Utilities Image
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+* Docs
+
+* Resources
+
+* Vyos
+
+** Layer 2
+
+** Layer 3
+
+** Layer 4
+
+* Guix
+
+#+begin_src scheme :tangle ~/.config/guix/systems/pxe-bootstrap.scm
+(use-modules (ellipsis system usb-gpg-tools)
+             (srfi srfi-1)
+             (gnu)
+             (gnu system)
+             ;; (gnu system nss)
+             ;; (gnu system pam)
+
+(nongnu packages linux)
+(nongnu system linux-initrd)
+
+  #:export (usb-gpg-tools
+            usb-gpg-tools-amd
+            pxe-tools))
+
+(service static-networking-service-type
+         (list (static-networking
+                (addresses
+                 (list (network-address
+                        (device "eno1")
+                        (value "10.0.2.15/24"))))
+                (routes
+                 (list (network-route
+                        (destination "default")
+                        (gateway "10.0.2.2"))))
+                (name-servers '("10.0.2.3")))))
+
+(define pxe-boot-tools
+  (operating-system
+    (inherit pxe-boot-tools-amd)
+    (host-name "pxeboottools-amd")
+    (timezone "America/New_York")
+    (locale "en_US.UTF-8")
+
+    ;; NONFREE
+    (kernel linux)
+    (firmware (cons* ;; linux-firmware
+               amd-microcode
+               amdgpu-firmware
+               realtek-firmware
+               %base-firmware))
+
+    (kernel-arguments '("modprobe.blacklist=radeon"
+                        ;; "quiet" ;; .....
+                        ;; "net.iframes=0"
+                        ))))
+#+end_src
+** Evaluate
+
++ OpenVSwitch supports: NetFlow, sFlow, IPFIX, RSPAN, CLI, LACP, 802.1ag

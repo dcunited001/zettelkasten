@@ -1,0 +1,90 @@
+:PROPERTIES:
+:ID:       73ca345d-7307-4912-b0ce-b07527d273fe
+:END:
+#+TITLE: Networking: Conditional Dependencies and Services
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:a0ef7bfe-1587-4fec-ac87-f7dda5dc0d27][Maths: Statistics]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Risk Model
+
+** For Red Team, Blue Team
+
+With containers/k8s, then application runtime environments are regenerated --
+persistence becomes difficult. On the other hand, the network layer may
+potentially expose the network itself to problems -- not only does this make
+persistence a bit tricker to clean up, but it also may cause connectivity
+disruptions. However, "There is no known network" and this is usually more
+difficult for an adversary. Still, service interruptions could be a PITA.
+
+** Networked Risk
+
+"Networked Risk" is bad -- more or less: risk that is connected to other
+risk-causing things. Or, more clearly, when some risks are non-gaussian
+(networked and/or determined by power laws), your insurance should probably go
+up.
+
+The *Network Layer* is _more than just "Layer"_. The applications layer has mostly
+isolated regions of exposure
+
+Imagine a "Towers of Hanoi" with many small stepped-pyramids on top of some very
+large somehow-overlapping pyramids.
+
+The small pyramids are the applications, which have their own dependencies (each
+step in the pyramid), but are mainly stood-up and torn-down as needed. There may
+be connections between them, like Envoy or other TLS tunnels (which breaks the
+Towers of Hanoi image), but these are at the application-layer themselves.
+
+The network layer corresponds to the lower-level pyramid steps, where it's
+data/config is shared by (or assumed as state by) the higher-level dependencies.
+The applications can't be build without the network's _many_ conditional
+dependencies being perpetually satisfied. In overly general terms, there are
+both internal and external "regions" to the network layer (at levels 4, 3 and
+2). So in your own private address space, if the network goes down, some
+external applications may malfunction, but it's not undermining their
+network-level foundations.
+
+The primary idea here: since the private/public network layers are /foundational/
+then they form conditional dependencies which are assumed (necessary) or
+implicit (SLA so high, you didn't think about it). If these conditional
+dependencies are not met, large regions of higher-level stacks go down.
+
+Think about the last time you had shitty wifi or a badly terminated network
+cable in a switch. Maybe it was only down 1% or 5% of the time, but it's a pain
+in the ass. Why? Your LAN connection conditionally predicats the entirety of
+everything you're doing only. You want it to be like running water (or to have 5
+nines of SLA time). If a networked conditional dependency is not maintained
+(expensive) or controlled (may be expensive ... e.g. dual WAN connection,
+policy-based routing) -- then you don't have network-dependent applications.
+Further, you constantly need to respond to it and it's an external dependency,
+so don't necessarily have direct control/visibility of it.  You just want it to
+work and kinda everything crashes when it doesn't.
+
+So, these massive service liabilities carry with them trust. The networking
+industry values trust over kinda everything else. Sometimes, this trust is
+dumb/blind -- based on what is assumed/known about personal history of business
+relationships, instead of what's new/shiny. But that's really all that business
+leaders have when making decisions that affect the network leader. If they want
+to keep angry phone calls to a minimum, they go with trust and familiarity.
+
+As complicated as containerization of applications is, you control most of the
+container's configuration exposure. e.g.
+
+- the environment variables and configuration files that can be customized by
+  the end users
+- the state of orchestration frameworks like etcd/k8s or fluxcd
+
+Some of those services/factors are networked, yes, but that is the exception and
+not the norm. For the network layer, the norm is that everything is networked
+unless it's an exception. In practice, this means big problems.
+
+And actually, the lower pyramids in that "towers of hanoi" should be visualized
+upside down. The foundations of higher-levels of the OSI model (5+) is built
+with lower levels (3-4) which are themselves constructed with many layer (1,2,3)
+networks that together form a "fabric" or "common foundation". The layer 2/3
+connections (esp. WAN) actually resemble the layer 7 "service mesh" abstraction
+(envoy TLS).
