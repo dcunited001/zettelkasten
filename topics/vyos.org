@@ -33,6 +33,7 @@ VyOS has =nftables= and a decent DSL with fairly good ansible support.
 ** How to
 + [[https://docs.vyos.io/en/stable/configexamples/index.html][Configuration Blueprints]] and [[https://docs.vyos.io/en/stable/configexamples/index.html#configuration-blueprints-autotest][Autotest Blueprints]]
 + [[https://docs.vyos.io/en/sagitta/contributing/build-vyos.html#][Build a VyOS ISO]]
++ [[https://docs.vyos.io/en/latest/installation/install.html#pxe-boot][Build PXE Image]]
 
 ** DSL
 
@@ -94,6 +95,54 @@ metaprogramming
   limited.
 + [[https://docs.vyos.io/en/stable/automation/terraform/index.html][Terraform]] can provision a VyOS image (and Ansible configures).
 + [[https://docs.vyos.io/en/stable/automation/cloud-init.html][Cloud-init]] is also an option
+
+*** Data Flow
+
+Vyos likely provides a lot of similar functionality to the auto-generated
+"floating rules" of OPNSense, which are reconsituted (I believe) whenever the
+firewall is restarted/reloaded.
+
+The VyOS source code implies these processes. It's API and CLI enables some
+others.
+
+#+begin_src dot :file img/vyos/fw-workflow.svg
+digraph g {
+    //rank=RT;
+    user [label="User\n(Shell/UI)"];
+    localData [label="Local\nData"];
+    configMgmtData [label="Config MGMT Data\n(Network Services)"];
+    nautobot [label="Nautobot\n(Inventory\nSource of Truth)"]
+    networkAutomation [label="Network\nAutomation\n(services/workflows)"]
+    subgraph cluster_VyosRouter {
+        vyosCLI [label="VyOS CLI"];
+        vyosFS [label="VyOS\nfile://\nscp"];
+        vyosDSL [label="VyOS DSL"];
+        vyconfd [label="vyconfd\n(isolated daemon\nvalidates & applies)"];
+        vyosData [label="VyOS Data\n(files, state,...)"];
+        fwTemplates [label="nftables\nTemplates"];
+        fwState [label="nftables\nState"];
+        fwApiData [label="VyOS\nAPI Data"];
+    }
+    user -> vyosCLI [label="Render\nCLI\nTemplates"];
+    user -> vyosFS  [label="Render\nDSL\nFiles"];
+    vyosFS -> vyosDSL [labels="Files\nto VyOS"]
+    vyosCLI -> vyosDSL;
+    vyosDSL -> vyconfd [label="Validation\n(interpret intent\ncheck state)"];
+    vyconfd -> vyosData;
+    vyconfd -> fwTemplates -> fwState;
+    vyosData -> fwApiData;
+    configMgmtData -> networkAutomation [label="Realtime\nNetwork\nState"]
+    {configMgmtData,localData} -> networkAutomation [label="Merge\nInto\nParams"]
+    {fwApiData} -> networkAutomation [label="Realtime\nDevice\nState"]
+    networkAutomation -> vyosDSL [label="Genrates\nVyOS DSL"]
+    networkAutomation -> vyosCLI [label="Genrates\nVyOS CLI"]
+    nautobot -> configMgmtData;
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/vyos/fw-workflow.svg]]
+
 
 ** From A Live ISO
 
