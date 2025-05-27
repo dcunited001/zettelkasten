@@ -136,6 +136,69 @@ but not all of the problems are technical. You kinda gotta know enough about
 what's possible (and how it's possible) in order to avoid wandering aimlessly
 through various patterns of usage (then templatizing the wrong patterns...)
 
+** Specific Issues
+
+
+*** Repeated evaluation of shell blocks using =:session= when =:cache yes=
+
+Make a tmp dir
+
+#+name: vyosTmp
+#+begin_src shell :results output verbatim :session *vyos-ssh* :dir /home/vyos
+export t=$(mktemp -d) && echo $t
+#+end_src
+
+#+RESULTS: vyosTmp
+: /tmp/tmp.cl1tV017J9
+
+#+name: vyosTmpTramp
+#+begin_src emacs-lisp :results output value :var tmp=vyosTmp
+(format "/ssh:vyostest:%s" tmp)
+;; otherwise (org-babel-find-named-result "vyosTmp")
+#+end_src
+
+#+RESULTS: vyosTmpTramp
+: /ssh:vyostest:/tmp/tmp.lnT15rP4QN
+
+Tangle this via SSH to =vyosTest=
+
+#+name: vyosTest
+#+begin_src shell :tangle vyosTmpTramp
+A jinja block to tangle:
+#+end_src
+
+**** Solution
+
+Use =(org-babel-find-named-result "vyosTmp")= ... which returns an integer. It
+could be shortened with an ad-hoc defun
+
+*** =<< noweb >>= doesn't work well unless tangling files
+
+Also, =<< callBlock() >>= doesn't work unless. I tried several approaches here.
+It's difficult to use a =:session= to provide values to tangle to a tramp connection.
+
+Use only single quotes.
+
+#+name: vyosSshSetup
+#+begin_example jinja2
+set interfaces dummy dum0 address '{{ ssh.listen_address }}'
+set service ssh listen-address '{{ ssh.listen_address }}'
+#+end_example
+
+#+name: vyosGetConf
+#+begin_src shell :results output silent :session *vyos-ssh* :dir /home/vyos :var template=vyosSshSetup
+echo $template | vyos-commands-to-config
+#+end_src
+
+Tangle this via SSH to =vyosTest=
+
+
+
+I forgot.
+
++ Or use
+
+
 * Handy Techniques
 
 + mapping keys for popups and window placement.

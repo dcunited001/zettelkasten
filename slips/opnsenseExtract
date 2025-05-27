@@ -1,0 +1,79 @@
+#!/bin/bash
+# [[file:20250518181418-opnsense_extract_config_data_from_xml_with_jq_yq_xq.org::*Config][Config:1]]
+# export opnxml=$theXMLdotGPG
+today=$(date +%Y%m%d)
+[[ ! -d "$today" ]] && mkdir -p $today
+
+# sysctl
+gpg -d $opnxml | xq -y '
+.opnsense.sysctl.item
+| map("\(.tunable)=\(.value)")
+| {sysctl: .}' > "$today/sysctl.yml"
+# Config:1 ends here
+
+# [[file:20250518181418-opnsense_extract_config_data_from_xml_with_jq_yq_xq.org::*Services][Services:1]]
+# also, <dnsserver/> and <dns#gw/>
+
+# unbound dns
+columns="general,advanced"
+gpg -d $opnxml | xq -y '
+.opnsense.OPNsense.unboundplus
+| {'"$columns"'} | {unboundplus: .}' > "$today/unboundplus.yml"
+
+gpg -d $opnxml | xq -y '
+.opnsense.OPNsense.unboundplus.hosts.host
+| {hosts: .} | {unboundplus: .}' > "$today/unboundplus.hosts.yml"
+
+# ssh
+gpg -d $opnxml | xq -y '
+.opnsense.system | {ssh}' > "$today/ssh.yml"
+# Services:1 ends here
+
+# [[file:20250518181418-opnsense_extract_config_data_from_xml_with_jq_yq_xq.org::*Route/Switch][Route/Switch:1]]
+# gateways
+gpg -d $opnxml | xq -y '
+.opnsense | {gateways}' > "$today/gateways.yml"
+
+# vlans
+gpg -d $opnxml | xq -y '
+.opnsense.vlans.vlan | {vlans: .}' > "$today/vlans.yml"
+
+# interfaces
+gpg -d $opnxml | xq -y '
+.opnsense | {interfaces}' > "$today/interfaces.yml"
+# Route/Switch:1 ends here
+
+# [[file:20250518181418-opnsense_extract_config_data_from_xml_with_jq_yq_xq.org::*Firewall][Firewall:1]]
+# aliases
+columns="name,type,content,description"
+gpg -d $opnxml | xq -y '
+.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "network"))
+| map({'"$columns"'})
+| {network: .} | {aliases: .}' > "$today/aliases.network.yml"
+
+columns="name,type,content,description"
+gpg -d $opnxml | xq -y '.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "port"))
+| map({'"$columns"'})
+| {port: .} | {aliases: .}' > "$today/aliases.port.yml"
+
+columns="name,type,content,description"
+gpg -d $opnxml | xq -y '.opnsense.OPNsense.Firewall.Alias.aliases.alias
+| map(select(.type == "host"))
+| map({'"$columns"'})
+| {host: .} | {aliases: .}' > "$today/aliases.host.yml"
+# Firewall:1 ends here
+
+# [[file:20250518181418-opnsense_extract_config_data_from_xml_with_jq_yq_xq.org::*Plugins][Plugins:1]]
+gpg -d $opnxml | xq -y '.opnsense.OPNsense | {IDS}' > "$today/IDS.yml"
+# Plugins:1 ends here
+
+# [[file:20250518181418-opnsense_extract_config_data_from_xml_with_jq_yq_xq.org::*Plugins][Plugins:2]]
+gpg -d $opnxml | xq -y '.opnsense.OPNsense | {proxy}' > "$today/proxy.yml"
+# Plugins:2 ends here
+
+# [[file:20250518181418-opnsense_extract_config_data_from_xml_with_jq_yq_xq.org::*UI][UI:1]]
+gpg -d $opnxml | xq -y '.opnsense.OPNsense.Firewall.Category.categories.category
+| {categories: .}' > "$today/proxy.yml"
+# UI:1 ends here

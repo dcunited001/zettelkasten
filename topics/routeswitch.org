@@ -161,6 +161,70 @@ here is if you later add an IP to the second VLAN, you may not be thinking about
 the connectivity. Because it's routing and not ACL's then you may miss it in
 your firewall logs.
 
+*** IS-IS
+
+**** Comparison with OSPF
+
+From [[https://www.youtube.com/watch?v=x6zsbDm29us][IS-IS: An IGP For Large Scale Networks Quick Intro On VyOS]]
+
+Similarities
+
+|-----------------+--------------------------+--------------------------------------|
+| Design Features | Support                  | Use                                  |
+|-----------------+--------------------------+--------------------------------------|
+| IGP             | Classless Routing & VLSM | Djikstra SPF Alg.                    |
+| Link State      | Authorization            | Hello Packets                        |
+| Dynamic         | Unlimited Hop Count      | Designated Routers in Broadcast Nets |
+| Hierarchical    |                          |                                      |
+|-----------------+--------------------------+--------------------------------------|
+
+Differences
+
+|----------------+--------------------------------------------------------+---------------------------------------------------------------------|
+|                | IS-IS                                                  | OSPF                                                                |
+|----------------+--------------------------------------------------------+---------------------------------------------------------------------|
+| Operation Mode | L2 (link layer), runs using CLMS                       | L3 (over IP) via Protocol 89                                        |
+| Router Areas   | Router belongs to a single area                        | A Router interface belongs to an area                               |
+|----------------+--------------------------------------------------------+---------------------------------------------------------------------|
+| Network Types  | Broadcast (expander node in graph)                     | Broadcast                                                           |
+|                | Point-to-Point (linking)                               | Point-to-Point                                                      |
+|                |                                                        | NBMA                                                                |
+|                |                                                        | Point-to-Multipoint                                                 |
+|----------------+--------------------------------------------------------+---------------------------------------------------------------------|
+| Area Structure | Level 1: Intra-Area                                    | Backbone Area (tree-like)                                           |
+|                | Level 2: Inter-Area (non-tree)                         | Standard Area (non-backbone)                                        |
+|                | Level 1/2: Intra-Area & Inter-Area                     |                                                                     |
+|----------------+--------------------------------------------------------+---------------------------------------------------------------------|
+| Cost Calc      | Uses wide/narrow types                                 | Uses a simple/homogenous formula to calculate cost                  |
+|                | Different route types can't be calculated together     | from bandwidth: $\frac{B_{ref}}{B_{if}}$                            |
+|                | (In a network, it's non-linear and position-dependent) |                                                                     |
+|----------------+--------------------------------------------------------+---------------------------------------------------------------------|
+| Convergence    | Topology/routes are decoupled                          | Building topology requires L3 (flapping routes, network/link state) |
+|                | PRC algorithm triggers on change in area               | iSPF algorithm helps (triggered on changes)                         |
+|                | Faster convergence                                     | Fast convergence                                                    |
+|----------------+--------------------------------------------------------+---------------------------------------------------------------------|
+
+IDK, but educated guess:
+
++ OSPF isn't designed to deal with cycles in areas and req. specific
+  configuration to address this.
+  - Utltimately, OSPF is too concerned with stubbiness (idk about v3)
+  - Subject to interference by firewall logic
++ IS-IS glues together disparate areas of the network mostly goverened by other
+  internal routing protocols.
+  - Non-linear cost calculations make it difficult to anticipate effects of
+    several small successive changes to local network topology ("it worked for
+    awhile"). Over time, the cost-calculation issues would cause problems
+  - Interactions with domains of routing protocols can be dicey with
+    policy-based routing, connectivity issues or randomness
++ IS-IS would probably be useful in limited deployment or as temporary
+  "decoupling" during network/addressing migrations.
+  - It can function while L3 is unstable (internal processes coordinate state
+    that's communicated at L2) and at least try to push routes.
+  - Less susceptible to firewall logic
+  - It's perspective on the rest of the network may drift while it attempts to
+    act on the information it has.
+
 *** OSPFv3
 
 Want dynamic adjustable routes? For IPv6? To test multicast or other things?

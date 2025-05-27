@@ -1,0 +1,226 @@
+:PROPERTIES:
+:ID:       3a1a5f49-7de3-45da-b152-6b55757e053c
+:END:
+#+TITLE: DC Guix: nfdump and ivre
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team]]
++ [[id:29d8222b-618f-454e-8a76-6fa38f8ff1f6][Blue Team]]
+
+* Misc
+
++ This [[https://www.reddit.com/r/networking/comments/1gq4la5/open_source_netflow_solutions/][reddit thread]] discusses alternatives, but the subject of netflow/sflow is
+  rife with products that
+  1) require monitoring proprietary wire protocols, which ... is easier to
+     handle when someone else provides a reliable library
+  2) are just difficult to manage/deploy anyways
+  3) closed out their source and went private ... for some reason or another
+     - e.g. ntopng & nprobe went dark because "people abused their source releases"
+       somehow. idk, maybe they did. the product requires high levels of customization
+     - e.g. elastiflow recently closed off
++ there's also akvorado ... but it requires Kafka. I once explored a bare metal
+  kafka and/or spark deployment. NO THANK YOU. Dear cloud: please take my money
+  and give me a fat message bus.
+
+Why difficult to manage? Potential yak-shaving problems
+
++ The =nfpcapd= services can't forward to offline =nfcap= services
++ If the network state changes, the =nfpcapd= services either go offline or get
+  feisty. when this happens, their service initialization script needs to
+  change. For systemd, this could be fairly difficult unless someone experienced
+  has the budget.
++ A similar service-coordination and data-validation problem that makes it
+    easier to use pull-based logging (like prometheus) instead of push-based
+    logging (like InfluxDB)
+  - you can't know when data went missing unless you check.
+  - If it didn't log, how do you set up an alert? -> Thus, your automation is
+    going to check (or alert on closure of connections; messy)
+  - And thus, you need more moving parts than prometheus: services to push
+    data, a coordination problem with certificate management, a service
+    registration problem (what can push data to your log-aggregator)
+  - And, so even though "InfluxDB" is "correct" ... it's not popular among
+    homelabbers, is it?
++ See [[https://www.ntop.org/products/netflow/nprobe/][nprobe versions]]. ntopng/nprobe require custom plugins +to be built+ to be
+    downloaded/configured to handle other protocols... this seems strange, but
+    if there was a simpler way, someone would provide a simpler solution.
+  - in =nfdump= source: ~AC_MSG_ERROR(You can use only one of --enable-nsel or
+    --enable-jnat. CISCO and Juniper are not compatible.)~ ... See?
+  - the =torlookup= functionality in =nfpcap= builds a database of known tor exit
+    nodes, so keeping this up-to-date req. rebuilds (and potentially curating
+    data... maybe)
++ deployments often loop in netflow from cisco/juniper/etc or high-end servers:
+  - if you do have these assets, you don't usually have this problem ...
+    instead, you have a budget.
+  - if you don't have these assets, you don't usually have this problem ...
+    because rolling your own Linux router usually requires so much
+    experience/hardware not ready-at-hand for the average person (it's something
+    you need to seek out)
+
+It's also a mixed-license project, but this shouldn't matter when source is
+included (matters for labeling in package repos though)
+
+* nfdump
+
+** Docs
+
++ [[https://github.com/phaag/nfdump?tab=readme-ov-file][phaag/nfdump]]
+  - [[https://github.com/phaag/nfdump?tab=readme-ov-file#the-tools][the tools]] descriptions of each CLI tool
+  - there are description of the builds. the AUR package downloads the =.tar.gz=
+    which apparently contains a =.service= file that I can't find in the repo.
++ [[https://git.ri.se/lars.rasmusson/nixpkgs/-/blob/nixos-20.03-small/pkgs/tools/networking/nfdump/default.nix?ref_type=heads][nix has an nfdump]] build, but it uses =yacc= instead of =bison=. idk whether it
+  runs the tests.
+
+** Overview
+
+The tool /requires/ a customized build for the featureset. The AUR only includes a
+handful of features.
+
++ nfcapd :: collector, agregates Netflow & sFlow data from interfaces
+  - requires some customization to emit to further collectors
+  - ivre will aggregate data received by =nfpcapd=
+  - needs: configuration, instantiation as service, process monitoring and
+    log rotation (if writing to disk)
+
++ sfcapd :: collector, but for sflow data (which is a slimmer format)
++ nfpcapd :: packet filtering, forwards data to collectors
+  - needs: configuration, instantiation as service, process monitoring and
+    log rotation (if writing to disk)
++ nfdump :: analyze/aggregate received data
+
+There are debian packages, so it's a matter of bundling in the =.deb= or
+installing it later. however, a custom build is preferred.
+
+** Package
+
+
+#+begin_src scheme :tangle nfdump-and-ivre.scm
+(use-modules (gnu packages admin)
+             (gnu packages autotools)
+             (gnu packages base)
+             (gnu packages bison)
+             (gnu packages compression)
+             (gnu packages flex)
+             (gnu packages gettext)
+             (gnu packages pkg-config)
+             (gnu packages rrdtool)
+             (gnu packages)
+             (guix build utils)
+             (guix build gnu-build-system)
+             (guix build-system gnu)
+             (guix gexp)
+             (guix git-download)
+             (guix packages)
+             (guix utils)
+             ((guix licenses) #:prefix license:))
+
+;; TODO: mixed license (mostly BSD 3)
+;; --enable-ja4: add FoxIO license
+;; sregex.c and others: MIT License
+(define-public nfdump
+  (package
+    (name "nfdump")
+    (version "1.7.6")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                     (url "https://github.com/phaag/nfdump")
+                     (commit (string-append "v" version))))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                "0chqpg5g2am8203g85l37wxjxrvmmkc9klcn6h56whff110ahb72"))))
+    (build-system gnu-build-system)
+    (arguments
+     ;; #:phases
+     ;;   (modify-phases %standard-phases
+     ;;     (delete 'bootstrap) ; bootstrap phase runs too early.
+     ;;     (add-after 'patch-source-shebangs 'autogen
+     ;;       (lambda _
+     ;;         (invoke "sh" "autogen.sh")
+     ;;         #t)))
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+        ;; may also need to delete bootstrap and rerun
+        (delete 'check))
+      #:configure-flags
+      #~(list
+         "--enable-sflow"
+         "--enable-nfpcapd"
+         "--enable-nftrack"    ;; PortTracker
+         "--enable-readpcap"   ;; yes (test packets -> forwarded to collector)
+         "--enable-tor"
+         (string-append "--with-zstdpath=" #$(this-package-input "zstd")
+                        "/include")
+         )))
+         ;; "--enable-ftconv" ;; flow-tools to nfdump converter
+         ;; "--enable-maxmind" ;; maxmind (paid), IVRE includes some data
+         ;; "--enable-jnat" ;; JunOS
+         ;; "--enable-nfprofile" ;; nfsen
+         ;; ja4 default: NO; See JA4-Fingerprinting module (enabling req FoxIO license)
+         ;; "--enable-ja4"
+         ;; "--enable-devel"
+    (native-inputs ;; libtool -> automake -> autoconf(-wrapper)
+     ;;   perl ;;;
+     (list autoconf automake gettext-minimal libtool bison flex pkg-config))
+    (inputs
+     ;; crypto++ libpng wxwidgets-gtk2
+     (list zlib rrdtool libpcap `(,zstd "lib") lzo lz4))
+    (home-page "")
+    (synopsis "")
+    (description "")
+    (license license:bsd-3)))
+
+nfdump ;;;fdsaasdf
+#+end_src
+
+
+*** Tests
+
+Initially, they fail. Also, they include timestamps in the packet logs.
+
++ After a few cycles which fixed some issues, I disabled the test suite to see
+  if the =/usr/lib/..= in =ldd ./src/nfdump/.libs/nfdump= would be a problem. I
+  couldn't otherwise find the built objects.
+
+**** zstd
+
+=zstd= is not being picked up by =./configure.ac=. The readme specifically mentions
+=--with-zstd=$path= and omits others. it's not in the path, though =ldd= still
+indicates the library wants to be found (at the wrong path)
+
+#+begin_src shell
+build=/tmp/guix-build-nfdump-1.7.6.drv-2
+ldd $build/source/src/nfdump/.libs/nfdump
+#+end_src
+
+#+begin_example log
+linux-vdso.so.1 (0x00007ae1f4d6c000)
+libnfdump-1.7.6.so => /usr/lib/libnfdump-1.7.6.so (0x00007ae1f4ce6000)
+libnffile-1.7.6.so => /usr/lib/libnffile-1.7.6.so (0x00007ae1f4cbf000)
+libatomic.so.1 => /gnu/store/zzpbp6rr43smwxzvzd4qd317z5j7qblj-gcc-11.4.0-lib/lib/libatomic.so.1 (0x00007ae1f4cb5000)
+liblz4.so.1 => /gnu/store/wh34vsq8qjvyvl5qf1kqm0dsmfvmcczm-lz4-1.9.3/lib/liblz4.so.1 (0x00007ae1f4c82000)
+libbz2.so.1.0 => /gnu/store/56aq6sdx35f7rsxq8jq9ypafk0dhd3p3-bzip2-1.0.8/lib/libbz2.so.1.0 (0x00007ae1f4c6d000)
+libresolv.so.2 => /gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/lib/libresolv.so.2 (0x00007ae1f4c5b000)
+libgcc_s.so.1 => /gnu/store/zzpbp6rr43smwxzvzd4qd317z5j7qblj-gcc-11.4.0-lib/lib/libgcc_s.so.1 (0x00007ae1f4c41000)
+libc.so.6 => /gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/lib/libc.so.6 (0x00007ae1f4a63000)
+libzstd.so.1 => /usr/lib/libzstd.so.1 (0x00007ae1f497e000)
+/gnu/store/zvlp3n8iwa1svxmwv4q22pv1pb1c9pjq-glibc-2.39/lib/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007ae1f4d6e000)
+#+end_example
+
+** Services
+
+It's recommended to run package
+
+* ivre
+
+** Docs
+** Resources
+** Package
+** Services
