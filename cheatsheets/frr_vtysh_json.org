@@ -311,7 +311,149 @@ vtysh -c 'show ip route json'
 + show yang operational-data XPATH [{format <json|xml>|translate
   TRANSLATOR|with-config}] DAEMON
 
+* FRR Schema
+
+** From =yang=
+
+*** Yang Lint
+
+#+begin_src shell :results output verbatim
+guix shell frrouting libyang
+export YANGPATH=$GUIX_ENVIRONMENT/share/yang
+yanglint -p $YANGPATH -f tree $YANGPATH/frr-staticd.yang
+# or XML with -f yin
+# yanglint -p $YANGPATH -f yang $YANGPATH/frr-staticd.yang
+# yanglint -p $YANGPATH -f yin $YANGPATH/frr-staticd.yang
+#+end_src
+
+#+RESULTS:
+#+begin_example
+module: frr-staticd
+
+  augment /frr-rt:routing/frr-rt:control-plane-protocols/frr-rt:control-plane-protocol:
+    +--rw staticd
+       +--rw route-list* [prefix src-prefix afi-safi]
+       |  +--rw prefix                       inet:ip-prefix
+       |  +--rw src-prefix                   inet:ipv6-prefix
+       |  +--rw afi-safi                     identityref
+       |  +---u staticd-prefix-attributes
+       +--rw segment-routing
+          +--rw srv6
+             +--rw static-sids
+                +--rw sid* [sid]
+                   +--rw sid             inet:ipv6-prefix
+                   +--rw behavior?       srv6-behavior-codepoint
+                   +--rw locator-name?   string
+                   +--rw vrf-name?       frr-vrf:vrf-ref
+#+end_example
+
+Validate an instance
+
+#+begin_src shell :results output verbatim
+guix shell frrouting libyang
+topoTests=/data/ecto/vyos/frr/tests/topotests
+staticJson=$frrPath/$topoTests/bfd_topo3/r3/bfd-static.json
+export YANGPATH=$GUIX_ENVIRONMENT/share/yang
+
+echo -e "\n\ninvalid: (top-level not fully-qualified)"
+    yanglint -p $YANGPATH -f json $YANGPATH/frr-staticd.yang $staticJson 2>&1
+
+echo -e "\n\nvalid: (no error)"
+cat $staticJson | jq '{"frr-staticd:path-list": ."path-list"}' |
+    yanglint -p $YANGPATH -f json $YANGPATH/frr-staticd.yang 2>&1
+
+echo -e "\ninvalid: (not even wrong) "
+yanglint -p $YANGPATH -f json $YANGPATH/frr-staticd.yang '{}' 2>&1
+#+end_src
+
+#+RESULTS:
+#+begin_example
+
+
+invalid: (top-level not fully-qualified)
+libyang err : Top-level JSON object member "path-list" must be namespace-qualified. (line 2)
+YANGLINT[E]: Failed to parse input data file "//data/ecto/vyos/frr/tests/topotests/bfd_topo3/r3/bfd-static.json".
+
+
+valid: (no error)
+
+invalid: (not even wrong)
+YANGLINT[E]: Input schema format for {} file not recognized.
+#+end_example
+
+*** FRR Modules
+
++idk really what to do with these (something with RelaxNG, I think).+
+
+#+begin_src shell
+guix shell frrouting
+ls $GUIX_ENVIRONMENT/share/yang/* | sed -e 's/.*share\/yang\///g'
+#+end_src
+
+#+RESULTS:
+| frr-affinity-map.yang              |
+| frr-backend.yang                   |
+| frr-bfdd.yang                      |
+| frr-bgp-bmp.yang                   |
+| frr-bgp-common-multiprotocol.yang  |
+| frr-bgp-common-structure.yang      |
+| frr-bgp-common.yang                |
+| frr-bgp-filter.yang                |
+| frr-bgp-neighbor.yang              |
+| frr-bgp-peer-group.yang            |
+| frr-bgp-route-map.yang             |
+| frr-bgp-rpki.yang                  |
+| frr-bgp-types.yang                 |
+| frr-bgp.yang                       |
+| frr-deviations-bgp-datacenter.yang |
+| frr-deviations-ietf-key-chain.yang |
+| frr-eigrpd.yang                    |
+| frr-filter.yang                    |
+| frr-gmp.yang                       |
+| frr-if-rmap.yang                   |
+| frr-interface.yang                 |
+| frr-isisd.yang                     |
+| frr-module-translator.yang         |
+| frr-nexthop.yang                   |
+| frr-ospf6-route-map.yang           |
+| frr-ospfd.yang                     |
+| frr-ospf-route-map.yang            |
+| frr-pathd.yang                     |
+| frr-pim-candidate.yang             |
+| frr-pim-rp.yang                    |
+| frr-pim.yang                       |
+| frr-ripd.yang                      |
+| frr-ripngd.yang                    |
+| frr-route-map.yang                 |
+| frr-route-types.yang               |
+| frr-routing.yang                   |
+| frr-staticd.yang                   |
+| frr-test-module.yang               |
+| frr-vrf.yang                       |
+| frr-vrrpd.yang                     |
+| frr-zebra-route-map.yang           |
+| frr-zebra.yang                     |
+| ietf-bgp-types.yang                |
+| ietf-interfaces.yang               |
+| ietf-key-chain.yang                |
+| ietf-netconf-acm.yang              |
+| ietf-netconf-with-defaults.yang    |
+| ietf-netconf.yang                  |
+| ietf-routing-types.yang            |
+
 * FRR Topotests
+
+Guix does run some tests when it builds =frrouting=, but the =topotests= are not
+part of the standard package. The setup is quite involved ... but their [[https://ci1.netdef.org/browse/FRR-FRR-TOPO0U2204AMD64-8746][CI
+results are online]] (unfortunately they don't build JSON or Diagrams in CI).
+
++ These are full-scale integration tests (using virtual networking), so it needs
+  running services (see [[https://github.com/frrouting/frr/blob/94e65ba4aeaa7f655615b6b8f3d5c4f3d4307e32/tests/topotests/lib/common_config.py#L377-L430][./tests/topotests/lib/common_config.py]])
++ Defining a JSON Schema for topojson wouldn't hurt... But I keep forgetting
+  what =yang= and =netconf= are, really. It's probably just that.
+  - [[https://github.com/CESNET/libyang][yanglint (CESNET/libyang)]] and [[https://github.com/mbj4668/pyang][mbj4668/pyang]] can [[https://docs.frrouting.org/projects/dev-guide/en/latest/northbound/yang-tools.html#pyang-cheat-sheet][convert between formats (frr
+    dev-guide docs)]], but they mostly handle the schema-as-data
+  - libyang has an [[https://github.com/CESNET/libyang/blob/master/tools/lint/examples/README.md][interactive mode]] for specifying multiple modules
 
 *** Where topology is specified by =dot=
 
@@ -320,9 +462,9 @@ frrRepo=/data/ecto/vyos/frr
 here=$(pwd)
 cd $frrRepo/tests/topotests/
 topos=($(find . -name '*.dot' -type f -printf '%p\n'))
-# dot -Tsvg -O ${topos[@]}
+dot -Tsvg -O ${topos[@]}
 toposGraphs=($(find . -name '*.svg' -type f -printf '%p\n'))
-#mv ${toposGraphs[@]} $here/img/frr
+mv ${toposGraphs[@]} $here/img/frr
 paste <(echo ${topos[@]} | tr ' ' '\n' | sed -E 's/^.\/(.*)\/.*/\1/g') \
    <(echo ${toposGraphs[@]} | tr ' ' '\n' | sed -E 's/.*\///g') \
    | sort \
@@ -571,7 +713,6 @@ rip_bfd_topo1	test_rip_bfd_topo1.dot.svg
 ripng_topo1	test_ripng_topo1.dot.svg
 rip_topo1	test_rip_topo1.dot.svg
 sbfd_topo1	sbfd_topo1.dot.svg
-
 * Overview :noexport:
 
 *** vtysh topotests (via python, json, or graphviz)
