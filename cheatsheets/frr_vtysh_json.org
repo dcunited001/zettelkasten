@@ -441,6 +441,25 @@ ls $GUIX_ENVIRONMENT/share/yang/* | sed -e 's/.*share\/yang\///g'
 | ietf-netconf.yang                  |
 | ietf-routing-types.yang            |
 
+** Cisco YangSuite
+
+*** Dump =yang= into workdir
+
+#+name: yangSuite
+#+begin_src emacs-lisp :eval query
+(setq-local -yang-suite- (or (bound-and-true-p yang-suite)
+                          (read-string "Yang suite: " (make-temp-file "yang-" t))))
+#+end_src
+
+clone yangsuite into =-yang-suite-= or elsewhere
+
+#+begin_src shell :dir (identity -yang-suite-) "/tmp/yang-KV3xDf"
+guix shell libyang frrouting
+export YANGPATH=$GUIX_ENVIRONMENT/share/yang
+mkdir -p share/yang
+cp -RL $YANGPATH/* share/yang
+#+end_src
+
 * FRR Topotests
 
 Guix does run some tests when it builds =frrouting=, but the =topotests= are not
@@ -769,3 +788,169 @@ There are other ways to do this: nautobot, YANG, online services proprietary
 methods (almost never universal enough to extend their APIs & libs to linux
 boxes) ... however, none of these are affordable (waste of time for me to invest
 in learning) and none typically function on a dynamic/unstable/adhoc network.
+
+
+* Container Lab
+*** TODO move to topic
+
+Thank the jesus they have a [[https://github.com/srl-labs/containerlab/blob/main/schemas/clab.schema.json][JSON schema]]
+
+I'm mostly interested in:
+
++ Topology Model
+  - maybe my mistake was to assume edges/connections were layer 2+3
++ YANG/Pydantic code generation (probably one-way: read from devices into
+  models, run commands via templates)
+
+** Commands
+
++ [[https://containerlab.dev/cmd/tools/veth/create/#examples][containerlab generate]] create a basis for a clab.yml
++ [[https://containerlab.dev/cmd/graph/][containerlab graph]] render a topology into graphviz, interactive HTML (via
+  JSON), Mermaid, drawio.io
++ [[https://containerlab.dev/cmd/tools/veth/create/][containerlab tools veth create]]
+  - other objects that require matching configs on multiple devices (VXLAN, ssh,
+    Cert/CA/Sign)
++ [[https://containerlab.dev/cmd/exec/][containerlab exec]] distribute commands across nodes
+
+** Topology
+
++ [[https://github.com/srl-labs/containerlab/tree/main/lab-examples][./lab-examples]]
++ [[https://github.com/srl-labs/containerlab/blob/main/lab-examples/clos02/clos02.clab.yml][./lab-examples/clos02/clos02.clab.yml]]: "5-stage CLOS fabric"
+
+*** Node Types
+
+By example
+
+#+begin_src shell
+# LOL that's a work of art
+grep -e 'kind: ' /data/ecto/vyos/srl-labs/containerlab/lab-examples/**/*.yml  \
+    | rev | sort | sed -e 's/.*:dnik.*:\(lmy.*\)\/sel.*/\1/g' \
+    | rev | uniq -c
+#+end_src
+
+#+RESULTS:
+|  1 | srlvjunos02/srlvjunos02.clab.yml |
+|  2 | k8s_kind01/k8s_kind01.clab.yml   |
+|  1 | srlcrpd01/srlcrpd01.clab.yml     |
+|  1 | srlxrd01/srlxrd01.clab.yml       |
+|  1 | freebsd01/freebsd01.clab.yml     |
+|  1 | openbsd01/openbsd01.yml          |
+|  1 | br01/br01.clab.yml               |
+|  1 | ixiac01/ixiac01.clab.yml         |
+|  2 | fortigate/fortigate.clab.yml     |
+|  1 | srlvjunos01/srlvjunos01.clab.yml |
+|  1 | vr04/vr04.clab.yml               |
+|  1 | generic_vm01/generic_vm.clab.yml |
+|  3 | k8s_kind01/k8s_kind01.clab.yml   |
+|  1 | srlceos01/srlceos01.clab.yml     |
+|  1 | vr01/vr01.clab.yml               |
+|  1 | vr05/vr01.clab.yml               |
+|  1 | cert01/cert01.clab.yml           |
+|  1 | vr05/sros4.clab.yml              |
+|  1 | vxlan01/vxlan-sros.clab.yml      |
+|  1 | sonic01/sonic01.clab.yml         |
+|  1 | ftdv01/ftdv01.yml                |
+|  1 | vr03/vr03.clab.yml               |
+|  1 | vr02/vr02.clab.yml               |
+|  1 | vxlan01/vxlan-vmx.clab.yml       |
+|  1 | vsrx01/vsrx01.yml                |
+|  2 | openbsd01/openbsd01.yml          |
+|  2 | ftdv01/ftdv01.yml                |
+|  2 | vsrx01/vsrx01.yml                |
+|  2 | freebsd01/freebsd01.clab.yml     |
+|  6 | frr01/frr01.clab.yml             |
+|  1 | srlfrr01/srlfrr01.clab.yml       |
+|  2 | clos01/clos01.clab.yml           |
+|  4 | clos02/clos02.clab.yml           |
+|  4 | clos02/setup.clos02.clab.yml     |
+|  4 | srl03/srl03.clab.yml             |
+|  1 | ost-srl/ost-srl.clab.yml         |
+|  1 | cvx01/topo.clab.yml              |
+|  1 | cvx02/topo.clab.yml              |
+|  1 | ixiac01/ixiac01.clab.yml         |
+|  1 | sonic01/sonic01.clab.yml         |
+|  1 | k8s_kind01/k8s_kind01.clab.yml   |
+|  1 | srlcrpd01/srlcrpd01.clab.yml     |
+|  1 | srlxrd01/srlxrd01.clab.yml       |
+|  1 | srl01/srl01.clab.yml             |
+|  1 | srl-quickstart/srl01.clab.yml    |
+|  3 | br01/br01.clab.yml               |
+|  1 | srlfrr01/srlfrr01.clab.yml       |
+|  1 | vr01/vr01.clab.yml               |
+|  1 | vr05/vr01.clab.yml               |
+|  1 | srlceos01/srlceos01.clab.yml     |
+|  3 | clos01/clos01.clab.yml           |
+|  1 | srlvjunos01/srlvjunos01.clab.yml |
+|  2 | srl02/srl02.clab.yml             |
+|  2 | srl-quickstart/srl02.clab.yml    |
+|  1 | vr02/vr02.clab.yml               |
+| 10 | clos02/clos02.clab.yml           |
+| 10 | clos02/setup.clos02.clab.yml     |
+|  1 | srlvjunos02/srlvjunos02.clab.yml |
+|  4 | srl03/srl03.clab.yml             |
+|  1 | vr03/vr03.clab.yml               |
+|  1 | vr04/vr04.clab.yml               |
+|  1 | ost-srl/ost-srl.clab.yml         |
+|  1 | generic_vm01/generic_vm.clab.yml |
+|  1 | cvx01/topo.clab.yml              |
+|  1 | cvx02/topo.clab.yml              |
+
+count by =kind=
+
+#+begin_src shell
+grep -e 'kind: ' /data/ecto/vyos/srl-labs/containerlab/lab-examples/**/*.yml  \
+    | rev | sort | sed -e 's/ :dnik.*//g' \
+    | rev | uniq -c
+#+end_src
+
+#+RESULTS:
+|  1 | juniper_vjunosevolved |
+|  2 | k8s-kind              |
+|  1 | juniper_crpd          |
+|  1 | cisco_xrd             |
+|  1 | freebsd               |
+|  1 | openbsd               |
+|  1 | bridge                |
+|  1 | keysight_ixia-c-one   |
+|  2 | fortinet_fortigate    |
+|  1 | juniper_vjunosswitch  |
+|  1 | cisco_xrv9k           |
+|  1 | generic_vm            |
+|  3 | ext-container         |
+|  1 | arista_ceos           |
+|  5 | nokia_sros            |
+|  1 | sonic-vs              |
+|  1 | cisco_ftdv            |
+|  1 | cisco_xrv             |
+|  2 | juniper_vmx           |
+|  1 | juniper_vsrx          |
+|  8 | linux                 |
+| 17 | linux                 |
+|  4 | linux                 |
+|  3 | linux                 |
+| 52 | nokia_srlinux         |
+|  2 | cumulus_cvx           |
+
+
+** Images
+
+A pretty wide variety of images
+
+| ceos:4.32.0F                                        | praqma/network-multitool:latest           |
+| crpd:20.2R1.10                                      | vrnetlab/vr-fortigate:7.0.14              |
+| docker-sonic-vs:2020-11-12                          | vrnetlab/vr-freebsd:13.2                  |
+| frrouting/frr:v7.5.0                                | vrnetlab/vr-ftdv:7.2.5                    |
+| frrouting/frr:v7.5.1                                | vrnetlab/vr-openbsd:7.3                   |
+| ghcr.io/hellt/network-multitool                     | vrnetlab/vr-sros:21.2.R1                  |
+| ghcr.io/nokia/srlinux                               | vrnetlab/vr-ubuntu:jammy                  |
+| ghcr.io/nokia/srlinux:${SRL_VERSION:=latest}        | vrnetlab/vr-vjunosevolved:23.2R1-S1.8-EVO |
+| ghcr.io/nokia/srlinux:23.10.1                       | vrnetlab/vr-vjunosswitch:23.2R1.14        |
+| ghcr.io/nokia/srlinux:23.3.3                        | vrnetlab/vr-vmx:20.2R1.10                 |
+| ghcr.io/nokia/srlinux:23.7.1                        | vrnetlab/vr-vmx:20.4R1.12                 |
+| ghcr.io/nokia/srlinux:24.10                         | vrnetlab/vr-vsrx:23.2R1.13                |
+| ghcr.io/nokia/srlinux:24.3.2                        | vrnetlab/vr-xrv:6.1.2                     |
+| ghcr.io/open-traffic-generator/ixia-c-one:1.28.0-45 | vr-sros:21.2.R1                           |
+| networkop/cx:4.3.0                                  | vr-xrv9k:7.2.1                            |
+| networkop/host:ifreload                             | wbitt/network-multitool:alpine-extra      |
+| nokia_sros:20.10.R1                                 | xrd-control-plane                         |
+| ostinato/ostinato:v1.3.0-1                          |                                           |
