@@ -5,6 +5,13 @@
 #+AUTHOR:    David Conner
 #+EMAIL:     noreply@te.xel.io
 #+DESCRIPTION: notes
+Is it feasible to blacklist all users from being able to view some of the configuration files?
+
+i.e. when users run `show config`, is it directly accessing & running gunzip to
+
+The
+
+The `acl` package and its commands are not on a default ISO.
 
 VyOS has =nftables= and a decent DSL with fairly good ansible support.
 
@@ -31,6 +38,7 @@ VyOS has =nftables= and a decent DSL with fairly good ansible support.
 + [[https://support.vyos.io/support/solutions/articles/103000096255-what-are-the-hardware-requirements-][Hardware Requirements]]
 
 ** How to
+
 + [[https://docs.vyos.io/en/stable/configexamples/index.html][Configuration Blueprints]] and [[https://docs.vyos.io/en/stable/configexamples/index.html#configuration-blueprints-autotest][Autotest Blueprints]]
 + [[https://docs.vyos.io/en/sagitta/contributing/build-vyos.html#][Build a VyOS ISO]]
 + [[https://docs.vyos.io/en/latest/installation/install.html#pxe-boot][Build PXE Image]]
@@ -48,19 +56,10 @@ VyOS has =nftables= and a decent DSL with fairly good ansible support.
 + [[https://vyos.dev/][vyos.dev]]: Issue/Feature Tracking
 + Slack is for customers/contributors
 
-** Printable
-
-#+begin_src javascript
-document.querySelector('.copyDiv').forEach(el => el.remove())
-#+end_src
-
-whoa this is way to hard
-
-#+begin_src css
-
-#+end_src
+** Printing
 
 * Resources
+
 + [[https://blog.kroy.io/2019/11/21/battle-of-the-bare-metal-routers/][Battle of the Metal Routers]]
 + [[https://blog.kroy.io/2019/08/23/battle-of-the-virtual-routers/][Battle of the Virtual Routers]] (VyOS)
 
@@ -98,9 +97,6 @@ metaprogramming
 
 *** Data Flow
 
-Vyos likely provides a lot of similar functionality to the auto-generated
-"floating rules" of OPNSense, which are reconsituted (I believe) whenever the
-firewall is restarted/reloaded.
 
 The VyOS source code implies these processes. It's API and CLI enables some
 others.
@@ -192,6 +188,7 @@ settings (and =12192= total).
 *** Hardware
 
 Gonna want =hwinfo=
+
 ** Security
 
 *** Stripping Private Data From Config
@@ -201,6 +198,11 @@ Gonna want =hwinfo=
 #+begin_example shell
 show configuration commands | strip-private
 #+end_example
+
+*** Luks Volumes
+
+During boot, vyos can [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/src/init/vyos-router#L86-L145][decrypt a Luks volume]] using keys stored in TPM. See: [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/.github/workflows/package-smoketest.yml#L198][GH
+smoketest]] and [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/tpm.py#L23][./python/vyos/tpm.py]] and [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/src/helpers/vyos-config-encrypt.py#L36][./src/helpers/vyos-config-encrypt.py]].
 ** Source
 *** vyos-1x
 
@@ -370,6 +372,10 @@ python/vyos/proto/*.desc
 python/vyos/proto/vyconf_proto.py
 #+end_example
 
+**** Systemd
+
++ Service definitions and templates: [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/src/systemd][./src/systemd]]
+
 ** ISO Build
 
 It's a =debian-live= build
@@ -416,7 +422,10 @@ packages = [
   "yubico-piv-tool",
   "opensc-pkcs11",
   "opensc",
-  "age"
+  "age",
+  "emacs-nox",
+  "tmux",
+  "acl"
 ]
 #+end_src
 **** Smoketests
@@ -525,6 +534,58 @@ build
 60 directories
 #+end_example
 
+** Running Image
+
+*** SquashFS
+
+Once the image is built, it's =isolinux -> squashfs. you need to mount readonly
+as loopback, then unpack the squashfs to check the file system.
+
+In addition to many other file systems, the squashfs mounts as:
+
+#+begin_example text
+/dev/loop0 on /usr/lib/live/mount/rootfs/filesystem.squashfs type squashfs (ro,noatime,errors=continue)
+overlay on / type overlay (rw,noatime,lowerdir=//filesystem.squashfs/,upperdir=/live/overlay//rw,workdir=/live/overlay//work,uuid=on)
+#+end_example
+
+*** Python
+
+**** Environment
+
+=/usr/share/vyos-http-api-tools/pyvenv.cfg=
+
+#+begin_example conf
+home = /usr/bin
+include-system-site-packages = true
+version = 3.11.2
+executable = /usr/bin/python3.11
+command = /usr/bin/python3 -m venv \
+  --system-site-packages $__w # see below: long path, but completes all the way
+#+end_example
+
+
+**** Files
+
++ =/usr/lib/python3/dist-packages/vyos/= files in [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/ifconfig/][vyos/vyos-1x: ./python/vyos]]
++ =/usr/libexec/vyos/= merged; includes some files in [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/python/vyos/ifconfig/][vyos/vyos-1x: ./python/vyos]]
+  - also includes graphql api
+HTTP env
+
++ =/usr/share/vyos/=
++ =/usr/share/vyos-http-api-tools/= python env for HTTP API
+  - =lib/python3.11/site-packages/vyos-http-api-tools/=
+
+This env
+
++ =/__w/vyos-reusable-workflows/vyos-reusable-workflows/vyos-build/=
+  - =scripts/package-build/pmacct/pmacct/=
+    - =src/external_libs/rootfs=
+*** System
+
++ =/opt/vyatta/config/active/= active configuration as a filesystem
+  - =system/login/user/vyos=
+
+
 ** Config
 
 *** Default Profiles
@@ -592,7 +653,6 @@ find ./vyos/vyos-workflow-test-temp/ -name '*.conf*' -type f
 #+end_src
 
 + vrf-basic: lots of static routes
-
 ** Org Babel
 
 It would be possible to run commands against a vyos interface.
@@ -710,3 +770,429 @@ VyOS DSL has a =container= subcommand. I haven't worked out the details, but
 this seems like a fairly viable option.
 
 ** PKI
+
+** Contribution
+
+*** [[https://vyos.dev/T7483][T7483]]: SSH FIDO2 Support
+
+Setup
+
++ [ ] fork repository
++ [ ] build live ISO image that includes packages:
+  - vim/emacs along with vyos repos
+  - maybe use sshfs here (from server back to local, run dev commands on server)
++ [ ] add edits, watchexec to run make, run tests when build completes
++ [ ] test against the running live ISO
++ [ ] build an iso, test live with various configs
++ [ ] run smoke tests
+
+Feature
+
++ [ ] ensure dependencies satisfied for yubico fido2
++ [ ] add a node to be compatible with ConfigTree
+  - update =*.xml.in= for interface_definitions
++ [ ] add validation logic to [[https://github.com/vyos/vyos-1x/blob/bc6e337a13f3021ad39eb064e2452df7df77232f/src/conf_mode/service_ssh.py#L47][./src/conf_mode/service_ssh.py]]
++ [ ] update [[https://github.com/vyos/vyos-workflow-test-temp/blob/f2b087926864f164b31a3b833995f94cdbf49e36/data/templates/ssh/sshd_config.j2#L52][.data/templates/ssh/sshd_config.j2]] in vyos-1x (and elsewhere?)
+  - SecurityKeyProvider: either set in the same jinja conditional or
+  - PubkeyAuthOptions: none,touch-required,verify-required
++ [ ] docs should indicate that =ed25519-sk= is set first in user's configuration
++ [ ] ensure other =sshd= configurations aren't affected
+
+
+** CLI Tools
+
+*** For Templates
+
+
+**** vyos-commands-to-config
+
++ =vyos-config-file-query= or =vyos-config-file-json= in the =bash= shell
++ or =merge= in the =vbash= shell
+
+**** vyos-config-file-query
+
+Same as API call, but =ssh= connection gives immediate response.
+
+|-----------------+--------------------------|
+| -f --file=      | Config file (or snippet) |
+| -p --path=      | Config path              |
+|-----------------+--------------------------|
+| --return-value  |                          |
+| --return-values |                          |
+| --list-nodes    |                          |
+| --exists        |                          |
+|-----------------+--------------------------|
+
+#+begin_src shell
+vyos-config-file-query --path="interfaces" \
+    --file=/opt/vyatta/etc/config/config.boot \
+    --list-nodes
+#+end_src
+
+** Firewall
+
+ipv6 subcommands have =hop-limit= but are mostly the same
+
+*** Group Type
+
+The =address*= indicates the fields' value sets a multi
+
+=set firewall group $groupType=
+
+|----+--------------------+-------+----------------------|
+|    | type               | key   | field                |
+|----+--------------------+-------+----------------------|
+| +> | address-group      | $name | address* description |
+| +> | ipv6-address-group | $name | address* description |
+|----+--------------------+-------+----------------------|
+| +> | network-group      | $name | address* description |
+| +> | ipv6-network-group | $name | address* description |
+|----+--------------------+-------+----------------------|
+| +> | remote-group       | $name | url* description     |
+|----+--------------------+-------+----------------------|
+
+port group (value is a port, range or service name in =/etc/services=)
+
+|----+------------+-------+--------------------|
+|    | type       | key   | field              |
+|----+------------+-------+--------------------|
+| +> | port-group | $name | value* description |
+|----+------------+-------+--------------------|
+
+Others
+
+|----+-----------------+-------+---------------------|
+| +> | domain-group    | $name | domain* description |
+| +> | interface-group | $name | if* description     |
+| +> | mac-group       | $name | mac* description    |
+|----+-----------------+-------+---------------------|
+
+Dynamic groups are composed of a single type above and receive their values from
+the =add-address-to-group= rule during firewall execution.
+
+|---+---------------+-------+-------|
+|   | type          | key   | field |
+|---+---------------+-------+-------|
+| > | dynamic-group | $type | $name |
+|---+---------------+-------+-------|
+
+*** ipv4
+
+|------+-------------+----|
+| ipv4 | fwd         | 34 |
+| ipv4 | input       | 32 |
+| ipv4 | out(filter) | 33 |
+| ipv4 | out(raw)    | 23 |
+| ipv4 | pre(raw)    | 23 |
+|------+-------------+----|
+
+Subcommands
+
+subcommands =x: missing=
+
+|-----+-----+----+-----+----------+---+-----------------------+-----------------------------------------------------------------------------------|
+| pre | fwd | in | out | out(raw) |   |                       |                                                                                   |
+|-----+-----+----+-----+----------+---+-----------------------+-----------------------------------------------------------------------------------|
+|     |     |    |     |          | > | add-address-to-group  | Add ip address to dynamic address-group                                           |
+| x   |     |    |     | x        | + | connection-mark       | Connection mark                                                                   |
+| x   |     |    |     | x        | > | connection-status     | Connection status                                                                 |
+| x   |     |    |     | x        | + | conntrack-helper      | Match related traffic from conntrack helpers                                      |
+|     |     |    |     |          |   | description           | Description                                                                       |
+|     |     |    |     |          | > | destination           | Destination parameters                                                            |
+|     |     |    |     |          |   | disable               | Disable instance                                                                  |
+|     |     |    |     |          | + | dscp                  | DSCP value                                                                        |
+|     |     |    |     |          | + | dscp-exclude          | DSCP value not to match                                                           |
+|     |     |    |     |          | > | fragment              | IP fragment match                                                                 |
+| x   |     |    |     | x        | > | gre                   | GRE fields to match                                                               |
+|     |     |    |     |          | > | ttl (hop-limit)       | Time to live limit                                                                |
+|     |     |    |     |          | > | icmp                  | ICMP type and code information                                                    |
+|     |     |    | x   | x        | > | inbound-interface     | Match inbound-interface                                                           |
+|     |     |    |     |          | > | ipsec                 | IPsec encapsulated packets                                                        |
+|     |     |    |     | x        |   | jump-target           | Set jump target. Action jump must be defined to use this setting                  |
+|     |     |    |     |          | > | limit                 | Rate limit using a token bucket filter                                            |
+|     |     |    |     |          |   | log                   | Log packets hitting this rule                                                     |
+|     |     |    |     |          | > | log-options           | Log options                                                                       |
+| x   |     |    |     | x        |   | mark                  | Firewall mark                                                                     |
+| x   |     | x  | x   | x        |   | offload-target        | Set flowtable offload target. Action offload must be defined to  use this setting |
+| x   |     | x  |     |          | > | outbound-interface    | Match outbound-interface                                                          |
+| x   |     |    |     | x        | + | packet-length         | Payload size in bytes, including header and data to match                         |
+| x   |     |    |     | x        | + | packet-length-exclude | Payload size in bytes, including header and data not to match                     |
+| x   |     |    |     | x        |   | packet-type           | Packet type                                                                       |
+|     |     |    |     |          |   | protocol              | Protocol to match (protocol name, number, or "all")                               |
+|     |     |    |     |          |   | queue                 | Queue target to use. Action queue must be defined to use this setting             |
+|     |     |    |     |          | + | queue-options         | Options used for queue target. Action queue must be defined to use this setting   |
+|     |     |    |     |          | > | recent                | Parameters for matching recently seen sources                                     |
+|     |     | x  |     |          | > | set                   | Packet modifications                                                              |
+|     |     |    |     |          | > | source                | Source parameters                                                                 |
+| x   |     |    |     | x        | + | state                 | Session state                                                                     |
+| x   |     |    |     | x        | > | synproxy              | Synproxy options                                                                  |
+|     |     |    |     |          | > | tcp                   | TCP options to match                                                              |
+|     |     |    |     |          | > | time                  | Time to match rule                                                                |
+|-----+-----+----+-----+----------+---+-----------------------+-----------------------------------------------------------------------------------|
+
+*** ipv6
+
+|------+---------------+----|
+| ipv6 | fwd           | 34 |
+| ipv6 | input(filter) | 32 |
+| ipv6 | out(filter)   | 33 |
+| ipv6 | out(raw)      | 22 |
+| ipv6 | pre(raw)      | 22 |
+|------+---------------+----|
+
+subcommands =x: missing=
+
+|-----+-----+----+-----+----------+---+-----------------------+----------------------------------------------------------------------------------|
+| pre | fwd | in | out | out(raw) |   |                       |                                                                                  |
+|-----+-----+----+-----+----------+---+-----------------------+----------------------------------------------------------------------------------|
+|     |     |    |     |          | > | add-address-to-group  | Add ipv6 address to dynamic ipv6-address-group                                   |
+| x   |     |    |     | x        | + | connection-mark       | Connection mark                                                                  |
+| x   |     |    |     | x        | > | connection-status     | Connection status                                                                |
+| x   |     |    |     | x        | + | conntrack-helper      | Match related traffic from conntrack helpers                                     |
+|     |     |    |     |          |   | description           | Description                                                                      |
+|     |     |    |     |          | > | destination           | Destination parameters                                                           |
+|     |     |    |     |          |   | disable               | Disable instance                                                                 |
+|     |     |    |     |          | + | dscp                  | DSCP value                                                                       |
+|     |     |    |     |          | + | dscp-exclude          | DSCP value not to match                                                          |
+|     |     |    |     |          | > | fragment              | IP fragment match                                                                |
+| x   |     |    |     | x        | > | gre                   | GRE fields to match                                                              |
+|     |     |    |     |          | > | hop-limit (ttl)       | Hop limit                                                                        |
+|     |     |    |     |          | > | icmpv6                | ICMPv6 type and code information                                                 |
+|     |     |    | x   | x        | > | inbound-interface     | Match inbound-interface                                                          |
+|     |     |    |     |          | > | ipsec                 | IPsec encapsulated packets                                                       |
+|     |     |    |     | x        |   | jump-target           | Set jump target. Action jump must be defined to use this setting                 |
+|     |     |    |     |          | > | limit                 | Rate limit using a token bucket filter                                           |
+|     |     |    |     |          |   | log                   | Log packets hitting this rule                                                    |
+|     |     |    |     |          | > | log-options           | Log options                                                                      |
+| x   |     |    |     | x        |   | mark                  | Firewall mark                                                                    |
+| x   |     | x  | x   | x        |   | offload-target        | Set flowtable offload target. Action offload must be defined to use this setting |
+| x   |     | x  |     |          | > | outbound-interface    | Match outbound-interface                                                         |
+| x   |     |    |     | x        | + | packet-length         | Payload size in bytes, including header and data to match                        |
+| x   |     |    |     | x        | + | packet-length-exclude | Payload size in bytes, including header and data not to match                    |
+| x   |     |    |     | x        |   | packet-type           | Packet type                                                                      |
+|     |     |    |     |          |   | protocol              | Protocol to match (protocol name, number, or "all")                              |
+|     |     |    |     |          |   | queue                 | Queue target to use. Action queue must be defined to use this setting            |
+|     |     |    |     |          | + | queue-options         | Options used for queue target. Action queue must be defined to use this setting  |
+|     |     |    |     |          | > | recent                | Parameters for matching recently seen sources                                    |
+|     |     | x  |     |          | > | set                   | Packet modifications                                                             |
+|     |     |    |     |          | > | source                | Source parameters                                                                |
+| x   |     |    |     | x        | + | state                 | Session state                                                                    |
+| x   |     |    |     | x        | > | synproxy              | Synproxy options                                                                 |
+|     |     |    |     |          | > | tcp                   | TCP options to match                                                             |
+|     |     |    |     |          | > | time                  | Time to match rule                                                               |
+|-----+-----+----+-----+----------+---+-----------------------+----------------------------------------------------------------------------------|
+
+*** Jinja Templates
+
+#+begin_src shell :results output verbatim
+find -name 'nftables*.j2' -type f -printf '%p\n' \
+    | tee -a >(echo ./data/templates/firewall/sysctl-firewall.conf.j2) \
+    | sed -e 's/^.\///g' \
+    | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── data
+    └── templates
+        ├── conntrack
+        │   ├── nftables-ct.j2
+        │   └── nftables-helpers.j2
+        ├── firewall
+        │   ├── nftables-bridge.j2
+        │   ├── nftables-cgnat.j2
+        │   ├── nftables-defines.j2
+        │   ├── nftables-geoip-update.j2
+        │   ├── nftables.j2
+        │   ├── nftables-nat66.j2
+        │   ├── nftables-nat.j2
+        │   ├── nftables-offload.j2
+        │   ├── nftables-policy.j2
+        │   ├── nftables-static-nat.j2
+        │   ├── nftables-zone.j2
+        │   └── sysctl-firewall.conf.j2
+        └── load-balancing
+            └── nftables-wlb.j2
+
+6 directories, 15 files
+#+end_example
+
+Entry points
+
+#+begin_src shell :results output verbatim
+grep -e '#!/usr/sbin/nft' $(find -name 'nftables*.j2' -type f -printf '%p\n' \
+    | tee -a >(echo ./data/templates/firewall/sysctl-firewall.conf.j2)) \
+    | sed -e 's/.\/data\/templates\///g' \
+    | sed -e "s/:#!/ => #!/g"
+#+end_src
+
+#+RESULTS:
+: conntrack/nftables-ct.j2 => #!/usr/sbin/nft -f
+: firewall/nftables-cgnat.j2 => #!/usr/sbin/nft -f
+: firewall/nftables-policy.j2 => #!/usr/sbin/nft -f
+: firewall/nftables-nat66.j2 => #!/usr/sbin/nft -f
+: firewall/nftables.j2 => #!/usr/sbin/nft -f
+: firewall/nftables-nat.j2 => #!/usr/sbin/nft -f
+: firewall/nftables-static-nat.j2 => #!/usr/sbin/nft -f
+: firewall/nftables-geoip-update.j2 => #!/usr/sbin/nft -f
+: load-balancing/nftables-wlb.j2 => #!/usr/sbin/nft -f
+
+Imports
+
+#+begin_src shell :results output verbatim
+grep -e import $(find -name 'nftables*.j2' -type f -printf '%p\n' \
+    | tee -a >(echo ./data/templates/firewall/sysctl-firewall.conf.j2)) \
+    | sed -e 's/.\/data\/templates\///g' \
+    | sed -e "s/:{% / => /g" | sed -e "s/ %}//g"
+#+end_src
+
+#+RESULTS:
+#+begin_example
+conntrack/nftables-ct.j2 => import 'conntrack/nftables-helpers.j2' as helper_tmpl
+conntrack/nftables-ct.j2 => import 'firewall/nftables-defines.j2' as group_tmpl
+firewall/nftables-policy.j2 => import 'firewall/nftables-defines.j2' as group_tmpl
+firewall/nftables-nat66.j2 => import 'firewall/nftables-defines.j2' as group_tmpl
+firewall/nftables.j2 => import 'firewall/nftables-defines.j2' as group_tmpl
+firewall/nftables.j2 => import 'firewall/nftables-bridge.j2' as bridge_tmpl
+firewall/nftables.j2 => import 'firewall/nftables-offload.j2' as offload_tmpl
+firewall/nftables.j2 => import 'firewall/nftables-zone.j2' as zone_tmpl
+firewall/nftables-bridge.j2 => import 'firewall/nftables-defines.j2' as group_tmpl
+firewall/nftables-nat.j2 => import 'firewall/nftables-defines.j2' as group_tmpl
+#+end_example
+
+Macros
+
+#+begin_src shell :results output verbatim
+grep -e '{% macro' $(find -name 'nftables*.j2' -type f -printf '%p\n' \
+    | tee -a >(echo ./data/templates/firewall/sysctl-firewall.conf.j2)) \
+    | sed -e 's/.\/data\/templates\///g' \
+    | sed -e "s/:{% / => /g" | sed -e "s/ %}//g"
+#+end_src
+
+#+RESULTS:
+: conntrack/nftables-helpers.j2 => macro conntrack_helpers(module_map, modules, ipv4=True)
+: firewall/nftables-offload.j2 => macro flowtable(name, config)
+: firewall/nftables-bridge.j2 => macro bridge(bridge)
+: firewall/nftables-defines.j2 => macro groups(group, is_ipv6, is_l3)
+: firewall/nftables-zone.j2 => macro zone_chains(zone, ipv6=False, state_policy=False)
+
+Chains
+
+#+begin_src shell :results output verbatim
+grep -e 'chain' $(find -name 'nftables*.j2' -type f -printf '%p\n' \
+    | tee -a >(echo ./data/templates/firewall/sysctl-firewall.conf.j2)) \
+    | sed -e 's/.\/data\/templates\///g' \
+    | sed -e "s/:{% / => /g" | sed -e "s/ %}//g"
+#+end_src
+
+#+RESULTS:
+
+
+
+** Printing Docs
+
+Run the =js=, add a new =css= and paste that in.
+
+#+begin_src emacs-lisp
+(defun invert-css-rgb (x)
+  (format "%06X" (- #xffffff x)))
+#+end_src
+
+#+begin_src javascript
+// navbar
+document.querySelector('.wy-nav-side').remove()
+// header
+document.querySelector('iframe#vyos-header-iframe').remove()
+document.querySelector('.wy-breadcrumbs').remove()
+// bottom of code elements
+Array.from(document.querySelectorAll('.copyDiv')).forEach(el => el.remove());
+// footer
+document.querySelector('.iframe-container').remove()
+document.querySelector('.rst-footer-buttons').remove()
+document.querySelector('footer').remove()
+// read the docs
+
+document.querySelector('readthedocs-flyout').remove()
+document.querySelector('readthedocs-notification').remove()
+document.querySelector('readthedocs-search').remove()
+document.querySelector('readthedocs-hotkeys').remove()
+#+end_src
+
+#+begin_src css
+.wy-grid-for-nav { padding-top: 0 !important; }
+.wy-nav-content { padding: 0 !important; }
+.wy-nav-content-wrap { max-width: 100% !important; }
+.wy-nav-content-wrap-opened-sidebar { margin: 0 !important; }
+code { line-height: 1.0em; !important; font-size: 0.9em !important; padding: 0 !important }
+p { margin: 0 0 0.2em !important; line-height: 1.0em !important; font-size: 0.9em !important }
+h1,h2,h3,h4 { margin: 0 0 0.2em !important; }
+h1 { line-height: 1.5em !important; font-size: 1.4em !important }
+h2 { line-height: 1.3em !important; font-size: 1.2em !important }
+h3 { line-height: 1.1em !important; font-size: 1.0em !important }
+h4 { line-height: 0.9em !important; font-size: 0.8em !important }
+/* h1,h2,h3,h4 { line-height: 1.5em !important; font-size: 0.9em !important } */
+
+section ul {
+    margin: 0 !important;
+    line-height: 0.9em !important;
+}
+
+.rst-content dl dd {
+    margin: 0 !important;
+    line-height: 0.9em !important;
+}
+.rst-content div[class^=highlight] {
+    margin: 0.2em !important;
+}
+.rst-content {
+  & div[class^="highlight"] div[class^="highlight"], & pre.literal-block div[class^="highlight"] {
+    background: #FFFFFF !important;
+  }
+  & div[class^="highlight"], & pre.literal-block {
+    background: linear-gradient(#FFFFFF, #FFFFFF);
+  }
+  & .linenodiv pre, & div[class^="highlight"] pre, & pre.literal-block {
+    color: #000;
+    font-size: 0.9em !important;
+    line-height: 0.9em !important;
+  }
+}
+.highlight {
+  background: #FFFFFF !important;
+}
+.highlight {
+  & .cp { color: #3D002C !important; } /* xml version */
+  & .cm { color: #2A1813 !important; } /* xml comment */
+  & .nt { color: #022E01 !important; } /* node */
+  & .cm { color: #123E11 !important; } /* prop */
+  & .s  { color: #24190F !important; } /* string */
+  & .ni { color: #5B5B52 !important; } /* encoded */
+  & .kn { color: #330025 !important; }
+  & .nn { color: #2F1104 !important; }
+  & .o  { color: #191919 !important; }
+  & .s2 { color: #290A19 !important; }
+  & .s1 { color: #3D002C !important; }
+  & .nb { color: #330025 !important; }
+  & .c1 { color: #231410 !important; }
+  & .n  { color: #003333 !important; }
+  & .k  { color: #330025 !important; }
+  & .se { color: #24190F !important; }
+  & .nv { color: #11280B !important; }
+  & .gh { color: #333300 !important; }
+  & .gd { color: #003333 !important; }
+  & .gi { color: #330033 !important; }
+  & .gu { color: #003D00 !important; }
+  & .mi { color: #310C1F !important; }
+  & .nf { color: #123E11 !important; }
+  & .kc { color: #3D002C !important; }
+  & .ch { color: #2A1813 !important; }
+  & .mf { color: #290A19 !important; }
+  & .go { color: #191919 !important; }
+  & .m  { color: #290A19 !important; }
+}
+
+// (invert-css-rgb #xd5e7ec)
+// (invert-css-rgb #xc2ffd3)
+// (string-to-number (number-to-string (- #xffffff #xd5e7ec)) 16)
+#+end_src

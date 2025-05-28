@@ -1,0 +1,453 @@
+:PROPERTIES:
+:ID:       2bf4fc73-ec8d-46ca-9d62-3e419b047039
+:END:
+#+TITLE: FRC: Build pathplanner app for flatpak
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
++ [[id:afe1b2f0-d765-4b68-85d0-2a9983fa2127][Containers]]
++ [[id:c527ee0c-ede7-4317-b57b-2a6bab110da0][Flatpak]]
+
+* Resources
+** [[https://github.com/Merrit/flutter_flatpak_example][Merrit/flutter_flatpak_example]]
+
+Referencing [[https://github.com/Merrit/flutter_flatpak_example/blob/main/.devcontainer/Dockerfile][.devcontainer/Dockerfile]] for flatpak and flutter deps.
+
++ Changed to =ubuntu:24.04= to drop microsoft devcontainer-specific stuff and to
+  get user =1000:1000= which is included by default in =ubuntu:24.04= base images
+
+** [[https://github.com/mjansen4857/pathplanner][mjansen4857/pathplanner]]
+
+Referencing [[https://github.com/mjansen4857/pathplanner/blob/main/.github/workflows/pathplanner-ci.yaml][.github/workflows/pathplanner-ci.yaml]] to understand the build pipeline
+
++ [[https://github.com/mjansen4857/pathplanner/blob/main/pubspec.yaml][./pubspec.yaml]] contains flutter's own dependencies. =flutter build $platform=
+  will install these
++ [[https://github.com/mjansen4857/pathplanner/blob/main/.metadata][.metadata]] contains other flutter platform metadata/deps
+
+* Path Planner App
+
+#+begin_src shell
+docker build -t pathplanner ./flatpak
+#+end_src
+
+Run
+
+#+begin_src shell
+docker run --rm -it -u 1000:1000 \
+  -v "$(pwd)":/pathplanner -w /pathplanner \
+  pathplanner:latest
+#+end_src
+
+
+** Docker Image
+
+**** TODO change dockerfile location to =./flatpak=
+
+*** Dockerfile
+
+#+begin_src dockerfile
+
+FROM ubuntu:24.04
+# ubuntu 22.04 doesn't include 1000:1000 user
+# via
+# and
+
+# NOTE: the image is 7.88 GB...
+
+# Update
+RUN apt-get update
+
+# Quality of life deps
+RUN apt-get -y install tree
+
+# Install Flutter build dependencies
+RUN apt-get -y install curl file git unzip xz-utils zip \
+    clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev \
+    libglu1-mesa libstdc++-12-dev
+
+# Install Flatpak builder deps
+# TODO: flatpak install takes forever, setup a image stage
+RUN apt-get install -y flatpak flatpak-builder
+RUN flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+RUN flatpak install -y org.freedesktop.Sdk/x86_64/22.08 \
+  && flatpak install -y org.freedesktop.Platform/x86_64/22.08 \
+  && flatpak install -y flathub org.freedesktop.appstream-glib
+
+# Install Flutter
+RUN git clone https://github.com/flutter/flutter.git -b stable /opt/flutter
+RUN git config --global --add safe.directory /opt/flutter
+ENV PATH="$PATH:/opt/flutter/bin"
+RUN flutter upgrade
+RUN chown -R 1000:1000 /opt/flutter
+
+# Install app-specific dependencies
+# TODO remove pathplanner (it's just the workdir)
+# RUN git clone https://github.com/mjansen4857/pathplanner -b main /pathplanner
+RUN mkdir /pathplanner && chown -R 1000:1000 /pathplanner
+
+WORKDIR /pathplanner
+#+end_src
+
+*** App Build
+
+Run the following from the repo root.
+
+#+begin_src shell
+docker run --rm -it -u 1000:1000 \
+    -v "$(pwd)":/pathplanner -w /pathplanner \
+    pathplanner:latest
+#+end_src
+
+To build
+
+#+begin_src shell
+flutter build linux
+# and unless you want google's elves on your shelves
+flutter --disable-analytics
+#+end_src
+
+If anything goes wrong, you should be able to run =flutter doctor= in the
+container to troubleshoot.
+
+** Run Path Planner
+
+You need a project, but there are two found in =./examples/{c++,java}=
+
+Run with
+
+#+begin_src shell
+build/linux/x64/release/bundle/pathplanner
+#+end_src
+
+** Flatpak Build
+
+
+*** Files
+
++ icon: $archive/build/flutter_assets/images/icon.ico
++ pathplanner: $archive/build/linux/x64/release/bundle/pathplanner
++ dynamic libs:  $archive/build/linux/x64/release/bundle/lib/*.so
+
+**** Linked Libs
+
+These expect libraries to be found at =/usr/lib=
+
+#+begin_src shell
+ldd build/linux/x64/release/bundle/lib/libflutter_linux_gtk.so
+#+end_src
+
+Except for these (i.e. it has not be built portably)
+
+via =ldd build/linux/x64/release/bundle/pathplanner=
+
+#+begin_example
+libfile_selector_linux_plugin.so => /data/ecto/frc/pathplanner/build/linux/x64/release/bundle/lib/libfile_selector_linux_plugin.so (0x00007d27ed549000)
+libscreen_retriever_linux_plugin.so => /data/ecto/frc/pathplanner/build/linux/x64/release/bundle/lib/libscreen_retriever_linux_plugin.so (0x00007d27ed543000)
+liburl_launcher_linux_plugin.so => /data/ecto/frc/pathplanner/build/linux/x64/release/bundle/lib/liburl_launcher_linux_plugin.so (0x00007d27ed53c000)
+libwindow_manager_plugin.so => /data/ecto/frc/pathplanner/build/linux/x64/release/bundle/lib/libwindow_manager_plugin.so (0x00007d27ed530000)
+libflutter_linux_gtk.so => /data/ecto/frc/pathplanner/build/linux/x64/release/bundle/lib/libflutter_linux_gtk.so (0x00007d27ec400000)
+#+end_example
+
+
+*** Build script
+
+Note: the example flutter app is built with [[https://github.com/Merrit/flutter_flatpak_example/blob/main/counter_app/build-flutter-app.sh][./counter_app/build-flutter-app.sh]],
+but is marked as =$projectName-Linux-Portable.tar.gz= which it fetches from the
+repo's releases.
+
+The build script should be changed to use =install -Dm123= commands (see
+[[https://github.com/flathub/com.logseq.Logseq/blob/master/com.logseq.Logseq.yml][com.logseq.LogSeq.yml]])
+
+#+begin_src shell
+#!/bin/bash
+
+# MIT License
+#
+# Copyright (c) 2024 Kristen McWilliam
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Convert the archive of the Flutter app to a Flatpak.
+
+# Exit if any command fails
+set -e
+
+# Echo all commands for debug purposes
+set -x
+
+
+# No spaces in project name.
+projectName=PathPlanner
+projectId=com.pathplanner.PathPlanner
+executableName=pathplanner
+# bundlePath=build/linux/x64/release/bundle
+iconPath=data/flutter_assets/images/icon.ico
+
+# ------------------------------- Build Flatpak ----------------------------- #
+
+# Extract portable Flutter build.
+mkdir -p $projectName
+tar -xf $projectId-Linux-Portable.tar.gz -C $projectName
+
+# Copy the portable app to the Flatpak-based location.
+# cp -r $projectName/$bundlePath /app/$projectName
+cp -r $projectName /app/$projectName
+chmod +x /app/$projectName/$executableName
+mkdir -p /app/bin
+ln -s /app/$projectName/$executableName /app/bin/$executableName
+
+# Install the icon.
+iconDir=/app/share/icons/hicolor/scalable/apps
+mkdir -p $iconDir
+cp -r /app/$projectName/$iconPath $iconDir/
+
+# Install the desktop file.
+desktopFileDir=/app/share/applications
+mkdir -p $desktopFileDir
+cp -r $projectId.desktop $desktopFileDir/
+
+# Install the AppStream metadata file.
+metadataDir=/app/share/metainfo
+mkdir -p $metadataDir
+cp -r $projectId.metainfo.xml $metadataDir/
+#+end_src
+
+*** Build
+
+Bundle the build
+
+#+begin_src shell
+projectRoot=$(pwd)
+bundlePath=build/linux/x64/release/bundle
+pushd $bundlePath
+appId=com.pathplanner.PathPlanner
+archiveName=$appId-Linux-Portable.tar.gz
+tar -czaf $projectRoot/flatpak/$archiveName ./*
+popd
+#+end_src
+
+Create a build directory
+
+#+begin_src shell
+appId=com.pathplanner.PathPlanner
+cd $projectRoot/flatpak
+runtime=$(yq -r .runtime $appId.yml)
+runtimeVersion=$(yq -r '."runtime-version"' $appId.yml)
+# runtimeBranch=$runtime/x86_64/$runtimeVersion
+runtimeBranch=$runtimeVersion
+sdk=$(yq -r .sdk $appId.yml)
+buildDir=$projectRoot/flatpak-build
+flatpak build-init $buildDir $appId $sdk $runtime/x86_64/$runtimeVersion # $runtimeBranch
+#+end_src
+
+Build
+
+#+begin_src shell
+flatpak build ../flatpak-build ./build-flatpak.sh
+#+end_src
+
+It seems to build, but =build-bundle= avoids typing in the =--share=fdsa= options.
+
+All the files into a non-existent =/app/...=, but running with the following at
+least launches the app. i guess it took care of =patchelf= however it do it...
+that's a great sign.
+#+begin_src shell
+../flatpak-build/files/PathPlanner/pathplanner
+#+end_src
+
+***** TODO finish flatpak bundle (i think i just need to init a blank flatpak repo)
+
+**** Build Bundle
+
+Build Bundle (requires creating the flathub repo, or at least the paths)
+
+#+begin_src shell
+# flatpak build-bundle repo $appId.flatpak $appId
+repo=~/.local/share/flatpak/repo
+repo=flathubRepoCheckout # requires creating the flathub repo
+flatpak build-bundle $repo $appId.flatpak $appId
+#+end_src
+
+Try installing
+
+#+begin_src shell
+flatpak install --user com.pathplanner.PathPlanner
+#+end_src
+
+*** Metadata
+
+**** TODO Flatpak metadata: Fix licenses
+
+#+begin_src xml
+    <metadata_license>FSFAP</metadata_license>
+    <project_license>AGPL-3.0-or-later</project_license>
+  <content_rating type="oars-1.0"/>
+  <branding>
+    <color type="primary" scheme_preference="light">#195d6c</color>
+    <color type="primary" scheme_preference="dark">#014456</color>
+  </branding>
+  <releases>
+    <release version="v2025.2.2" date="2025-01-27">
+      <description/>
+    </release>
+  </releases>
+#+end_src
+
+
+* Path Planner Lib
+
+** Setup
+
+clone repo, start the =wpilib/ubuntu-base:24.04= container
+
+#+begin_src shell
+docker run --rm -it -u 1000:1000  \
+    -v "$(pwd)":/pathplanner -w /pathplanner/pathplannerlib \
+    wpilib/ubuntu-base:24.04
+#+end_src
+
+Setup =gradle=
+
+#+begin_src shell
+./gradlew tasks
+#+end_src
+
+** Generate Docs
+
+Apply patch
+
+#+begin_example diff
+diff --git a/pathplannerlib/build.gradle b/pathplannerlib/build.gradle
+index 6809929..a2b0d2e 100644
+--- a/pathplannerlib/build.gradle
++++ b/pathplannerlib/build.gradle
+@@ -1,3 +1,4 @@
++
+ plugins {
+     id 'cpp'
+     id 'java'
+@@ -27,6 +28,12 @@ if (project.hasProperty('releaseMode')) {
+     wpilibRepositories.addAllDevelopmentRepositories(project)
+ }
+
++configurations {
++    umlDoclet
++}
++
++apply plugin: 'java'
++
+ // Apply C++ configuration
+ apply from: 'config.gradle'
+
+@@ -51,6 +58,8 @@ dependencies {
+     testImplementation 'org.junit.jupiter:junit-jupiter-params:5.9.0'
+     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.9.0'
+     testRuntimeOnly "us.hebi.quickbuf:quickbuf-runtime:1.3.2"
++
++    umlDoclet "nl.talsmasoftware:umldoclet:2.2.1"
+ }
+
+ // Set up exports properly
+@@ -162,6 +171,10 @@ javadoc {
+     exclude 'org/json/simple/**'
+     options {
+         links 'https://docs.oracle.com/en/java/javase/11/docs/api/', 'https://github.wpilib.org/allwpilib/docs/release/java/'
++        linkSource true
++        docletpath = configurations.umlDoclet.files.asType(List)
++        doclet "nl.talsmasoftware.umldoclet.UMLDoclet"
++
+     }
+ }
+
+
+#+end_example
+
+Generate docs
+
+#+begin_src shell
+./gradlew javadoc
+#+end_src
+
+Copy all =package.svg=
+
+#+begin_src shell
+find /data/ecto/frc/pathplanner/pathplannerlib/build/ \
+    -name 'package.svg' -type f -printf '%p %p\n'
+#+end_src
+
+#+RESULTS:
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/controllers/package.svg | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/controllers/package.svg |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/util/package.svg        | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/util/package.svg        |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/util/swerve/package.svg | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/util/swerve/package.svg |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/commands/package.svg    | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/commands/package.svg    |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/path/package.svg        | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/path/package.svg        |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/auto/package.svg        | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/auto/package.svg        |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/trajectory/package.svg  | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/trajectory/package.svg  |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/config/package.svg      | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/config/package.svg      |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/pathfinding/package.svg | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/pathfinding/package.svg |
+| /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/events/package.svg      | /data/ecto/frc/pathplanner/pathplannerlib/build/docs/javadoc/com/pathplanner/lib/events/package.svg      |
+
+... so close
+
+#+begin_src shell
+find /data/ecto/frc/pathplanner/pathplannerlib/build/ \
+    -name 'package.svg' -type f -printf '%p %p\n' \
+    | sed -e 's/ .*javadoc\// /g' \
+    | sed -E 's/ ([^\/]+)\// \1\./g'
+
+# | xargs -I\{\} cp \{\} . # ....
+#+end_src
+
+
+** Building with Docker
+
+An image building these needs base on [[https://github.com/wpilibsuite/docker-images/tree/main/ubuntu-base][wpilib/ubuntu-base:24.04]], but it shouldn't
+need the flatpak dependencies.
+
+#+begin_example yaml
+
+#+end_example
+
++ [[https://github.com/mjansen4857/pathplanner/blob/main/.github/workflows/build-pplib-release.yaml][.github/workflows/build-pplib-release.yaml]] runs on =workflow_dispatch=
++ [[https://github.com/mjansen4857/pathplanner/blob/main/.github/workflows/pplib-ci.yml][.github/workflows/pplib-ci.yml]] runs on =push=
+
+
+# set pubspec version
+#   flutter pub global activate cider
+#   dart run cider version "${{ env.VERSION_NAME }}+${{ github.run_number }}"
+# build app
+#   flutter build ${{ matrix.build-option }}
+
+# - name: Setup flutter
+#   uses: subosito/flutter-action@v2
+#   with:
+#     flutter-version: ${{ env.FLUTTER_VERSION }}
+#     cache: true
+#     cache-path: ${{ runner.tool_cache }}/flutter/linux
+
+# - name: Setup flutter
+#   uses: subosito/flutter-action@v2
+#   with:
+#     flutter-version: ${{ env.FLUTTER_VERSION }}
+#     cache: true
+#     cache-path: ${{ runner.tool_cache }}/flutter/${{ matrix.build-option }}
+
+# NOTE there is also the pplib-release yaml, which needs wpilib/ubuntu-base:22.04
