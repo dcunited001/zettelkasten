@@ -1,0 +1,231 @@
+:PROPERTIES:
+:ID:       687fae6c-bfd8-43c1-9f7f-e35c8abf4ab4
+:END:
+#+TITLE: Garuda: Install with Luks
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
+
+* Resources
+
++ [[https://www.gnu.org/software/gnuboot/web/docs/gnulinux/guix.html][Encrypted Guix GNU+Linux]] Setup LVM on =LUKS1=
+
+* Overview
+
+I'm just going to install onto a BTRFS Root and either manage two installs (one
+temporary). I could also install, then manually link the partitions, maybe
+chroot and update grub.
+
+No shade towards the garuda distribution. It's great, just running into problems
+here.
+
+** Disk Setup
+
+From =su -=
+
+#+begin_example shell
+d=/dev/nvme0n1p3
+r=/mnt/root
+pv=/dev/mapper/pvmyhost
+vg=vgmyhost
+mkdir $r
+
+cryptsetup --verbose --verify-passphrase \
+  --hash whirlpool --cipher serpent-xts-plain64 \
+  --use-random --key-size 512 --iter-time 500 \
+  luksFormat $d
+
+cryptsetup luksUUID $d
+u=8765DCBA-4321-4321-4321-12345678ACBD
+cryptsetup open $d pvmyhost
+
+pvcreate $pv
+vgcreate $vg $pv
+lvcreate --size 18G $vg --name swapvol
+lvcreate --size 180G $vg --name root
+lvcreate --size 200G $vg --name data
+lvcreate --size 150G $vg --name home
+
+mkswap --label swap /dev/$vg/$vg-swapvol
+#+end_example
+
+=pvs=
+
+#+begin_example text
+PV                   VG       Fmt  Attr PSize   PFree
+/dev/mapper/pvmyhost vgmyhost lvm2 a--  599.98g 51.98g
+#+end_example
+
+=vgs=
+
+#+begin_example text
+VG       #PV #LV #SN Attr   VSize   VFree
+vgmyhost   1   4   0 wz--n- 599.98g 51.98g
+#+end_example
+
+=lvs=
+
+#+begin_example text
+LV               VG       Attr       LSize   Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert
+data             vgmyhost -wi-a----- 200.00g
+home             vgmyhost -wi-a----- 150.00g
+root             vgmyhost -wi-a----- 180.00g
+swap             vgmyhost -wi-a-----  18.00g
+#+end_example
+
+=sfdisk -J /dev/nvme0n1= I eventually deleted =/dev/nvme0n1p2=
+
+#+begin_example json
+{
+   "partitiontable": {
+      "label": "gpt",
+      "id": "12345678-ABCD-ABCD-ABCD-ABCD12345678",
+      "device": "/dev/nvme0n1",
+      "unit": "sectors",
+      "firstlba": 2048,
+      "lastlba": 1953525134,
+      "sectorsize": 512,
+      "partitions": [
+         {
+            "node": "/dev/nvme0n1p1",
+            "start": 2048,
+            "size": 4194304,
+            "type": "0FC63DAF-8483-4772-8E79-3D69D8477DE4",
+            "uuid": "87654321-5678-5678-5678-ABCD12345678"
+         },{
+            "node": "/dev/nvme0n1p2",
+            "start": 4196352,
+            "size": 310378496,
+            "type": "0FC63DAF-8483-4772-8E79-3D69D8477DE4",
+            "uuid": "87654321-1234-1234-1234-1234ABCD5678"
+         },{
+            "node": "/dev/nvme0n1p3",
+            "start": 314574848,
+            "size": 1258291200,
+            "type": "0FC63DAF-8483-4772-8E79-3D69D8477DE4",
+            "uuid": "87654321-4321-4321-4321-12345678ACBD"
+         }
+      ]
+   }
+}
+#+end_example
+
+* Issues
+
+** Calamares
+
+In order. These are primarily issues/limitations with =calamares= and not =garuda=.
+Still, it's irksome that this works for users who don't need disk setup, while
+someone who knows (more/less) what they're doing will have to scour over the
+=calamares= source in order to have granular control over the installer.
+
+*** Won't Run If System Has Updated
+
+If you've added a package, the =calamares.desktop= file won't launch
+
+*** Doesn't ship with =vim= or other text editors
+
+So, if you install =vim= instead of =vi=, you'll need to restart later.
+
+*** Forcing =calamares= to run from terminal while showing errors :obscurant:
+
+I could've sworn there was a =garuda-install= command
+
+=locate= amazingly has an up-to-date database, so =grep -re 'Install System'
+$(locate /desktop)= finds the =/usr/share/applications/calamares.desktop= file (I
+didn't know what to call it).
+
+The =.desktop= file runs =sh -c 'pkexec calamares'= or something, but this depends
+on the window manager shell's environment, so it doesn't run.
+
+**** Force Installer to run
+
+I could run this from the =hyprland= command launcher:
+
+#+begin_example shell
+export t=$(mktemp) \
+  && env | sed -E 's/^(.*)$/export \1/g' > $t \
+  && notify-send $t
+#+end_example
+
+Then, in an separate shell
+
+#+begin_example shell
+source $t
+pkexec calamares
+
+# or...
+
+su -i
+source $t
+calamares # this won't work
+#+end_example
+
+however, this could be very bad (dealing with raw disks & partitions here). Just
+a bad idea.
+
+*** Doesn't allow file systems other than =btrfs=
+
+Since garuda hooks so much behavior into the system that assumes there's a =btrfs=
+partition (e.g. snapshots, specific subvolumes, performance enhancements, etc)
+this makes sense.
+
+However, I can't tell it to format other volumes, so it can:
+
++ create fresh files with correct permissions
++ copy(?) =/etc/skel= to =/home/me=
++ do other misc setup
+
+All the volumes need to be brtfs, which is great for some partitions, not so
+great for others.
+
++ snapshots aren't guaranteed to be setup. For your =root= subvolumes and other
+  system subvolumes, this is great -- e.g. I have no idea how to configure BTRFS
+  to do this otherwise
++ Garuda will set this up on other partitions, but changing the defaults are
+  needed.
+
+*** Requires restart to ingest some changes to disks
+
+This creates a bit of friction.
+
+*** Relabels VG :obscurant:
+
+When setting up the =root= filesystem on =$lvmvg-root=, if you make certain
+selections, =calamares= ambiguously changes some config state and it's unclear
+whether it intends to create a new volume group
+
++ it reuses it's GUI text labels to permit display of some fields for LVM or FS
+  types without conveying how those field bindings are really setting actions
++ fortunately, =calamares= does show you what it intends to do
+  - IMO what's displayed here is far too order-dependent: =calamares= maintains a
+    list of actions you clicked through in the disk setup. =calamares= doesn't
+    simplify transactions to what you intended.
+  - e.g. if you created a partition, deleted it, then re-added it, changed a
+    label, etc, then it essentially "replays" those as text in the summary
+  - There could be some problems here, but it hint's at how calamares handles
+    this phase of installation: with macros.
++ so my second biggest gripe with =calamares= is -- hey, why not show me the
+  commands you'll use?
+  - the biggest gripe: show me a window with log output AND the commands that
+    generated that log output.
+
+After this attempt, it seems that =calamares= messed up something involving luks
+and LVM:
+
+*** Won't Install (three different errors)
+
+1) Couldn't write to =/boot/efi= when doing the grub install
+2) Can't relabel swap (yes, I'm serious)
+3) Something in =main.py=
+
+*** Doesn't indicate =LUKS1= vs =LUKS2= :obscurant:
+
+One big issue here: I'll likely need the =systemd=, not grub, for which there
+isn't an install option. This isn't a huge option, as it requires chrooting to
+fix
+
++ See [[https://wiki.archlinux.org/title/Dm-crypt/Encrypting_an_entire_system#LVM_on_LUKS][Dm-crypt/Encrypting_an_entire_systemLVM on LUKS]]
++ See [[https://wiki.archlinux.org/title/Dm-crypt/System_configuration#mkinitcpio][Dm-crypt/System_configuration#mkinitcpio]]
