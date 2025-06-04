@@ -1,0 +1,245 @@
+:PROPERTIES:
+:ID:       0919995a-6913-44c9-beef-0ab9af14a065
+:END:
+#+TITLE: FRC: Setup VSCode in WPILib
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
++ [[id:18d07822-9dda-4430-85a1-f7eb39f40429][VSCode]]
+
+* Docs
+* Resources
+
+* Linux Install
+
+WPILib maintains multiple versions of VSCode
+
+** Path
+
+There are 11 desktop files. Just fix PATH (no need to undo/persist desktop
+changes)
+
+** Desktop Files
+
+desktop files are installed to =~/.local/share/applications=
+
++ Either =.profile= needs =PATH= to contain =~/wpilib/2025/tools= or it needs to be
+  shimmed into the desktop files. (Trying to avoid logout)
++ Add wrapper scripts to =~/bin= that export path (easier)
++ There's a typo in the main VS Code desktop file: =WPIcal.sh= -> =wpical.sh=
+  - all in all, the packaging and Linux support is very good. It doesn't run on
+    guix/nix, but what does?
+
+#+begin_example conf
+Exec=/bin/sh -c 'export PATH=/home/myuser/wpilib/2025/tools:\\$PATH && /home/myuser/wpilib/2025/tools/AdvantageScope.sh'
+#+end_example
+
++ This really won't be robust unless all processes stem from the same profile.
+  (i.e. ... change =.profile=)
+  VSCode usually resets the profile (I had tried it awhile back, but it
+  empties out a lot of environment variables and makes it difficult to
+  maintain various consistent profiles; it also interacts strangely with
+  pyenv, etc...; this is actually "correct")
+
+* Java
+
+** WPI Lib
+
+*** TODO Add vendordeps
+
+** Metaprogramming
+
+*** Proto gen
+
+** Gradle
+
+** Lombok
+
++ [[https://docs.freefair.io/gradle-plugins/current/reference/#_lombok][docs]]
++ [[https://github.com/folio-org/mod-tags/blob/master/lombok.config][example config]]
+
+Adds getters/setters, requires adding plugin to =build.gradle=:
+
+#+begin_src gradle
+plugins {
+    // ...
+    id: "io.freefair.lombok" version "8.13.1"
+}
+#+end_src
+
+*** [[https://projectlombok.org/features/][Annotations]]
+
++ val/var :: type inference
++ @NonNull :: auto-nullcheck
++ @Getter/@Setter :: req. prefix for =m_*=
++ @Value :: immutable
+
+*** Notes
+
++ Helpful, but can cause as many problems as it fixes. also, it's 3+ imports on
+  average (requires config change to avoid).
++ Fairly confined to Gradle (as far as potential version compat. issues go)
++ If sources are linked in javadoc, there should be options to generate the
+  annotated code (though it probably removes annotations) ... hopefully it
+  doesn't come to that.
+
+
+* VSCode
+:PROPERTIES:
+:header-args:shell+: :dir (expand-file-name "wpilib/2025/vscode/VSCode-linux-x64/data" (getenv "HOME"))
+:END:
+In =/home/myuser/wpilib/2025/vscode/VSCode-linux-x64/data=
+
+** Extensions
+
+These extensions are added
+
+#+begin_src shell
+cat extensions/extensions.json | jq -r 'map(.identifier.id) | join("\n")'
+#+end_src
+
+#+RESULTS:
+| ms-vscode.cpptools             |
+| redhat.java                    |
+| vscjava.vscode-java-debug      |
+| vscjava.vscode-java-dependency |
+| ms-python.python               |
+| ms-python.debugpy              |
+| ms-python.vscode-pylance       |
+| ms-python.isort                |
+| ms-python.black-formatter      |
+| wpilibsuite.vscode-wpilib      |
+
+Added
+
++ Docker
++ Dev Containers
++ Lombok Annotations
++ YAML
++ vscode-proto3
+
+** Java
+
++ java.eclipse.downloadSources :: maybe
++ editor.formatOnSave :: well maybe
+
+*** Commands
+
++ M-S-h :: references-view.showCallHierarchy: either inline or in the side thingy
+
+** Config
+
+*** Diff
+
+#+name: getConfig
+#+begin_src shell :results output verbatim code :wrap example json
+cat user-data/User/settings.json | jq -r '.'
+#+end_src
+
+#+name: initConfig
+#+call: getConfig() :cache yes
+
+#+RESULTS[b95db5712dfb04050122570bb17c14aa84bfa879]: initConfig
+#+begin_example json
+{
+  "java.jdt.ls.java.home": "/home/dc/wpilib/2025/jdk",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "extensions.ignoreRecommendations": true,
+  "update.mode": "none",
+  "update.showReleaseNotes": false,
+  "java.completion.matchCase": "off",
+  "terminal.integrated.env.linux": {
+    "JAVA_HOME": "/home/dc/wpilib/2025/jdk",
+    "PATH": "/home/dc/wpilib/2025/jdk/bin:${env:PATH}"
+  },
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "/home/dc/wpilib/2025/jdk",
+      "default": true
+    }
+  ]
+}
+#+end_example
+
+#+name: configJava
+#+call: getConfig() :cache yes
+
+#+RESULTS[b95db5712dfb04050122570bb17c14aa84bfa879]: configJava
+#+begin_example json
+{
+  "java.jdt.ls.java.home": "/home/dc/wpilib/2025/jdk",
+  "extensions.ignoreRecommendations": true,
+  "update.mode": "none",
+  "update.showReleaseNotes": false,
+  "java.completion.matchCase": "off",
+  "terminal.integrated.env.linux": {
+    "JAVA_HOME": "/home/dc/wpilib/2025/jdk",
+    "PATH": "/home/dc/wpilib/2025/jdk/bin:${env:PATH}"
+  },
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "/home/dc/wpilib/2025/jdk",
+      "default": true
+    }
+  ],
+  "extensions.autoCheckUpdates": false,
+  "workbench.settings.editor": "json",
+  "java.dependency.showMembers": true,
+  "java.codeGeneration.generateComments": true,
+  "java.codeGeneration.useBlocks": true,
+  "java.saveActions.organizeImports": true,
+  "java.quickfix.showAt": "problem",
+  "java.implementationCodeLens": "all"
+}
+#+end_example
+
+I don't want to disable anything I won't learn about.
+
+#+name: diffConfigs
+#+begin_src shell :results output verbatim code :var c1=initConfig c2=configJava :wrap example diff
+diff <(echo -e "$c1") <(echo -e "$c2")
+#+end_src
+
+#+RESULTS: diffConfigs
+#+begin_example diff
+3,4d2
+<   "extensions.autoUpdate": false,
+<   "extensions.autoCheckUpdates": false,
+19c17,25
+<   ]
+---
+>   ],
+>   "extensions.autoCheckUpdates": false,
+>   "workbench.settings.editor": "json",
+>   "java.dependency.showMembers": true,
+>   "java.codeGeneration.generateComments": true,
+>   "java.codeGeneration.useBlocks": true,
+>   "java.saveActions.organizeImports": true,
+>   "java.quickfix.showAt": "problem",
+>   "java.implementationCodeLens": "all"
+#+end_example
+
+#+name: configDelays
+#+call: getConfig() :results output silent code :wrap example json
+
+#+name: diff2
+#+call: diffConfigs(c1=configJava, c2=configDelays) :results output verbatim code :wrap example diff
+
+#+RESULTS: diff2
+#+begin_example diff
+25c25,31
+<   "java.implementationCodeLens": "all"
+---
+>   "java.implementationCodeLens": "all",
+>   "redhat.telemetry.enabled": false,
+>   "editor.hover.hidingDelay": 50,
+>   "editor.hover.delay": 750,
+>   "editor.occurrencesHighlightDelay": 500,
+>   "editor.quickSuggestionsDelay": 300,
+>   "files.autoSaveDelay": 3000
+#+end_example

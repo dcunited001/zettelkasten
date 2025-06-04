@@ -104,6 +104,41 @@ Implementation of =/bin/sh= in Guile.
   - [[https://technote.fyi/programming/the-gimp/become-a-gimp-script-fu-master-with-guile-aka-scheme/][Become a Gimp Script-Fu Master: with Guile (aka Scheme)]]
 
 
+** Reflection
+*** Ares Repl
++ [[guile-ares-rs/tree/master/item/src/guile/ares/reflection/modules.scm#L61][src/guile/ares/reflection/modules.scm]]
+
+*** On a module's public symbols
+
+From [[https://github.com/kitnil/dotfiles/blob/c835c4fd6a09c6305ec937b0c0a49c9258f9246e/dot_local/bin/executable_mjru-github-projects.scm#L41][kitnil/dotfiles]]
+
+#+begin_example scheme
+(define-record-type* <git-project>
+  git-project make-git-project
+  git-project?
+  (name git-project-name)
+  (group git-project-group)
+  (output git-project-output (default #f)))
+
+(define* (fold-projects proc init
+                     #:optional
+                     (modules (list (resolve-module '(projects)))))
+  "For each git-project type exported by one of MODULES, call (PROC RESULT).
+INIT is used as the initial value of RESULT."
+  (fold-module-public-variables (lambda (object result)
+                                  (if (git-project? object)
+                                      (proc object result)
+                                      result))
+                                init
+                                modules))
+
+(define-public git-project-group-name
+ (name "foo")
+ (group "bar")
+ (output "/path/to/checkout"))
+#+end_example
+
+
 ** Language
 *** Modules
 
@@ -118,7 +153,6 @@ How to filter exports:
 *** Features
 
 + [[https://stackoverflow.com/questions/15892214/scheme-overload-built-in-procedures-general-overloading][Overloading methods]] (s/o)
-
 * Issues
 
 
