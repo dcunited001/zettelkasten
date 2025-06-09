@@ -43,6 +43,50 @@ Nix and /not have this functionality/
 + pacreport :: track unowned files (from pacutils)
 ** Updating stale AUR-git packages
 
+** Cleaning Garuda Packages
+
+See "Updating stale AUR-git packages" above (haven't quite gotten around to
+this: one foot in; mostly the rest of me is out)
+
+#+begin_src shell
+yay -Qdt | cut -f1 -d' ' > /tmp/before-clean
+sudo pacman -Runs $(yay -Qdt | cut -f1 -d' ')
+garuda-update
+yay -Qdt | cut -f1 -d' ' > /tmp/after-update
+
+# these are a bit harder to clean
+yay -Qet | cut -f1 -d' ' > /tmp/after-clean-explicitly-installed
+#+end_src
+
+Then readd flatpaks
+
+#+begin_src shell
+yay -Rns discord hashcat-git heroic-games-launcher-bin podman-desktop \
+    remmina rpi-imager slack-desktop thunderbird torbrowser-launcher \
+    visual-studio-code-bin wireshark-cli woeusb-ng zeal
+flatpak remove --user com.discordapp.DiscordCanary
+flatpak update --user
+flatpak update --system
+
+# better way other than to flatpak search every one?
+flatpak install com.discordapp.Discord \
+    org.raspberrypi.rpi-imager \
+    com.slack.Slack \
+    io.podman_desktop.PodmanDesktop \
+    org.mozilla.Thunderbird \
+    org.torproject.torbrowser-launcher \
+    com.visualstudio.code \
+    org.zealdocs.Zeal \
+    com.github.mdh34.quickdocs
+
+yay -Qdt | cut -f1 -d' ' > /tmp/before-clean
+#+end_src
+
+Diffing the original before/after
+
+#+begin_src shell :results output code :wrap example diff
+diff /tmp/before-clean /tmp/after-update
+#+end_src
 
 * Manjaro
 

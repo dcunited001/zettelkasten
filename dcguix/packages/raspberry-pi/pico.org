@@ -1,0 +1,663 @@
+:PROPERTIES:
+:ID:       1b62fd96-e355-4545-a20a-2e4c1356ff3f
+:END:
+#+title: Pico
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+#+begin_quote
+Note: the package is not
+#+end_quote
+
+* Docs
++ [[https://github.com/rasberrypi/][raspberrypi/picotool]] or elf2uf2 (from the SDK)
++ [[https://github.com/rasberrypi/pico-sdk][raspberrypi/pico-sdk]]
+
+From nixpkgs
+
++ [[https://github.com/NixOS/nixpkgs/blob/fe51d34885f7b5e3e7b59572796e1bcb427eccb1/pkgs/by-name/pi/picotool/package.nix#L58][picotool]]
++ [[https://github.com/NixOS/nixpkgs/blob/fe51d34885f7b5e3e7b59572796e1bcb427eccb1/pkgs/by-name/pi/pico-sdk/package.nix][pico-sdk]]
+
+* Resources
+
+** Build
+
++ AFAIK, Bazel runs integration tests (req python) after pico-sdk build by
+  downloading/building picotool into =lib/picotool=. Otherwise it's not in the
+  github workflows.
+
+* Picotool
+
+Can install on arch with =yay -Syu picotool=
+
+#+begin_src shell
+picotool info # to check for device
+
+# force reboot in BOOTSEL mode
+picotool info -a # check again
+picotool save -av $bin # save entire flash to .bin file (-v to verify)
+picotool save -pv $prog
+#+end_src
+
+** Options/Types
+
++ --family-id <family_id> :: For UF2
++ -f :: reset, run command in bootsel, reboot (req compatible binary)
++ -F :: reset, run command in bootsel, no reboot (req compatible binary)
+
+** [[https://github.com/raspberrypi/picotool?tab=readme-ov-file#binary-information][Binary metadata]]
+
++ basic info: name/desc/version, build date, end address, features, attrs
++ pins: descriptions for pins
++ config: params that can be modified (w/o recompile)
+
+** Info
+
+#+begin_src shell
+picotool config # nothing
+#+end_src
+
+#+begin_src shell
+picotool info -a
+#+end_src
+
+#+begin_example text
+Program Information
+name:              MicroPython
+version:           v1.19.1-859-g41ed01f13
+features:          thread support
+USB REPL
+frozen modules:    webrepl_setup, webrepl, ntptime, mip, urequests, neopixel, dht, ds18x20, onewire, uasyncio/stream, uasyncio/lock,
+uasyncio/funcs, uasyncio/event, uasyncio/core, uasyncio, _boot_fat, _boot, rp2
+binary start:      0x10000000
+binary end:        0x100aabd8
+embedded drive:    0x1012c000-0x10200000 (848K): MicroPython
+
+Fixed Pin Information
+none
+
+Build Information
+sdk version:       1.4.0
+pico_board:        pico_w
+boot2_name:        boot2_w25q080
+build date:        Feb  9 2023
+build attributes:  MinSizeRel
+
+Device Information
+type:              RP2040
+revision:          B2
+flash size:        2048K
+flash id:          0xE6614104031E6F24
+
+Metadata Blocks
+none
+#+end_example
+
+** Binwalk
+
+Inspect image
+
+#+begin_src shell
+guix shell binwalk -- binwalk -Me $bin
+#+end_src
+
++ The only thing extracted are AES s-boxes and hashes (both binwalk 2 & 3)
+  - binwalk 3 seems to create an =extractions= directory with a symlink ... back
+    to the image?
++ These are actually part of the program (i get pretty much the same results)
+
+
+#+begin_example
+Scan Time:     2025-06-08 14:07:49
+Target File:   /data/dev/frc/xrp/picotool/xrp-beta-fresh/image.bin
+MD5 Checksum:  8fcb628acfebcfc11dfe64d8835bc5b3
+Signatures:    411
+
+DECIMAL       HEXADECIMAL     DESCRIPTION
+--------------------------------------------------------------------------------
+430464        0x69180         AES Inverse S-Box
+434816        0x6A280         AES S-Box
+441056        0x6BAE0         SHA256 hash constants, little endian
+531484        0x81C1C         SHA256 hash constants, little endian
+#+end_example
+
+
+
+
+* Guix Embedded
+
++ [[https://lists.gnu.org/archive/html/guix-devel/2023-10/msg00014.html][A different way to build GCC to overcome issues, esp. with C++ for]] mentions
+  some modules now in guix for building building for software using zephyr
++ [[https://lists.gnu.org/archive/html/guix-devel/2023-12/msg00180.html][Re: arm-none-eabi toolchain and compiling C++ stuff]]
++ [[https://issues.guix.gnu.org/73118][[PATCH 0/5] Fix arm-none-eabi toolchains and introduce a newer version
+  12.3.rel1]] is more recent and mentions several fixes to various embedded
+  platform ABIs
+  - =(make-{gcc,newlib,newlib-nano}-arm-none-eabi)=
+  - =(make-arm-none{,nano-}-eabi-toolchain)=
+  - =(make-gdb-arm-none-eabi)=
+  - These are all in =(gnu packages embedded)= but build packages as needed for
+    cross-compilation derivations (so they don't show up in =guix graph= without a
+    bit of work)
+
+These build toolchains are used for
+
+- raspi-arm-chainloader (not really embedded)
+- =axoloti-{runtime,patcher}=
+- =kxoloti-{runtime,patcher}=
+- qmk firmware: =(make-qmk-newlib-nano-arm-none-eabi)=, also a procedure (not a
+  package)
+
+*** [[https://github.com/axoloti/axoloti/][Axoloti]]
+
+Comparing deps for =axoloti= and =ksoloti= firmware builders.
+
+#+begin_src shell :results output file :file ../../img/axoloti-ksoloti.svg
+guix graph --max-depth=3 {ax,ks}oloti-runtime | dot -Tpng
+#+end_src
+
+#+RESULTS:
+[[file:../../img/axoloti-ksoloti.svg]]
+
+The top-level of the [[https://axolotiaudio.wordpress.com/axoloti-patcher/][axoloti-patcher]] (requires java and xorg, so the graph
+inflates quickly)
+
+#+begin_src shell :results output file :file ../../img/axoloti-deps.svg
+guix graph --max-depth=1 axoloti-{runtime,patcher} | dot -Tsvg
+#+end_src
+
+#+RESULTS:
+[[file:../../img/axoloti-deps.svg]]
+* Dependencies
+
+** pico-sdk
+
+Mostly just =cmake= and =coreutils=
+
++ Source includes submodules (not pinned ... unreproducible?)
+  - not included by default in nixpkgs, since:
+
+#+begin_quote
+The submodules in the pico-sdk contain important additional functionality
+such as tinyusb, but not all these libraries might be bsd3. Off by default.
+#+end_quote
+
+Licensing issues? idk
+
+** picotool
+
+* Package
+
+#+begin_src scheme
+guix build -e "$(cat pico.scm) \n\npico-sdk"
+#+end_src
+
+** pico-sdk
+
+... doesn't build (didn't finish... got it to a point where it should be simple
+to resume later)
+
+#+begin_src scheme :tangle pico.scm
+(use-modules (gnu)
+             (gnu packages)
+             (gnu packages base)
+             (gnu packages cmake)
+             ;; (gnu packages ninja)
+             ;; (gnu packages ncurses)
+             ;; (gnu packages bison)
+             ;; (gnu packages flex)
+             (gnu packages pkg-config)
+             (gnu packages libusb)
+             (gnu packages python)
+             (gnu packages check)
+             (guix build-system cmake)
+             ;; (guix build-system meson)
+             (guix download)
+             (guix git-download)
+             (guix packages)
+             (guix utils)
+             (guix gexp)
+             ((guix licenses) #:prefix license:)
+             (srfi srfi-1))
+
+(define-public pico-sdk
+  (package
+    (name "pico-sdk")
+    (version "2.1.1")
+    (source (origin
+              (method git-fetch)
+              (uri (git-reference
+                    (url "https://github.com/raspberrypi/pico-sdk")
+                    (recursive? #f) ;; nixpkgs: potential licensing issues
+                    (commit version)))
+              (file-name (git-file-name name version))
+              (sha256
+               (base32
+                ;; submodules? "1a5s5pvqv8kzvj1f0ryydbrcm7akyc5l96hgr6v59mzcd2wbbfzj"
+                ;; no subs?    "0k3dh6v8bzv1rrvsvqxzgq12lwdx2wlk1vydnbg5znxz1v5vp4vs"
+                "0k3dh6v8bzv1rrvsvqxzgq12lwdx2wlk1vydnbg5znxz1v5vp4vs"))))
+    (inputs (list pkg-config python libusb))
+    (build-system cmake-build-system)
+    (arguments
+     (list
+      #:phases
+      #~(modify-phases %standard-phases
+          (add-before 'build 'change-dir
+            (lambda _ (chdir "tools/pioasm")))
+          ;; (delete 'configure)
+          ;; (delete 'check)
+          (replace 'install
+            (lambda* (#:key outputs #:allow-other-keys)
+              (let* ((out (assoc-ref outputs "out"))
+                     (lib (string-append out "/lib")))
+                (install-file "../../../fdsa" (string-append lib "/pico-sdk"))
+                ;; TODO chmod 755 $out/lib/pico-sdk-tools-pioasm/build/pioasm
+                #t))))))
+
+    (home-page "https://www.raspberrypi.com/documentation/pico-sdk")
+    (synopsis "The Raspberry Pi Pico SDK provides the headers, libraries and
+build system necessary for the RP-series microcontroller-based devices.")
+    (description "")
+    (license license:bsd-3)))
+#+end_src
+
+*** CMake
+
+nixpkgs uses [[https://github.com/raspberrypi/pico-sdk/blob/master/tools/pioasm/CMakeLists.txt][./tools/pioasm/CMakeLists.txt]] as the cmake entry point and only
+builds the =pioasm= binary (i'm not real sure what I need.)
+
++ =./pico_sdk_init.cmake= includes =./cmake/{pre,post}_load_platform=
+
+**** Configure
+
+See axoloti's handling for [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/packages/axoloti.scm?h=master#n199][cross-toolchain]].
+
+#+begin_example text
+running 'cmake' with arguments ("../source" "-DCMAKE_BUILD_TYPE=RelWithDebInfo" "-DCMAKE_INSTALL_PREFIX=/gnu/store/8xi7c8sfrh87zwssrd64a065fy83fkjc-pico-sdk-2.1.1" "-DCMAKE_INSTALL_LIBDIR=lib" "-DCMAKE_INSTALL_RPATH_USE_LINK_PATH=TRUE" "-DCMAKE_INSTALL_RPATH=/gnu/store/8xi7c8sfrh87zwssrd64a065fy83fkjc-pico-sdk-2.1.1/lib" "-DCMAKE_VERBOSE_MAKEFILE=ON")
+PICO_SDK_PATH is /tmp/guix-build-pico-sdk-2.1.1.drv-0/source
+Defaulting platform (PICO_PLATFORM) to 'rp2040' since not specified.
+Defaulting target board (PICO_BOARD) to 'pico' since not specified.
+Using board configuration from /tmp/guix-build-pico-sdk-2.1.1.drv-0/source/src/boards/include/boards/pico.h
+Pico Platform (PICO_PLATFORM) is 'rp2040'.
+Defaulting compiler (PICO_COMPILER) to 'pico_arm_cortex_m0plus_gcc' since not specified.
+Configuring toolchain based on PICO_COMPILER 'pico_arm_cortex_m0plus_gcc'
+Defaulting PICO_GCC_TRIPLE to 'arm-none-eabi'
+CMake Error at cmake/preload/toolchains/util/find_compiler.cmake:29 (message):
+  Compiler 'arm-none-eabi-gcc' not found, you can specify search path with
+  "PICO_TOOLCHAIN_PATH".
+Call Stack (most recent call first):
+  cmake/preload/toolchains/util/find_compiler.cmake:39 (pico_find_compiler)
+  cmake/preload/toolchains/util/pico_arm_gcc_common.cmake:25 (pico_find_compiler_with_triples)
+  cmake/preload/toolchains/pico_arm_cortex_m0plus_gcc.cmake:7 (include)
+  /gnu/store/8wkkxkgkiqaddpn2al8khxnaaanici26-cmake-minimal-3.24.2/share/cmake-3.24/Modules/CMakeDetermineSystem.cmake:124 (include)
+  CMakeLists.txt:10 (project)
+
+
+CMake Error: CMake was unable to find a build program corresponding to "Unix Makefiles".  CMAKE_MAKE_PROGRAM is not set.  You probably need to select a different build tool.
+CMake Error: CMAKE_C_COMPILER not set, after EnableLanguage
+CMake Error: CMAKE_CXX_COMPILER not set, after EnableLanguage
+CMake Error: CMAKE_ASM_COMPILER not set, after EnableLanguage
+-- Configuring incomplete, errors occurred!
+
+#+end_example
+
+
+** picotool
+
+* For Projects
+
+** Variants
+
+For an project building to multiple microcontroller boards:
+
+#+begin_quote
+you should pass =-DPICO_BOARD=board_name= to the cmake command above, e.g. =cmake
+-DPICO_BOARD=pico2= .. or =cmake -DPICO_BOARD=pico_w= .. to configure the SDK and
+build options accordingly for that particular board.
+#+end_quote
+
++ That's easy when package variants can pass =--with-configure=PICO_BOARD=pico2=
+  or similar (depends on which interface the build script uses to forward args
+  to cmake), though when using Guix (or nix) to manage reproducible builds for a
+  single project with multiple IoT outputs, you'd maybe just write the package
+  variants in scheme.
++ It's unlikely that a c-based project on a board with as much memory as an cash
+  register from 1999 could build to other boards without considerable changes to
+  memory management.
+
+* Cross Compilation
+
+=grep-mode= doesn't really tangle ... i wonder why
+
+#+begin_src emacs-lisp
+(setq-local -tangle-dir-
+            (or (bound-and-true-p -tangle-dir-)
+                (setq-local -tangle-dir-
+                            ;; (expand-file-name "path" (getenv "_ECTO"))
+                            (make-temp-file "grep" t))))
+
+(defun -out- (f)
+  "Expand :tangle path with a default `-tangle-dir-'."
+  (expand-file-name f (or (bound-and-true-p -tangle-dir-) ".")))
+  #+end_src
+
+** Filter lines
+
+Why? bc this search works on other channels & package searches
+
+#+begin_src emacs-lisp
+;; lines with comments
+(query-replace-regexp ":[0-9]+: +;.*$" "::")
+(query-replace-regexp ":[0-9]+:;.*$" "::")
+
+;; lines with package metadata
+(query-replace-regexp ":[0-9]+: +(\\(name\\|description\\|synopsis\\|url\\|home-page\\).*$" "::")
+
+;; lines opening a string or in one
+(query-replace-regexp ":[0-9]+: +\".*$" "::")
+(query-replace-regexp ":[0-9]+:[a-zA-Z@]+.* .*$" "::")
+
+;; leave top-level references in cross-base
+(query-replace-regexp "\\(\\/.*\\/cross-base\\.scm:[0-9]+\\): +.*$" "\\1::")
+(query-replace-regexp "\\/.*\\/cross-base\\.scm:[0-9]+::\n" "")
+(query-replace-regexp "\\(\\/.*\\/.*\\.patch\\)::.*$" "\\1:1:")
+
+;; clear out removed lines
+(query-replace-regexp "\\/.*\\/.*\\.scm::.*\n" "")
+#+end_src
+
+** (gnu packages cross-base)
+
+*** Packages
+
+#+begin_example grep :tangle (-out- "pkg.grep")
+/data/ecto/guix/guix/gnu/packages/ssh.scm:374:                  (add-before 'bootstrap 'support-cross-compilation
+/data/ecto/guix/guix/gnu/packages/ssh.scm:421:                         guile-3.0)) ;needed when cross-compiling.
+/data/ecto/guix/guix/gnu/packages/ssh.scm:437:       (prepend guile-2.2 ;needed when cross-compiling.
+/data/ecto/guix/guix/gnu/packages/admin.scm:551:                         guile-fibers-1.1))       ;for cross-compilation
+/data/ecto/guix/guix/gnu/packages/admin.scm:1782:                 `((add-before 'configure 'fix-bind-cross-compilation
+/data/ecto/guix/guix/gnu/packages/perl.scm:160:                     (let ((cross-checkout
+/data/ecto/guix/guix/gnu/packages/perl.scm:164:                       (copy-recursively cross-checkout "."))
+/data/ecto/guix/guix/gnu/packages/perl.scm:5153:(define-public cross-perl-extutils-pkgconfig
+/data/ecto/guix/guix/gnu/packages/perl.scm:5166:      (cross-perl-extutils-pkgconfig target)
+/data/ecto/guix/guix/gnu/packages/c.scm:410:               (add-after 'unpack 'allow-cross-compilation
+/data/ecto/guix/guix/gnu/packages/c.scm:1523:                (error "ck cannot currently be cross-compiled"))
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:49:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:474:            (cross-gcc "arm-linux-gnueabihf")
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:475:            (cross-binutils "arm-linux-gnueabihf")))
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:1048:                         (or (not triplet) ;disable cross-compilation
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:2025:                      (cross-gcc "x86_64-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:2026:                      (cross-binutils "x86_64-linux-gnu")))
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:2041:                        (cross-gcc "x86_64-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/bootloaders.scm:2042:                        (cross-binutils "x86_64-linux-gnu")))))))
+/data/ecto/guix/guix/gnu/packages/crypto.scm:872:                                              (assoc-ref %build-inputs "cross-gcc")
+/data/ecto/guix/guix/gnu/packages/kerberos.scm:213:                     (string-append "--with-cross-tools="
+/data/ecto/guix/guix/gnu/packages/xml.scm:1450: @item @command{hxref} generate cross-references
+/data/ecto/guix/guix/gnu/packages/smalltalk.scm:112:                             (assoc-ref inputs "cross-libc"))))
+/data/ecto/guix/guix/gnu/packages/backup.scm:1320:           guile-3.0 ;for cross-compilation
+/data/ecto/guix/guix/gnu/packages/installers.scm:24:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/installers.scm:32:         (xbinutils (cross-binutils triplet))
+/data/ecto/guix/guix/gnu/packages/installers.scm:33:         (xlibc (cross-libc triplet))
+/data/ecto/guix/guix/gnu/packages/installers.scm:34:         (xgcc (cross-gcc triplet #:libc xlibc)))
+/data/ecto/guix/guix/gnu/packages/cdrom.scm:1014:              (patches (search-patches "cdrkit-libre-cross-compile.patch"))
+/data/ecto/guix/guix/gnu/packages/python-science.scm:1130:cross-validation.")
+/data/ecto/guix/guix/gnu/packages/algebra.scm:720:             (patches (search-patches "bc-fix-cross-compilation.patch"))))
+/data/ecto/guix/guix/gnu/packages/linux.scm:8140:           (if (%current-target-system) ; When cross-compiling.
+/data/ecto/guix/guix/gnu/packages/gl.scm:444:              #~((add-after 'unpack 'fix-cross-compiling
+/data/ecto/guix/guix/gnu/packages/shells.scm:418:                 #~((add-before 'configure 'set-cross-cc
+/data/ecto/guix/guix/gnu/packages/zig-xyz.scm:404:               (add-after 'configure 'fix-cross-compilation
+/data/ecto/guix/guix/gnu/packages/patches/zig-0.9-build-respect-PKG_CONFIG-env-var.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/python-3-hurd-configure.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/gcc-6-cross-environment-variables.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/perl-no-sys-dirs.patch:116:     # When cross-compiling we may store a path for gcc's "sysroot" option:
+/data/ecto/guix/guix/gnu/packages/cran.scm:19209:  cross-validation.
+/data/ecto/guix/guix/gnu/packages/cran.scm:25677:cross-validation.")
+/data/ecto/guix/guix/gnu/packages/cran.scm:41532:  Cross-platform alternatives are the following packages: bigmemory (CRAN),
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:32:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:137:                                (assoc-ref inputs "cross-toolchain")
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:199:       ("cross-toolchain" ,(make-arm-none-eabi-nano-toolchain-4.9))
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:312:                              (toolchain (assoc-ref inputs "cross-toolchain"))
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:335:       ("cross-toolchain" ,(make-arm-none-eabi-nano-toolchain-4.9))
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:417:                                  (assoc-ref inputs "cross-toolchain")
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:476:         ("cross-toolchain" ,(make-arm-none-eabi-nano-toolchain-9-2020-q2-update))
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:598:                             (toolchain (assoc-ref inputs "cross-toolchain"))
+/data/ecto/guix/guix/gnu/packages/axoloti.scm:630:       ("cross-toolchain" ,(make-arm-none-eabi-nano-toolchain-9-2020-q2-update))
+/data/ecto/guix/guix/gnu/packages/patches/gcc-8-cross-environment-variables.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/zig-0.10-build-respect-PKG_CONFIG-env-var.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/gcc-cross-environment-variables.patch:1:
+/data/ecto/guix/guix/gnu/packages/prolog.scm:144:                   #~((add-after 'install 'fix-cross-references
+/data/ecto/guix/guix/gnu/packages/patches/zig-0.12-build-respect-PKG_CONFIG-env-var.patch:1:
+/data/ecto/guix/guix/gnu/packages/efi.scm:87:           (add-after 'unpack 'support-cross-compilation
+/data/ecto/guix/guix/gnu/packages/patches/guile-lzlib-hurd64.patch:8:* configure.ac: When cross-compiling declare LZ_decompress_open before
+/data/ecto/guix/guix/gnu/packages/patches/guile-lzlib-hurd64.patch:20:        # When cross-compiling, we cannot rely on 'ldd'.  Instead, look
+/data/ecto/guix/guix/gnu/packages/gdb.scm:29:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/gdb.scm:134:                           (cross-mig (%current-target-system))
+/data/ecto/guix/guix/gnu/packages/patches/musl-cross-locale.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/libtirpc-CVE-2021-46828.patch:324:-   If you are _building_ compiler tools for cross-compiling, you should
+/data/ecto/guix/guix/gnu/packages/m4.scm:43:    `(;; Explicitly disable tests when cross-compiling, otherwise 'make check'
+/data/ecto/guix/guix/gnu/packages/patches/python-cross-compile.patch:3:https://github.com/NixOS/nixpkgs/blob/master/pkgs/development/interpreters/python/cpython/2.7/cross-compile.patch
+/data/ecto/guix/guix/gnu/packages/patches/python-cross-compile.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/zig-0.13-build-respect-PKG_CONFIG-env-var.patch:
+/data/ecto/guix/guix/gnu/packages/texinfo.scm:71:              (add-before 'configure 'fix-cross-configure
+/data/ecto/guix/guix/gnu/packages/patches/cdrkit-libre-cross-compile.patch:1:
+/data/ecto/guix/guix/gnu/packages/networking.scm:1502:     `(#:tests? ,(not (%current-target-system)))) ; run unless cross-compiling
+/data/ecto/guix/guix/gnu/packages/openldap.scm:107:                 '((add-before 'configure 'fix-cross-gcc
+/data/ecto/guix/guix/gnu/packages/gtk.scm:195:                  (add-after 'unpack 'fix-cross-compilation
+/data/ecto/guix/guix/gnu/packages/patches/gcc-12-cross-environment-variables.patch:1:
+/data/ecto/guix/guix/gnu/packages/bash.scm:163:       `( ;; When cross-compiling, `configure' incorrectly guesses that job
+/data/ecto/guix/guix/gnu/packages/raspberry-pi.scm:31:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/raspberry-pi.scm:196:     `(("binutils" ,(cross-binutils "arm-none-eabi"))
+/data/ecto/guix/guix/gnu/packages/node.scm:233:                                 `'("--cross-compiling"
+/data/ecto/guix/guix/gnu/packages/gettext.scm:135:                 #~((add-after 'install 'patch-cross-shebangs
+/data/ecto/guix/guix/gnu/packages/gettext.scm:138:                          (define (patch-cross-shebang file)
+/data/ecto/guix/guix/gnu/packages/gettext.scm:143:                             patch-cross-shebang
+/data/ecto/guix/guix/gnu/packages/patches/maturin-no-cross-compile.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/maturin-no-cross-compile.patch:29:-cross-compile = [
+/data/ecto/guix/guix/gnu/packages/patches/maturin-no-cross-compile.patch:40:-    "cross-compile",
+/data/ecto/guix/guix/gnu/packages/version-control.scm:316:(define git-cross-configure-flags
+/data/ecto/guix/guix/gnu/packages/version-control.scm:349:          git-cross-configure-flags
+/data/ecto/guix/guix/gnu/packages/version-control.scm:401:                 #~((add-before 'configure 'add-cross-curl-config
+/data/ecto/guix/guix/gnu/packages/golang-xyz.scm:11882:cross-compilation.")
+/data/ecto/guix/guix/gnu/packages/display-managers.scm:430:           bash-minimal                 ;for cross-compilation
+/data/ecto/guix/guix/gnu/packages/rust.scm:44:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/rust.scm:1439:         ((#:tests? _ #f) #f)           ; This package for cross-building.
+/data/ecto/guix/guix/gnu/packages/rust.scm:1490:                  (when (assoc-ref inputs (string-append "glibc-cross-" #$target))
+/data/ecto/guix/guix/gnu/packages/rust.scm:1496:                                          (string-append "glibc-cross-" #$target))
+/data/ecto/guix/guix/gnu/packages/rust.scm:1505:                                          (string-append "glibc-cross-" #$target))
+/data/ecto/guix/guix/gnu/packages/rust.scm:1583:         (prepend (cross-gcc target
+/data/ecto/guix/guix/gnu/packages/rust.scm:1584:                             #:libc (cross-libc target)))
+/data/ecto/guix/guix/gnu/packages/rust.scm:1589:                      (cross-libc target)))
+/data/ecto/guix/guix/gnu/packages/rust.scm:1590:         (prepend (cross-binutils target))))
+/data/ecto/guix/guix/gnu/packages/gnupg.scm:130:              (add-after 'unpack 'cross-symlinks
+/data/ecto/guix/guix/gnu/packages/lua.scm:1428:           #:tests? #t ;even on cross-build
+/data/ecto/guix/guix/gnu/packages/file-systems.scm:1961:               (("strip") "true")) ; breaks cross-compilation
+/data/ecto/guix/guix/gnu/packages/file-systems.scm:2152:          (add-after 'unpack 'fix-cross-compile
+/data/ecto/guix/guix/gnu/packages/patches/glibc-cross-objcopy.patch:1:
+/data/ecto/guix/guix/gnu/packages/onc-rpc.scm:78:    (native-inputs (list mit-krb5)) ;; for cross-compilation
+/data/ecto/guix/guix/gnu/packages/xdisorg.scm:4134:                        (add-after 'unpack 'fix-cross-compile
+/data/ecto/guix/guix/gnu/packages/textutils.scm:395:         (add-after 'unpack 'fix-cross-compilation
+/data/ecto/guix/guix/gnu/packages/hardware.scm:649:           (add-after 'unpack 'fix-cross-compilation
+/data/ecto/guix/guix/gnu/packages/heads.scm:64:        (file-name "musl-cross-checkout")
+/data/ecto/guix/guix/gnu/packages/heads.scm:68:        (patches (search-patches "musl-cross-locale.patch"))))
+/data/ecto/guix/guix/gnu/packages/tls.scm:487:                 #~((add-before 'configure 'set-cross-compile
+/data/ecto/guix/guix/gnu/packages/tls.scm:613:            #~(append #$flags           ;cross-compiling!
+/data/ecto/guix/guix/gnu/packages/mingw.scm:26:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/mingw.scm:55:      (native-inputs `(("xgcc-core" ,(if xgcc xgcc (cross-gcc triplet)))
+/data/ecto/guix/guix/gnu/packages/mingw.scm:57:                                         (cross-binutils triplet)))
+/data/ecto/guix/guix/gnu/packages/cpp.scm:932:          (add-after 'unpack 'fix-cross-compilation
+/data/ecto/guix/guix/gnu/packages/cpp.scm:966:          (add-after 'unpack 'fix-cross-compilation
+/data/ecto/guix/guix/gnu/packages/mpi.scm:92:                 '()                  ;fewer dependencies when cross-compiling
+/data/ecto/guix/guix/gnu/packages/documentation.scm:216:                                 (assoc-ref %build-inputs "cross-libc")
+/data/ecto/guix/guix/gnu/packages/monitoring.scm:927:               (add-after 'unpack 'fix-cross-compile
+/data/ecto/guix/guix/gnu/packages/icu4c.scm:83:                #~((string-append "--with-cross-build="
+/data/ecto/guix/guix/gnu/packages/rust-apps.scm:2248:              (patches (search-patches "maturin-no-cross-compile.patch"))))
+/data/ecto/guix/guix/gnu/packages/patches/racket-launcher-config-dir.patch:49:                         (eq? (cross-system-type) 'unix)
+#+end_example
+
+*** gcc/guile/bootstrap
+
+utilization
+
+#+begin_example grep :tangle (-out- "pkg.grep")
+/data/ecto/guix/guix/gnu/packages/emulators.scm:3934:             (("add_subdirectory\\(SPIRV-Cross-build.*") "")
+/data/ecto/guix/guix/gnu/packages/gcc.scm:482:(define gcc-canadian-cross-objdump-snippet
+/data/ecto/guix/guix/gnu/packages/gcc.scm:521:              (snippet gcc-canadian-cross-objdump-snippet)))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:697:              (snippet gcc-canadian-cross-objdump-snippet)))))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:717:            (snippet gcc-canadian-cross-objdump-snippet)))))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:734:            (snippet gcc-canadian-cross-objdump-snippet)))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:760:            (snippet gcc-canadian-cross-objdump-snippet)))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:786:              (snippet gcc-canadian-cross-objdump-snippet)))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:811:              (snippet gcc-canadian-cross-objdump-snippet)))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:842:              (snippet gcc-canadian-cross-objdump-snippet)))
+/data/ecto/guix/guix/gnu/packages/gcc.scm:874:              (snippet gcc-canadian-cross-objdump-snippet)))
+/data/ecto/guix/guix/gnu/packages/patches/guile-fibers-cross-build-fix.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/gcc-10-cross-environment-variables.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/gcc-7-cross-environment-variables.patch:1:
+/data/ecto/guix/guix/gnu/packages/aux-files/guile-launcher.c:91:	 baked into glibc, except when cross-compiling) so use that, and fall
+/data/ecto/guix/guix/gnu/packages/guile-xyz.scm:909:                          #~((add-after 'unpack 'apply-cross-build-fix-patch
+/data/ecto/guix/guix/gnu/packages/guile-xyz.scm:973:                (delete 'apply-cross-build-fix-patch))))
+/data/ecto/guix/guix/gnu/packages/guile-xyz.scm:2908:                  (display "cross-compiling; reftest skipped\n"))
+/data/ecto/guix/guix/gnu/packages/guile-xyz.scm:3347:     (list guile-3.0))           ;for cross-compilation
+/data/ecto/guix/guix/gnu/packages/mes.scm:28:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/mes.scm:195:             (list (cross-binutils "i686-unknown-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/mes.scm:196:                   (cross-gcc "i686-unknown-linux-gnu")))
+/data/ecto/guix/guix/gnu/packages/mes.scm:201:            (list (cross-binutils triplet) (cross-gcc triplet))))
+/data/ecto/guix/guix/gnu/packages/commencement.scm:2983:(define (cross-gcc-wrapper gcc binutils glibc bash)
+/data/ecto/guix/guix/gnu/packages/commencement.scm:3038:  (cross-gcc-wrapper gcc-boot0 binutils-boot0
+/data/ecto/guix/guix/gnu/packages/commencement.scm:3136:  (cross-gcc-wrapper gcc-boot0 binutils-boot0 glibc-final
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:36:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:123:  (define (cross-bootstrap-libc target)
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:128:       (cross-libc target))))
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:134:        `(("cross-libc"
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:135:           ,(cross-bootstrap-libc (%current-target-system)))
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:136:          ("cross-libc:static"
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:137:           ,(cross-bootstrap-libc (%current-target-system))
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:144:               (xgcc (cross-gcc
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:146:                      #:xbinutils (cross-binutils target)
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:147:                      #:libc (cross-bootstrap-libc target))))
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:151:            ("cross-gcc" ,(package
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:160:            ("cross-binutils" ,(cross-binutils target))))
+/data/ecto/guix/guix/gnu/packages/make-bootstrap.scm:474:                           (cross-libc target)))
+/data/ecto/guix/guix/gnu/packages/patches/automake-skip-amhello-tests.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/automake-skip-amhello-tests.patch:30:--- a/t/amhello-cross-compile.sh
+/data/ecto/guix/guix/gnu/packages/patches/automake-skip-amhello-tests.patch:31:+++ b/t/amhello-cross-compile.sh
+/data/ecto/guix/guix/gnu/packages/patches/automake-skip-amhello-tests.patch:34: # cross-compiling a package from Linux/Unix to MinGW.
+/data/ecto/guix/guix/gnu/packages/patches/glibc-cross-objdump.patch:1:
+/data/ecto/guix/guix/gnu/packages/patches/gcc-cross-gxx-include-dir.patch:1:
+/data/ecto/guix/guix/gnu/packages/pkg-config.scm:91:(define cross-pkg-config
+/data/ecto/guix/guix/gnu/packages/pkg-config.scm:136:      (cross-pkg-config target)
+#+end_example
+
+*** Core Cross-comp
+
+From core cross-compilation packages =(gnu packages cross-base)=
+
+#+begin_example grep :tangle (-out- "pkg.grep")
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:29:(define-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:74:(define %gcc-cross-include-paths
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:91:(define* (cross-binutils . args)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:96:(define* (cross-binutils/deprecated target #:optional (binutils binutils))
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:100:(define (cross-binutils-package target)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:109:(define* (cross-binutils* target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:154:(define (cross-gcc-arguments target xgcc libc)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:257:(define (cross-gcc-patches xgcc target)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:271:(define (cross-gcc-snippet target)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:287:(define (cross-gcc-search-paths target)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:312:(define* (cross-gcc target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:414:(define* (cross-kernel-headers . args)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:419:(define* (cross-kernel-headers/deprecated target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:433:(define* (cross-gnumach-headers target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:463:(define* (cross-mig target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:497:(define* (cross-kernel-headers* target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:653:(define* (cross-libc . args)
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:658:(define* (cross-libc/deprecated target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:671:(define* (cross-libc* target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:788:(define* (cross-gcc-toolchain/implementation target
+/data/ecto/guix/guix/gnu/packages/cross-base.scm:836:(define cross-gcc-toolchain
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:19:(define-module (gnu packages cross-toolchain)
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:20:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:36:(define-public gcc-cross-avr-toolchain
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:37:  (cross-gcc-toolchain "avr"))
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:39:(define-public gcc-cross-i686-w64-mingw32-toolchain
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:40:  (cross-gcc-toolchain "i686-w64-mingw32"))
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:42:(define-public gcc-cross-or1k-elf-toolchain
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:43:  (cross-gcc-toolchain "or1k-elf"))
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:45:(define-public gcc-cross-x86_64-w64-mingw32-toolchain-13
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:46:  (cross-gcc-toolchain "x86_64-w64-mingw32"
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:49:(define-public gcc-cross-x86_64-w64-mingw32-toolchain
+/data/ecto/guix/guix/gnu/packages/cross-toolchain.scm:50:  (cross-gcc-toolchain "x86_64-w64-mingw32"))
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:84:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2691:                 (string-append match " -I" (assoc-ref inputs "cross-libc")
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2696:                                (assoc-ref inputs "cross-libc") "/include")))
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2723:                (string-contains x "cross-i686-linux"))
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2812:       (cross-gcc "i686-linux-gnu"
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2813:                  #:xbinutils (cross-binutils "i686-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2814:                  #:libc (cross-libc "i686-linux-gnu"))
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2815:       (cross-libc "i686-linux-gnu") ; header files
+/data/ecto/guix/guix/gnu/packages/virtualization.scm:2816:       `(,(cross-libc "i686-linux-gnu") "static")))
+/data/ecto/guix/guix/gnu/packages/hurd.scm:37:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/hurd.scm:153:                 (cross-mig (%current-target-system))
+/data/ecto/guix/guix/gnu/packages/hurd.scm:275:               (cross-mig (%current-target-system))
+/data/ecto/guix/guix/gnu/packages/hurd.scm:369:               '((add-after 'configure 'fixup-cross-configure
+/data/ecto/guix/guix/gnu/packages/hurd.scm:594:                    (cross-mig (%current-target-system))
+/data/ecto/guix/guix/gnu/packages/hurd.scm:922:                 (cross-mig (%current-target-system))
+/data/ecto/guix/guix/gnu/packages/avr.scm:33:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/avr.scm:53:      (inherit (cross-binutils "avr"))
+/data/ecto/guix/guix/gnu/packages/avr.scm:58:  (let ((xgcc (cross-gcc "avr" #:xgcc xgcc #:xbinutils (make-avr-binutils))))
+/data/ecto/guix/guix/gnu/packages/avr.scm:106:                                       (xbinutils (cross-binutils "avr"))
+/data/ecto/guix/guix/gnu/packages/avr.scm:107:                                       (xgcc (cross-gcc "avr"
+/data/ecto/guix/guix/gnu/packages/avr.scm:125:       #:implicit-cross-inputs? #f))
+/data/ecto/guix/guix/gnu/packages/avr.scm:126:    (native-inputs `(("cross-binutils" ,xbinutils)
+/data/ecto/guix/guix/gnu/packages/avr.scm:127:                     ("cross-gcc" ,xgcc)))
+/data/ecto/guix/guix/gnu/packages/avr.scm:141:        (avr-libc (make-avr-libc #:xgcc (cross-gcc "avr" #:xgcc xgcc)))
+/data/ecto/guix/guix/gnu/packages/emulators.scm:70:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/emulators.scm:431:       (list (cross-gcc "powerpc-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/emulators.scm:3926:             (("spirv-cross-glsl" all)
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:21:+   LIBS += -lspirv-cross-core \
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:22:+           -lspirv-cross-glsl \
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:23:+           -lspirv-cross-reflect \
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:24:+           -lspirv-cross-msl
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:58:+   check_lib cxx SPIRV_CROSS -lspirv-cross-core '' '' 'spirv_cross.hpp' 'spirv_cross'
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:59:+   check_lib cxx SPIRV_CROSS_GLSL -lspirv-cross-glsl
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:60:+   check_lib cxx SPIRV_CROSS_MSL -lspirv-cross-msl
+/data/ecto/guix/guix/gnu/packages/patches/retroarch-unbundle-spirv-cross.patch:61:+   check_lib cxx SPIRV_CROSS_REFLECT -lspirv-cross-reflect
+/data/ecto/guix/guix/gnu/packages/embedded.scm:56:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/embedded.scm:133:    (let ((xgcc (cross-gcc "arm-none-eabi"
+/data/ecto/guix/guix/gnu/packages/embedded.scm:135:                           #:xbinutils (cross-binutils "arm-none-eabi")))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:233:                  (search-patches "gcc-6-cross-environment-variables.patch"
+/data/ecto/guix/guix/gnu/packages/embedded.scm:266:       `(("xbinutils" ,(cross-binutils "arm-none-eabi"))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:346:    (let ((xgcc (cross-gcc "arm-none-eabi"
+/data/ecto/guix/guix/gnu/packages/embedded.scm:348:                           #:xbinutils (cross-binutils "arm-none-eabi")))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:471:         `(("xbinutils" ,(cross-binutils "arm-none-eabi"))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:488:    (let ((xgcc (cross-gcc "arm-none-eabi"
+/data/ecto/guix/guix/gnu/packages/embedded.scm:490:                           #:xbinutils (cross-binutils "arm-none-eabi")))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:610:         `(("xbinutils" ,(cross-binutils "arm-none-eabi"))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:628:          (xgcc-base (cross-gcc "arm-none-eabi"
+/data/ecto/guix/guix/gnu/packages/embedded.scm:630:                                #:xbinutils (cross-binutils "arm-none-eabi"))))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:827:         `(("binutils" ,(cross-binutils "arm-none-eabi"))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:1049:    (let ((xbinutils (cross-binutils "propeller-elf"))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:1088:    (let ((xgcc (cross-gcc "propeller-elf"
+/data/ecto/guix/guix/gnu/packages/embedded.scm:1108:                    (search-patches "gcc-cross-environment-variables.patch")))))
+/data/ecto/guix/guix/gnu/packages/embedded.scm:1207:           (add-before 'build 'set-cross-environment-variables
+/data/ecto/guix/guix/gnu/packages/embedded.scm:1344:         (add-before 'build 'set-cross-environment-variables
+/data/ecto/guix/guix/gnu/packages/embedded.scm:1487:          (xgcc (cross-gcc "vc4-elf" #:xgcc gcc-6 #:xbinutils binutils-vc4)))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:61:  #:use-module (gnu packages cross-base)
+/data/ecto/guix/guix/gnu/packages/firmware.scm:539:                 (list (cross-gcc target #:xgcc gcc-10) (cross-binutils target)))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:585:         (list (cross-gcc "riscv64-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/firmware.scm:586:               (cross-binutils "riscv64-linux-gnu"))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:737:           (prepend (cross-gcc "i686-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/firmware.scm:738:                    (cross-binutils "i686-linux-gnu")))))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:877:           (list (cross-gcc "i686-linux-gnu")
+/data/ecto/guix/guix/gnu/packages/firmware.scm:878:                 (cross-binutils "i686-linux-gnu"))))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1049:                 (list (cross-gcc "arm-linux-gnueabihf")
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1050:                       (cross-binutils "arm-linux-gnueabihf"))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1051:                 (list (cross-gcc (string-append arch "-linux-gnu"))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1052:                       (cross-binutils (string-append arch "-linux-gnu"))))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1211:          (add-after 'unpack 'fix-cross-build
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1270:                       (prepend (cross-gcc "arm-none-eabi")
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1271:                                (cross-binutils "arm-none-eabi")))))))
+/data/ecto/guix/guix/gnu/packages/firmware.scm:1951:          (cross-binutils "arm-none-eabi")))))))
+/data/ecto/guix/guix/gnu/packages/base.scm:1686:                    (let* ((cross-base (resolve-interface '(gnu packages cross-base)))
+/data/ecto/guix/guix/gnu/packages/base.scm:1687:                           (cross-mig (module-ref cross-base 'cross-mig)))
+/data/ecto/guix/guix/gnu/packages/base.scm:1688:                      (cross-mig (%current-target-system)))
+#+end_example

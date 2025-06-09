@@ -1,0 +1,119 @@
+:PROPERTIES:
+:ID:       1c2a9726-84c8-4e08-b5a0-f29f2a014b3a
+:END:
+#+TITLE: Guix: Create Partition Table on Raw Images and mkfs
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+
+* Docs
+Sources: mainly =./{,system/,build/}image.scm=
+
+* Resources
+
+** Implementations
+Very useful
+
+./gnu/build/image.scm:
+
++ [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/build/image.scm?h=master#n229][initialize-root-partition]]
++ [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/build/image.scm?h=master#n291][make-iso9660-image]]
+
+./gnu/system/image.scm:
+
++ [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/system/image.scm?h=master#n219][(image-with/out-os base-image os)]] syntax rules
+
+./guix/docker.scm
+
++ [[https://git.savannah.gnu.org/cgit/guix.git/tree/guix/docker.scm?h=master#n122][(config layers-diff-ids time arch #:key entry-point (environment '()))]]
+  - generates a minimal docker image, given a set of layers
+
+
+
+** Examples
+
+These [[https://codeberg.org/look/misako/src/branch/main][look/misako]] dotfiles, particularly the =yumiko= system create a system that
+runs on ephemeral =tmpfs=. The =yuria= system can layer BTRFS snapshots. It's close
+to a =tmpfs= system that boots from =pxe=
+
++ fully getting that to work (esp. given the Guix manual notes on a =pxe= boot
+  that runs an image downloaded via =NFS=) may require handling the =/gnu/store=
+  that comes down.
+
+* Notes
+** Create some images
+*** TODO Copy mbusb disk image to new USB & replace bootloader :GUIX:
+#+begin_src scheme
+(use-modules (gnu)
+             (gnu image)
+             (gnu tests)
+             (gnu build image)
+             (gnu system image) ; %image-types
+             (guix gexp)
+             ;; (json builder)
+             ;; get JSON from sfdisk -J
+             (json))
+
+(define MiB (expt 2 20))
+
+
+#+end_src
+
+Other image types:
+
++ efi-image
++ esp32-image :: refind/tianocore or maybe busybux
+
+*** TODO Try to replicate OrangePi bootloader partitions/table to a image file :GUIX:
+
++ see the rockchip-image, which needs a bit of work to get an orangepi5 running
+
+** Create a combined dual-boot install of arch+guix with shared partitions
+
++ Should install an Arch first, then circle back to install guix.
++ They should use the same =/boot/efi= partition
++ Don't make it share an installation with =silverblue=, since that distro likes
+  to eat disks.
++ partitions like =/gnu/store= and =/nix/store= either need to be on different
+  partitions or a single partition ....
+  - actually (idk) may need to reside on two different root partitions (shit)
+  - ... which i think means the =/home/$you/.guix-profile= and guix home symlinks
+    to hardlinks will break (... shit)
+  - to get around this, you'd need a multi-tiered Guix store that overlays.
+    likely impossible, since =/gnu/store= is flat and since =/gnu/store/$hash= is
+    reproducible; i.e. capable of being generated/produced by any depending
+    derivation.
+    - since hardlinks cannot extend beyond a partition (AFAIK for file systems I
+      know of) then all of any single Guix store must be on a single partition.
+      LVM circumvents disk limitations, but not file-system size limitations.
+  - Other issues: the metadata in =/ver/guix= which includes sqlite database that
+    you don't really want to break (I may have had one case of issues with
+    this). this is easier to deal with if you only add to it, but a
+    garbage-collection will also affect the sqlite db.
+    - thus, the =/var= directories for a Guix store or Nix store need to be on the
+      same file system as =/gnu/store=, so any kernel running procs & building
+      derivations will update single copy of the store (& its metadata)
++ so, in summary, file systems with symlinks to a guix store must be loaded
+  onto a system where the Guix store itself is only on one partition.
+  - the root filesystems =/= on guix/arch should mount a filesystem that
+    overlays =/gnu/store=, =/var/guix= and =/var/log/guix= and any filesystem like
+    =/home/$you= with symlinks to those derivations must load onto the same
+    system.
+    - Bundling these into the same LVM makes things simpler
+    - For guix home, this is fairly straightforward, but for cases like
+      services which that to mount shares (or other store objects used by
+      containers), this could be complicated.
++ thankfully, this should only happen for desktops (shit) ... other examples:
+  VMs that may share disks, deploying software to run in data centers, maybe
+  cloning/draining VMs, using a guix/nix store with CephFS
+  - ... so maybe that's why the =guix gc= command seems fairly robust &
+    well-tested. keeping these pieces simpler makes things a bit easier.
+    filesystems/disks are usually more of a problem with more partitions (thus
+    LVM)
+
++ It will be difficult to maintain the =~/.profile= on both installs
