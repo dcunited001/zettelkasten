@@ -1,0 +1,213 @@
+:PROPERTIES:
+:ID:       475a26b8-ef8f-42fa-aebc-12345850cd7b
+:END:
+
+#+title: Guix Golang: Makefile Graph
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:abd2d6e9-fe5b-4ba4-8533-0e5a3d174743][Golang]]
++ [[id:3daa7903-2e07-4664-8a20-04df51b715de][C/C++ (cpp)]]
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
++ [[id:286b6d1b-362b-44fe-bb19-e0e78513d615][GNU]]
+
+* Packages
+
+*** TODO Remaining Tasks (may not pick up =include= or handle recursive =Makefiles=)
+
+Remaining tasks.
+
++ [ ] complete e-charts (fix propagated imports and import path)
++ [ ] figure out why go-priorityqueue won't import (guix will pull things from
+  =gopkgs= no matter what, but I don't understand the URLs at all. simple "ChatGPT
+  query" I guess)
++ [ ] fix import path for go-deque
++ [ ] ensure go version is sensible for packages
+
+The tool would be very nice for quickly picking up structure from projects
+though. I've seen approaches in other tools that generate from make:
+
++ They usually depend on evaluation, dry-runs and logging, as does this one.
++ However, their scope is usually fairly static (lack of imports/etc).
++ Emacs can (to some extent) interpret a =Makefile=, but ... I'm really not sure
+  what to expect out of tools that parse them without evaluation (if not
+  =--dry-run=). Not a huge deal here, but it's much easier to extract from a wider
+  selection of projects if you don't need eval.
+
+I do not have =make= experience, but from what I can see, there are a hundred
+different styles. These scripts don't change much: it can breaks builds
+downstream, depending on how/when updates trickle out.
+
+There are just a few snags here that make it hard to justify submitting a patch.
+I already have a ton of stuff going on. I don't have thunderbird set up (or
+gnus)... etc. while my laptop is in flux (need VSCode for some things), it
+doesn't make sense to spend the time fixing it all up, since I'm going to break
+it down again later. half-in/half-out on Guix and Arch means i'm sprinting in 7
+different directions at the same time; net zero.
+
+I need to learn how to structure a =Makefile= for:
+
++ some basic target-based automation
++ filewatch
++ maybe testing
+
+For dotfiles, but probably other projects as well. I don't want to just
+cargo-cult a bunch of stuff from these Guix channels ... bc that would create a
+mess. However they're running stuff on qemu would be interesting to learn.
+
+** go-graph
+
+requires 5 packages afaik
+
++ go-github-com-dnaeon-go-deque
++ go-github-com-dnaeon-go-priority-queue
++ go-gopkg-in-go-echarts-go-echarts-v2
++ go-gopkg-in-dnaeon-go-graph-v1
++ go-gopkg-in-dnaeon-makefile-graph-v1
+
+#+begin_src scheme :tangle makefile-graph.scm
+(use-modules ;;  (ellipsis packages wip golang)
+   ((guix licenses) #:prefix license:)
+   (guix gexp)
+   (guix utils)
+   (guix download)
+   (guix git-download)
+   (guix packages)
+   (guix build-system go)
+
+   (gnu packages base)
+   (gnu packages golang)
+   (gnu packages golang-xyz)
+   (gnu packages golang-check)
+   (gnu packages tls)
+   (gnu packages security-token)
+  ;;  (gnu packages gcc)
+
+   (srfi srfi-1))
+
+(define-public go-github-com-go-echarts-go-echarts-v2
+  (package
+    (name "go-github-com-go-echarts-go-echarts")
+    (version "2.5.5")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/go-echarts/go-echarts")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1jfby88cngfckik0wva4wi18lh09b8ffgz74zxv9wh1l8kwnxzcw"))))
+    (build-system go-build-system)
+    (arguments
+     (list
+      #:import-path "github.com/go-echarts/go-echarts/v2"
+      #:unpack-path "github.com/go-echarts/go-echarts"))
+    (propagated-inputs (list go-github-com-kr-pretty))
+    ;; these are probably needed
+    ;; go-github-com-davecgh-go-spew ;for debugging?
+    ;; go-github-com-stretchr-testify ;only imported in tests?
+    ;; go-difflib ;not imported in files (indirect? IDK)
+    (home-page "https://github.com/go-echarts/go-echarts")
+    (synopsis "The adorable charts library for Golang.")
+    (description
+     "In the Golang ecosystem, there are not many choices for data visualization
+libraries.  The development of
+@@url{https://github.com/go-echarts/go-echarts,go-echarts} aims to provide a
+simple yet powerful data visualization library for Golang.
+@@url{https://echarts.apache.org/,Apache ECharts} is an awesome charting and
+visualization library, it supports adorable chart types and various interactive
+features.  and there have many program languages interactive with Echarts, such
+as @@url{https://github.com/pyecharts/pyecharts,pyecharts}, which
+@@code{go-echarts} learns and has evolved a lot from, and the
+@@url{https://github.com/Koooooo-7/echarts4j,echarts4j} either.")
+    (license license:expat)))
+
+(define-public go-github-com-dnaeon-go-deque
+  (package
+    (name "go-github-com-dnaeon-go-deque")
+    (version "1.0.0-20250203064611-7d48f7299755")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/dnaeon/go-deque")
+             (commit (go-version->git-ref version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "15vcnl20fcv1cci7j0n9n4f2hgqv90sx88bnf4sg5miyd1nd3lpy"))))
+    (build-system go-build-system)
+    (arguments
+     (list
+      #:go go-1.22
+      #:import-path "github.com/dnaeon/go-deque"))
+    (home-page "https://github.com/dnaeon/go-deque")
+    (synopsis "go-deque")
+    (description
+     "This package provides a simple, generic, thread-safe implementation of in Go.")
+    (license #f)))
+
+;; can't import (regardless of whatever permutations on version/etc; i have no
+;; idea; i haven't used go... i do know everything's implicit with:
+;; `go get me installs`)
+;;
+;; guix import go gopkg.in/dnaeon/go-priorityqueue
+;; guix import: Importing package "gopkg.in/dnaeon/go-priorityqueue"...
+;; guix import: warning: Failed to import package "gopkg.in/dnaeon/go-priorityqueue".
+;; reason: "https://proxy.golang.org/gopkg.in/dnaeon/go-priorityqueue/@v/list" could not be fetched: HTTP error 404 ("Not Found").
+;; This package and its dependencies won't be imported.
+;; guix import: error: failed to download meta-data for module 'gopkg.in/dnaeon/go-priorityqueue'.
+
+(define-public go-gopkg-in-dnaeon-go-priority-queue-v1 (iota 1))
+
+;; (synopsis "Simple and generic implementation of priority queues in Go")
+;; (description "@@code{go-priorityqueue} builds on top of container/heap, and
+;; also adds various convenience methods for creating new priority queues,
+;; predicates for testing whether the queue is empty, synchronization so it can
+;; be safely used by multiple goroutines.")
+
+(define-public go-gopkg-in-dnaeon-go-graph-v1
+  (package
+    (name "go-gopkg-in-dnaeon-go-graph-v1")
+    (version "1.0.2")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://gopkg.in/dnaeon/go-graph.v1")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1p99gq7d5by67lcs94a6a7z8s735ifnh22q02gihhfs1w40j52ci"))))
+    (build-system go-build-system)
+    (arguments
+     (list
+      #:import-path "gopkg.in/dnaeon/go-graph.v1"
+      #:phases
+      #~(modify-phases %standard-phases
+          (delete 'build) ;; XXX: Workaround for go-build-system's lack of Go modules support.
+          (replace 'check
+            (lambda* (#:key tests? import-path #:allow-other-keys)
+              (when tests?
+                (with-directory-excursion (string-append "src/" import-path)
+                  (invoke "go" "test" "-v" "./..."))))))
+      ))
+    (propagated-inputs (list go-github-com-go-echarts-go-echarts-v2
+                             ;; go-github-com-dnaeon-go-priorityqueue
+                             go-github-com-dnaeon-go-deque))
+    (home-page "https://gopkg.in/dnaeon/go-graph.v1")
+    (synopsis "Simple and generic graph library")
+    (description
+     "@@code{go-graph} provides utilities for specifying and analyzing graphs,
+including topo-sort, shortest-path and other traversal methods. @@code{go-graph}
+can export to @@{graphviz} and @@url{https://echarts.apache.org/,Apache ECharts}")
+    (license license:bsd-2)))
+
+(define-public go-gopkg-in-dnaeon-makefile-graph-v1 (iota 1))
+
+go-github-com-dnaeon-go-deque
+; go-github-com-dnaeon-go-priority-queue
+; go-gopkg-in-go-echarts-go-echarts-v2
+; go-gopkg-in-dnaeon-go-graph-v1
+; go-gopkg-in-dnaeon-makefile-graph-v1
+#+end_src

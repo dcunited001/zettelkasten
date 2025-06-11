@@ -12,6 +12,8 @@ TLDR: the problem is pyenv
 #+end_example
 
 * Roam
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
 
 * Pyenv Issues
 
@@ -46,3 +48,67 @@ When pyenv activates a separate python... # otherwise
 /data/repo/.venv/bin/python: No module named build
 # /data/lang/.pyenv/versions/3.12.1/bin/python: No module named build.__main__; 'build' is a package and cannot be directly executed
 #+end_example
+
+* Remove Tensorflow
+
+=yay -Rns tensorflow= Wants to remove these (can't)
+
+| graphviz | gts | liblzf | netpb |
+
+Also wants to remove (wtf are these?) if =yay -Rns=
+
+| python-absl        | python-google-auth          | python-mdurl        | python-pyasn1-modules    |
+| python-astor       | python-google-auth-oauthlib | python-ml-dtypes    | python-pydot             |
+| python-astunparse  | python-grpcio               | python-oauth2client | python-pygments          |
+| python-bleach      | python-grpcio-tools         | python-oauthlib     | python-pytz              |
+| python-cgi         | python-h5py                 | python-opt_einsum   | python-requests-oauthlib |
+| python-flatbuffers | python-html5lib             | python-optree       | python-rich              |
+| python-gast        | python-httplib2             | python-pandas       | python-rsa               |
+|                    | python-keras                | python-pasta        | python-scipy             |
+|                    | python-markdown-it-py       | python-pooch        | python-termcolor         |
+|                    |                             | python-pyasn1       | python-wrapt             |
+
+Start with these, then clean unneeded
+
+#+begin_src shell
+pacman -Rn tensorflow python-tensorflow \
+  tensorboard python-tensorboard_plugin_wit \
+  python-astor python-keras
+# pacman -Ru ... nevermind
+
+pacman -Rn python-h5py python-grpcio python-grpcio-tools python-scipy
+pacman -Rn python-google-auth python-google-auth-oauthlib
+pacman -Rn python-opt_einsum python-ml-dtypes python-flatbuffers
+pacman -Rn python-rich python-requests-oauthlib python-astunparse python-gast python-optree
+pacman -Rn python-pandas python-pytz python-pandas python-pasta python-pooch
+pacman -Rn python-pydot python-pygments python-mdurl python-markdown-it-py
+pacman -Rn python-wrapt python-oauth2client python-httplib2 python-bleach python-cgi python-html5lib
+pacman -Rn python-oauthlib  python-termcolor
+#+end_src
+
+Needed:
+
+| python-pyasn1         |
+| python-rsa            |
+| python-pyasn1         |
+| python-pyasn1-modules |
+
+Gahhh
+
+Check with
+
+#+begin_src shell
+yay -P --stats
+yay -Qdt | cut -f1 -d' ' # dependents not needed
+yay -Qet | cut -f1 -d' ' # explicits not needed
+garuda-updates # may readd some things ... but meh
+#+end_src
+
+Clean cache with
+
+#+begin_src shell
+pacman -Scc
+rm -rf ~/.cache/yay
+#+end_src
+
+Now trim =btrfs= snapshots

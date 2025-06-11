@@ -12,12 +12,45 @@
 + [[id:c6796b35-883f-4607-8ee3-00aea6215579][Docs]] and [[https://docs.wpilib.org/en/stable/docs/xrp-robot/index.html][WPILib Docs]]
 + [[https://www.youtube.com/watch?v=JQyKhzlMSms][XRP Assembly Video]]
 
+** Sparkfun
+Most of the assets like manuals/CAD/dimensions can be cloned from this
+repository
+
++ [[https://github.com/sparkfun/SparkFun_XRP_Controller][sparkfun/SparkFun_XRP_Controller]]
+
+
 ** Hardware
 + [[https://docs.sparkfun.com/SparkFun_XRP_Controller/hardware_overview][Hardware Overview]]
   - [[https://docs.sparkfun.com/SparkFun_XRP_Controller/hardware_overview_beta][Hardware Overview (BETA)]]
 + [[https://docs.sparkfun.com/SparkFun_XRP_Controller/resources/][Resources]]
+
+*** XRP v1
++ RP 2350 Data Sheet (XRP)
+
+*** XRP Beta
+
++ [[https://docs.sparkfun.com/SparkFun_XRP_Controller/assets/component_documentation/pico-w-datasheet.pdf][RP Pico W Data Sheet]] (XRP Beta)
++ [[https://docs.sparkfun.com/SparkFun_XRP_Controller/assets/component_documentation/drv8835.pdf][DRV8835 Motor Driver Datasheet]]
++ [[https://docs.sparkfun.com/SparkFun_XRP_Controller/assets/component_documentation/LSM6DSO.pdf][LSM6DSO 6 DoF Accel+Gyro Datasheet]]
++ [[https://docs.sparkfun.com/SparkFun_XRP_Controller/assets/hardware_files/XRP_Controller_Beta.pdf][Schematic]] and Eagle
+
+**** Pico
+
+The Pico W has a  =W25Q16= 2MB SPI Flash (according to google)
+
++ [[https://www.youtube.com/watch?v=P-9Lb__8LV4&t=1s][Ch 4.3 SPI from RP Pico W Workshop]]
++ Binaries that run here need to be [[rasberrypi/pico-sdk][converted from ELF to UF2]] via
+  [[https://github.com/rasberrypi/][raspberrypi/picotool]] or elf2uf2 (from the SDK)
++ [[https://github.com/rasberrypi/pico-sdk][raspberrypi/pico-sdk]]
+
+From nixpkgs
+
++ [[https://github.com/NixOS/nixpkgs/blob/fe51d34885f7b5e3e7b59572796e1bcb427eccb1/pkgs/by-name/pi/picotool/package.nix#L58][picotool]]
++ [[https://github.com/NixOS/nixpkgs/blob/fe51d34885f7b5e3e7b59572796e1bcb427eccb1/pkgs/by-name/pi/pico-sdk/package.nix][pico-sdk]]
+
 ** WPILib
 + [[https://github.com/wpilibsuite/xrp-wpilib-firmware][wpilibsuite/xrp-wpilib-firmware]] see releases
+
 * Resources
 ** CAD
 + [[https://www.printables.com/model/576581-xrp-robot-kit-beta/related][Printables: XRP Models]]
@@ -49,6 +82,140 @@ Lagrangian Mechanics (FRC Text, Chapter 13)
 + Double-jointed Arm
 + Cart-pole
 
+* Device Setup
+
+** Firmware
++ Connect device and check
++ Reboot into BOOTSEL
++ Check
+
+** xrpcode.wpi.edu
+
+Using bluetooth requires firmware =>1.1=, though 1.2 exists. The site will
+autoupdate. This editor uses a different firmware to run micropython programs,
+so I didn't complete.
+
+*** UUCP setup
+
+Some errors:
+
+On linux, connecting here requires:
+
++ Browser permissions: serial access for (default: ask for site exception)
++ Device permissions:
+
+* Advanced Connectivity
+
+** In Firmware
+
+[[https://github.com/wpilibsuite/xrp-wpilib-firmware/blob/27fc64b72ddec96c0b2ad89e57ae4d9c7a264357/src/main.cpp#L187-L206][wpilibsuite/xrp-wpilib-firmware ./src/main.cpp#L187-L206]] Sets up the web server
+in C...
+
+** XRP HAL
+
+*** Patterns
+
++ [[https://github.com/wpilibsuite/allwpilib/blob/de718f7ae568087bc5cdeff4cdb63a395da2f42d/simulation/halsim_ws_core/src/main/native/include/WSHalProviders.h#L26][WSHalProviders]] uses the provider pattern
++ A good seven or eight patterns used in [[https://github.com/wpilibsuite/allwpilib/blob/de718f7ae568087bc5cdeff4cdb63a395da2f42d/wpiutil/src/main/native/thirdparty/llvm/include/wpi/iterator.h#L80][iterator_facade_base]] class
+  - facade, template, proxy, iterator
+
+*** XRP Protocol
+
+Main XRP instantiation logic in [[https://github.com/wpilibsuite/allwpilib/blob/de718f7ae568087bc5cdeff4cdb63a395da2f42d/simulation/halsim_xrp/src/main/native/cpp/XRP.cpp#L16][XRP.cpp]]
+
+| 2 bytes           | 1 byte          | n bytes         |
+|-------------------+-----------------+-----------------|
+| _uint16_t_ sequence | _uint8_t_ control | [<Tagged Data>] |
+
+**** Tagged Data
+
+| 1 byte       | 1 byte        | n bytes   |
+|--------------+---------------+-----------|
+| _uint8_t_ size | _uint8_t_ tagID | <payload> |
+
+Tag Ids
+
+| Tag  | Description                   |
+|------|-------------------------------|
+| 0x12 | [XRPMotor](#xrpmotor)         |
+| 0x13 | [XRPServo](#xrpservo)         |
+| 0x14 | [DIO](#dio)                   |
+| 0x15 | [AnalogIn](#analogin)         |
+| 0x16 | [XRPGyro](#xrpgyro)           |
+| 0x17 | [BuiltInAccel](#builtinaccel) |
+| 0x18 | [Encoder](#encoder)           |
+
+**** DIO
+
+Setup in [[https://github.com/wpilibsuite/allwpilib/blob/de718f7ae568087bc5cdeff4cdb63a395da2f42d/xrpVendordep/src/main/native/include/frc/xrp/XRPOnBoardIO.h#L29][XRPOnBoardIO.h]] for =DIO 0 - USER= as and =DIO 1 - LED=, but I think others
+may be added (req some soldering on XRP Beta)
+
+
+** For Simulation
+
+WPILib supports network interaction to collect/transmit HAL data via websockets
+
++ See [[https://github.com/wpilibsuite/allwpilib/blob/075cc4a20f44e2a5a61ed6139a855578cceb0b89/DevelopmentBuilds.md][./DevelopmentBuilds.md]] and [[https://github.com/wpilibsuite/allwpilib/blob/075cc4a20f44e2a5a61ed6139a855578cceb0b89/simulation/README.md][./simulation/README.org]]
++ Some (or most) functionality is available for XRP, but it's difficult,
+  brittle, with stateful workflows (unlikely to work in a group setting)
+  - code running on the XRP Raspberry needs to dynamically link a HAL extension
+  - The XRP and other hardware needs task-management logic (real-time
+    programming, basically). The hardware is single threaded, so you need to
+    stop/resume tasks to hand control back ... or write code that provably
+    terminates.
++ Requires development build before your program can successfully compile
+  - Your code can only stem from tagged wpilib releases. =gradle= will need to get
+    its =wpilib= core dep from a local build (or network-local/maven build)
+  - So the HAL extension needs to be complete & well tested ... that part can't
+    change much except by its developer (req. much EXP for the XRP HAL
+    extension)
+
+That seems like a really bad direction to go in right now... but hopefully
+there's some way to use the existing HAL logic.
+
+** bb-frc-workshops
+
++ [[https://github.com/bb-frc-workshops/xrp-basic-sim][bb-frc-workshops/xrp-basic-sim]]
++ [[https://github.com/bb-frc-workshops/xrp-examples][bb-frc-workshops/xrp-examples]]
+
+*** WPILib HAL Simulation on XRP
+
+[[https://github.com/bb-frc-workshops/xrp-wpilib?tab=readme-ov-file][bb-frc-workshops/xrp-wpilib]] contains:
+
+#+begin_quote
+A reference implementation of an XRP Robot that can be controlled via the
+WPILib HALSim WebSocket extension.
+
+The firmware implements (a subset) of the [[https://github.com/wpilibsuite/allwpilib/blob/main/simulation/halsim_ws_core/doc/hardware_ws_api.md][WPILib Robot Hardware Interface
+WebSockets API Spec]]
+#+end_quote
+
+I'd like to integrate state/data from the XRP into a display/webapp. There may
+already be a non-serial interface for this.
+
++ the main XRP mDNS wifi setup page runs directly at the firmware level
++ it likely occupies a bit of RAM...There's not much room
++ A firmware just needs to connect & transmit over a websocket
++ TCP would also work
+
+The main possibility here is allowing the robot to:
+
++ Fetch data like game state for puzzles (e.g. like a minesweeper with a fairly
+  wide open, easy game)
++ Offload small chunks of data (to collect/visualize sensor measurements)
+
+#+begin_quote
+Careful with the firmware! The components on the board are completely different.
+
++ So the "HAL reference implementation" firmware above almost certainly only
+  functions with the beta version.
++ It also didn't officially fork from the [[https://github.com/wpilibsuite/xrp-wrplib-firmware][wpilibsuite/xrp-wrplib-firmware]], so it
+  doesn't have upstream updates (e.g. build scripts likely need a lot of work)
+
+The WPILib docs mention that HAL is not officially supported. Unless those docs
+change, then support is likely 3rd party which requires exact assumptions about
+the hardware.
+#+end_quote
 * WPILib
 
 ** Classes
