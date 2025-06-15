@@ -1,0 +1,310 @@
+:PROPERTIES:
+:ID:       475a26b8-ef8f-42fa-aebc-1a3c5850cd7b
+:END:
+#+title: Guix Golang: Planter
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:abd2d6e9-fe5b-4ba4-8533-0e5a3d174743][Golang]]
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
++ [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]
++ [[id:38f43c0c-52ee-42d7-9660-af2511d19711][Modeling Language]]
++ [[id:bb8bbe7c-6d49-4088-9161-2ae2edb4abd6][Ontology]]
+
+* Test
+
+Needs a running postgres server.
+
++ The [[https://hub.docker.com/_/postgres][postgres image docs]] say =postgres initdb= will find all files like =*.sql= and
+  =*.sql.gz= in =/docker-entrypoint-initdb.d=
+  - I'm just going to use the initial round =0= of the [[https://github.com/hashicorp/boundary/blob/7040374b6f5ef0c32d46fd81e4ccc786fe440e39/internal/db/sqltest/initdb.d/00_schema.sh#L15][hashicorp/boundary
+    migrations]] script.
+  - it creates =64= tables, =30= foreign keys. At this point, the schema's old.
+  - the later scripts require that everything play in order and it logs
+    migrations to tables created in another directory.
+  - their bash script stems from the same postgres
+    =docker-entrypoint.sh= script that I think would otherwise calls =postgres
+    initdb=.
++ I don't see docs showing that env vars may directly change the =initdb= dir path,
+  but ~POSTGRES_INITDB_ARGS=-L /some/docker/vol~ does.
++ Move some pgdump to a file =init.sql= or into the =*-initdb.d= volume.
++ Here, there's no reason to persist the =db= volume except for brevity.
+
+#+name: pgCompose
+#+begin_example yaml
+services:
+  db:
+    image: postgres:12.11
+    ports:
+      - "15432:5432"
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - /data/ecto/hashicorp/boundary/internal/db/schema/migrations/oss/postgres/0:/docker-entrypoint-initdb.d
+      # - db:/var/lib/postgresql/data
+    # healthcheck:
+    #   test: ["CMD-SHELL", "pg_isready -U postgres"]
+    #   interval: 1s
+    #   timeout: 1s
+    #   retries: 10
+volumes:
+  db:
+#+end_example
+
+** Boundary Schema
+
+Start with =docker compose -f <(cat EOF ... EOF)= but that output doesn't end...
+
+Generate the puml
+
+#+begin_src shell :results output file :file ../../img/planter-boundary-schema.puml
+uri=postgres://postgres@0.0.0.0:15432/postgres?sslmode=disable
+guix shell -f ./planter.scm -- \
+    planter $uri
+#+end_src
+
+#+RESULTS:
+[[file:../../img/planter-boundary-schema.puml]]
+
+Generate the image
+
+#+begin_src shell :results output file link
+f=planter-boundary-schema
+d=$(pwd)/../../img
+plantuml -v -o $d -tsvg $d/$f.puml
+
+# why doesn't it do stdout?
+
+echo -n ../../img/$f.svg
+#+end_src
+
+#+RESULTS:
+[[file:../../img/planter-boundary-schema.svg]]
+
+** Per-concept Schema
+
+#+name: planterPuml
+#+begin_src shell :results output silent :var tbl="^auth" xtbl=""
+uri=postgres://postgres@0.0.0.0:15432/postgres?sslmode=disable
+args=()
+# these args can accept multiple invocations
+[[ -n "$tbl" ]] && args+=("-t" "$tbl")
+[[ -n "$xtbl" ]] && args+=("-x" "$xtbl")
+guix shell -f ./planter.scm -- planter $uri ${args[@]}
+#+end_src
+
+
+#+call: planterPuml(tbl="^(static_host|host|session|server|target)", xtbl="(kms|wh)") :results output file :file "../../img/planter-boundary-session.puml"
+
+#+call: planterPuml(tbl="^kms") :results output file :file "../../img/planter-boundary-kms.puml"
+
+#+call: planterPuml(tbl="^(iam|auth)") :results output file :file "../../img/planter-boundary-iam.puml"
+
+*** Hosts, Sessions, Servers
+
+[[file:/data/org/roam/dcguix/img/planter-boundary-session.svg]]
+
+*** IAM, Auth
+
+[[file:/data/org/roam/dcguix/img/planter-boundary-iam.svg]]
+
+*** KMS
+
+[[file:/data/org/roam/dcguix/img/planter-boundary-kms.svg]]
+
+
+* Dependencies
+
+=planter= lacks recent releases for semantic versioning
+
+** propagated inputs
+
+| pkg                               | go version | go.mod  | guix   | guile        |
+|-----------------------------------+------------+---------+--------+--------------|
+| go-gopkg-in-alecthomas-kingpin-v2 |       1.17 | v2.4.0  | v2.4.0 | golang-xyz   |
+| go-gopkg-in-alecthomas-units      |       1.15 | v0.0.0  | v0.0.0 | golang-xyz   |
+| go-gopkg-in-alecthomas-template   |        n/a | v0.0.0  | v0.0.0 | golang-xyz   |
+| go-github-com-pkg-errors          |        n/a | v0.9.1  | v0.9.1 | golang-build |
+| go-github-com-lib-pq              |       1.13 | v1.10.0 | v1.2.0 | golang-xyz   |
+|-----------------------------------+------------+---------+--------+--------------|
+
++ go-github-com-lib-pq :: guix has =v1.2.0= but this needs =v1.10.9=
+  - inherit package, cross fingers, transform and bump version.
++ go-github-com-pkg-errors :: no =go-mod=
++ go-gopkg-in-alecthomas-kingpin-v2 :: now has go.mod, so the =go.mod= and =go.sum=
+  need to be patched in =planter= (remove =+incompatible=)
+
+** native inputs
+
+from =go.sum=
+
+| pkg                              | go version | go.sum        | guix    | guile        |
+|----------------------------------+------------+---------------+---------+--------------|
+| go-github-com-davecgh-go-spew    |            | v1.1.0/go.mod | v1.1.1  | golang-check |
+| go-github-com-pmezard-go-difflib |            | v1.0.0        | v1.0.0  | golang-xyz   |
+| go-github-com-stretchr-objx      |            | v0.1.0        | v0.5.2  | golang-xyz   |
+| go-github-com-stretchr-testify   |            | v1.4.0        | v1.10.0 | golang-check |
+| go-gopkg-in/check-v1             |            | v0.0.0        | v1.0.0  | golang-check |
+| go-gopkg-in-yaml-v2              |            | v2.2.2        | v2.4.0  | golang-xyz   |
+|----------------------------------+------------+---------------+---------+--------------|
+
++ go-gopkg-in/check-v1 :: that's old
+  - v0.0.0-20161208181325-20d25e280405
+  - v1.0.0-20201130134442-10cb98267c6c
+
+* Packages
+** go-graph
+
+#+begin_src scheme :tangle planter.scm
+(use-modules ;;  (ellipsis packages wip golang)
+ ((guix licenses) #:prefix license:)
+ (guix gexp)
+ (guix utils)
+ (guix download)
+ (guix git-download)
+ (guix packages)
+ (guix build-system go)
+
+ (gnu packages base)
+ (gnu packages golang)
+ (gnu packages golang-xyz)
+ (gnu packages golang-check)
+ (gnu packages golang-build)
+ (gnu packages golang-web)
+
+ (srfi srfi-1))
+
+(define-public go-github-com-alecthomas-template
+  (let ((commit "fb15b899a75114aa79cc930e33c46b577cc664b1")
+        (revision "0"))
+    (package
+      (name "go-github-com-alecthomas-template")
+      (version (git-version "0.0.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/alecthomas/template")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "1vlasv4dgycydh5wx6jdcvz40zdv90zz1h7836z7lhsi2ymvii26"))))
+      (build-system go-build-system)
+      (arguments
+       (list
+        #:import-path "github.com/alecthomas/template"))
+      (home-page "https://github.com/alecthomas/template")
+      (synopsis "Fork of Go's text/template adding newline elision")
+      (description
+       "This is a fork of Go 1.4's text/template package with one addition: a backslash
+immediately after a closing delimiter will delete all subsequent newlines until
+a non-newline.")
+      (license license:expat))))
+
+(define-public go-github-com-alecthomas-units-2024
+  ;; No release, see <https://github.com/alecthomas/units/issues/9>.
+  (let ((commit "0f3dac36c52b29c22285af9a6e6593035dadd74c")
+        (revision "1"))
+    (package
+      (inherit go-github-com-alecthomas-units)
+      (name "go-github-com-alecthomas-units")
+      (version (git-version "0.0.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/alecthomas/units")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "09984h477k7i152ws0xnzwwm0nhy1pf9jm6w37p6w1r5w0jm277n")))))))
+
+(define-public go-github-com-lib-pq-1.10
+  (package
+    (inherit go-github-com-lib-pq)
+    (name "go-github-com-lib-pq")
+    (version "1.10.9")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+             (url "https://github.com/lib/pq")
+             (commit (string-append "v" version))))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "1pfwbic9rxad2pnprg0nw18b3ympb8jnj0gk3sxqh6yg8f6rx9sr"))))))
+
+(define-public planter
+  (let* ((commit "dff6de0e438eabe747051b68670af9a847e7a00e")
+         (revision "0"))
+    (package
+      (name "planter")
+      ;; there is a 3.0 release, but it's seven years old
+      (version (git-version "0.3.0" revision commit))
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+               (url "https://github.com/achiku/planter")
+               (commit commit)))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "1zgw1rq55ip73rm6cmw557bwzgzldikvn1k9jbn09ra3hh07b5qi"))))
+      (build-system go-build-system)
+      ;; doesn't clone to the unpack-path?
+      (arguments
+       (list
+        #:import-path "github.com/achiku/planter"
+        #:unpack-path "github.com/achiku/planter"
+        #:phases
+        #~(modify-phases %standard-phases
+            ;; one test file: planter_test. TestFilterTables passes, but the
+            ;; others require a connection to postgres
+            (delete 'check)
+            (add-after 'unpack 'upgrade-kingpin
+              (lambda* (#:key import-path  #:allow-other-keys)
+                (with-directory-excursion (string-append "src/" import-path)
+                  (substitute* (find-files "." "go.mod$")
+                    (("github.com/alecthomas/kingpin.*$")
+                     "github.com/alecthomas/kingpin-v2 v2.4.0\n"))
+                  (substitute* (find-files "." "main.go$")
+                    (("github.com/alecthomas/kingpin")
+                     "github.com/alecthomas/kingpin/v2"))))))))
+      (inputs (list go-github-com-alecthomas-units-2024))
+      (native-inputs (list go-github-com-pkg-errors
+                           go-github-com-davecgh-go-spew
+                           go-github-com-pmezard-go-difflib
+                           go-github-com-stretchr-objx
+                           go-github-com-stretchr-testify
+                           go-gopkg-in-check-v1
+                           go-gopkg-in-yaml-v2))
+      ;; there's an alias to go-pkg-in-alecthomas-kingpin-v2
+      (propagated-inputs (list go-github-com-alecthomas-kingpin-v2
+                               go-github-com-lib-pq))
+      (home-page "https://github.com/achiku/planter")
+      (synopsis "Generate PlantUML ER diagram textual description from PostgreSQL tables")
+      (description
+       "@@code{planter} generates textual descriptions in @@code{plantuml} ER diagram
+format from pre-existing PostgreSQL tables and makes it easy to share visual
+diagrams of a database schema.")
+      (license license:expat))))
+
+  ;; (arguments
+  ;;  (list ;; #:go go-1.21
+  ;;   ;; #:import-path "github.com/achiku/planter"
+  ;;   ;; #:unpack-path "github.com/achiku/planter"
+  ;;   #:embed-files #~(list "base\\.tpl"
+  ;;                         "base_(script|option|element).tpl"
+  ;;                         "chart\\.tpl"
+  ;;                         "header\\.tpl"
+  ;;                         "page\\.tpl"))
+  ;;  )
+
+;; go-github-com-lib-pq-1.10
+;; go-github-com-alecthomas-units-2024
+;; go-github-com-alecthomas-template
+planter
+
+#+end_src
+
+
