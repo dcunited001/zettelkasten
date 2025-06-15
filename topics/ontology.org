@@ -195,6 +195,7 @@ parsers
 
 visualization
 
++ [[https://github.com/AykutSarac/jsoncrack.com][AykutSarac/jsoncrack.com]] ... why wasn't this showing up in google?
 + [[https://github.com/schlothauer-wauer/jsoncodegen][schlothauer-wauer/jsoncodegen]] (groovy; generates plantuml)
 + [[https://github.com/OkieOth/yacg][OkieOth/yacg]] (python; generates plantuml/protobuf) and [[github:OkieOth/nibelheim_ts][OkieOth/nibelheim_ts]],
   which demonstrates generation using yacg
@@ -209,7 +210,8 @@ Plantuml will actually [[https://plantuml.com/json][visualize JSON]] (just JSON)
 pretty well. Chokes on JSON Schema though.
 
 *** Framework
-*** [[https://github.com/bufbuild][bufbuild]]
+
+**** [[https://github.com/bufbuild][bufbuild]]
 
 + [[https://github.com/bufbuild][Github]]
 + [[https://buf.build/docs/bsr/][Buf Schema Registry]]: store/retrieve schema modules, versioned. Like schema
@@ -220,12 +222,294 @@ pretty well. Chokes on JSON Schema though.
 + code generation and protobuf dep graph visualization
 
 Buf is a framework for gRPC and Kafka servics.
+*** Code Generation
+
+**** YACG
+
+I've checked in on this project several times over the past few years. I thought
+I had used it before, but idk.
+
++ You definitely need to read through the code to use this project... meh,
+  nothing gained for free. See notes on CLI options for templates
++ Checking through the =./bin= scripts helps, esp for cli syntax
+  - =stdout= is handled as a keyword for templates.
+  - single/multi file templates don't require parameters
++ It can error on JSON schema 07, but the yacg logging shows where these are
+  - not many tools handle much beyond that anyways, so 04 and 07 are the
+    standards.
+  - but you likely just need to filter out parts of the schema. Unless there are
+    cycles or a =$ref= used widely this should be easy.
+  - Atlassian [[https://json-schema.app/view/%23?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsrl-labs%2Fvscode-containerlab%2Frefs%2Fheads%2Fmain%2Fschema%2Fclab.schema.json][JSON Schema Viewer]] has validation/conversion tools which spotted
+    errors for me.
+
+***** Validation with =ajv=
+
+#+begin_quote
+=certificate-config.issue= was missing ={type: boolean}=
+#+end_quote
+
+Setup =ajv=
+
+#+begin_example shell
+tt=$(mktemp -d)
+cd $tt && cp $clab/schema/clab.schema.json .
+
+node install ajv
+
+node <<EOF
+const Ajv = require('ajv');
+//const ajv = new Ajv();
+const ajv = new Ajv({strict: "log"});       // ahh
+const clab = require('./clab.schema.json');
+validate = ajv.compile(clab);
+// shits bed on missing key
+EOF
+#+end_example
+
+Remove keys
+
+#+begin_src shell
+schema=clab.schema.json
+nsch() { echo $(basename -s $schema).$1.json; } # probably dont()
+cp $schema $(nsch 0)
+grep '"markdownDescription"' |  wc -l
+jq 'del(..|.markdownDescription?)' $(nsch 0) > $(nsch 1)
+echo $(nsch 0) $(nsch 1) | xargs -n1 wc -l
+# comm -3 $(nsch 0) $(nsch 1) | wc -l # ... you know what? xargs -$#B@!$#@! sha | sort |uniq |wc
+# `tide` would do it better
+#+end_src
+
+Or just set:
+
++ =const ajv = new Ajv({strict: "log"});=
++ =ajv.addKeyword(markdownDescription);=
+
+***** Runthrough
+
+check code
+
+#+begin_example shell
+t=$(mktemp -d)
+yacg=$t/yacg
+clab=$t/clab
+git clone https://github.com/okieoth/yacg $yacg
+git clone https://github.com/srl-labs/containerlab
+
+cd $yacg
+cat bin/buildDockerImage.sh Dockerfile  | less
+#+end_example
+
+Build image. a few things, not a big deal
+
++ some of the examples reference the wrong image tag
++ the image builds with the =ghcr.io= in the image name
+
+#+begin_example shell
+./bin/buildDockerImage.sh
+#+end_example
+
+copy in the schema. it's JSON Schema '07, note relevant sections
+
+#+begin_example shell
+cp /data/ecto/clab/srl-labs/containerlab/schemas/clab.schema.json resources/
+mkdir resources/puml
+#+end_example
+
+Check the difference between =--singleFileTemplates= and =--multiFileTemplates=
+
++ The example =--{single,multi}FileTemplates plantuml=stdout= isn't going to work. See
+  =.mako= below. The lib expects you to mess around with its configs & templates.
+
+#+begin_example shell
+img=ghcr.io/okieoth/yacg:6.10.0
+puml=/yacg/yacg/generators/templates/plantUml.mako
+out=/resources/clab.schema.puml # /resources/puml # for multiFileTemplates
+docker run -u $(id -u ${USER}):$(id -g ${USER}) \
+  -v `pwd`/resources:/resources --rm -t $img \
+  --models /resources/clab.schema.json \
+  --singleFileTemplates $puml=$out \
+  --templateParameters title="containerlab model" destFileExt="puml"
+#  --multiFileTemplates $puml=$out \
+#+end_example
+
+The =--multiFileTemplates= for JSON Schema end up with mostly the same content,
+probably because of the dependencies between models.
+
+I don't fully understand the codebase, but many property names are in =kebab-case=
+which still need to be converted to =CamelCase=. This fixes many of them, but some
+are recursively constructed (like for maps/lists). There's codegen for protobuf,
+golang and several other languages, so idk. No time. Regexp fixes it.
+
+#+begin_example diff
+diff --git a/yacg/model/modelFuncs.py b/yacg/model/modelFuncs.py
+index 371c6e6..d048d7f 100644
+--- a/yacg/model/modelFuncs.py
++++ b/yacg/model/modelFuncs.py
+@@ -225,9 +225,12 @@ def isComplexType(typeObj):
+
+     return isinstance(typeObj, model.ComplexType)
+
++def ensureCamelCase(name):
++    return "".join([w.capitalize() for w in name.split("-")])
+
+ def getTypeName(type):
+-    return type.name if hasattr(type, 'name') else type.__class__.__name__
++    name = type.name if hasattr(type, "name") else type.__class__.__name__
++    return ensureCamelCase(name)
+
+
+ def separateOpenApiPathTypes(types):
+#+end_example
+
+Starting from output from the above patch
+
+#+begin_src shell :results output verbatim
+sed -E "s/^note .*$//g" img/clab/clab.schema.puml \
+    > img/clab/clab.fixed.schema.puml
+#  | sed -E 's/class (.*) as ([a-zA-Z0-9-]+) /class \1 as "\2" /g'
+#+end_src
+
+#+RESULTS:
+
+
+#+begin_src shell :results output verbatim
+#file link
+d=$(pwd)/img/clab
+plantuml -v -o $d -tsvg img/clab/clab.fixed.schema.puml
+plantuml -v -o $d -tsvg img/clab/clab.links.schema.puml
+#echo -n $f
+#+end_src
+
+#+RESULTS:
+
+
+
+
+***** JQ? wtf
+
+To get property names for top-level =ContainerlabTopologyDefinitionFile
+
+#+begin_src jq :in-file img/clab/clab.schema.json :cmd-line "-j"
+.definitions."node-config".properties | to_entries
+  | map(.value |= {type: (."$ref" // .type // "string")}) # extra // bc user is null
+  | map(.value |= {type: .type | split("/")[-1] })
+  | map("\(.value.type) \(.key)") | join("\n")
+       #  | add | (. // empty) | flatten
+       #  | flatten(23.5) # not a problem
+#+end_src
+
+#+RESULTS:
+#+begin_example
+string image
+string image-pull-policy
+string restart-policy
+string kind
+string license
+string type
+string group
+string startup-config
+integer startup-delay
+boolean enforce-startup-config
+boolean auto-remove
+array exec
+array binds
+array ports
+object env
+string user
+string entrypoint
+string cmd
+labels labels
+string runtime
+ipv4-addr mgmt-ipv4
+ipv6-addr mgmt-ipv6
+string network-mode
+number cpu
+string memory
+string cpu-set
+string sandbox
+string kernel
+extras-config extras
+config-config config
+stages-config stages
+dns-config dns
+certificate-config certificate
+healthcheck-config healthcheck
+array aliases
+#+end_example
+
+
+well it was nice to think trivial =jq= would be somewhere between trivial and
+[[https://www.youtube.com/watch?v=MvI6Z85EgVo][non-trivial jq]]. this wasn't going to handle references in constraints (but a
+regexp would...)
+
+#+begin_src jq :in-file img/clab/clab.schema.json
+.. | [(select(type=="object" and has("definitions")) | .definitions | keys),
+      (select(type=="object" and has("properties")) | .properties | keys)]
+| flatten | select(length > 0) | join(",")
+       #  | add | (. // empty) | flatten
+       #  | flatten(23.5) # not a problem
+#+end_src
+
+#+RESULTS:
+#+begin_example
+"certificate-authority-config,certificate-config,config-config,dns-config,extras-config,healthcheck-config,ipv4-addr,ipv6-addr,labels,link-config-short,link-endpoint,link-host-interface,link-type-dummy,link-type-host,link-type-macvlan,link-type-mgmt-net,link-type-veth,link-type-vxlan,link-type-vxlan-stitched,link-vars,link-vxlan-remote,link-vxlan-udpport,link-vxlan-vni,mtu,node-config,stage-exec,stage-exec-list,stages-config,stages-enum,wait-for-config,mgmt,name,prefix,settings,topology"
+"aliases,auto-remove,binds,certificate,cmd,config,cpu,cpu-set,dns,enforce-startup-config,entrypoint,env,exec,extras,group,healthcheck,image,image-pull-policy,kernel,kind,labels,license,memory,mgmt-ipv4,mgmt-ipv6,network-mode,ports,restart-policy,runtime,sandbox,stages,startup-config,startup-delay,type,user"
+"type"
+"kind"
+"type"
+"kind"
+"type"
+"endpoints,mtu,vars"
+"endpoints,labels,mtu,type,vars"
+"endpoint,host-interface,labels,mtu,type,vars"
+"endpoint,host-interface,labels,mtu,type,vars"
+"endpoint,host-interface,labels,mtu,type,vars"
+"endpoint,labels,mtu,remote,type,udp-port,vars,vni"
+"endpoint,labels,mtu,remote,type,udp-port,vars,vni"
+"endpoint,labels,mtu,type,vars"
+"interface,mac,node"
+"mysocket-proxy,srl-agents"
+"vars"
+"issue,key-size,sans,validity-duration"
+"interval,retries,start-period,test,timeout"
+"options,search,servers"
+"cert,key,key-size,validity-duration"
+"configure,create,create-links,exit,healthy"
+"exec,wait-for"
+"exec,wait-for"
+"exec,wait-for"
+"exec,wait-for"
+"exec,wait-for"
+"node,stage"
+"on-enter,on-exit"
+"command,phase,target"
+"bridge,ipv4-gw,ipv4-range,ipv4-subnet,ipv6-gw,ipv6-range,ipv6-subnet,mtu,network"
+"defaults,kinds,links,nodes"
+"arista_ceos,aruba_aoscx,bridge,checkpoint_cloudguard,cisco_8000,cisco_c8000v,cisco_cat9kv,cisco_csr,cisco_ftdv,cisco_iol,cisco_nxos,cisco_xrd,cisco_xrv,cisco_xrv9k,cumulus_cvx,dell_ftosv,dell_sonic,ext-container,fdio_vpp,freebsd,generic_vm,host,huawei_vrp,ipinfusion_ocnos,juniper_crpd,juniper_vjunosevolved,juniper_vjunosrouter,juniper_vjunosswitch,juniper_vmx,juniper_vsrx,keysight_ixia-c-one,linux,nokia_srlinux,nokia_sros,openbsd,ovs-bridge,rare,sonic-vm,sonic-vs"
+"certificate-authority"
+#+end_example
+
 
 *** Editors
 
 + [[https://hackolade.com/][Hackolade]]
 + [[https://hackolade.com/help/JSONSchema2.html][JSONSchema2]]
 + [[https://hackolade.com/schemas/bpostAddressFormattingWebservice_-_External_documentation.html][example documentation]]
+
+**** [[https://github.com/AykutSarac/jsoncrack.com][AykutSarac/jsoncrack.com]]
+
+Free for small schema. Pay for big schema...
+
++ or run with =docker compose up --build= +for free+ for the low, low price of
+  searching "Time to upgrade" in the repo.
++ "time to upgrade" -> NotSupported.tsx -> NotSupported -> [[https://github.com/AykutSarac/jsoncrack.com/blob/main/src/features/editor/views/GraphView/stores/useGraph.ts#L25][useGraph]] ->
+  Graph.aboveSupportedLimit -> [[https://github.com/AykutSarac/jsoncrack.com/blob/main/src/constants/graph.ts#L6][SUPPORTED_LIMIT]] ->
+  process.env.NEXT_PUBLIC_NODE_LIMIT
+
+So modify the docker compose file to inject that value into the environment.
+
++ Very useful (e.g. codegen from the interface), but I need something to
+  visualize an example object.
 
 *** Schemas
 **** Source Meta

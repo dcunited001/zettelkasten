@@ -7,17 +7,176 @@
 
 
 
+* Babel
+** SQL Objects
+
+
+#+name: pgObjectsByType
+#+begin_src shell :var pgdump="./nautobot-lab/templates/nautobot_backup.dump"
+grep -e '^CREATE' $pgdump \
+    | cut -f2-3 -d' ' | grep -v 'UNIQUE' | sort \
+    | rev | uniq --count -f1 | rev \
+    | cut -f1,3 -d' '
+#+end_src
+
+#+RESULTS: pgObjectsByType
+
+
 * Nautobot
 ** Docs
 ** Resources
 ** Topics
-** Issues
+*** 100-days-of-nautobot
 
+The Day000_Preamble discuss the scenario:
+
++ Retail-R-Us: 1 HQ (NYC), 10 East Coast locations
++ plans to double size in 12 months (+10 East Coast)
++ while expanding to West Coast (+5 West Coast)
+
+The second lab scenario notes that those images are running a Nautobot 2.5
+pre-release. Considering that there's only one SQL setup, I think it's mainly
+a setup for one client's objects
+
+*** Base schema
+
+pg_dump -d ivre -U ivre -h localhost -W -s > docker/pg.sql
+
+**** From nautobot repos
+:PROPERTIES:
+:header-args:shell+: :dir (or (bound-and-true-p -nauto-root-dir-) (expand-file-name "dcim/nautobot" (getenv "_ECTO")))
+:END:
+
+#+begin_src shell :results output code :wrap example
+find . -name "*.sql"
+#+end_src
+
+#+RESULTS:
+#+begin_example
+./nautobot-app-chatops/development/mattermost/dump.sql
+./100-days-of-nautobot/Lab_Setup/database_files/nautobot-demo.sql
+./nautobot/development/mysql-unittests.sql
+./cookiecutter-nautobot-app/nautobot-app-chatops/{{ cookiecutter.project_slug }}/development/mattermost/dump.sql
+./nautobot-app-netbox-importer/nautobot_netbox_importer/tests/fixtures/nautobot-v2.4/dump.sql
+#+end_example
+
+***** From nautobot/100-days-of-nautobot
+
+
+#+name: pgObjectsNautobotLabSetup
+#+call: pgObjectsByType(pgdump="./100-days-of-nautobot/Lab_Setup/database_files/nautobot-demo.sql")
+
+#+RESULTS: pgObjectsNautobotLabSetup
+| INDEX    | 547 |
+| SEQUENCE | 501 |
+| TABLE    | 972 |
+
+Okay... =972= is /a lot of tables/. This must have all the plugins.
+
+***** From nautobot/nautobot-lab
+
+And there's also =./nautobot-lab/templates/nautobot_backup.dump=. This has less
+plugins turned on. More indices though. This must be from live data.
+
+#+name: pgObjectsNautobotLabTemplate
+#+call: pgObjectsByType(pgdump="./nautobot-lab/templates/nautobot_backup.dump")
+
+#+RESULTS: pgObjectsNautobotLabTemplate
+| INDEX    | 837 |
+| SEQUENCE |  95 |
+| TABLE    | 352 |
+
+** Issues
 * Netbox
 ** Docs
 ** Resources
 ** Topics
+*** Base schema
+
+pg_dump -d ivre -U ivre -h localhost -W -s > docker/pg.sql
+
+
+**** From netbox-community repos
+:PROPERTIES:
+:header-args:shell+: :dir (or (bound-and-true-p -nbc-root-dir-) (expand-file-name "dcim/netbox-community" (getenv "_ECTO")))
+:END:
+
+... well that was easy
+
+#+begin_src shell :results output code :wrap example
+find . -name "*.sql"
+#+end_src
+
+#+RESULTS:
+#+begin_example
+./netbox-operator/kind/load-data-job/local-data-setup.sql
+./netbox-demo-data/sql/netbox-demo-v3.6.sql
+./netbox-demo-data/sql/netbox-demo-v4.3.sql
+./netbox-demo-data/sql/netbox-demo-v4.1.sql
+./netbox-demo-data/sql/netbox-demo-v3.3.sql
+./netbox-demo-data/sql/netbox-demo-v3.4.sql
+./netbox-demo-data/sql/netbox-demo-v3.0.sql
+./netbox-demo-data/sql/netbox-demo-v4.2.sql
+./netbox-demo-data/sql/netbox-demo-v4.0.sql
+./netbox-demo-data/sql/netbox-demo-v3.1.sql
+./netbox-demo-data/sql/netbox-demo-v3.7.sql
+./netbox-demo-data/sql/netbox-demo-v3.5.sql
+./netbox-demo-data/sql/netbox-demo-v3.2.sql
+#+end_example
+
+***** From netbox-community/netbox-demo-data
+
+What's in here anyways?
+
++ =uniq --count= can exclude the first n fields ... so we =〈 rev | . | rev 〉=
+
+#+begin_src shell
+pgdump=netbox-demo-data/sql/netbox-demo-v4.3.sql
+grep -e '^CREATE' $pgdump
+    | cut -f2-3 -d' ' | grep -v 'UNIQUE' | sort \
+    | rev | uniq --count -f1 | rev \
+    | cut -f1,3 -d' '
+#+end_src
+
+#+RESULTS:
+| COLLATION |   1 |
+| INDEX     | 205 |
+| TABLE     | 191 |
+
+
 ** Issues
+
+* Topology
+
++ FRR Topology: See [[id:027166e4-fbcc-4c75-8990-8198c7a47ae4][Cheatsheet: FRR vtysh commands]] and other refs
++ [[https://github.com/ipspace/netlab/tree/dev/docs/topology][Netlab Topology]]: See [[https://github.com/ipspace/netlab-examples][ipspace/netlab-examples]] for many, many example topologies
++ [[https://github.com/netreplica/nrx][netreplica/nrx]]
+  - Exports from Netbox DCIM to containerlab, cisco modeling labs, graphite, D2
+  - Uses the Cable Tracing API to export data for Patch Panels and Circuits (the
+    basis of the L1-to-L2 links)
+  - [[https://manual.cytoscape.org/en/stable/Supported_Network_File_Formats.html#cytoscape-js-json][Cytoscape Graph JSON]] (cyjs), a general graph/network modeling tool
+  - [[https://github.com/netreplica/templates][netreplica/templates]] jinja (for nrx, containerlab, cisco modeling labs,
+    graphite and D2)
++ Containerlab: see [[https://containerlab.dev/manual/topo-def-file/][docs]], [[https://github.com/srl-labs/containerlab/blob/main/schemas/clab.schema.json][schemas/clab.schema.json]] and elsewhere.
+  - [[https://github.com/srl-labs/netbox-nrx-clab][srl-labs/netbox-nrx-clab]] extracts netbox (via nrx) => generate clab topology
+  - [[https://marketplace.visualstudio.com/items?itemName=srl-labs.vscode-containerlab][srl-labs/vscode-containerlab]]: edit clab topology interactively
++ [[https://github.com/nautobot/nautobot-lab][nautobot/nautobot-lab]]
+  - try out nautobot in a docker container (see [[https://github.com/nautobot/nautobot-lab/blob/d8747cc3e5ddb7d4b8d3fb230bffe78e51273a3b/pb_nautobot_install.yml#L134-L140][pb_nautobot_install.yml]], which
+    runs [[https://github.com/nautobot/nautobot-lab/blob/main/templates/loaddata.sh][loaddata.sh]] to restore a [[https://github.com/nautobot/nautobot-lab/blob/main/templates/nautobot_backup.dump][postgres backup]] for a jinja-based
+    [[https://github.com/nautobot/nautobot-lab/tree/main/templates/nautobot_config.py][nautobot_config.py]])
++ [[https://batfish.org/][batfish]]. see [[https://github.com/btr1975/automation-framework/blob/main/diagrams/automation_framework_kubernetes.png][btr1975/automation-frameworks]] for the network automation
+  equivalent of a mario64 speedrun with 100% stars
+  - [[https://github.com/batfish/batfish][batfish/batfish]] kinda blends a lot of data sources from networks.
+
+** Netlab
+
+Construct topology from YAML
+
++ ipspace/netlab
+
+** Netreplica
+
+Extract topology from Netbox and load into containerlab
 
 * Roam
 + [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]

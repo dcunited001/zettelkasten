@@ -37,15 +37,58 @@
 
 * Setup: Join Two Nodes On Layer 2
 
+
 ** Zero Tier
 
++ On arch: =yay -Syu zerotier-one=
++ While needed: =sudo systemctl start zerotier-one=
 
 ** Nodes
+
 *** Routes
+
++ Pick a network that doesn't overlap with your existing ipv4 space. See [[https://docs.zerotier.com/bridging/][Layer2
+  Bridge]] for more info on a better IP addressing plan.
+
++ =zerotier-cli info=
++ =zerotier-cli listnetworks=
+
+Add nodes to network with =sudo zerotier-cli join=. on connect, zerotier adds this
+route as. So for local connections to be able to access services through the
+zerotier.
+
++ =192.168.192.0/24 dev ztugatqaer proto kernel scope link src $if_ip=
 
 *** DNS and SSH
 
+If you have a dns domain that should resolve locally
+
++ add =homelab.domain.com= and/or =homelab.arpa=
++ picking the ip address for the DNS server (traffic would be routed into the
+  zerotier interface and out the local interface)
+
 *** Control
+
+** Local Network
+
+Zerotier tries to use ipv6 initially, but enabling this on a firewall isn't
+necessary. (phew...)
+
+** SSH
+
++ Assign static IPs to the zerotier subnet
++ Restrict connections in =sshd= to only that subnet or those IPs.
+  - trusting the crypto should be sufficient (it's kinda a problem anyways if
+    its not sufficent.)
+
+#+begin_example ssh-config
+# TODO: change binding/addressing
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+KexAlgorithms curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+HostKeyAlgorithms rsa-sha2-256,rsa-sha2-512,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-256-cert-v01@openssh.com,rsa-sha2-512-cert-v01@openssh.com,ecdsa-sha2-nistp256-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp521-cert-v01@openssh.com,sk-ecdsa-sha2-nistp256-cert-v01@openssh.com
+#+end_example
+
 
 * Setup: Join Node On A Gateway
 

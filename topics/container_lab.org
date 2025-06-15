@@ -12,8 +12,6 @@
 + [[id:afe1b2f0-d765-4b68-85d0-2a9983fa2127][Containers]]
 + [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
 
-
-
 * Docs
 
 Thank the jesus they have a [[https://github.com/srl-labs/containerlab/blob/main/schemas/clab.schema.json][JSON schema]] (mainly helps when writing arbitrary
@@ -46,11 +44,37 @@ yaml, but not really for yaml of mixed schemas)
   - generate configuration or =vyos= set commands
   - log metadata
 
+*** Mistral
+Make for network tasks (different approach than ansible)
+
++ [[https://docs.openstack.org/mistral/latest/user/index.html][Docs]] and [[https://github.com/openstack/mistral][openstack/mistral]]
++ [[https://github.com/nokia/cloudflow][nokia/cloudflow]]
+
+** Data Model
+*** NDK
++ [[https://learn.srlinux.dev/ndk/apps/][NDK App Catalog]]
++ [[https://learn.srlinux.dev/ndk/guide/architecture/][NDK Architecture]]
++ [[https://ndk.srlinux.dev/][NDK Protobufs docs]]
+  - nokia/srlinux-ndk-protobufs branches: [[https://github.com/nokia/srlinux-ndk-protobufs/tree/protos][protos]]
+  - [[https://github.com/nokia/srlinux-ndk-go][nokia/srlinux-ndk-go]] go bindings (via proto)
+  - [[https://github.com/nokia/srlinux-ndk-python][nokia/srlinux-ndk-python]] python bindings (via proto)
+*** Yang
++ [[https://github.com/srl-labs/yang-browser][srl-labs/yang-browser]]
+
+** NDK
+
+
 * Resources
 
 + [[https://github.com/srl-labs/network-multitool][srl-labs/network-multitool]]
 + [[https://www.youtube.com/watch?v=oClamTj4LiY][Network Automation with YANG/Python is a Reality]] Generating pydantic lib from
   yang for sr linux
+
+** Interesting projects
+
++ [[https://github.com/nokia/regexp-learner][nokia/regexp-learner]]: learns regexps from counter/examples. uses numpy and
+  [[https://pypi.org/project/pybgl][pybgl]], the latter is a Boost C++ dep (headers only, doesn't need recompilation
+  for FFI)
 
 * Topics
 
@@ -164,7 +188,8 @@ diff -u /data/org/roam/topics/img/net/clab_pydantic_gen0.py /data/org/roam/topic
 
 Diff finished.  Wed May 28 11:04:16 2025
 #+end_example
-
+** Multitool
++ [[https://github.com/srl-labs/network-multitool][srl-labs/network-multitool]]
 
 ** Examples
 *** Node Types
@@ -304,6 +329,100 @@ A pretty wide variety of images
 | networkop/host:ifreload                             | wbitt/network-multitool:alpine-extra      |
 | nokia_sros:20.10.R1                                 | xrd-control-plane                         |
 | ostinato/ostinato:v1.3.0-1                          |                                           |
+** srl-labs/containerlab
 
+*** Topology
+
++ Some of the CLI tools can ingest the topology file and populate a data
+  structure with nodes without running through all the stages
+  - The CLI for draw.io will pretty quickly boot a container to build the graph
+
+**** Route discovery
+
++ [[https://github.com/srl-labs/containerlab/blob/2047a94541fb44d98f6fc243dbc0d72cf3618f01/utils/netlink.go#L129-L139][./utils/netlink.go]] -> [[https://github.com/jsimonetti/rtnetlink/blob/858ea9dbff34b590e5f33f2107984f5b2d3ad19c/rtnl/conn.go][rtnl/conn.go#Dial()]] -> [[https://github.com/jsimonetti/rtnetlink/blob/master/conn.go#L38][Dial]] -> netlink.Dial ([[https://github.com/mdlayher/netlink/blob/main/conn.go#L58-L71][./conn.go]])
+  - This opens an =AF_NETLINK= socket which provides direct access to linux
+    networking data.
+  - [[https://mdlayher.com/blog/linux-netlink-and-go-part-1-netlink/][Linux, Netlink and Go]] ... what is this anyways?
++ [[https://github.com/jsimonetti/rtnetlink/blob/858ea9dbff34b590e5f33f2107984f5b2d3ad19c/rtnl/route_live_test.go][rtnetlink ./rtnl/route_live_test.go]] gets a route to an IP address
++ [[https://github.com/jsimonetti/rtnetlink/blob/858ea9dbff34b590e5f33f2107984f5b2d3ad19c/rtnl/neigh_live_test.go#L13-L30][rtnetlink ./rtnl/neigh_live_test.go]] demos "pushing gateway onto the neighbor table"
+
+***** Path enumeration
+
+Yeh, so it looks like "model is not the system" ... the behavior of the CLab
+network as a system is more complicated than model's config can provide (and
+thus, it needs to be simulated in order to extract live data ... basically no
+matter what)
+
+So, to enumerate routes, stand up infrastructure sufficiently similar to IRL
+infrastructure, then distribute "queries" across the network to extract routing
+tables/etc... Then data collected from each device/interface's perspective on
+the network needs to be collated/merged.
+
+These can all still impair your ability to trace paths through the network.
+
++ dynamic routing protocols, firewall rules
++ interface flapping or device state
++ connectivity issues, etc
+
+Distributing an nmap service across the network to test paths/ports gives you
+=point-to-point@port= data, but not =netflow= (i.e. analogous to ping vs.
+traceroute)
+
+Exporting/Using the topology format helps define what tasks need to run, but
+still doesn't contain enough information to merge it later. Control over
+L2/L3/L4 (interfaces, ip, session) data that emit the traffic is a trap.
+
+*** Makefile
+
+#+begin_example shell
+d=$(pwd)
+cd $_ECTO/clab/srl-labs/containerlab
+makefile-graph --makefile Makefile --direction LR \
+  | dot -Tsvg -Kdot > $d/img/clab/clab-makefile.svg
+#+end_example
+
+
+[[file:img/clab/clab-makefile.svg]]
+** Topology
+
+*** Web View
+
+The third to last =<script>= tag contains the topology as javascript data:
+
+#+begin_src javascript
+// console.log(data); // it's global
+{
+    "nodes": [
+        {"name":"client1",
+         "image":"ghcr.io/srl-labs/alpine",
+         "kind":"linux",
+         "state":"N/A"},
+        {"name":"client2",
+         "image":"ghcr.io/srl-labs/alpine",
+         "kind":"linux",
+         "state":"N/A"},
+        {"name":"srl1",
+         "image":"ghcr.io/nokia/srlinux:24.10.1",
+         "kind":"nokia_srlinux",
+         "state":"N/A"},
+        {"name":"srl2",
+         "image":"ghcr.io/nokia/srlinux:24.10.1",
+         "kind":"nokia_srlinux",
+         "state":"N/A"}],
+    "links":[
+        {"source":"client1",
+         "source_endpoint":"eth1",
+         "target":"srl1",
+         "target_endpoint":"e1-1"},
+        {"source":"srl1",
+         "source_endpoint":"e1-10",
+         "target":"srl2",
+         "target_endpoint":"e1-10"},
+        {"source":"srl2",
+         "source_endpoint":"e1-1",
+         "target":"client2",
+         "target_endpoint":"eth1"}
+    ]
+}
+#+end_src
 * Issues
-
