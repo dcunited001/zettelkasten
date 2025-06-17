@@ -17,6 +17,19 @@
 
 * WPI Lib
 
+Running gradle tasks inside of a docker container
+
+#+begin_src shell
+docker run --rm -it -u 1000:1000  \
+    -v "$(pwd)":/home/ubuntu/project -w /home/ubuntu/project \
+    wpilib/ubuntu-base:24.04
+
+# then run ./gradlew :tasks
+#+end_src
+
++ May need to clean out gradles' intermediate build artifacts when jumping from
+  native to docker
+
 ** Gradle
 
 Reports dumped here =./build/reports/problems/=
@@ -35,9 +48,9 @@ List with =./gradlew :tasks --group $group=
 
 **** WPILib
 
-| generateCppVersion     | Generates the wpilib version class                          |
-| generateJavaVersion    | Generates the wpilib version class                          |
-| runCpp                 | Run the apriltagDev executable                              |
+| generateCppVersion  | Generates the wpilib version class |
+| generateJavaVersion | Generates the wpilib version class |
+| runCpp              | Run the apriltagDev executable     |
 
 **** Documentation
 
@@ -70,7 +83,183 @@ Docs get built and go here =find . -wholename '*build/docs/javadoc'=
 ./ntcore/build/docs/javadoc
 #+end_example
 
+*** Code Generation
+:PROPERTIES:
+:header-args:shell+: :dir (expand-file-name "frc/wpilibsuite/allwpilib/wpilibjExamples" (getenv "_ECTO"))
+:END:
 
++ These json scripts are set in [[https://github.com/wpilibsuite/allwpilib/blob/fb399eef3dc4ef41d3c99966c0182ad194c0a817/wpilibjExamples/build.gradle#L68-L77][./wpilibjExamples/build.gradle]]
++ Some are mentioned later in my notes (in java package structure)
++ Not as exciting as I thought, since I assumed the snippets were for code
+  generation. They are, but for the docs site.
++ The =wpilib{c,j}Examples= subprojects have their own builds, so the classes in
+  here don't appear on the [[director][wpilib docs site]] (or in my regular =:javadocs= build)
+  - somehow the javadoc built anyways. It's mostly useless (produces
+    "ReplaceMeClass" for commands, snippets, templates)
+  - searching Replace in the extension source leads to [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/shared/generator.ts#L147-L158][./src/shared/generator.ts]]
+    which defines =generateCopyJava= and =generateCopyCpp=
+  - There are no references to =snippets= in the wpilib extension. Again, these
+    are doc snippets -- I was hoping to find examples of reflection, if not
+    code snippets.
++ For the VSCode new project tool, [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/wpilib-utility-standalone/src/projectcreator.ts#L179-L193][setupBaseSelects]] handles finding the projects
+  that can be generated.
+  - The actual templates/examples are loaded by:
+    - [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/shared/exampletemplateapi.ts#L80][src/shared/exampletemplateapi.ts]]
+    - [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/shared/vendorexamples.ts][src/shared/vendorexamples.ts]]
+    - [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/shared/examples.ts][src/shared/examples.ts]]
+  - This is how the VSCode extension can provide access to the templates like
+    [[https://github.com/CrossTheRoadElec/Phoenix6-Examples][CrossTheRoadElec/Pheonix6-Examples]]
+  - The templates are created by =generateCopy{Java,Cpp}=, +completely outside of
+    gradle+ ... which I guess makes sense (it'll be a new project entirely.)
+    - nevermind... On template generation, the snippet source gets installed
+      into the local extension source on
+    - And it appears that [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/templatebuilder.gradle#L11-L59][templatebuilder.gradle]] handles code generation
+    - Nope, the gradle task (from [[https://github.com/wpilibsuite/vscode-wpilib/commit/0fdd7bb8e3c07842c3440bdfd92fea725d506bac][2021]]) handles pulling the templates/examples,
+      whereas typescript (mostly from 2018, later) will handle local copies (and
+      VSCode's project context switch)
+
+#+begin_example shell
+vscodeData=$HOME/wpilib/2025/vscode/VSCode-linux-x64/data
+wpiExt=$vscodeData/extensions/wpilibsuite.vscode-wpilib-2025.3.2
+wpiExamples=$wpiExt/resources/{java,cpp}/src/{examples,templates}
+#+end_example
+
+**** Templates
+
+#+begin_src shell :results output table
+jq -rj 'map("\(.foldername),\(.name)") | join("\n")' \
+    src/main/java/edu/wpi/first/wpilibj/templates/templates.json \
+    | sort
+#+end_src
+
+#+RESULTS:
+| commandbased         | Command Robot                     |
+| commandbasedskeleton | Command Robot Skeleton (Advanced) |
+| educational          | Educational Robot                 |
+| robotbaseskeleton    | RobotBase Skeleton (Advanced)     |
+| romicommandbased     | Romi - Command Robot              |
+| romieducational      | Romi - Educational Robot          |
+| romitimed            | Romi - Timed Robot                |
+| timedskeleton        | Timed Skeleton (Advanced)         |
+| timed                | Timed Robot                       |
+| timesliceskeleton    | Timeslice Skeleton (Advanced)     |
+| timeslice            | Timeslice Robot                   |
+| xrpcommandbased      | XRP - Command Robot               |
+| xrpeducational       | XRP - Educational Robot           |
+| xrptimed             | XRP - Timed Robot                 |
+
+**** Commands
+
+#+begin_src shell :results output table
+jq -rj 'map("\(.foldername),\(.name)") | join("\n")' \
+    src/main/java/edu/wpi/first/wpilibj/commands/commands.json \
+    | sort
+#+end_src
+
+#+RESULTS:
+| command2               | Command                |
+| emptyclass             | Empty Class            |
+| instantcommand         | InstantCommand         |
+| parallelcommandgroup   | ParallelCommandGroup   |
+| paralleldeadlinegroup  | ParallelDeadlineGroup  |
+| parallelracegroup      | ParallelRaceGroup      |
+| sequentialcommandgroup | SequentialCommandGroup |
+| subsystem2             | Subsystem              |
+
+**** Snippets
+
+#+begin_src shell :results output table
+jq -rj 'map("\(.foldername),\(.name)") | join("\n")' \
+    src/main/java/edu/wpi/first/wpilibj/snippets/snippets.json \
+    | sort
+#+end_src
+
+#+RESULTS:
+| accelerometercollision | AccelerometerCollisionDetection |
+| accelerometerfilter    | AccelerometerFilter             |
+| adxlaccelerometers     | ADXLAccelerometers              |
+| analogaccelerometer    | AnalogAccelerometer             |
+| analogencoder          | AnalogEncoder                   |
+| analoginput            | AnalogInput                     |
+| analogpotentiometer    | AnalogPotentiometer             |
+| analogtrigger          | AnalogTrigger                   |
+| builtinaccelerometer   | BuiltInAccelerometer            |
+| digitalinput           | DigitalInput                    |
+| dutycycleencoder       | DutyCycleEncoder                |
+| encoderdrive           | EncoderDrive                    |
+| encoder                | Encoder                         |
+| encoderhoming          | EncoderHoming                   |
+| limitswitch            | LimitSwitch                     |
+
+**** Examples
+
+
+#+begin_src shell :results output table
+jq -rj 'map("\(.foldername),\(.name)") | join("\n")' \
+    src/main/java/edu/wpi/first/wpilibj/examples/examples.json \
+    | sort
+#+end_src
+
+#+RESULTS:
+| addressableled                    | Addressable LED                         |
+| apriltagsvision                   | AprilTags Vision                        |
+| arcadedrive                       | Arcade Drive                            |
+| arcadedrivexboxcontroller         | Arcade Drive Xbox Controller            |
+| armsimulation                     | ArmSimulation                           |
+| canpdp                            | PDP CAN Monitoring                      |
+| differentialdrivebot              | DifferentialDriveBot                    |
+| differentialdriveposeestimator    | DifferentialDrivePoseEstimator          |
+| digitalcommunication              | Digital Communication Sample            |
+| dma                               | DMA                                     |
+| drivedistanceoffboard             | DriveDistanceOffboard                   |
+| dutycycleencoder                  | Duty Cycle Encoder                      |
+| dutycycleinput                    | Duty Cycle Input                        |
+| elevatorexponentialprofile        | Elevator with exponential profile       |
+| elevatorexponentialsimulation     | Elevator Exponential Profile Simulation |
+| elevatorprofiledpid               | Elevator with profiled PID controller   |
+| elevatorsimulation                | ElevatorSimulation                      |
+| elevatortrapezoidprofile          | Elevator with trapezoid profiled PID    |
+| encoder                           | Encoder                                 |
+| eventloop                         | EventLoop                               |
+| flywheelbangbangcontroller        | Flywheel BangBangController             |
+| gettingstarted                    | Getting Started                         |
+| gyro                              | Gyro                                    |
+| gyromecanum                       | Gyro Mecanum                            |
+| hatchbotinlined                   | 'Inlined' Hatchbot                      |
+| hatchbottraditional               | 'Traditional' Hatchbot                  |
+| hidrumble                         | HID Rumble                              |
+| httpcamera                        | HTTP Camera                             |
+| i2ccommunication                  | I2C Communication Sample                |
+| intermediatevision                | Intermediate Vision                     |
+| mecanumbot                        | MecanumBot                              |
+| mecanumcontrollercommand          | MecanumControllerCommand                |
+| mecanumdrive                      | Mecanum Drive                           |
+| mecanumdriveposeestimator         | MecanumDrivePoseEstimator               |
+| mechanism2d                       | Mechanism2d                             |
+| motorcontrol                      | Motor Control                           |
+| potentiometerpid                  | Potentiometer PID                       |
+| quickvision                       | Simple Vision                           |
+| rapidreactcommandbot              | Rapid React Command Bot                 |
+| relay                             | Relay                                   |
+| romireference                     | RomiReference                           |
+| selectcommand                     | Select Command Example                  |
+| shuffleboard                      | Shuffleboard                            |
+| simpledifferentialdrivesimulation | SimpleDifferentialDriveSimulation       |
+| solenoid                          | Solenoids                               |
+| statespacearm                     | StateSpaceArm                           |
+| statespaceelevator                | StateSpaceElevator                      |
+| statespaceflywheel                | StateSpaceFlywheel                      |
+| statespaceflywheelsysid           | StateSpaceFlywheelSysId                 |
+| swervebot                         | SwerveBot                               |
+| swervecontrollercommand           | SwerveControllerCommand                 |
+| swervedriveposeestimator          | SwerveDrivePoseEstimator                |
+| sysidroutine                      | SysIdRoutine                            |
+| tankdrive                         | Tank Drive                              |
+| tankdrivexboxcontroller           | Tank Drive Xbox Controller              |
+| ultrasonicpid                     | Ultrasonic PID                          |
+| ultrasonic                        | Ultrasonic                              |
+| unittest                          | UnitTesting                             |
+| xrpreference                      | XRP Reference                           |
 
 *** =.gradle= files
 

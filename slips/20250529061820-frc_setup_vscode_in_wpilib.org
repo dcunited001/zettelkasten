@@ -92,6 +92,68 @@ plugins {
 :END:
 In =/home/myuser/wpilib/2025/vscode/VSCode-linux-x64/data=
 
+
+** Extension Structure
+
+*** Issues
++ The extension assumes that =./gradlew= is at the root of the currently opened
+  VSCode workspace.
+
+*** Configuration
+
+Code for =.wpilib/wpilib_preferences.json= is here in [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/preferences.ts#L35][src/preferences.ts]].
+
++ These settings come up frequently in the VSCode extension. They stand
+  alongside the VSCode user/workspace settings, but
++ These are preferences that need to persist across editors.
+  - The gradle tasks may parse through the =vendordeps= json, connecting those
+    settings to the actual build.
+  - Gradle can also =jsonSlurp= the =wpilib_preferences.json= (in theory).
+  - [[https://github.com/wpilibsuite/allwpilib/blob/fb399eef3dc4ef41d3c99966c0182ad194c0a817/wpilibjExamples/build.gradle#L68-L77][./wpilibjExamples/build.gradle]] parses JSON definitions for tasks that need
+    to be added to the gradle build.
+  - These are the same templates that the VSCode editor will build.
+
+**** Vendor Deps
+
+*** Project Updater
+
++ [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/shared/generator.ts#L383-L403][setDesktopEnabled in ./src/shared/generator.ts]] just does a regexp replace for
+  =build.gradle= which ensures =def includeDesktopSupport = true=, so this wasn't as
+  opaque as it first seemed.
+
+**** Failed project upgrade
+
+I downloaded a project made with =projectYear= set to =2025beta=. I made a few
+changes to =build.gradle=, but it wasn't building. I had skipped the project
+import bc i wasn't sure what it'd do. I guess I should clone again and see...
+
+I upgraded the vendordeps using the VSCode command.
+
++ I fixed the =build.gradle= reference to a previous =GradioRIO= and rebuilt
++ unsure whether I need to reload the vendor deps here)
+
+#+begin_example diff
+-    id "edu.wpi.first.GradleRIO" version "2025.1.1-beta-1"
++    id "edu.wpi.first.GradleRIO" version "2025.3.2"
+#+end_example
+
+
+The deps had a few issues, but the UI had resolved these.
+  - remove maven repository with =uri= where I was getting =401=
++ There were a few other issues with =build.gradle=
+  - =compileJava.finalizedBy checkAkitInstall= idk what this does, but i'm
+    probably loading more java than just this
+  - =annotationProcessor "org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version"=
+    - needed to be changed to =org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version=
+
+#+begin_example diff
+-    "projectYear": "2025beta",
+-    "teamNumber": 1234
++    "projectYear": "2025",
++    "teamNumber": 4321
+#+end_example
+
+
 ** Extensions
 
 These extensions are added
