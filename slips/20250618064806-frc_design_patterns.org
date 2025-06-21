@@ -1,0 +1,99 @@
+:PROPERTIES:
+:ID:       12bcf5f2-46c5-46f1-bf77-4a12f955fea1
+:END:
+#+TITLE: FRC: Design Patterns
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:40c49f4c-08be-4315-bdbe-7aa5000e4025][Gamma, Erich and Helm, Richard and Johnson, Ralph and Vlissides, John, Design
+  patterns: elements of reusable object-oriented software]]
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
+
+* Structural Patterns
+
+** Facade
+
+The facade pattern appears everywhere in the FRC code (both the projects and the
+wpilib codebase). Understanding the implications for different approaches
+totally changes how you may approach the design of logging (using the HAL-based
+"IO+Sim" pattern or).
+
+Design concerns
+
++ Connecting subsystem inputs/outputs into commands (that later feedback into
+  subsystems)
++ Multimodal inputs/outputs
+  - e.g. combining apriltags + CV + odometry requires merging data
+    - This requires a Kalman Filter (or better), which is subject to
+      normalization issues (shouldn't be), extrapolation & anomolies
+
+*** Subsystem interaction
+
+**** HAL-based "IO+Sim" for everything?
+
+| Pros                                      | Cons                                      |
+|-------------------------------------------+-------------------------------------------|
+| Simple Data Flow (huge plus: fewer loops) | VendorSim CAM data becomes Lower-Fidelity |
+| Easy to break into components             | tuning PID controllers or LQR             |
+| vendor flexibility                        | constraints on path planning <-> control  |
+|                                           |                                           |
+
++ the components have mostly homogenous design (similar shapes) and are easier
+  to bundle together as a layer of subsystems with facade(s)
+  - For data-injection, adaptor(s)/bridge(s) should get around this (in
+    theory...) but refactoring code that runs on IRL moving metal is
+    complicated.
+  - Losing the ability to run code in simulation creates a bottleneck.
++ Video mentions using PID/LQR instead of CTRE Motion Magic
+
+
+**** Data Injection
+
+| Pros                                     | Cons                                             |
+|------------------------------------------+--------------------------------------------------|
+| vendor-provided control loops            | convoluted data flow (b/w subsystems/components) |
+| high-fidelity CAM                        | heterogenous data                                |
+| single-class subsystems                  | timing issues for =@AutoLogger= and =AdvantageKit=   |
+| easier access to more control algorithms | vendor lock-in                                   |
+|                                          | different constraints on path planning <-> control |
+
++ Some vendor-supplied path-planning assumes or relies on their software.
++ Data points for vendor-based subsystems need to reconcile timestamps
+  - i.e. there's no single loop/scope that sets a single time; if data is made
+    available at a different sampling frequency, you'll eventually see
+    duplicated data points.
++ With one vendor-subsystem, probably simple to deal with. With more, it's
+  still likely not a huge problem, but the effects compound. (I really have no
+  idea tbh)
+  - to deal with vanishing derivatives ($frac{df}{dt}$ is usually zero for two
+    repeated samples), you can add noise or a windowing function.
+  - Blowups in simulation are more difficult to deal with and will happen
+    anyways (e.g. integrating a discontinuous function, then propagating the
+    value into a controller's feedback; extreme positive/negative values that
+    can be residual or can cascade)
+
+#+begin_quote
+I had to deal with both to write a particle shader (you can't calculate all
+particle force contributions for all pixels without using force-splatting; small
+changes in otherwise smooth function cause big problems)
+#+end_quote
+
+* Behavioral Patterns
+
+** Command
+
+Design concerns
+
++ Parallel commands
++ Chaining/Sequencing commands
++ Determining parameters
+
+Practical concerns
+
++ Weighting parameters
++ Frequency of invocation (timestep)
+
+Runtime concerns
+
++ Canceled commands (from underlying exception handling)

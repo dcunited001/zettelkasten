@@ -98,6 +98,10 @@ In =/home/myuser/wpilib/2025/vscode/VSCode-linux-x64/data=
 *** Issues
 + The extension assumes that =./gradlew= is at the root of the currently opened
   VSCode workspace.
+*** Schema
+
++ [[https://github.com/wpilibsuite/vscode-wpilib/blob/main/vscode-wpilib/resources/vendorschema.json][vendorschema.json]]
++ [[https://github.com/wpilibsuite/vscode-wpilib/blob/main/vscode-wpilib/resources/wpilibschema.json][wpilibschema.json]]
 
 *** Configuration
 
@@ -119,13 +123,14 @@ Code for =.wpilib/wpilib_preferences.json= is here in [[https://github.com/wpili
 
 + [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/shared/generator.ts#L383-L403][setDesktopEnabled in ./src/shared/generator.ts]] just does a regexp replace for
   =build.gradle= which ensures =def includeDesktopSupport = true=, so this wasn't as
-  opaque as it first seemed.
+  opaque as it first seemed (I think...)
 
 **** Failed project upgrade
 
 I downloaded a project made with =projectYear= set to =2025beta=. I made a few
-changes to =build.gradle=, but it wasn't building. I had skipped the project
-import bc i wasn't sure what it'd do. I guess I should clone again and see...
+changes to =build.gradle=, but some =classpath= issues with =wpilibj2= were failing
+most gradle tasks. I had skipped the project import bc i wasn't sure what it'd do. I
+guess I should clone again and see...
 
 I upgraded the vendordeps using the VSCode command.
 
@@ -137,14 +142,14 @@ I upgraded the vendordeps using the VSCode command.
 +    id "edu.wpi.first.GradleRIO" version "2025.3.2"
 #+end_example
 
-
 The deps had a few issues, but the UI had resolved these.
   - remove maven repository with =uri= where I was getting =401=
 + There were a few other issues with =build.gradle=
   - =compileJava.finalizedBy checkAkitInstall= idk what this does, but i'm
-    probably loading more java than just this
+    probably loading more java than just this.
   - =annotationProcessor "org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version"=
-    - needed to be changed to =org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version=
+    - needed to be changed to
+      =org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version=
 
 #+begin_example diff
 -    "projectYear": "2025beta",
@@ -152,6 +157,41 @@ The deps had a few issues, but the UI had resolved these.
 +    "projectYear": "2025",
 +    "teamNumber": 4321
 #+end_example
+
+I ran =Install Tools For Gradle IO=, but it still didn't fix the =classpath= issues.
+After typing in an import, =edu.wpi.first.wpilibj2= where still recognized by
+Java's LSP in the project, so I searched for =edu.wpi.first= in the gradle build,
+where I found the problem
+
+#+begin_example diff
+-configurations.all {
+-    exclude group: "edu.wpi.first.wpilibj"
+-}
+#+end_example
+
+After removing this, I find upgrading to =com.ctre.phoenix6= ummm... wasn't
+sufficient lol.
+
+**** Migrate Phoenix6 Swerve Drive
+
+
+
+***** Changes to CTRE Swerve API
+
+No idea what I'm doing here, so compilation problems are the least of my
+worries. (not running this code, except on simulator)
+
+#+begin_quote
+NOTE: not completed
+#+end_quote
+
+
+***** Changes to Units functionality
+
+Relavent commits (circa v2025.3.2) from =magit git-log search=
+
+| [[https://github.com/wpilibsuite/allwpilib/commit/dd6c830768][dd6c830768]] | [[https://github.com/wpilibsuite/allwpilib/commit/3dee19a435][3dee19a435]] | [[https://github.com/wpilibsuite/allwpilib/commit/ba37e7eb3c][ba37e7eb3c]] | [[https://github.com/wpilibsuite/allwpilib/commit/07192285f6][07192285f6]] | [[https://github.com/wpilibsuite/allwpilib/commit/13626063dc][13626063dc]] | [[https://github.com/wpilibsuite/allwpilib/commit/e52f400687][e52f400687]] | [[https://github.com/wpilibsuite/allwpilib/commit/fe49cbe429][fe49cbe429]] | [[https://github.com/wpilibsuite/allwpilib/commit/f9b3efb712][f9b3efb712]] | [[https://github.com/wpilibsuite/allwpilib/commit/544553a58f][544553a58f]] | [[https://github.com/wpilibsuite/allwpilib/commit/49e3e4a0be][49e3e4a0be]] | [[https://github.com/wpilibsuite/allwpilib/commit/6ef5b85758][6ef5b85758]] |
+
 
 
 ** Extensions

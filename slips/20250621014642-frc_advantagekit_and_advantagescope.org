@@ -1,0 +1,174 @@
+:PROPERTIES:
+:ID:       7029405b-8e0d-43cf-8505-1ff6d0faf101
+:END:
+#+TITLE: FRC: AdvantageKit and AdvantageScope
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
++ [[id:6a7b6508-e7cf-4f55-a589-d354cee1766d][CAD]]
++ [[id:d28b59f0-b6d5-4e7e-a588-d014bd24cc82][3D Modeling]]
++ [[id:4630e006-124c-4b66-97ad-b35e9b29ae0b][Robotics]]
+
+* Docs
+
+* Resources
+
+* Topics
+
+** Config
+
+*** Layouts
+
+**** Format
+
+There are =.hubs= containing =.state.tabs= and =.satellites= where each additional
+popout gets something like a =.tabs.tabs[]= configuration. Generally, most users
+will want to configure this in the GUI. Occasionally, I'd probably like to
+merge/edit some layouts.
+
+#+name: ascopeLayoutHubs
+#+begin_src jq :in-file "/tmp/AdvantageScope-6-21-2025.json"
+.hubs[0].state.tabs.tabs |= (. | map(.title))
+#+end_src
+
+When exported, the overall layout format looks like this:
+
+#+name: ascopeLayoutHubsDiagram
+#+begin_src plantuml :file img/frc/ascope/ascopeLayoutHubs.svg :noweb yes
+@startjson
+<<ascopeLayoutHubs()>>
+@endjson
+#+end_src
+
+#+RESULTS: ascopeLayoutHubsDiagram
+[[file:img/frc/ascope/ascopeLayoutHubs.svg]]
+
+*** User Assets
+
+AdvantageScope fetches from [[https://github.com/Mechanical-Advantage/AdvantageScopeAssets/releases/tag/default-assets-v2][Mechanical-Advantage/AdvantageScopeAssets Releases]]
+
+Most of the examples in the repo don't contain =.components[]= to describe
+[[https://docs.advantagescope.org/more-features/custom-assets/#articulated-components][articulated components]] to describe mechanisms, but should be sufficient for most
+everything else
+
+**** Fields
+
+The Evergreen fields from the source code are fairly simple.
+
+**** Controllers
+
+# #+name: ascopeJoystickJson
+# #+begin_src sh :results output verbatim
+# cat /tmp/tmp.YEnQOlqBVs.json
+# #+end_src
+
+Partial JSON for the controller.
+
+#+begin_quote
+SVG too large. apparently inclusion in
+=@startuml= does not work for me, [[https://plantuml.com/json#a3e433077b7a6be8][despite the docs]] ... on which I absolutely have
+disabled javascript on all my browers btw
+#+end_quote
+
+#+name: ascopeJoystickJson
+#+begin_example json :noweb-ref ascopeJoystickJson
+{
+    "name": "PS4 Controller",
+    "components": [
+       { "type": "button", "isYellow": true, "isEllipse": true, "centerPx": [1422, 950], "sizePx": [150, 150], "sourceIndex": 13 },
+       { "type": "axis", "isYellow": false, "centerPx": [260, 260], "sizePx": [140, 400], "sourceIndex": 3, "sourceRange": [0, 1] },
+       { "type": "joystick", "isYellow": true, "centerPx": [1040, 945], "radiusPx": 150, "xSourceIndex": 0, "xSourceInverted": false, "ySourceIndex": 1, "ySourceInverted": true, "buttonSourceIndex": 11 }]
+}
+#+end_example
+
+#+name: ascopeJoystickModel
+#+begin_src plantuml :file img/frc/ascope/ascopeJoystick.svg :noweb yes
+@startjson
+<<ascopeJoystickJson()>>
+@endjson
+#+end_src
+
+#+RESULTS: ascopeJoystickModel
+[[file:img/frc/ascope/ascopeJoystick.svg]]
+
+**** FTC Simple Drive Base
+
+See [[https://github.com/Mechanical-Advantage/AdvantageScope/blob/main/bundledAssets/Robot_FTCSimpleDriveBase/config.json][./bundledAssets/Robot_FTCSimpleDriveBase/config.json]]
+
+#+name: ascopeFtcSimple
+#+begin_src emacs-lisp
+"https://raw.githubusercontent.com/Mechanical-Advantage/AdvantageScope/refs/heads/main/bundledAssets/Robot_FTCSimpleDriveBase/config.json"
+#+end_src
+
+#+name: ascopeFtcSimpleModel
+#+begin_src plantuml :file img/frc/ascope/ascopeFtcSimple.svg :noweb yes
+@startjson
+<<ascopeModelConfig(assetUrl=ascopeFtcSimple)>>
+@endjson
+#+end_src
+
+#+RESULTS: ascopeFtcSimpleModel
+[[file:img/frc/ascope/ascopeFtcSimple.svg]]
+
+**** FRC Kit Bot
+
+Same, with more cameras
+
+#+name: ascopeFrcKitbot
+#+begin_src emacs-lisp
+"https://raw.githubusercontent.com/Mechanical-Advantage/AdvantageScope/refs/heads/main/bundledAssets/Robot_FRCKitBot/config.json"
+#+end_src
+
+#+name: ascopeFrcKitbotModel
+#+begin_src plantuml :file img/frc/ascope/ascopeFrcKitbot.svg :noweb yes
+@startjson
+<<ascopeModelConfig(assetUrl=ascopeFrcKitbot)>>
+@endjson
+#+end_src
+
+#+RESULTS: ascopeFrcKitbotModel
+[[file:img/frc/ascope/ascopeFrcKitbot.svg]]
+
+**** Babel
+
+Get it from =:gh-raw-url=
+
+#+name: ascopeModelConfig
+#+headers: :var assetUrl=ascopeFtcSimple
+#+begin_src restclient :jq "." :results output silent :jq-args "--raw-output"
+:gh-raw-url = :assetUrl
+# :gh-url-base = https://api.github.com
+# :gh-org = vyos
+# :gh-url-path = orgs/:gh-org/repos
+# :gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+
+# :headers = <<
+# Accept: application/vnd.github+json
+# Authorization: Bearer :gh-token
+# X-GitHub-Api-Version: 2022-11-28
+# User-Agent: Emacs
+#
+
+GET :gh-raw-url
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "\(.owner.login)")
+#+end_src
+
+And generate the plantuml ... which is apparently /not/ going to /simply/ permit
+variable references (without some =org-sbe= witchcraft)
+
+#+begin_example org
+name: ascopeModelDiagram
+#+headers: :var assetUrl=ascopeFtcModel
+#+begin_src plantuml :file img/frc/ascope/ascopeModelConfig.svg :noweb yes
+@startjson
+<<ascopeModelConfig(assetUrl=assetUrl)>>
+@endjson
+#+end_src
+
+#+call: ascopeModelDiagram(assetUrl=ascopeFtcModel) :file img/frc/ascope/ascopeModelConfig.svg
+#+call: ascopeModelDiagram(assetUrl=ascopeFrcKitbot) :file img/frc/ascope/ascopeFrcKitbot.svg
+#+end_example
