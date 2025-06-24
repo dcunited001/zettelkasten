@@ -53,8 +53,6 @@ Exec=/bin/sh -c 'export PATH=/home/myuser/wpilib/2025/tools:\\$PATH && /home/myu
 
 *** Proto gen
 
-** Gradle
-
 ** Lombok
 
 + [[https://docs.freefair.io/gradle-plugins/current/reference/#_lombok][docs]]
@@ -124,74 +122,6 @@ Code for =.wpilib/wpilib_preferences.json= is here in [[https://github.com/wpili
 + [[https://github.com/wpilibsuite/vscode-wpilib/blob/ab3a347c94ec18d1ee5189b0583ed92843d00a19/vscode-wpilib/src/shared/generator.ts#L383-L403][setDesktopEnabled in ./src/shared/generator.ts]] just does a regexp replace for
   =build.gradle= which ensures =def includeDesktopSupport = true=, so this wasn't as
   opaque as it first seemed (I think...)
-
-**** Failed project upgrade
-
-I downloaded a project made with =projectYear= set to =2025beta=. I made a few
-changes to =build.gradle=, but some =classpath= issues with =wpilibj2= were failing
-most gradle tasks. I had skipped the project import bc i wasn't sure what it'd do. I
-guess I should clone again and see...
-
-I upgraded the vendordeps using the VSCode command.
-
-+ I fixed the =build.gradle= reference to a previous =GradioRIO= and rebuilt
-+ unsure whether I need to reload the vendor deps here)
-
-#+begin_example diff
--    id "edu.wpi.first.GradleRIO" version "2025.1.1-beta-1"
-+    id "edu.wpi.first.GradleRIO" version "2025.3.2"
-#+end_example
-
-The deps had a few issues, but the UI had resolved these.
-  - remove maven repository with =uri= where I was getting =401=
-+ There were a few other issues with =build.gradle=
-  - =compileJava.finalizedBy checkAkitInstall= idk what this does, but i'm
-    probably loading more java than just this.
-  - =annotationProcessor "org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version"=
-    - needed to be changed to
-      =org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version=
-
-#+begin_example diff
--    "projectYear": "2025beta",
--    "teamNumber": 1234
-+    "projectYear": "2025",
-+    "teamNumber": 4321
-#+end_example
-
-I ran =Install Tools For Gradle IO=, but it still didn't fix the =classpath= issues.
-After typing in an import, =edu.wpi.first.wpilibj2= where still recognized by
-Java's LSP in the project, so I searched for =edu.wpi.first= in the gradle build,
-where I found the problem
-
-#+begin_example diff
--configurations.all {
--    exclude group: "edu.wpi.first.wpilibj"
--}
-#+end_example
-
-After removing this, I find upgrading to =com.ctre.phoenix6= ummm... wasn't
-sufficient lol.
-
-**** Migrate Phoenix6 Swerve Drive
-
-
-
-***** Changes to CTRE Swerve API
-
-No idea what I'm doing here, so compilation problems are the least of my
-worries. (not running this code, except on simulator)
-
-#+begin_quote
-NOTE: not completed
-#+end_quote
-
-
-***** Changes to Units functionality
-
-Relavent commits (circa v2025.3.2) from =magit git-log search=
-
-| [[https://github.com/wpilibsuite/allwpilib/commit/dd6c830768][dd6c830768]] | [[https://github.com/wpilibsuite/allwpilib/commit/3dee19a435][3dee19a435]] | [[https://github.com/wpilibsuite/allwpilib/commit/ba37e7eb3c][ba37e7eb3c]] | [[https://github.com/wpilibsuite/allwpilib/commit/07192285f6][07192285f6]] | [[https://github.com/wpilibsuite/allwpilib/commit/13626063dc][13626063dc]] | [[https://github.com/wpilibsuite/allwpilib/commit/e52f400687][e52f400687]] | [[https://github.com/wpilibsuite/allwpilib/commit/fe49cbe429][fe49cbe429]] | [[https://github.com/wpilibsuite/allwpilib/commit/f9b3efb712][f9b3efb712]] | [[https://github.com/wpilibsuite/allwpilib/commit/544553a58f][544553a58f]] | [[https://github.com/wpilibsuite/allwpilib/commit/49e3e4a0be][49e3e4a0be]] | [[https://github.com/wpilibsuite/allwpilib/commit/6ef5b85758][6ef5b85758]] |
-
 
 
 ** Extensions
@@ -344,4 +274,275 @@ diff <(echo -e "$c1") <(echo -e "$c2")
 >   "editor.occurrencesHighlightDelay": 500,
 >   "editor.quickSuggestionsDelay": 300,
 >   "files.autoSaveDelay": 3000
+#+end_example
+
+*** VSCode Plugin (Old notes)
+
+
+
+Dependencies
+
++ wpilib-riolog seems to be the only wpilib dependency
+
+**** Gradle Files
+
+For the VSCode plugin
+
++ build.gradle
++ settings.gradle
++ versions.gradle
++ templatebuilder.gradle
+
+**** Project Converters
+
+The VSCode project converters should illustrate the logic required to setup an
+FRC build, since they translate between several formats.
+
+***** Gradle Importer
+
++ vscode-wpilib/webpack.config.js
++ vscode-wpilib/src/extension.ts
++ vscode-wpilib/src/webviews/gradle2020import.ts
++ vscode-wpilib/src/webviews/pages/gradle2020importpage.ts
+
+***** Eclipse Importer
+
++ vscode-wpilib/resources/webviews/projectcreator.html
++ vscode-wpilib/src/webviews/pages/projectcreatorpage.ts
++ vscode-wpilib/src/webviews/pages/projectcreatorpagetypes.ts
++ vscode-wpilib/src/webviews/projectcreator.ts
++ vscode-wpilib/locale/zh-cn/projectcreator.yaml
+
+There is also a standalone electron app
+
++ wpilib-utility-standalone/projectcreator.html
++ wpilib-utility-standalone/src/projectcreator.ts
+
+**** Resources
+
+***** Gradle Files
+
+For  ...
+
++ vscode-wpilib/resources/gradle/c/build.gradle
++ vscode-wpilib/resources/gradle/cpp/build.gradle
++ vscode-wpilib/resources/gradle/java/build.gradle
++ vscode-wpilib/resources/gradle/cppdt/build.gradle
++ vscode-wpilib/resources/gradle/cppxrp/build.gradle
++ vscode-wpilib/resources/gradle/javadt/build.gradle
++ vscode-wpilib/resources/gradle/cppromi/build.gradle
++ vscode-wpilib/resources/gradle/javaxrp/build.gradle
++ vscode-wpilib/resources/gradle/javaromi/build.gradle
++ vscode-wpilib/resources/gradle/shared/settings.gradle
+
+* Projects
+
+** From FRC Training Day Video
+
+[[https://www.youtube.com/watch?v=gYL-3Phk6F0][Programming Without A Robot - FRC Training Day]]
+
+*** Attempted Project upgrade
+
+I downloaded a project made with =projectYear= set to =2025beta=. I made a few
+changes to =build.gradle=, but some =classpath= issues with =wpilibj2= were failing
+most gradle tasks. I had skipped the project import bc i wasn't sure what it'd do. I
+guess I should clone again and see...
+
+I upgraded the vendordeps using the VSCode command.
+
++ I fixed the =build.gradle= reference to a previous =GradioRIO= and rebuilt
++ unsure whether I need to reload the vendor deps here)
+
+#+begin_example diff
+-    id "edu.wpi.first.GradleRIO" version "2025.1.1-beta-1"
++    id "edu.wpi.first.GradleRIO" version "2025.3.2"
+#+end_example
+
+The deps had a few issues, but the UI had resolved these.
+  - remove maven repository with =uri= where I was getting =401=
++ There were a few other issues with =build.gradle=
+  - =compileJava.finalizedBy checkAkitInstall= idk what this does, but i'm
+    probably loading more java than just this.
+  - =annotationProcessor "org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version"=
+    - needed to be changed to
+      =org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version=
+
+#+begin_example diff
+-    "projectYear": "2025beta",
+-    "teamNumber": 1234
++    "projectYear": "2025",
++    "teamNumber": 4321
+#+end_example
+
+I ran =Install Tools For Gradle IO=, but it still didn't fix the =classpath= issues.
+After typing in an import, =edu.wpi.first.wpilibj2= where still recognized by
+Java's LSP in the project, so I searched for =edu.wpi.first= in the gradle build,
+where I found the problem
+
+#+begin_example diff
+-configurations.all {
+-    exclude group: "edu.wpi.first.wpilibj"
+-}
+#+end_example
+
+After removing this, I find upgrading to =com.ctre.phoenix6= ummm... wasn't
+sufficient lol.
+
+**** Migrate Phoenix6 Swerve Drive
+
+***** Changes to CTRE Swerve API
+
+No idea what I'm doing here, so compilation problems are the least of my
+worries. (not running this code, except on simulator)
+
+#+begin_quote
+NOTE: not completed
+#+end_quote
+
+
+***** Changes to Units functionality
+
+Relavent commits (circa v2025.3.2) from =magit git-log search=
+
+| [[https://github.com/wpilibsuite/allwpilib/commit/dd6c830768][dd6c830768]] | [[https://github.com/wpilibsuite/allwpilib/commit/3dee19a435][3dee19a435]] | [[https://github.com/wpilibsuite/allwpilib/commit/ba37e7eb3c][ba37e7eb3c]] | [[https://github.com/wpilibsuite/allwpilib/commit/07192285f6][07192285f6]] | [[https://github.com/wpilibsuite/allwpilib/commit/13626063dc][13626063dc]] | [[https://github.com/wpilibsuite/allwpilib/commit/e52f400687][e52f400687]] | [[https://github.com/wpilibsuite/allwpilib/commit/fe49cbe429][fe49cbe429]] | [[https://github.com/wpilibsuite/allwpilib/commit/f9b3efb712][f9b3efb712]] | [[https://github.com/wpilibsuite/allwpilib/commit/544553a58f][544553a58f]] | [[https://github.com/wpilibsuite/allwpilib/commit/49e3e4a0be][49e3e4a0be]] | [[https://github.com/wpilibsuite/allwpilib/commit/6ef5b85758][6ef5b85758]] |
+
+** Project Import from XRP Example Project
+
+This is a 2024 project that runs AdvantageKit on XRP.
+
++ There's not a ton of logic here and many changes are needed for parity with
+  the [[https://docs.advantagekit.org/category/template-projects][AdvantageKit templates]]... so probably just use those.
++ I know a bit about what the XRP supports natively, but idk where i'll hit
+  performance issues.
+
+*** Run Project Import
+
++ cloned the repo to =$checkout=
++ ran the importer to create a new project at =proj=${checkout}2=
++ then ran =cp -R $checkout/.git $proj/.git= for git history
++ then sifted through the git diffs to pick in what was needed
+
+**** Changes to migrate to 2025
+
++ reconciled the new maven source for =akit=
++ update vendordep =AdvantageKit.json= to newer version
++ remove exclusion of edu.wpi.first.wpilibj
++ add wpi.java.deps.wpilibAnnotations()
++ Corrected the namespace for =annotationProcessor= to =akit-autolog=
+
+Besides the changes to =./gradlew= and the Gradle jars, everything else is in this
+patch: [[file:img/frc/ascope/XRPTrainingCode-2025-import.diff][img/frc/ascope/XRPTrainingCode-2025-import.diff]]
+
+**** Fix deprecations
+
+There were still other changes like deprecations that needed to be fixed.
+
++ =LoggedDashboardNumber(...)= to =LoggedNetworkNumber(...)=
+
+**** Parity with AdvantageKit Templates
+
+***** Support simulation
+
+change =Constants.isReplay= -> =Constants.currentMode=
+
+
+
+*** Running The Simbot
+
+**** NetworkTables
+
++ RobotSimulation shows NT4 Server is up with no clients
++ =ss -u4= shows =udp= is connected to =192.168.42.1= at [[https://en.wikipedia.org/wiki/Peer_Name_Resolution_Protocol][PNRP]] port =3540=
+
+Tables
+
++ /FMSInfo :: shows 8 critical fields, including alliance station, test/auto
+  mode, e-stopped. (mostly boolean)
++ /LiveWindow :: shows =.status= which is configurable
++ /Shuffleboard :: shows =.metadata= and =.recording=
++ /AdvantageKit :: has 6 categories of fields
+  - DriverStation
+  - PowerDistribution
+  - RadioStatus
+  - RealMetadata
+  - RealOutputs
+  - SystemStats
+
+*** Misc Issues
+
+**** Required restarting VSCode (for Java LSP)
+
+Removed the errant exclude that stalled me out last time.
+
+#+begin_example groovy
+configurations.all { exclude group: "edu.wpi.first.wpilibj" }
+#+end_example
+
+**** Launching with the Run Button
+
+This requires configurating the VSCode Workspace Tasks or having a Robot
+connected. (see [[https://www.chiefdelphi.com/t/wpihaljni-error-when-running-code/424192][wpiHaljni error when running code]]).
+
+Run with simulator instead.
+
+#+begin_example shell
+/usr/bin/env /home/me/wpilib/2025/jdk/bin/java \
+  @/tmp/cp_70jw4zxauzlw4spcn2i4cwp4c.argfile \
+  org.littletonrobotics.xrp.Main
+#+end_example
+
+output
+
+#+begin_example log
+Picked up _JAVA_OPTIONS: -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -Dswing.defaultlaf=com.sun.java.swing.plaf.gtk.GTKLookAndFeel -Dswing.crossplatformlaf=com.sun.java.swing.plaf.gtk.GTKLookAndFeel
+java.io.IOException: wpiutiljni could not be loaded from path.
+        attempted to load for platform /linux/x86-64/
+Last Load Error:
+no wpiutiljni in java.library.path: /usr/java/packages/lib:/usr/lib64:/lib64:/lib:/usr/lib
+JVM Location: /home/me/wpilib/2025/jdk/bin/java
+
+        at edu.wpi.first.util.RuntimeLoader.loadLibrary(RuntimeLoader.java:47)
+        at edu.wpi.first.util.WPIUtilJNI.<clinit>(WPIUtilJNI.java:44)
+        at edu.wpi.first.wpilibj.RobotBase.startRobot(RobotBase.java:470)
+        at org.littletonrobotics.xrp.Main.main(Main.java:26)
+#+end_example
+
+**** Missing =networktables.json=
+
+I've noticed this file's basically empty in a lot of repo's and assumed this is
+why. It end up autogenerating the file.
+
+#+begin_example shell
+export DYLD_LIBRARY_PATH=$proj/build/jni/release
+export LD_LIBRARY_PATH=$proj/build/jni/release
+export HALSIMXRP_HOST=192.168.42.1
+export HALSIM_EXTENSIONS=$proj/build/jni/release/libhalsim_gui.so:\
+$proj/build/jni/release/libhalsim_xrp.so:
+
+# runs /usr/bin/env with the above
+/home/me/wpilib/2025/jdk/bin/java \
+  -agentlib:jdwp=transport=dt_socket,server=n,suspend=y,address=localhost:37617 \
+  @/tmp/cp_e7ah7jfcg00sjlv7oog1td6sa.argfile \
+  org.littletonrobotics.xrp.Main
+#+end_example
+
+output
+
+#+begin_example log
+Picked up _JAVA_OPTIONS: -Dawt.useSystemAAFontSettings=on -Dswing.aatext=true -Dswing.defaultlaf=com.sun.java.swing.plaf.gtk.GTKLookAndFeel -Dswing.crossplatformlaf=com.sun.java.swing.plaf.gtk.GTKLookAndFeel
+HAL Extensions: Attempting to load: libhalsim_gui
+Simulator GUI Initializing.
+Simulator GUI Initialized!
+HAL Extensions: Successfully loaded extension
+HAL Extensions: Attempting to load: libhalsim_xrp
+HALSim XRP Extension Initializing
+HALSimXRP Initialized
+HALSim XRP Extension Initialized
+HAL Extensions: Successfully loaded extension
+ ********** Robot program starting **********
+NT: could not open persistent file 'networktables.json': No such file or directory (this can be ignored if you aren't expecting persistent values)
+NT: Listening on NT3 port 1735, NT4 port 5810
+[AdvantageKit] Logging to "logs/akit_df598f007582390f.wpilog"
+ ********** Robot program startup complete **********
+[AdvantageKit] Renaming log to "logs/akit_25-06-21_06-45-38.wpilog"
 #+end_example
