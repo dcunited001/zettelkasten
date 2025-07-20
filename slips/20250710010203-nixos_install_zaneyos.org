@@ -1,0 +1,809 @@
+:PROPERTIES:
+:ID:       5885f3b1-cd67-4101-b903-ceaed4f97e69
+:END:
+#+TITLE: Nixos: Install ZaneyOS
+#+CATEGORY: slips
+#+TAGS:
+
+#+begin_src emacs-lisp
+(setq org-src-preserve-indentation t)
+
+(require 'nix-mode)
+(require 'ace-window)
+
+(with-eval-after-load 'ace-window
+  (setopt aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
+  (define-key global-map [remap other-window] #'ace-window))
+
+(winner-mode)
+#+end_src
+
+* resources
+
+** Nix
+
++ [[https://nixos.org/manual/nixos/stable/][nixos manual]]
+
+*** Examples
+
++ [[https://github.com/alyraffauf/nixcfg][alyraffauf/nixcfg]]
+  - setup pipewire/wireplumber/alsa for ps controllers?
+
+*** Channels
+
++ See [[https://nix-community.github.io/home-manager/index.xhtml#ch-installation][Installing Home Manager]] you probably want to configure the
+  channel for both the user (standalone) and system (nixos module).
+  - for me, I want to use =home-manager= and avoid reconfiguring the
+    home directory AND the system simultaneously.
+  - I may want the possibility of the latter from any system, but this
+    means i need to ensure that the =home-manager= configuration isn't
+    modified by the system... I think
+  - i'm not really sure what that would do for a default
+    =home-manager= value when running =nixos-rebuild=...
+    - also, see note on =inputs.nixpkgs.follows= below
+    
+*** Flakes
+
++ [[https://nix.dev/manual/nix/2.18/command-ref/new-cli/nix3-flake#flake-references][Flake References]] explains the =.#profile= flake URI
+  - [[https://www.reddit.com/r/NixOS/comments/1jbgmqw/comment/mhwpu6r/][Should you have every flake follow nixpkgs]]
++ [[https://discourse.nixos.org/t/is-there-documentation-for-nixpkgs-lib-nixossystem/62999][Is there documentation for =nixpkgs.lib.nixosSystem=?]] link-heavy
+  post where user is asking about the best way to autostart a VM
+  - this is apparently a function specific to flakes
+  - user points to source in [[https://github.com/NixOS/nixpkgs/blob/7bf1a8dd5a35734196783b0d314b9c7c8c558dd3/pkgs/os-specific/linux/nixos-rebuild/nixos-rebuild.sh#L815-L821][nixos-rebuild.sh]] to discover what it
+    means. =$(nixFlakeBuild "$flake#$flakeAttr.config. ...")=
+  - that's why the ZaneyOS repo wraps everything in the =.#profile=,
+    so they can evaluate running system variants on VM's and
+    hardware. I don't really need that though.
++ [[and ][Flake Output Parameters (@ syntax)]]
+
+Flake output bindings:
+
+| packages | devShells | nixosConfigurations | homeConfigurations | modules |
+
+*** Home Manager
+
++ [[https://nix-community.github.io/home-manager/][home-manager manual]]
++ [[https://home-manager-options.extranix.com/][home manager option search]]
++ [[https://gist.github.com/573/c06ccea910abcc8f9255cb8f3ace3e86][nix repl: load home-manager]] 
+
+* Nix
+
+** Repl
+
+Access =config= variables here first, instead of in [[https://search.nixos.org][search.nixpkgs.org]]
+
+#+begin_src shell
+nix repl -f '<nixpkgs/nixos>'
+#+end_src
+
+Using =tab= for autocomplete, copying the result & then diffing two
+temp files... the bindings added from =<nixpkgs/nixos>= are
+
+| config | options | pkgs | system | vm | vmWithBootLoader |
+
+The other symbols without dunders:
+
+| abort | break | derivation  | derivationStrict | false    | import | isNull |
+| map   | null  | removeAttrs | scopedImport     | toString | throw  | true   |
+
+And helpers:
+
+| baseNameOf     | builtins     | dirOf    | fetchGit    |
+| fetchMercurial | fetchTarball | fromTOML | placeholder |
+
+** Home
+
+*** Flake
+
+follows ensures that home-manager refers to =v25.05=
+
+#+begin_src nix
+inputs = {
+  home-manager = {
+    url = "github:nix-community/home-manager/release-25.05";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+  nixpkgs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-25.05";
+  };
+};
+#+end_src
+
+** Hyprland
+
+*** UWSM/SDDM
+
+The =wayland-sessions= for SDDM and UWSM are a bit tricky to find from
+the console.
+
+**** Load an alternate Hyprland config
+
+to control the environment that uwsm loads, *export* environment vars
+from =~/.config/uwsm/env-hyprland=, where =hyprland= is the wayland
+compositor name. 
+
+#+begin_src shell
+# can't use comments (not even file-local?)
+# $(hostname) probably doesn't fly either.
+export HYPRLAND_CONFIG=~/.dotfiles/.config/hypr/$(hostname).hyprland.conf
+
+# hyprland fallback variables (set in steam or desktop files to change)
+export GDK_BACKEND=wayland     # env = GDK_BACKEND,wayland,x11,*
+export CLUTTER_BACKEND=wayland # env = CLUTTER_BACKEND,wayland
+export SDL_VIDEODRIVER=wayland # env = SDL_VIDEODRIVER,wayland
+export QT_QPA_PLATFORM=wayland # env = QT_QPA_BACKEND,wayland;xcb
+#+end_src
+
+* install
+
+** disks
+
+old /etc/fstab
+
+#+begin_example 
+UUID=9C37-E804                            /boot/efi      vfat    defaults,umask=0077 0 2
+UUID=11b78873-d1e5-4114-923e-aaa8d414e78c /              btrfs   subvol=/@,defaults,noatime,compress=zstd 0 0
+UUID=11b78873-d1e5-4114-923e-aaa8d414e78c /home          btrfs   subvol=/@home,defaults,noatime,compress=zstd 0 0
+UUID=11b78873-d1e5-4114-923e-aaa8d414e78c /root          btrfs   subvol=/@root,defaults,noatime,compress=zstd 0 0
+UUID=11b78873-d1e5-4114-923e-aaa8d414e78c /srv           btrfs   subvol=/@srv,defaults,noatime,compress=zstd 0 0
+UUID=11b78873-d1e5-4114-923e-aaa8d414e78c /var/cache     btrfs   subvol=/@cache,defaults,noatime,compress=zstd 0 0
+UUID=11b78873-d1e5-4114-923e-aaa8d414e78c /var/log       btrfs   subvol=/@log,defaults,noatime,compress=zstd 0 0
+UUID=11b78873-d1e5-4114-923e-aaa8d414e78c /var/tmp       btrfs   subvol=/@tmp,defaults,noatime,compress=zstd 0 0
+tmpfs                                     /tmp           tmpfs   defaults,noatime,mode=1777 0 0
+UUID=9cedc0b0-344f-476c-bae1-20b7993b1a6d /home2         btrfs   subvol=/,defaults,noatime,compress=zstd,discard=async,ssd 0 0
+UUID=0dd0a765-8b3d-4469-847c-30d930848a48 /gnu/store     btrfs   subvol=/,defaults,noatime,compress=zstd,discard=async,ssd 0 0
+UUID=616d45d0-155e-47bd-96be-1ec0b92401bc /data          ext4    defaults,noatime 0 2
+UUID=4a7e3836-2a8b-4eab-a01a-b596acce77cc /data/vm       ext4    defaults,noatime
+UUID=80878a95-c4e7-4fe8-8474-bc626378463f /flatpak       ext4    defaults,noatime 0 2
+UUID=59707d1b-d5a6-481f-8d4e-422fc3afa11c /flatpak/steam ext4    defaults,noatime 0 2
+#+end_example
+
+intended disks
+
+#+begin_example 
+nvme0n1               259:0    0   1.8T  0 disk  
+├─nvme0n1p1           259:2    0     4G  0 part  /mnt/boot
+│                                                /mnt/boot
+└─nvme0n1p2           259:4    0   1.8T  0 part  
+  └─vgcrypt           254:0    0   1.8T  0 crypt 
+    ├─vgcrypt-swap    254:1    0    32G  0 lvm   
+    ├─vgcrypt-root    254:2    0   150G  0 lvm   /mnt/var/tmp
+    │                                            /mnt/var/cache
+    │                                            /mnt/var/log
+    │                                            /mnt/nix/store  # ... nope
+    │                                            /mnt/var
+    │                                            /mnt
+    ├─vgcrypt-flatpak 254:3    0   150G  0 lvm   
+    ├─vgcrypt-steam   254:4    0   350G  0 lvm   /mnt/steam
+    ├─vgcrypt-data    254:5    0   300G  0 lvm   /mnt/data
+    ├─vgcrypt-home    254:6    0   100G  0 lvm   /mnt/home
+    ├─vgcrypt-vm      254:7    0   400G  0 lvm   /mnt/data/vm
+    └─vgcrypt-guix    254:8    0   150G  0 lvm   
+#+end_example
+
+*** create btrfs file systems
+
+#+begin_src shell
+db=/dev/nvme0n1p1;              mb=/mnt/boot
+dr=/dev/mapper/vgcrypt-root;    mr=/mnt
+dg=/dev/mapper/vgcrypt-guix;    mg=/mnt/gnu/store
+dh=/dev/mapper/vgcrypt-home;    mh=/mnt/home
+dd=/dev/mapper/vgcrypt-data;    md=/mnt/data
+# df=/dev/mapper/vgcrypt-flatpak; mf=/mnt/flatpak
+ds=/dev/mapper/vgcrypt-steam;   ms=/mnt/steam;   # ms=/mnt/flatpak/steam
+dv=/dev/mapper/vgcrypt-vm;      mv=/mnt/data/vm
+
+# maybe this is why Garuda couldn't boot with the original systemd-boot
+# ..... i've run into this like twice before.
+THE_PARTUUID=8691357d-bb80-2a47-8923-914370fc3e26
+
+ruuid=415478b1-89ab-4851-96c5-9a9bc0ebbceb
+huuid=9cedc0b0-344f-476c-bae1-20b7993b1a6d
+suuid=59707d1b-d5a6-481f-8d4e-422fc3afa11c
+duuid=616d45d0-155e-47bd-96be-1ec0b92401bc
+vuuid=4a7e3836-2a8b-4eab-a01a-b596acce77cc
+# guuid=0dd0a765-8b3d-4469-847c-30d930848a48
+
+bops=defaults,noatime,compress=zstd
+bn=/mnt/nix       # @nix
+bv=/mnt/var       # @var
+bl=/mnt/var/log   # @log
+bt=/mnt/var/tmp   # @tmp
+bc=/mnt/var/cache # @cache
+
+mkfs.fat -F 32 /dev/nvme0n1p1
+cryptsetup open /dev/nvme0n1p2 vgcrypt
+mkfs.btrfs -f $dr
+
+# make btrfs subvolumes
+mount -o subvolid=5,defaults,noatime,compress=zstd $dr $mr
+btrfs subvolume create /mnt/@
+btrfs subvolume create /mnt/@nix
+btrfs subvolume create /mnt/@var
+btrfs subvolume create /mnt/@log
+btrfs subvolume create /mnt/@tmp
+btrfs subvolume create /mnt/@cache
+
+# make mount points
+mount -o subvol=/@,$bops UUID=$ruuid $mr
+mkdir -p /mnt/{nix,var}
+mount -o subvol=/@nix,defaults,noatime UUID=$ruuid $bn
+mount -o subvol=/@var,$bops UUID=$ruuid $bv
+
+# create mountpoints after /mnt/var
+mkdir -p /mnt/var/{log,tmp,cache}
+mount -o subvol=/@log,$bops UUID=$ruuid $bl
+mount -o subvol=/@tmp,$bops UUID=$ruuid $bt
+mount -o subvol=/@cache,$bops UUID=$ruuid $bc
+
+# mount /home
+mount -o $bops UUID=$huuid $mh
+mkdir -p $md $ms $mv
+mount UUID=$duuid $md
+mount UUID=$suuid $ms
+mount UUID=$vuuid $mv
+
+# mount /boot
+mkdir $mb
+mount $db $mb
+#+end_src
+
+*** Setup =/gnu/store= as btrfs subvolume
+
+After installation, =btrfs device usage /= shows only 5G of usage, so
+i'm going to move the planned separate btrfs filesystem for
+=/gnu/store= over to the main =btrfs= disk. This /may/ open a
+possibility for booting to either NixOS or Guix System.
+
++ IDK... depends on how the main profiles get linked to the store,
+  whether the =/var/guix/*.sqlite= database tracks on both, and how
+  store de-duplication works.
+
+#+begin_src shell
+ruuid=415478b1-89ab-4851-96c5-9a9bc0ebbceb
+mg=/gnu
+
+mkdir $mg
+btrfs subvolume create /@guix
+mount -o subvol=/@guix,defaults,noatime UUID=$ruiid $mg
+
+# then regenerate hardware stub
+nixos-generate-config --root /
+# diff /etc/nixos
+
+#+end_src
+
+** Install NixOS
+
+Generate =/mnt/etc/nixos/{,hardware-}configuration.nix=
+
+#+begin_src shell
+nixos-generate-config --root /mnt
+#+end_src
+
+After setting the initial configuration, install.
+
+#+begin_src shell
+cd $mr # /mnt/
+nixos-install
+# nixos-rebuild switch --upgrade --install-bootloader
+#+end_src
+
+*** Hardware
+
+#+begin_src nix :tangle hardware-configuration.nix
+# Do not modify this file!  It was generated by ‘nixos-generate-config’
+# and may be overwritten by future invocations.  Please make changes
+# to /etc/nixos/configuration.nix instead.
+{ config, lib, pkgs, modulesPath, ... }:
+
+{
+  imports =
+    [ (modulesPath + "/installer/scan/not-detected.nix")
+    ];
+
+  boot.initrd.availableKernelModules = [ "nvme" "xhci_pci" "ahci" "usbhid" "usb_storage" "sd_mod" ];
+  boot.initrd.kernelModules = [ "dm-snapshot" ];
+  boot.kernelModules = [ ];
+  boot.extraModulePackages = [ ];
+  
+  fileSystems."/" =
+    { device = "/dev/disk/by-uuid/415478b1-89ab-4851-96c5-9a9bc0ebbceb";
+      fsType = "btrfs";
+      options = [ "subvol=@" ];
+    };
+
+  fileSystems."/var" =
+    { device = "/dev/disk/by-uuid/415478b1-89ab-4851-96c5-9a9bc0ebbceb";
+      fsType = "btrfs";
+      options = [ "subvol=@var" ];
+    };
+
+  fileSystems."/var/log" =
+    { device = "/dev/disk/by-uuid/415478b1-89ab-4851-96c5-9a9bc0ebbceb";
+      fsType = "btrfs";
+      options = [ "subvol=@log" ];
+    };
+
+  fileSystems."/var/cache" =
+    { device = "/dev/disk/by-uuid/415478b1-89ab-4851-96c5-9a9bc0ebbceb";
+      fsType = "btrfs";
+      options = [ "subvol=@cache" ];
+    };
+
+  fileSystems."/var/tmp" =
+    { device = "/dev/disk/by-uuid/415478b1-89ab-4851-96c5-9a9bc0ebbceb";
+      fsType = "btrfs";
+      options = [ "subvol=@tmp" ];
+    };
+
+  fileSystems."/home" =
+    { device = "/dev/disk/by-uuid/9cedc0b0-344f-476c-bae1-20b7993b1a6d";
+      fsType = "btrfs";
+    };
+
+  fileSystems."/data" =
+    { device = "/dev/disk/by-uuid/616d45d0-155e-47bd-96be-1ec0b92401bc";
+      fsType = "ext4";
+    };
+
+  fileSystems."/steam" =
+    { device = "/dev/disk/by-uuid/59707d1b-d5a6-481f-8d4e-422fc3afa11c";
+      fsType = "ext4";
+    };
+
+  fileSystems."/data/vm" =
+    { device = "/dev/disk/by-uuid/4a7e3836-2a8b-4eab-a01a-b596acce77cc";
+      fsType = "ext4";
+    };
+
+  fileSystems."/boot" =
+    { device = "/dev/disk/by-uuid/A4BD-1B14";
+      fsType = "vfat";
+      options = [ "fmask=0022" "dmask=0022" ];
+    };
+
+  fileSystems."/nix" =
+    { device = "/dev/disk/by-uuid/415478b1-89ab-4851-96c5-9a9bc0ebbceb";
+      fsType = "btrfs";
+      options = [ "subvol=@nix" ];
+    };
+
+  swapDevices = [{device = "/dev/disk/by-label/Swap"}];
+
+  # Enables DHCP on each ethernet and wireless interface. In case of scripted networking
+  # (the default) this is the recommended approach. When using systemd-networkd it's
+  # still possible to use this option, but it's recommended to use it in conjunction
+  # with explicit per-interface declarations with `networking.interfaces.<interface>.useDHCP`.
+  networking.useDHCP = lib.mkDefault true;
+  # networking.interfaces.enp4s0.useDHCP = lib.mkDefault true;
+  # networking.interfaces.enp5s0.useDHCP = lib.mkDefault true;
+
+  nixpkgs.hostPlatform = lib.mkDefault "x86_64-linux";
+  hardware.cpu.amd.updateMicrocode = lib.mkDefault config.hardware.enableRedistributableFirmware;
+}
+#+end_src
+
+*** Config
+
+#+begin_src nix :tangle ./configuration.nix
+# Edit this configuration file to define what should be installed on
+# your system. Help is available in the configuration.nix(5) man page, on
+# https://search.nixos.org/options and in the NixOS manual (`nixos-help`).
+
+{ config, lib, pkgs, ... }:
+
+{
+  imports =
+    [ # Include the results of the hardware scan.
+      ./hardware-configuration.nix
+    ];
+
+  system.copySystemConfiguration = true;
+
+  # https://gist.github.com/Le0xFF/21942ab1a865f19f074f13072377126b
+  boot.supportedFilesystems = [ "btrfs" ];
+
+  # Use the systemd-boot EFI boot loader.
+  boot.loader = {
+    systemd-boot.enable = true;
+    efi.canTouchEfiVariables = true;
+  };
+
+  # if luks devices is nonempty, merges availableKernelModules with:
+  #   availableKernelModules = [dm_mod,dm_crypt,cryptd,input_leds]
+  #     ++ luks.cryptoModules ++ others
+  # 
+  # boot.kernelModules # for boot stage-2
+  #   - will implicitly have stage-1, with maybe some technical discrepencies
+
+  # boot.kernelParams = [ "zswap.enabled=1" "zswap.compressor=zstd" ]; # or lz4
+
+  boot.initrd.kernelModules = ["cryptd" "btrfs" "zstd"];
+  boot.initrd.luks.devices = {
+    luksroot = {
+      device = "/dev/disk/by-uuid/d02f163b-d7c6-4e6f-bb55-601e9c39200e"; # UUID
+      # device = "/dev/disk/by-uuid/8691357d-bb80-2a47-8923-914370fc3e26"; # PART_UUID
+      allowDiscards = true;
+      preLVM = true;
+    };
+  };
+
+  # Use latest kernel.
+  boot.kernelPackages = pkgs.linuxPackages_latest;
+
+  # hardware.enableAllFirmware = true;
+  hardware.enableRedistributableFirmware = true;
+  hardware.bluetooth = {
+    enable = true;
+    settings = {
+      General = {
+        Enable = "Source,Sink,Media,Socket";
+      };
+    };
+  };
+  
+  services = {
+    blueman.enable = true;
+  };
+
+  fileSystems = {
+    "/".options = [ "defaults" "noatime" "compress=zstd" ];
+    "/nix".options = [ "defaults" "noatime" ];
+    "/gnu".options = [ "defaults" "noatime" ];
+    "/var".options = [ "defaults" "noatime" "compress=zstd" ];
+    "/var/log".options = [ "defaults" "noatime" "compress=zstd" ];
+    "/var/cache".options = [ "defaults" "noatime" "compress=zstd" ];
+    "/var/tmp".options = [ "defaults" "noatime" "compress=zstd" ];    
+    "/home".options = [ "defaults" "noatime" "compress=zstd" "discard=async" "ssd" ];
+  };
+
+  nixpkgs.config.allowUnfree = true;
+
+  networking.hostName = "kratos"; # Define your hostname.
+  networking.networkmanager.enable = true;  # Easiest to use and most distros use this by default.
+
+  time.timeZone = "America/New_York";
+
+  i18n.defaultLocale = "en_US.UTF-8";
+  console = {
+    font = "Lat2-Terminus16";
+    # keyMap = "us";
+    # useXkbConfig = true; # use xkb.options in tty.
+  };
+
+  # services.xserver.enable = true;
+  # services.xserver.xkb.layout = "us";
+  # services.xserver.xkb.variant = "altgr-intl";
+  # services.xserver.xkb.model = "pc104";
+  # services.xserver.xkb.options = "caps:ctrl_modifier,lv3:ralt_alt,lv3:menu_switch";
+
+  # Enable CUPS to print documents.
+  services.printing.enable = true;
+
+  services.pipewire = {
+    enable = true;
+    alsa = {
+      enable = true;
+      support32Bit = true;
+    };
+
+    pulse.enable = true;
+    jack.enable = true;
+  };
+
+  # Enable touchpad support (enabled default in most desktopManager).
+  services.libinput.enable = true;
+
+  # users.mutableUsers = false;
+  users.defaultUserShell = pkgs.zsh;
+  users.groups = {
+    dc = { name = "dc"; gid = 1000; };
+  };
+  users.users.dc = {
+    uid = 1000;
+    group = "dc";
+    extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
+    isNormalUser = true;
+    # useDefaultShell = true;
+    subUidRanges = [{ startUid = 1000000; count = 65536; }];
+    subGidRanges = [{ startGid = 1000000; count = 65536; }];
+    # keyFiles
+    openssh.authorizedKeys.keys = [
+      "ecdsa-sha2-nistp384 AAAAE2VjZHNhLXNoYTItbmlzdHAzODQAAAAIbmlzdHAzODQAAABhBGE6wqFapBOKBA2wCTB22nG+GANmh9JXNG54tBajKNu/Fh61ywzilEI6MYLpvolCuS0YWGAgv4h5MHzk45KnWXKJ1NSNTLJ4koa+NvAAHIVXKA19IZ+s6UyX7eyCWLx58w== cardno:19294239"
+      "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDS6PQ1NqAptAIzcfJLNRxy81yqaF4gc/RAXa6e7lQw2qD4UydYIDgGoD/EYIvVq6qH7g8VXncB7RHLUfnH96Ctod3wd8nb/d8HmFNS7J1PGhvFPjS2/MIT+eZQN1cqQWyohcbJpxT1d0ynsPYrtyEREmutdpJfBg8RDSViWh7gsfXyJlVir7IIIPokJPE0KY0vNyn/sZw6dnTGFyrigCsq9TzAMvnf8ToX1neYQ0ZBS1HNQucVQ7+Xq5ehDClJ5OeeP95uH4DXe22SlZBEGEo2W4ClaXrXVgiUneF46SnfQiEORJnqKWwcr3O1Zdof+oJWIROk9CiYET9yhV58aw2uC5RoxkxE8+2TlpDaVLsi9rHYDnq9Ky2J0vRFXJJCb5PMPKiHbN2elx77rhHckVMpYl4LYA1fLEV6p2oSVoG7Rtqc8MmTf9PZCANNozaO7Y+k/XuzxjJOO4gk33lT8vhopCGvzl7hiYXBkQSolaJmh4jKYJsKngCYBzDgGUx6LSyGUCQSyujBxdlJaoH/wgAhFB/CZYQv7ISA5cmz9jiEQ2/8KuNvkcZzVcUdcfwX2wbItZ5gwnxpQar0Ea2qbE6q7iYY+zxbw7EpLtGIUHjft0I5dFqYv53ADinFyvmN1mRZ34S6+LITall3JHOA0uJ7l1iHDjBnuvPDKej8PJhc0w== cardno:7699336"
+      "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDS6PQ1NqAptAIzcfJLNRxy81yqaF4gc/RAXa6e7lQw2qD4UydYIDgGoD/EYIvVq6qH7g8VXncB7RHLUfnH96Ctod3wd8nb/d8HmFNS7J1PGhvFPjS2/MIT+eZQN1cqQWyohcbJpxT1d0ynsPYrtyEREmutdpJfBg8RDSViWh7gsfXyJlVir7IIIPokJPE0KY0vNyn/sZw6dnTGFyrigCsq9TzAMvnf8ToX1neYQ0ZBS1HNQucVQ7+Xq5ehDClJ5OeeP95uH4DXe22SlZBEGEo2W4ClaXrXVgiUneF46SnfQiEORJnqKWwcr3O1Zdof+oJWIROk9CiYET9yhV58aw2uC5RoxkxE8+2TlpDaVLsi9rHYDnq9Ky2J0vRFXJJCb5PMPKiHbN2elx77rhHckVMpYl4LYA1fLEV6p2oSVoG7Rtqc8MmTf9PZCANNozaO7Y+k/XuzxjJOO4gk33lT8vhopCGvzl7hiYXBkQSolaJmh4jKYJsKngCYBzDgGUx6LSyGUCQSyujBxdlJaoH/wgAhFB/CZYQv7ISA5cmz9jiEQ2/8KuNvkcZzVcUdcfwX2wbItZ5gwnxpQar0Ea2qbE6q7iYY+zxbw7EpLtGIUHjft0I5dFqYv53ADinFyvmN1mRZ34S6+LITall3JHOA0uJ7l1iHDjBnuvPDKej8PJhc0w== cardno:19294239"
+    ];
+    packages = with pkgs; [
+      tree
+      emacs
+      alacritty
+      wofi
+      screen
+      thunar
+    ];
+  };
+
+  programs.firefox.enable = true;
+
+  # List packages installed in system profile.
+  # You can use https://search.nixos.org/ to find more packages (and options).
+  environment.systemPackages = with pkgs; [
+    git
+    vim
+    emacs
+    wget
+    curl
+    blueman
+    # zsh
+    # nmtui
+    hw-probe
+  ];
+
+  programs.zsh = {
+    enable = true;
+    enableLsColors = true;
+  };
+  programs.mtr.enable = true;
+  programs.gnupg.agent = {
+    enable = true;
+    enableSSHSupport = true;
+  };
+
+  services.pcscd.enable = true;
+  # services.pscsd.plugins = [pkgs.ccid] # default
+
+  services.avahi.enable = true;
+
+  # https://ryanseipp.com/post/nixos-secure-ssh/
+  services.openssh = {
+    enable = true;
+    settings = {
+      PasswordAuthentication = false;
+      X11Forwarding = false;
+      PermitRootLogin = "no";
+      
+      Ciphers = ["chacha20-poly1305@openssh.com" "aes256-gcm@openssh.com"];
+      Macs = ["hmac-sha2-512-etm@openssh.com" "hmac-sha2-256-etm@openssh.com"];
+      KexAlgorithms = ["curve25519-sha256@libssh.org" "diffie-hellman-group-exchange-sha256"];
+      
+      # HostKeyAlgorithms = ["rsa-sha2-256" "rsa-sha2-512"
+      #                      "ecdsa-sha2-nistp521" "ecdsa-sha2-nistp384" "ecdsa-sha2-nistp256"
+      #                      "sk-ecdsa-sha2-nistp256@openssh.com"
+      #                      "rsa-sha2-512-cert-v01@openssh.com" "rsa-sha2-256-cert-v01@openssh.com"
+      #                      "ecdsa-sha2-nistp521-cert-v01@openssh.com" "ecdsa-sha2-nistp384-cert-v01@openssh.com" "ecdsa-sha2-nistp256-cert-v01@openssh.com"
+      #                      "sk-ecdsa-sha2-nistp256-cert-v01@openssh.com"];
+    };
+    
+    extraConfig = ''
+ClientAliveCountMax 0
+ClientAliveInterval 300
+
+AllowTcpForwarding yes
+# AllowAgentForwarding no
+# MaxAuthTries 3
+MaxSessions 4
+# TCPKeepAlive no
+
+HostKeyAlgorithms rsa-sha2-256,rsa-sha2-512,\
+ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,\
+sk-ecdsa-sha2-nistp256@openssh.com,\
+rsa-sha2-512-cert-v01@openssh.com,rsa-sha2-256-cert-v01@openssh.com,\
+ecdsa-sha2-nistp521-cert-v01@openssh.com,ecdsa-sha2-nistp384-cert-v01@openssh.com,ecdsa-sha2-nistp256-cert-v01@openssh.com,\
+sk-ecdsa-sha2-nistp256-cert-v01@openssh.com
+    '';
+  };
+
+  services.gpm.enable = true;
+  services.tlp.enable = true;
+  services.thermald.enable = true;
+  # services.earlyoom.enable = false; # needs a configuration
+
+  # https://wiki.nixos.org/wiki/ZeroTier_One
+  # services.zerotierone.enable = true;   # need to join manually
+  
+  # networking.firewall.enable = false;
+  # networking.firewall = {
+  #   allowedTCPPorts = [ ... ];
+  #   allowedUDPPorts = [ ... ];
+  # }
+
+  # https://wiki.nixos.org/wiki/Sway
+
+  # https://wiki.nixos.org/wiki/Hyprland
+  # programs.uwsm.enable = true; # withUWSM=true; # does this
+  programs.hyprland = {
+    enable = true;
+    withUWSM = true; # recommended for most users
+    xwayland.enable = true; # Xwayland can be disabled.
+  };
+
+  security.pam.services.swaylock = {}; 
+
+  xdg.portal = {
+    enable = true;
+    extraPortals = with pkgs; [ xdg-desktop-portal-hyprland ];
+  };
+  
+  system.stateVersion = "25.05"; # Did you read the comment?
+}
+#+end_src
+
+*** Troubleshoot install
+
+The =/boot/EFI/nixos/*.conf= weren't updating:
+
++ after =nixos-install= these properly update when booting from a
+  properly installed system. otherwise, =nixos-rebuild= will target
+  the ISO's environment, devices and configuraton.
+  - i used the wrong UUID. +you need =PARTUUID= from =blkid= for the
+    disk that contains the LVM-in-LUKS+ ... why is this never clear?
+    - there is =/dev/disk/by-uuid/...= and =/dev/disk/by-partuuid/...=
+  - after updating this, it never rewrote the bootloader.
++ when troubleshooting from an ISO, =nixos-rebuild= needs to use the
+  proper store and have the proper device state. it won't really. if
+  you install incorrectly, you need to reboot fresh, establish disks
+  for chroot, then use =nixos-enter --root $mnt=.
+  - however, =nix-env --list-generations= returns nothing in
+    =nixos-enter= which isn't a good sign... nvm AI slop
+  - =nixos-rebuild list-generations= does show generations.
+    
++ after cycling through "reinstalls" via =nixos-rebuild= or
+  =nixos-enter=, examine that =$esp/loader/entries/*.conf= actually
+  specs multiple generations. The timestamps should change, but also
+  the files.
+
+**** Reinstall bootloader in =nixos-enter=
+
+From =cd $mnt && nixos-enter --root $mnt=
+
+This doesn't rebuild and only reinstalls the bootloader... 
+
+#+begin_src shell
+NIXOS_INSTALL_BOOTLOADER=1 \
+/nix/var/nix/profiles/system/bin/switch-to-configuration boot
+#+end_src
+
+The bootloader has the same hashes (yep, same UUID in the init script)
+
+**** nixos-rebuild boot in =nixos-enter=
+
+After =nixos-rebuild build=, the =nixos-rebuild boot= can't
+communicate with the fairies in the garden.
+
+#+begin_example 
+building Nix...
+building the system configuration...
+System has not been booted with systemd as init system (PID 1). Can't operate.
+Failed to connect to system scope bus via local transport: Host is down
+Done. The new configuration is /nix/store/x8ggq2g75k61synrflcwsfszdgkfknc0-nixos-system-kratos-25.05.805977.88983d4b665f
+#+end_example
+
+After =NIXOS_INSTALL_BOOTLOADER=1
+/nix/var/nix/profiles/system/bin/switch-to-configuration boot= again,
+now there's a =$esp/loaders/entries/nixos-generation-2.conf=
+
+Unpacking with =lsinitrd --unpack $cpio && cd $cpio= shows the correc
+UUID in =less /mnt$(readlink -f $cpio/init)=. okay, so it should get
+to stage2.
+
+**** Use the UUID, not PARTUUID
+
+it successfully rebuild, but still failed at stage1
+
++ I used UUID for the LVM =vgcrypt-root=
++ then thought i'd used the =UUID= from =blkid /dev/nvme0n1p2= and changed it to =PARTUUID=
++ so now... UUID. 
+
+Damit, this and Garuda literally cost me days. I seriously cannot stand 
+being eternally separated from other users with similar goals. It slows
+learning by 20x. I just want a reproducible tiling window setup... which 
+is NOT a product/service that can be purchased. There is NO store where
+you can buy one because everything is designed for geriatric people.
+
+**** Troubleshoot initrd:
+
+unpack
+
+#+begin_src shell
+nix-env -iA dracut
+cd $esp # check loader/entries/*.conf
+find EFI/nixos -name '*.efi' -type f
+
+initrd=pickanefi.efi # use the one in the latest .conf
+unpackto=~/initrd-unpack
+mkdir $unpackto
+lsinitrd --unpack $unpackto $initrd
+#+end_src
+
+There's a file in the =initrd= that links into =$mnt/nix/store= but
+not =/nix/store=, so I know it's building for
+
++ /nix/store/a1b2...c2d3-etc-modprobe.d-nixos.conf :: modprobe config
++ other files in this directory (deb, ubuntu modprobe aliases) are
+  contained in both stores.
+
+#+begin_src shell
+stage1=$(find $unpackto/nix -name '*-stage-1-init.sh' -type f -printf '%p')
+less $stage1 # this tells you exactly what the system is looking for
+#+end_src
+
+in stage1, systemd-boot needs to know which disk to unlock for that
+boot entry. the =stage-1-init.sh= accomplishes this by assembling the
+args to pass to =initrd= ... i think
+
+***** Misc
+
+i haven't quite figured out how/whether these differ from the later
+kernel args. I guess once the kernel is started, it becomes
+technically complicated to change it's args (depending on the arg/type
+and the kernel's state). These questions are never straightforward to
+answer -- i.e. there are no simple questions, generally; anyone who
+thinks so & and answers "correctly" is probably =+1-2σ= ... with a
+somewhat fixed knowledge set.
+
+#+begin_quote
+idk, but i usually LEARN FASTER with guix/nix distributions. it's more
+effective than:
+
++ =pacman -Syu dracut-$cartesianproduct-git=
++ =pacman -Fl fuckmylife= fuck, it was AUR
++ =locate '*dracut*'= no one tells you to do this
++ =updatedb= you don't see this either
++ =pacman -Syu= calmly update my system 5 times over a month
++ =systemctl reboot= WTF^&*^(&*(HAFNO PFANFOPEWFNO&#&549275PAF
++ what happened? and why isn't there a PDF cheatsheet with a concise
+  list of commands to use at the =grub2= prompt?
++ the same problem exists for other distributions, but with less
+  control over lower-level components
+#+end_quote
+
+* resize
+** before
+
+*** sfdisk
+
+label: gpt
+label-id: F0AB6649-1339-A94A-976D-899884ACF382
+device: /dev/nvme0n1
+unit: sectors
+first-lba: 34
+last-lba: 3907029134
+sector-size: 512
+
+/dev/nvme0n1p1 : start=        2048, size=     1048576, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, uuid=72D2DA90-17C8-434C-8E1D-100036175FAD
+/dev/nvme0n1p2 : start=     1050624, size=  3904999424, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=8691357D-BB80-2A47-8923-914370FC3E26
+
+
+*** LVM
+
+cryptsetup status vgcrypt
+
+#+begin_example 
+/dev/mapper/vgcrypt is active and is in use.
+  type:    LUKS2
+  cipher:  aes-xts-plain64
+  keysize: 512 bits
+  key location: keyring
+  device:  /dev/nvme0n1p2
+  sector size:  512
+  offset:  32768 sectors
+  size:    3904966656 sectors
+  mode:    read/write
+#+end_example 
+
+
+pvdisplay -m
+
+#+begin_example 
+  --- Physical volume ---
+  PV Name               /dev/mapper/vgcrypt
+  VG Name               vgcrypt
+  PV Size               <1.80 TiB / not usable 3.00 MiB
+  Allocatable           yes 
+  PE Size               4.00 MiB
+  Total PE              471039
+  Free PE               53247
+  Allocated PE          417792
+  PV UUID               JrRIfs-ieSV-HT46-n0JR-Ffnw-6gIM-St4knX
+#+end_example

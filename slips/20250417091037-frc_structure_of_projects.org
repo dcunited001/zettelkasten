@@ -44,6 +44,29 @@ These can be downloaded from the vendor deps.
 + thriftylib
 + lumynlabs: ConnectorX
 
+** UML Doclet
+
+My notes are a bit scattered (and not everything is online)
+
+*** Linking to external packages
+
+| java          | https://docs.oracle.com/en/java/javase/11/docs/api/    |
+| wpilib        | https://github.wpilib.org/allwpilib/docs/release/java/ |
+| photonvision  | https://javadocs.photonvision.org/release/             |
+| pathplanner   | https://pathplanner.dev/api/java/                      |
+| ctre phoenix6 | https://api.ctr-electronics.com/phoenix6/release/java/ |
+
+Adding these URLs to links in the javadoc options will resolve to externally
+hosted docs (even in the SVG)
+
+#+begin_src groovy
+javadoc {
+    options {
+        links 'https://docs.oracle.com/en/java/javase/11/docs/api/' // , ... , ...
+    }
+}
+#+end_src
+
 * WPI Lib
 
 Running gradle tasks inside of a docker container
@@ -970,6 +993,103 @@ h3,h4 {
   }
 }
 #+end_src
+* Robot Builder
+
+I've been looking for info on Java reflection, particularly for code generation,
+whether =*.puml= or =*.java=. I had come across this earlier, but I guess I forgot
+(I couldn't really run it on my laptop in 2024)
+
++ Swing app, can generate Java, C++, and Wiring Diagram
++ Uses velocity templates =*.vm= supplied with config in =*.yaml= files
+  - field types/values/mappings defined in [[https://github.com/wpilibsuite/RobotBuilder/blob/e9d848f6a5f8767b486f6e81d241a6efa2384f71/src/main/resources/PaletteDescription.yaml#L95][./src/main/resources/PaletteDescription.yaml]]
++ robotbuilder.RobotBuilder :: Main class, no CLI args
++ Comments in code mark locations where RobotBuilder should update logic (where
+  possible, until the comments are removed). Pretty nice.
+
+Ideas (probably not useful)
+
++ Transform =*.vm== into Yasnippet/VSCode snippets? (they're nested with specific api)
++ Extract useful data after saving RobotBuilder state to YAML?
+  - oof. macros in the yaml like ansible. better to add new =*.yaml.vm= templates.
+    - or just extract class-specific content from =*.puml=
+    - or by modifying the generated tests to output fields
+
+** Robot Builder 2
+
+Same thing with a few more abstractions, but slightly less support for hardware
+so far.
+
++ Typescript/React/Electron. Long ts f-strings that look like Guix G-Expressions.
++ Not bundled with WPILib VSCode, so probably not ready for primetime. Not clear
+  how to save/import/export (no yaml/json)
++ Supports new Epilogue logger
++ Generates subsystems with state-machines (nice)
++ Includes an intermediate representation
+
+** Caveats
+
+Generators are great, as long as you have the intuition/foresight to use them.
+
++ Need to know when to "cutover" from generated code to working in an IDE.
+  - Should also be very comfortable throwing code away (it should be easy to rip
+    out; loosely coupled). This is more difficult unless you know the
+    language/framework/generators pretty well.
++ IMO great to use RobotBuilder as a group to brainstorm or off-season
+  - Great for exploring the intended programming interfaces & the validations
+    help you learn intended design constraints.
+  - It clarifies the fields required for basic sensors, motors, controllers,
+    subsystems; less likely to fat-finger constants early on.
++ Being able to generate single-file templates (or snippets) would be helpful.
+  - But here, there's quite a bit of coupling (references between subsystems,
+    from container to components, provided/calculated values, etc)..
+  - means the snippets would require either: shared configuration or a large
+    number of variables being entered whenever the snippet's used
+  - ... robotics is a bit hard & verbose. (see HAL)
+
+*** VCS & Managing Generated Code
+
++ Using VCS as early as possible makes it more clear what's being changed (a
+  learning opportunity sometimes; what I did with the WPILib 2025 migration
+  tool)
+  - For this to be useful, you need to know =git stash= and =git stash pop= ...
+  - W/o being adjusted to staging git hunks/lines, this will seem cumbersome.
+  - Here, seeing the diffs is not useful when the changesets are large ... on
+    the second/third attempt, it may be very useful (though half the lines
+    added/removed will be imports.)
+  - Need to disable the IDE's auto-linting... otherwise your =git diff= is
+    garbled. This shouldn't affect RobotBuilder v1 (uses regexp for Java/C++
+    comment parsing), but only the files you open will be formatted (without
+    a =git hook=)
++ It's always possible to maintain a second source tree to copy over from, but
+  prone to errors.
+  - Using the editor's auto-imports will help (but this is sometimes/usually
+    part of the language's linter)
++ Can also push to private repo, then designate one local checkout for
+  RobotBuilder changes and another checkout for IDE changes/testing (separate
+  laptop).
+  - Requires each driver/navigator pair can anticipate on how changes elsewhere
+    will need to be +merged+ rebased in from =git=
+  - Ensure everyone sets [[https://git-scm.com/book/en/v2/Git-Tools-Rerere][git config --global rerere.enabled true]]
+    - I don't see merge conflicts. (What are the consequences/drawbacks? idk)
+
+Using the XRP to teach java early on will help a ton, I think.
+
+*** Traps
+
++ Generated code usually has loose coupling (easy to add/remove), but creates
+  flat abstraction patterns that still shape how you think (esp. early on;
+  similar to cargo culting).
+  - Need to be able to step back and quickly compare against alternative designs
+  - Corollary: tight coupling in generated code creates interdependencies that
+    make code inflexible. Unlikely to be caused by the generators, but instead
+    by the code edited thereafter.
+  - Generator logic also mirrors the abstractions seen in the framework not the
+    domain (somewhat backwards, but it depends on the type of programming you're
+    doing... if the domain abstractions matter, your project is likely bigger &
+    more complex anyways)
++ Generators should impress the idea =composition >> extension= (i.e. interfaces
+  over inheritance, usually) or at least someone with experience should help
+  frame/articulate this
 
 * Docker
 

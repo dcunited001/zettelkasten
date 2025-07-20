@@ -61,6 +61,10 @@ From nixpkgs
 + [[https://github.com/FRC8516/XRP-Robotics-Camp][FRC8516/XRP-Robotics-Camp]]
 + [[https://github.com/frc4087/JonbRobot][frc4087/JonbRobot]] integrates path planner
 
+*** AdvantageKit
+
++ [[https://github.com/Mechanical-Advantage/XRPTrainingCode][Mechanical-Advantage/XRPTrainingCode]] shows the XRP using AdvantageKit
+
 *** Network Tables
 
 + [[https://github.com/MrRSquared/Photon-Vision-on-the-XRP-Educational-Robot][MrRSquared/Photon-Vision-on-the-XRP-Educational-Robot]]
@@ -117,7 +121,6 @@ Lagrangian Mechanics (FRC Text, Chapter 13)
 + Single-jointed Arm
 + Double-jointed Arm
 + Cart-pole
-
 * Device Setup
 
 ** Firmware
@@ -208,6 +211,58 @@ WPILib supports network interaction to collect/transmit HAL data via websockets
 
 That seems like a really bad direction to go in right now... but hopefully
 there's some way to use the existing HAL logic.
+
+*** =XRPMotor= is a =SimDevice=
+
+[[https://www.reddit.com/r/FRC/comments/18f9ju7/need_help_using_wpilib_with_xrp/][Need help using WPILib with XRP]] quotes the WPILib project
+
+#+begin_quote
+"One aspect where an XRP project differs from a regular FRC robot project is
+that the code is not deployed directly to the XRP. Instead, an XRP project runs
+on your development computer and leverages the WPILib simulation framework to
+communicate with the XRP."
+#+end_quote
+
+... um okay. Did not know that. So it's turtles all the way down. How does
+WPILib run bytecode on the XRP? ... no wonder there's not much mentioning
+performance.
+
+#+begin_quote
+Please tell me it doesn't use =pioasm= lol ... hmmm [[https://github.com/wpilibsuite/xrp-wpilib-firmware/blob/27fc64b72ddec96c0b2ad89e57ae4d9c7a264357/include/encoder2.pio.h#L83][it does]]: [[https://github.com/wpilibsuite/xrp-wpilib-firmware/blob/27fc64b72ddec96c0b2ad89e57ae4d9c7a264357/src/encoder2.pio#L82][./src/encoder2.pio]].
+
+The RoboRIOs also apparently use [[https://www.ni.com/docs/en-US/bundle/roborio-frc-specs/page/specs.html][Xilinx FPGA]]... which led me to check more
+closely for =pioasm=. I guess they need it to pass sensor data without delay (I
+was just wondering why anyone would need pioasm since it seemed so limited.)
+#+end_quote
+
++ [[https://github.com/wpilibsuite/allwpilib/blob/676f2f84d74e5b6d3d55345ff880cea8734b492c/xrpVendordep/src/main/java/edu/wpi/first/wpilibj/xrp/XRPMotor.java#L21][XRPMotor]] implements MotorController directly and the controller instantiates a
+  =SimDevice xrpMotorSimDevice=
++ It does not expose the =m_simDevice= -- only XRPGyro has that field and it's
+  private. The gyro, reflectance and rangefinder sensors
++ The XRPMotor simulation does
+
+**** Other usage of =SimDevice=
+
+In =edu.wpi.first.wpilibj=
+
+| ADIS16470_IMU    | private SimDevice m_simDevice; |
+| AnalogEncoder    | private SimDevice m_simDevice; |
+| ADXL345_SPI      | private SimDevice m_simDevice; |
+| ADXL345_I2C      | private SimDevice m_simDevice; |
+| Ultrasonic       | private SimDevice m_simDevice; |
+| SharpIR          | private SimDevice m_simDevice; |
+| ADXRS450_Gyro    | private SimDevice m_simDevice; |
+| ADXL362          | private SimDevice m_simDevice; |
+| ADIS16448_IMU    | private SimDevice m_simDevice; |
+| DutyCycleEncoder | private SimDevice m_simDevice; |
+
+These use =SimDeviceSim= to simulate the =SimDevice= (the comment in =SimDevice= is
+helpful)
+
+in =edu.wpi.first.wpilibj.simulation=
+
+| ADXL362Sim | private void initSim(SimDeviceSim wrappedSimDevice) { |
+| ADXL345Sim | private void initSim(SimDeviceSim simDevice) {        |
 
 ** bb-frc-workshops
 

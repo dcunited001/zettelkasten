@@ -12,6 +12,59 @@
 * Docs
 * Resources
 
+* Java LSP
+
+** Red Hat
+Runs this command
+
+#+begin_src shell
+vscode_extensions="$WPILIB_INSTALL/2025/vscode/VSCode-linux-x64/data/extensions"
+vscode_wshash=98746321
+vscode_ws="$WPILIB_INSTALL/2025/vscode/VSCode-linux-x64/data/user-data/User/workspaceStorage/$vscode_wshash"
+vscode_global="$WPILIB_INSTALL/2025/vscode/VSCode-linux-x64/data/user-data/User/globalStorage"
+lsp_sock=$XDG_RUN_DIR/lsp-12345678fdae.sock
+
+"$WPILIB_INSTALL/2025/jdk/bin/java" --add-modules=ALL-SYSTEM \
+  --add-opens java.base/java.util=ALL-UNNAMED \
+  --add-opens java.base/java.lang=ALL-UNNAMED \
+  --add-opens java.base/sun.nio.fs=ALL-UNNAMED \
+  -Declipse.application=org.eclipse.jdt.ls.core.id1 \
+  -Dosgi.bundles.defaultStartLevel=4 \
+  -Declipse.product=org.eclipse.jdt.ls.core.product \
+  -Djava.import.generatesMetadataFilesAtProjectRoot=false \
+  -DDetectVMInstallationsJob.disabled=true \
+  -Dfile.encoding=utf8 -XX:+UseParallelGC \
+  -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 \
+  -Dsun.zip.disableMemoryMapping=true -Xmx1G -Xms100m -Xlog:disable \
+  -javaagent:"$vscode_extensions/redhat.java-1.38.0/lombok/lombok-1.18.34.jar" \
+  -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath="$vscode_ws/redhat.java" \
+  -Daether.dependencyCollector.impl=bf \
+  -jar "$vscode_extensions/redhat.java-1.38.0/server/plugins/org.eclipse.equinox.launcher_1.6.900.v20240613-2009.jar" \
+  -configuration "$vscode_global/redhat.java/1.38.0/config_linux" \
+  -data "$vscode_ws/redhat.java/jdt_ws" \
+  --pipe=/run/user/1000/$lsp_sock
+#+end_src
+
+** Multi Client
+
++ LSP doesn't support multi-client. Not a great idea to run multiple servers in
+  a single directory.
++ Can Proxy (via LSP Bridge, but it doesn't support Red Hat Java LSP)
++ Git worktrees are a possibility, but then automating the following using
+  make/watchexec may be obtuse (or not)
+
+... so umm =etags= is good enough for navigation around emacs. IDK if it's even
+required bc it finds some inter-file references.
+
+#+begin_src shell
+watchexec -d 5000 -w src/main/java/frc/robot -pe java -- \
+    etags -l java src/main/java/frc/**/*.java
+# can get file list via stdin
+# or:  -- etags -l java --append '$WATCHEXEC_WRITTEN_PATH'
+#+end_src
+
+Absolute file refs don't work.
+
 * Linux Install
 
 WPILib maintains multiple versions of VSCode
@@ -42,7 +95,6 @@ Exec=/bin/sh -c 'export PATH=/home/myuser/wpilib/2025/tools:\\$PATH && /home/myu
   empties out a lot of environment variables and makes it difficult to
   maintain various consistent profiles; it also interacts strangely with
   pyenv, etc...; this is actually "correct")
-
 * Java
 
 ** WPI Lib

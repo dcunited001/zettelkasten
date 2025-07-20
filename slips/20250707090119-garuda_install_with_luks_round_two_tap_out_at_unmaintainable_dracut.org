@@ -1,0 +1,449 @@
+:PROPERTIES:
+:ID:       d3c913e5-1951-42f6-9a5f-f78b52f29c23
+:END:
+#+TITLE: Garuda: Install with LUKS, Round Two, Tap Out at Unmaintainable Dracut
+#+CATEGORY: slips
+#+TAGS:
+
+Yeh, so this cost me like 2+ weeks of productivity.
+
++ It's not Garuda's fault ... but i'm not their intended user.
++ I tried to transition my desktop to their installation of hyprland, so I could
+  stop getting frustrated with KWin and have real tiling.
++ KWin's tiling really is the best of both worlds, but you can't do XMonad
+  things. I jumped ship without realizing the limitations of hyprland without
+  plugins, so that's complicated.
+
+That you can't buy a window manager off the shelf that's not designed for your
+grandma basically tells you everything you need to know: AI will definitely
+replace humans.
+
+* Roam
++ [[id:687fae6c-bfd8-43c1-9f7f-e35c8abf4ab4][Garuda: Install with Luks]]
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+* Resources
+
++ [[https://github.com/Ataraxxia/secure-arch][Ataraxxia/secure-arch]] a reference arch installation using dracut to
+  setup secure boot ... more than I need but it otherwise fills in a
+  lot of missing pieces. there are videos describing everything.
+
+** Tools
+
+| bootctl | loader.conf    |
+| dracut  | dracut.modules |
+
+*** Dracut
+
++ dracut --list-modules :: list modules the system knows about
+  - these have scripts like =/usr/lib/dracut/modules.d/90btrfs/*.sh=
+  - it's not clear how to list modules included by default, though
+    =--hostonly= will limit modules that dracut bundles to what's
+    needed for the host.
++ lsinitrd $initrd | less :: extract info from =initrd=
+
+** Arch
+
++ [[https://wiki.archlinux.org/title/Dracut][archwiki: dracut]]
++ [[https://wiki.archlinux.org/title/Pacstrap][archwiki: pacstrap]] used to initialize install. ensures packages &
+  creates initial state for bootloaders/etc
+
+** Guix
+
++ [[https://github.com/pjotrp/guix-notes/blob/master/INSTALL.org#set-the-store-permissions][manually creating /gnu/store]]
+
+** Garuda
+
++ [[https://wiki.garudalinux.org/en/Dracut][Garuda Wiki: dracut]] they recently switched to dracut
+
+on running ISO:
+
++ locate '*mkinitcpio*' :: find most mkinitcpio config
++ locate '*dracut*' :: find most dracut config
+
+
+| /usr/lib/dracut/dracut.conf.d | 05-garuda.conf           |                                       |
+| /etc/dracut.conf.d            | 95-custom.conf           | user custom conf (via 05-garuda.conf) |
+| /usr/bin                      | dracut-rebuild           | wrapper for dracut                    |
+| /usr/lib/kernel/install.d     | 50-dracut.install        |                                       |
+| /usr/lib/kernel/install.d     | 51-dracut-rescue.install |                                       |
+| /usr/share/libalpm/hooks      | 60-dracut-remove.hook    |                                       |
+| /usr/share/libalpm/hooks      | 90-dracut-install.hook   |                                       |
+| /usr/share/libalpm/scripts    | dracut-remove            |                                       |
+| /usr/share/libalpm/scripts    | dracut-install           |                                       |
+| /etc/calamares/modules        | dracut.conf              | conf for calamares install (i guess)  |
+
+
+*** Forum
+
+[[https://forum.garudalinux.org/t/garuda-update-update-remote-keyring-failing-with-signature-from-tne-tne-garudalinux-org-is-unknown-trust/44433][Garuda-update & update remote keyring failing with signature...]] fixes
+trust issues with =update remote keyring=. worked on my borked
+install
+
++ (6/2025) [[https://forum.garudalinux.org/t/garuda-bootctl-dracut-fails-with-dracut-error-and-signing-issues/44710/6][garuda bootctl dracut fails with dracut error and signing
+  issues]] they just removed the =garuda-bootctl-dracut= repository like
+  5 days ago. better to know that it doesn't work, but i'd like to use
+  it for reference (I think)
++ (5/2025) [[https://forum.garudalinux.org/t/secure-boot-keys-dracut-lost-on-garuda-update/43947][Secure boot keys [dracut] lost on garuda-update]]
++ (10/2023) [[https://forum.garudalinux.org/t/kernel-images-fail-to-boot-with-failed-to-execute-uefi-load-error/31276/11][Kernel Images Fail To Boot With "Failed to execute UEFI
+  Load Error"]]
+  - builds initramfs using =dracut=
+  - says =ukify= not needed, dracut is simpler
+
+All i know is that I don't really care about =sbctl=, but I don't want
+to worry about juggling keys every time i run =yay -y -yy --why=.
+
+- [[https://www.reddit.com/r/archlinux/comments/w3o6vf/sbctl_systemdboot_dracut_and_efistubs/][sbctl systemdboot dracut and efistubs]] the generic answer (via forum
+  posts above)
+
+* Overview
+
++ [[https://discourse.nixos.org/t/depreciate-the-use-of-nix-env-to-install-packages/20139/4][nixos & nix-env]]
+
+* TLDR
+
++ I wanted =ukify= and it conflicts with =garuda-dracut-support=. that
+  would be less stable than I'm willing to deal with.
++ I couldn't easily install the =dracut-ukify= AUR package within a
+  chroot. tried some workarounds with =paru= and =yay=, but found the
+  conflict.
++ =garuda-dracut-support= was building initramfs for grub. it was
+  unclear which kernel params were in the initramfs and which were in
+  grub.
+  - booting via =systemd-boot= should've worked with =crypto= and
+    =cryptdevice= parameters, if i specified BTRFS, but i switched to
+    using =rd.luks= and the kernel failed to mount its filesystem.
+  - garuda also assumes =esp=/boot/efi= ... but builds initramfs and
+    kernel to =/boot=, requiring deeper understanding of the scripts
+    that I was half-ripping out
+
+So I gave up. I don't even really want to use arch. There's no way I
+would use it if it weren't for the =lib64= issues with Nix/Guix.
+
+It's frustrating because no matter how much time i struggle with Arch,
+I never learn. When I struggle with Nix & Guix, I'm always learning
+quickly. Even if their abstractions protect you from some underlying
+details, state or CLI usage, you still pretty clearly know what's
+going on. This would be different, if I had a group of friends who
+also used desktop linux ... but I do not. Nothing against Garuda, but
+it just is what it is.
+
+** Grub
+
++ the ISO's =garuda-boot-repair= tool doesn't detect my grub install
+  -- the installer never got that far.
++ The tool doesn't run within chroot.
++ =update-grub= fails because it targets the grub installation at
+  =/dev/sda1=
+
+The grub installation was always going to be fairly straightforward,
+but I had =systemd-boot= working with my previous Garuda
+installation. I backed up a ton of files, but not =/boot= ... I
+previously had issues with unlocking LUKS via Garuda/Grub, which is
+why i switched to systemd-boot. I wanted to stick with it because
+=UKI=, etc make it simpler to configure more advanced configurations.
+
+*** From chroot
+
++ pacman -Syu garuda-boot-repair
++ set =GRUB_ENABLE_CRYTPODISK=y= in =/etc/default/grub=
++ open gitlab and [[https://gitlab.com/garuda-linux/applications/garuda-boot-repair/-/blob/master/mainwindow.cpp#L129-151][find these lines]]
++ run =grub-install --target=x86_64-efi --efi-directory=/boot/efi
+  --bootloader-id=Garuda --recheck --force=
++ run =update-grub= ....
+  - it uses =os-prober= and +still tries to install to =/dev/sda1=+
+    ... nevermind, it installed to the right place.
+
+*** Reboot
+
+"No such cryptodisk found" ... ok well
+
+** Systemd Boot
+
+
+*** systemd-boot
+
+Check what's in =$esp= and =/boot=. Run =sudo find /boot -type f -exec
+ls -l \{\} += and keep the output.
+
++ bootctl :: updates the bootloaders
+  - bootctl status :: lint your $esp/loader/entries
++ dracut :: updates the initrd
++ pacman hooks, ukify and kernel rebuilds update the kernel images
+
+check UEFI boot order with =efibootmgr=, ensure =bootctl= exists. if
+it doesn't install its package.
+
+install the =systemd-boot= bootloader run =bootctl install=. Note the
+files it installs with =tree $esp/loader=.
+
+Ensure the bootloader's image was installed =find $esp -name '*.EFI'=
+It needs to occasionally be updated: for me, I'll need a pacman hook
+and alpm script.
+
+Ensure the bootloader was set in EFI. While running commands from
+within a chroot, =bootctl install= didn't set this. The commands I see
+use windows slashes.
+
+#+begin_example
+# delete a boot entry
+efibootmgr -Bb 0009
+
+# disk and partition are required
+efibootmgr -cd /dev/nvme0n1 -p1
+  -l '\EFI\BOOT\BOOTX64.EFI' \
+  -L Garuda
+# check, for me it added 0000, so ensure that's at the top of the list
+efibootmfr -o 0000,0006,0007
+#+end_example
+
+Check/config =$esp/loader/loader.conf=
+
+Check/config =$esp/loader/entries/garuda.conf=. If you build your
+kernel as a UKI with ukify, it doesn't need a corresponding
+entry... but at build time (whenever the kernel updates or whenever
+your initrd would update), it still needs metadata packed into the
+UKI. That would need to happen within an ALPM script.
+
+=linux= and =initrd= need to be on the =$esp= partition.
+
+*** LUKS2
+
+Assuming the LUKS Volume is already set up
+
++ cryptsetup luksDump /dev/nvme0n1p2 :: dump the header
+  - crypto=$hash:$cipher:$keysize:$offset:$skip :: required as a kernel
+    arg, unless using =sd-encrypt=
+  - cryptdevice=/dev/nvme0n1p2:vgcrypt :: target this device to decrypt
+  - root=/dev/mapper/vgcrypt-root :: boot from this device
+
+#+begin_quote
+I guess to get =systemd-boot= to unlock the root partition (to access
+files that the entries specify in =/boot=), then you either need:
+
++ a UEFI program that can read linux file systems
+  - it loads any UEFI drivers in [[https://wiki.archlinux.org/title/Systemd-boot#Supported_file_systems][$esp/systemd/drivers]]
++ or to set up =sd-encrypt=, though it's not clear whether systemd
+  does this before it tries to boot. this may give other booted
+  programs access to the encrypted file system (systemd stores the key
+  in the kernel keyring by default)
+#+end_quote
+
+*** BTRFS
+
+needs a subvolume argument
+
+*** Dracut
+
+Add a classy anime picture to =/etc/dracut.conf.d/50-secure-boot.conf=
+
+#+begin_example
+# no need for secure boot
+uefi_splash_image="/usr/share/systemd/bootctl/splash-arch.bmp"
+#+end_example
+
+Configure boot options in =/etc/dracut.conf.d/kernel_cmdline.conf=
+
+#+begin_example
+# look at old systemd-boot config and kernel_cmdline options
+kernel_cmdline="initrd=amd-ucode.img initrd=initramfs-linux.img" # ... etc
+#+end_example
+
+Configure =/etc/dracut-uefi-hook.conf=. This these parameters would
+affect =dracut-rebuild=, which wraps calls to dracut.
+
+#+begin_example
+default_kernel-package=linux-zen
+hook_for_pretty_name=true
+#+end_example
+
+Find out how your distributions handles =mkinitcpio= or
+=dracut=. Garuda recently migrated away from =mkinitcpio=, but still
+runs the update script, which exits if configuration exists for
+=dracut=.
+
+Systemd-boot automatically builds in support for LUKS, but the initrd
+probably still needs modules for LUKS and BTRFS.
+
+*** Set file systems
+
++ set =/etc/crypttab= if necessary
++ udpate =/etc/fstab=
+
+
+
+*** Build
+
++ TODO: run =dracut-rebuild=
+
+****** TODO doublecheck
+
++ dracut boot image: redundant with systemd entries/garuda.conf?
+
+
+
+* Install
+
+Partitions: ...
+
+** Prep
+
+*** Backups
+
+I backed up these paths from my desktop to =$bk=
+
+| /etc           | configs           |
+| /var/{lib,log} | journal and state |
+
+I should be able to diff these backups with the new desktop
+installation, comparing them against the new laptop installation
+(which is pretty vanilla). I just don't want the installation to
+create bad state, ending up with subtle issues that function halfway,
+but create small =???= for months.
+
+** Calamares fails on =/boot/efi=
+
+Running calamares, I expected it may fail, so I didn't configure all
+the disks and intended to fix after the initial install
+
+| partition                | mount         | type  |
+|--------------------------+---------------+-------|
+| /dev/mapper/vgcrypt-root | $mnt          | btrfs |
+| /dev/nvme0n1p1           | $mnt/boot/efi | fat32 |
+
+It overwrote files in =$mnt/boot/efi=, where =$mnt=/mnt= is where
+=garuda-chroot= will bind the disks when fixing an install from the
+ISO.
+
+** Chroot
+
+Ensure network is set up before chroot or you can't use the host
+system's network.
+
+*** Fix packages
+
++ needed to run =update remote keyring= because calamares didn't
+  complete that. Errors mentioned a lot of "keyring unwritable"
++ After that, =garuda-update -a= completes, but still doesn't install
+  a bootloader (I didn't expect it to, though I wonder what's missing)
+
+*** Status
+
+It's frustrating, but their build of calamares is configured to only
+dump the failed command instead of showing logs with all commands run
+in the install, making it difficult to determine what was and was not
+completed.
+
+**** Root
+
+I'm assuming:
+
++ there's some finalization needed after the bootloader and initial
+  ramdisk are built...
++ and that otherwise the root partition is finalized enough to fix it
+  with pacman and garuda's tools.
+
+**** Bootloader
+
++ Files/dirs =$mnt/etc/mkinitcpio*= exist with default config.
++ It's unclear whether =dracut= is preferred, but looking at the ALPM
+  scripts, it checks for the existence of =dracut= which will avoid
+  Garuda's default =mkinitcpio= installation
++ Recent installation of Garuda on my laptop definitely uses grub, but
+  has no =/etc/mkinitcpio*=
+
+*** 
+
+* Garuda
+
++ The management of BTRFS, the zen kernel and other optimizations are
+  a ton of custom one-off pieces to work in on your own
+  + it has sane management of snapshots, which are NOT configured if
+    you "arch-install-noob" or just =pacman -Syu btrfs && mkfs.btrfs=
++ The other tooling for the system helps a lot:
+  - diagnosing/repair issues with keyring, etc
+  - 
++ Their tooling to update/diagnose/reset state (e.g. =garuda-update
+  -a=) seems to tolerate customization pretty well:
+  - systemd boot instead of grub: the hook fails when I update pacman,
+    but as long as you =IgnorePkg=grub-improved-luks2-git= package, it
+    doesn't shit the bed
+  - Luks2 support is probably improved with grub by now, but it was
+    problematic 3+ years ago
+
+** BTRFS Issues with Nix/Guix
+
+You really want =/gnu/store= on another BTRFS filesystem, but tte
+storage requirements fluctuate. For me, I need between 30-150 GB
+depending on how I run =guix gc=.
+
++ by default, Garuda's BTRFS snapshots will pick up the =/gnu/store=
+  which itself vacuums a sqlite cache database, prunes old symlinks,
+  de-dupes using hard links, etc.
++ so BTRFS =guix gc= overlap in how they consolidate data
+  - but BTRFS snapshots still maintain the deltas (meaning guix GC
+    only purges the top-level files from BTRFs).
+  - this may inflate my effective storage requirements significantly,
+    but it's impossible to tell because system tools don't accurately
+    display the BTRFS filesystem's actual size.
+    
+a separate =btrfs filesystem= isn't simple to configure so it also
+works with =/nix/store=
+
++ using separate =btrfs filesystems= for guix & nix each: the excess
+  storage space for each partition adds up or requires unexpected
+  maintainence.
++ alternately, using =btrfs subvolume=: requires overlay onto another
+  BTRFS filesystem. For Nix/Guix, there may be issues like hard links
+  across FS boundaries may be problematic (IDK)
++ these issues could be resolved, if =/{gnu,nix}/store= are setup
+  as subvolumes, since Garuda's snapshots can more easily ignore
+  them (I think)
+
+However, as a newer user, you won't set up the initial
+=/{gnu,nix}/store= like that and it's difficult to actually
+=rm -rf= it ...
+
++ thus you can't just move it into a subvolume once you figure this
+  out.
+  - you must =rm -rf= from a live ISO, then restore all the
+    functionality (Nix home manager, etc) before rebooting your main
+    Arch+Guix+Nix installation. There will be stale symlinks on other
+    file systems, some of which may manually need to be deleted
++ you realllly want to "just do it correct" from the start like
+  everything else, if your work in linux creates large
+  files/images/db's that sprawl across the FHS.
++ This isn't a major issue: it's hard to explain to noobs if they are
+  to avoid cargo culting install/setup scripts that don't actually
+  match their use case & system/network setup requirements.
+  - the "design-space" here is significantly larger once =one
+    partition to rule them all= doesn't work
+
+** SystemD configuration
+
+The lack of awareness/wikis/docs/etc on how to manage systemd services
+through CLI/API is extremly irritating.
+
++ It's difficult to learn how to persist these customizations across
+  installations or even to learn about the "configuration surface
+  area" so you can strategize about how to manage paths in your
+  =.service= files.
+  - another clear victory for Nix, since you CAN do this and are
+    actually expected to write packages, configure services
++ reasoning about how to manage GC & cleanup of project-specific
+  environments is unclear. this is much easier if your nix/guix
+  installation is "configuration as code", but then you need NixOS or
+  Guix System, which invites =lib64= issues.
+  - it's extremely frustrating to know that, taking 1% of productivity
+    from Ubuntu or Redhat-based distributions would result in 50x
+    productivity on Nix/Guix. It would make so many things far easier
+  - with the critical mass to resolve quirks like
+    "Python/UV/python-build-standalone" and =lib64=, then it would be
+    far easier for noobs like me to /learn/ how to resolve this
+
+And no, ansible does not really help simplify SystemD configuration
+automation for desktop users with small networks. It helps with
+server-based deployments on large networks.
+
