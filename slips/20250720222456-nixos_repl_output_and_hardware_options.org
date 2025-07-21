@@ -1,0 +1,786 @@
+:PROPERTIES:
+:ID:       90e5da87-b00f-4fb2-8330-78c6123f9a64
+:END:
+#+TITLE: Nixos: Repl Output and Hardware Options
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:dfb6f90e-6755-4a64-b295-084a9c4beafa][Nix]]
+
+* Overview
+
+PCMCIA what the fuck
+
+* Repl
+** Env
+
+=NIX_PATH= is currently wrong (nixos-config). I think this makes it a bit more
+difficult to setup env for =nix repl=
+
+| nixpkgs      | /nix/var/nix/profiles/per-user/root/channels/nixos |
+| nixos-config | /etc/nixos/configuration.nix                       |
+|              | /nix/var/nix/profiles/per-user/root/channels       |
+
+** Record Output
+
+bc i'm not sure how to setup env...
+
+#+begin_src shell
+expr="config.hardware"
+#out=$(mktemp nixrepl-XXXXXXX)
+out=nixrepl-0xqegC
+
+NIXOS_HOST="$(hostname)"
+NIXOS_HOST_CONFIG="./hosts/${NIXOS_HOST}/configuration.nix"
+
+echo $expr | wl-copy # or EOF
+
+EXPORT NO_COLOR=1
+# `make liverepl` and `wl-paste` or:
+nix repl --file '<nixpkgs/nixos>' -I "nixos-config=${NIXOS_HOST_CONFIG}" <<EOF
+  :print $expr.alsa
+  :q
+EOF
+#+end_src
+
+Ahhh shit. Okay, I'll just drag the mouse then.
+
+*** One does not simple "do it correcly"
+
+Need to learn nix environment setup.
+
+#+begin_quote
+it seems everyone "just uses flake.nix"...
+
+Flakes convolute control over the reproducibility of nix. great for average
+users & great for startups, but if you want it used for real by large corps,
+it needs to be with channels.
+
+Channels, unfortunately, are very very complicated to manage.
+#+end_quote
+
+See [[https://github.com/NixOS/nix-mode/blob/master/nix-repl.el#L190-L218][nix-repl.el]]: the output includes escape chars... =nix repl= lacks a
+=--no-color= option and vociferously ignores =TERM=dumb=...
+
++ which means you can't run some =nix= commands over Emacs' Tramp ...
++ or run them using =org-babel= ... not without without =ob-nix=
+  - when running =:p config.hardware.alsa= to write the block above to stdout, I
+    get =Error (org-babel): ... invalid search bound, wrong side of point=
+  - looking into the =nix-repl.el= code, it scans for control chars to remove,
+    but mostly allows
+
+#+begin_src shell :results output verbatim
+cat nixrepl-0xqegC # nope
+#+end_src
+
+=ob-nix= and =M-x nix-repl= retain the control chars. babel can filter some of
+them out. =common-lisp= uses =^L= as a =form-feed= delimiter. the same char can add
+smart page-down functionality to source code (in emacs). =embark= also uses
+this.
+
+#+begin_src nix
+{ bar = "foobstermeister"; }
+#+end_src
+
+#+RESULTS:
+: { bar = "foobstermeister"; }
+
+* Hardware
+
+Would not have done this if i had known...
+
+#+begin_src emacs-lisp
+(replace-regexp "/nix/store/[a-z0-9]+" "/nix/store/...")
+(replace-regexp "\(«error[^;]*\)
+" "\1") ;; recursively (and interactively)
+;; (replace-regexp "= \(«error: .{,40}\).*»;" "= \1") ;; ... fuck
+(replace-regexp "= «error: \(.\{25\}\).*»;" "= «error: \1 ... »;") ;; ... interactive
+
+;; there are output formatting errors that mess up indentation
+;;   (e.g. config.hardware.nvidia.gsp outputs error, doesn't close brace)
+(replace-regexp "  \( +\)\(.*\) = {«error" "  \1\2 = {
+  \1«error")
+
+(replace-regexp "^  };
+" "  };
+#+end_example
+
+#+begin_example nix
+")
+#+end_src
+
+
+#+begin_example nix
+{
+  acpilight = { enable = false; };
+  alsa = {
+    cardAliases = { };
+    config = "";
+    controls = «repeated»;
+    defaultDevice = {
+      capture = "";
+      playback = "";
+    };
+    deviceAliases = «repeated»;
+    enable = false;
+    enableOSSEmulation = false;
+    enablePersistence = false;
+    enableRecorder = false;
+  };
+#+end_example
+
+#+begin_example nix
+  amdgpu = {
+    amdvlk = {
+      enable = false;
+      package = «derivation /nix/store/...-amdvlk-2025.Q1.3.drv»;
+      settings = «repeated»;
+      support32Bit = {
+        enable = false;
+        package = «derivation /nix/store/...-amdvlk-2025.Q1.3.drv»;
+      };
+      supportExperimental = { enable = false; };
+    };
+    initrd = { enable = false; };
+    legacySupport = { enable = false; };
+    opencl = { enable = false; };
+  };
+#+end_example
+
+#+begin_example nix
+  apple = {
+    touchBar = {
+      enable = false;
+      package = «derivation /nix/store/...-tiny-dfr-0.3.2.drv»;
+      settings = «repeated»;
+    };
+  };
+#+end_example
+
+#+begin_example nix
+  bladeRF = { enable = false; };
+  block = {
+    defaultScheduler = null;
+    defaultSchedulerExclude = "loop[0-9]*";
+    defaultSchedulerRotational = null;
+    scheduler = «repeated»;
+  };
+#+end_example
+
+#+begin_example nix
+  bluetooth = {
+    config = {
+      General = { Enable = "Source,Sink,Media,Socket"; };
+    };
+    disabledPlugins = [ ];
+    enable = true;
+    extraConfig = «error: The option `hardware.blue ... »;
+    hsphfpd = { enable = false; };
+    input = «repeated»;
+    network = «repeated»;
+    package = «derivation /nix/store/...-bluez-5.80.drv»;
+    powerOnBoot = true;
+    settings = «repeated»;
+  };
+#+end_example
+
+#+begin_example nix
+  brightnessctl = «error: The option `hardware.brig ... »;
+  brillo = { enable = false; };
+  bumblebee = {
+    connectDisplay = false;
+    driver = "nvidia";
+    enable = false;
+    group = "wheel";
+    pmMethod = "auto";
+  };
+#+end_example
+
+#+begin_example nix
+  ckb = {
+    enable = false;
+    package = «derivation /nix/store/...-ckb-next-0.6.2.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  ckb-next = {
+    enable = false;
+    gid = null;
+    package = «repeated»;
+  };
+#+end_example
+
+#+begin_example nix
+  coral = {
+    pcie = { enable = false; };
+    usb = { enable = false; };
+  };
+#+end_example
+
+#+begin_example nix
+  cpu = {
+    amd = {
+      ryzen-smu = { enable = false; };
+      sev = {
+        enable = false;
+        group = "sev";
+        mode = "0660";
+        user = "root";
+      };
+      sevGuest = {
+        enable = false;
+        group = "sev-guest";
+        mode = "0660";
+        user = "root";
+      };
+      updateMicrocode = true;
+    };
+    intel = {
+      sgx = {
+        enableDcapCompat = true;
+        provision = {
+          enable = false;
+          group = "sgx_prv";
+          mode = "0660";
+          user = "root";
+        };
+      };
+      updateMicrocode = false;
+    };
+    x86 = {
+      msr = {
+        enable = true;
+        group = "msr";
+        mode = "0640";
+        owner = "root";
+        settings = { allow-writes = null; };
+      };
+    };
+  };
+#+end_example
+
+#+begin_example nix
+  decklink = { enable = false; };
+  deviceTree = {
+    base = «error: The option `hardware.devi ... »;
+    dtbSource = "/nix/store/...-linux-6.15.5/dtbs";
+    dtboBuildExtraIncludePaths = [ ];
+    dtboBuildExtraPreprocessorFlags = [ ];
+    enable = false;
+    filter = null;
+    kernelPackage = «derivation /nix/store/...-linux-6.15.5.drv»;
+    name = null;
+    overlays = [ ];
+    package = null;
+  };
+#+end_example
+
+#+begin_example nix
+  digitalbitbox = {
+    enable = false;
+    package = «derivation /nix/store/...-digitalbitbox-3.0.0.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  display = {
+    edid = {
+      enable = false;
+      linuxhw = null;
+      modelines = null;
+      packages = null;
+    };
+    outputs = «repeated»;
+  };
+#+end_example
+
+#+begin_example nix
+  enableAllFirmware = false;
+  enableAllHardware = false;
+  enableKSM = false;
+  enableRedistributableFirmware = true;
+  facetimehd = {
+    enable = false;
+    withCalibration = false;
+  };
+#+end_example
+
+#+begin_example nix
+  fancontrol = {
+    config = «error: The option `hardware.fanc ... »;
+    enable = false;
+  };
+#+end_example
+
+#+begin_example nix
+  firmware = «derivation /nix/store/...-firmware.drv»;
+  firmwareCompression = "zstd";
+  flipperzero = { enable = false; };
+  flirc = { enable = false; };
+  gkraken = {«error: The option `hardware.gkraken.enable' can no longer be used since it's been removed. gkraken was deprecated by coolercontrol and thus removed from nixpkgs. Consider using programs.coolercontrol instead.»;
+  glasgow = { enable = false; };
+  gpgSmartcards = { enable = false; };
+  graphics = {
+    enable = true;
+    enable32Bit = false;
+    extraPackages = [ ];
+    extraPackages32 = [ ];
+    package = «derivation /nix/store/...-mesa-25.0.7.drv»;
+    package32 = «derivation /nix/store/...-mesa-25.0.7.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  hackrf = { enable = false; };
+  i2c = {
+    enable = false;
+    group = "i2c";
+  };
+#+end_example
+
+#+begin_example nix
+  infiniband = {
+    enable = false;
+    guids = [ ];
+  };
+#+end_example
+
+#+begin_example nix
+  inputmodule = { enable = false; };
+  intel-gpu-tools = { enable = false; };
+  ipu6 = {
+    enable = false;
+    platform = «error: The option `hardware.ipu6 ... »;
+  };
+#+end_example
+
+#+begin_example nix
+  keyboard = {
+    qmk = { enable = false; };
+    teck = { enable = false; };
+    uhk = { enable = false; };
+    zsa = { enable = false; };
+  };
+#+end_example
+
+#+begin_example nix
+  ksm = {
+    enable = false;
+    sleep = null;
+  };
+#+end_example
+
+#+begin_example nix
+  ledger = { enable = false; };
+  libftdi = {
+    enable = false;
+    package = «derivation /nix/store/...-libftdi-1.5-unstable-2023-12-21.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  libjaylink = {
+    enable = false;
+    package = «derivation /nix/store/...-libjaylink-0.4.0.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  logitech = {
+    enable = false;
+    enableGraphical = false;
+    lcd = {
+      devices = [
+        "0a07"
+        "c222"
+        "c225"
+        "c227"
+        "c251"
+      ];
+      enable = false;
+      startWhenNeeded = true;
+    };
+    wireless = {
+      enable = false;
+      enableGraphical = false;
+    };
+  };
+#+end_example
+
+#+begin_example nix
+  mcelog = { enable = false; };
+  mwProCapture = { enable = false; };
+  new-lg4ff = { enable = false; };
+  nfc-nci = {
+    enable = false;
+    enableIFD = true;
+    settings = {
+      init = {
+        NXPLOG_EXTNS_LOGLEVEL = "0x01";
+        NXPLOG_FWDNLD_LOGLEVEL = "0x00";
+        NXPLOG_GLOBAL_LOGLEVEL = "0x01";
+        NXPLOG_NCIHAL_LOGLEVEL = "0x01";
+        NXPLOG_NCIR_LOGLEVEL = "0x01";
+        NXPLOG_NCIX_LOGLEVEL = "0x01";
+        NXPLOG_TML_LOGLEVEL = "0x01";
+        NXP_ACT_PROP_EXTN = "{2F, 02, 00}";
+        NXP_CORE_STANDBY = "{2F, 00, 01, 01}";
+        NXP_I2C_FRAGMENTATION_ENABLED = "0x01";
+        NXP_NFC_DEV_NODE = "\"/dev/pn544\"";
+        NXP_NFC_PROFILE_EXTN = "{20, 02, 05, 01,\n  A0, 44, 01, 00\n}\n";
+      };
+      nci = {
+        APPL_TRACE_LEVEL = "0x01";
+        HOST_LISTEN_TECH_MASK = "0x07";
+        P2P_LISTEN_TECH_MASK = "0xC5";
+        POLLING_TECH_MASK = "0xEF";
+        PROTOCOL_TRACE_LEVEL = "0x01";
+      };
+      pn54x = {
+        MIFARE_READER_ENABLE = "0x01";
+        NXP_CORE_CONF = "{20, 02, 2B, 0D,\n  28, 01, 00,\n  21, 01, 00,\n  30, 01, 08,\n  31, 01, 03,\n  33, 04, 04, 03, 02, 01,\n  54, 01, 06,\n  50, 01, 02,\n  5B, 01, 00,\n  60, 01, 0E,\n  80, 01, 01,\n  81, 01, 01,\n  82, 01, 0E,\n  18, 01, 01\n}\n";
+        NXP_CORE_CONF_EXTN = "{20, 02, 30, 04,\n  A0, 5E, 01, 01,\n  A0, 40, 01, 00,\n  A0, 43, 01, 00,\n  A0, 0F, 20,\n  00, 03, 1D, 01, 03, 00, 02, 00,\n  01, 00, 01, 00, 00, 00, 00, 00,\n  00, 00, 00, 00, 00, 00, 00, 00,\n  00, 00, 00, 00, 00, 00, 00, 00\n}\n";
+        NXP_EXT_TVDD_CFG = "0x01";
+        NXP_EXT_TVDD_CFG_1 = "{20, 02, 07, 01,\n  A0, 0E, 03, 16, 09, 00\n}\n";
+        NXP_NFC_MAX_EE_SUPPORTED = "0x00";
+        NXP_NFC_PROPRIETARY_CFG = "{05:FF:FF:06:81:80:70:FF:FF}";
+        NXP_SYS_CLK_FREQ_SEL = "0x00";
+        NXP_SYS_CLK_SRC_SEL = "0x01";
+        NXP_SYS_CLOCK_TO_CFG = "0x01";
+      };
+    };
+  };
+#+end_example
+
+#+begin_example nix
+  nitrokey = { enable = false; };
+  nvidia = {
+    datacenter = {
+      enable = false;
+      settings = {
+        ABORT_CUDA_JOBS_ON_FM_EXIT = 1;
+        ACCESS_LINK_FAILURE_MODE = 0;
+        BIND_INTERFACE_IP = "127.0.0.1";
+        DAEMONIZE = 1;
+        FABRIC_MODE = 0;
+        FABRIC_MODE_RESTART = 0;
+        FM_CMD_BIND_INTERFACE = "127.0.0.1";
+        FM_CMD_PORT_NUMBER = 6666;
+        FM_STAY_RESIDENT_ON_FAILURES = 0;
+        LOG_APPEND_TO_LOG = 1;
+        LOG_FILE_MAX_SIZE = 1024;
+        LOG_FILE_NAME = "/var/log/fabricmanager.log";
+        LOG_LEVEL = 4;
+        LOG_USE_SYSLOG = 0;
+        NVSWITCH_FAILURE_MODE = 0;
+        STARTING_TCP_PORT = 16000;
+        STATE_FILE_NAME = "/var/tmp/fabricmanager.state";
+        TRUNK_LINK_FAILURE_MODE = 0;
+      };
+    };
+    dynamicBoost = { enable = false; };
+    enabled = false;
+    forceFullCompositionPipeline = false;
+    gsp = {
+      «error: expected a set but found null: null»;
+    };
+    modesetting = { enable = true; };
+    nvidiaPersistenced = false;
+    nvidiaSettings = true;
+    open = «error: expected a set but found  ... »;
+    package = «derivation /nix/store/...-nvidia-x11-570.153.02-6.15.5.drv»;
+    powerManagement = {
+      enable = false;
+      finegrained = false;
+    };
+    prime = {
+      allowExternalGpu = false;
+      amdgpuBusId = "";
+      intelBusId = "";
+      nvidiaBusId = "";
+      offload = {
+        enable = false;
+        enableOffloadCmd = false;
+        offloadCmdMainProgram = "nvidia-offload";
+      };
+      reverseSync = {
+        enable = false;
+        setupCommands = { enable = true; };
+      };
+      sync = { enable = false; };
+    };
+    videoAcceleration = true;
+  };
+#+end_example
+
+#+begin_example nix
+
+  nvidia-container-toolkit = {
+    csv-files = [ ];
+    device-name-strategy = "index";
+    discovery-mode = "auto";
+    enable = false;
+    mount-nvidia-docker-1-directories = true;
+    mount-nvidia-executables = true;
+    mounts = [ ];
+    package = «derivation /nix/store/...-nvidia-container-toolkit-1.17.6.drv»;
+    suppressNvidiaDriverAssertion = false;
+  };
+#+end_example
+
+#+begin_example nix
+  nvidiaOptimus = { disable = false; };
+  onlykey = { enable = false; };
+  opengl = {
+    driSupport = «error: The option `hardware.open ... »;
+    driSupport32Bit = false;
+    enable = true;
+    extraPackages = [ ];
+    extraPackages32 = [ ];
+    package = «repeated»;
+    package32 = «repeated»;
+    s3tcSupport = «error: The option `hardware.open ... »;
+  };
+#+end_example
+
+#+begin_example nix
+  openrazer = {
+    batteryNotifier = {
+      enable = true;
+      frequency = 600;
+      percentage = 33;
+    };
+    devicesOffOnScreensaver = true;
+    enable = false;
+    keyStatistics = false;
+    mouseBatteryNotifier = true;
+    syncEffectsEnabled = true;
+    users = [ ];
+    verboseLogging = false;
+  };
+#+end_example
+
+#+begin_example nix
+  opentabletdriver = {
+    blacklistedKernelModules = [
+      "hid-uclogic"
+      "wacom"
+    ];
+    daemon = { enable = true; };
+    enable = false;
+    package = «derivation /nix/store/...-OpenTabletDriver-0.6.5.1.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  parallels = {
+    autoMountShares = «error: The option `hardware.para ... »;
+    enable = false;
+    package = «derivation /nix/store/...-prl-tools-20.4.0-55980.drv»;
+  };
+#+end_example
+
+PCMCIA what the fuck
+
+#+begin_example nix
+  pcmcia = {
+    config = null;
+    enable = false;
+    firmware = [ ];
+  };
+#+end_example
+
+#+begin_example nix
+  printers = {
+    ensureDefaultPrinter = null;
+    ensurePrinters = [ ];
+  };
+#+end_example
+
+#+begin_example nix
+  pulseaudio = {
+    configFile = «error: The option `services.puls ... »;
+    daemon = {
+      config = «repeated»;
+      logLevel = "notice";
+    };
+    enable = false;
+    extraClientConf = "";
+    extraConfig = "";
+    extraModules = [ ];
+    package = «derivation /nix/store/...-pulseaudio-17.0.drv»;
+    support32Bit = false;
+    systemWide = false;
+    tcp = {
+      anonymousClients = {
+        allowAll = false;
+        allowedIpRanges = [ ];
+      };
+      enable = false;
+    };
+    zeroconf = {
+      discovery = { enable = false; };
+      publish = { enable = false; };
+    };
+  };
+#+end_example
+
+#+begin_example nix
+  raid = {
+    HPSmartArray = { enable = false; };
+  };
+#+end_example
+
+#+begin_example nix
+  rasdaemon = {
+    config = "";
+    enable = false;
+    extraModules = [ ];
+    labels = "";
+    mainboard = "";
+    package = «derivation /nix/store/...-rasdaemon-0.8.2.drv»;
+    record = true;
+    testing = false;
+  };
+#+end_example
+
+#+begin_example nix
+  rtl-sdr = {
+    enable = false;
+    package = «derivation /nix/store/...-rtl-sdr-blog-1.3.5.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  saleae-logic = {
+    enable = false;
+    package = «derivation /nix/store/...-saleae-logic-2-2.4.29.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  sane = {
+    backends-package = «derivation /nix/store/...-sane-backends-1.3.1.drv»;
+    brscan4 = {
+      enable = false;
+      netDevices = «repeated»;
+    };
+    brscan5 = {
+      enable = false;
+      netDevices = «repeated»;
+    };
+    configDir = «error: The option `hardware.sane ... »;
+    disabledDefaultBackends = [ ];
+    drivers = {
+      scanSnap = {
+        enable = false;
+        package = «derivation /nix/store/...-scansnap-firmware.drv»;
+      };
+    };
+    dsseries = { enable = false; };
+    enable = false;
+    extraBackends = [ ];
+    netConf = "";
+    openFirewall = false;
+    snapshot = false;
+  };
+#+end_example
+
+#+begin_example nix
+  sata = {
+    timeout = {
+      deciSeconds = «error: The option `hardware.sata ... »;
+      drives = «error: The option `hardware.sata ... »;
+      enable = false;
+    };
+  };
+#+end_example
+
+#+begin_example nix
+  sensor = {
+    hddtemp = {
+      dbEntries = [ ];
+      drives = «error: The option `hardware.sens ... »;
+      enable = false;
+      extraArgs = [ ];
+      unit = "C";
+    };
+    iio = { enable = false; };
+  };
+#+end_example
+
+#+begin_example nix
+  spacenavd = { enable = false; };
+  steam-hardware = { enable = false; };
+  system76 = {
+    enableAll = false;
+    firmware-daemon = { enable = false; };
+    kernel-modules = { enable = false; };
+    power-daemon = { enable = false; };
+  };
+#+end_example
+
+#+begin_example nix
+  trackpoint = {
+    device = "TPPS/2 IBM TrackPoint";
+    emulateWheel = false;
+    enable = false;
+    fakeButtons = false;
+    sensitivity = 128;
+    speed = 97;
+  };
+#+end_example
+
+#+begin_example nix
+  tuxedo-drivers = { enable = false; };
+  tuxedo-keyboard = «repeated»;
+  tuxedo-rs = {
+    enable = false;
+    tailor-gui = { enable = false; };
+  };
+#+end_example
+
+#+begin_example nix
+  u2f = «error: The option `hardware.u2f' ... »;
+  ubertooth = {
+    enable = false;
+    group = "ubertooth";
+  };
+#+end_example
+
+#+begin_example nix
+  uinput = { enable = false; };
+  uni-sync = {
+    devices = [ ];
+    enable = false;
+    package = «derivation /nix/store/...-uni-sync-0.2.0.drv»;
+  };
+#+end_example
+
+#+begin_example nix
+  usb-modeswitch = { enable = false; };
+  usbStorage = {
+    manageShutdown = false;
+    manageStartStop = false;
+  };
+#+end_example
+
+#+begin_example nix
+  usbWwan = «repeated»;
+  video = {
+    hidpi = {
+      «error: The option `hardware.video.hidpi.enable' can no longer be used since it's been removed. Consider manually configuring fonts.fontconfig according to personal preference.»;
+    };
+  };
+#+end_example
+
+#+begin_example nix
+  wirelessRegulatoryDatabase = true;
+  wooting = { enable = false; };
+  xone = { enable = false; };
+  xow = «error: The option `hardware.xow' ... »;
+  xpad-noone = { enable = false; };
+  xpadneo = { enable = false; };
+}
+#+end_example
