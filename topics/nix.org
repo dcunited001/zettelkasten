@@ -1,13 +1,14 @@
 :PROPERTIES:
-:ID:       dfb6f90e-6755-4a64-b295-084a9c4beafa
+:ID:       2049060e-6755-4a64-b295-F7B563B41505
 :END:
-#+title: Nix
+#+title: NixOS
 #+CATEGORY: slips
 #+TAGS:
 
+
 * Roam
-+ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
-+ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:425188b1-d9f0-4d3a-a2fb-D13254A02ACE][Linux]]
++ [[id:47D9D8bf-a0de-45c5-8ff4-DD66C9AB66BD][Guix]]
 
 * Docs
 
@@ -26,7 +27,6 @@
 *** Language
 
 + [[https://discourse.nixos.org/t/reference-diagram-for-nix-file-module-flake-function-use-cases-and-identification/43442/2][What even is a...]] flake/module/function/etc
-+ 
 
 ** Schema
 
@@ -115,8 +115,411 @@ nix-channel --update
 Now nix should build and =direnv allow= should run flakes right.
 ** AMD Rocm
 See [[https://github.com/nixos-rocm/nixos-rocm][nixos-rocm/nixos-rocm]]
+** Printable Docs
+
+*** nix.dev
+
+#+name: nixDevCss
+#+begin_src css
+#page-wrapper > .page { margin-top: 0 !important; }
+p { margin: 0.3em 0em; line-height: 1.2em !important; }
+main ul { margin: 0.2em 0; padding: 0 0 0 1em; }
+/* .content p { line-height: 1.2em; } */
+body { font-size: 1.1em; }
+blockquote { margin: 0; }
+h1,h2,h3,h4 { margin: 0.2em 0em !important; }
+h2, h2 > a { color: darkblue !important; }
+h3, h3 > a { color: darkred !important; }
+h4, h4 > a { color: darkgreen !important; }
+#+end_src
+
+#+begin_src javascript :var css=nixDevCss
+const d = document; // , qsa = d.querySelectorAll, qs = d.querySelector; // dammit
+[ d.querySelector('#menu-bar-hover-placeholder'),
+  d.querySelector('#menu-bar')].forEach(el => el.remove());
+Array.from(d.querySelectorAll('nav')).forEach(el => el.remove());
+bq = Array.from(d.querySelectorAll('main blockquote'));
+bq.forEach(function(el) {
+    // replace only sometimes though. great use of time.
+    const pre = el.querySelector('pre');
+    (pre && el.replaceWith(pre));
+});
+// let mainLi = Array.from(document.querySelectorAll('main > ul > li'))
+#+end_src
+
+oh, that's 2.18. no more line breaks in 2.30. (llm: v7.0-=1.1*n)
+
+#+begin_example javascript
+// remove <br>
+// Array.from(d.querySelectorAll('main > ul > li br '))
+//     .forEach((br) => br.remove());
+//
+#+end_example
+
+To delete the repetitive Common Env Vars:
+
+#+begin_src javascript
+let mainChildren = document.querySelector('main').children;
+let delFrom, delTo, delet; // = 'we could all be driving flying cars and writing clojure'
+[delFrom, delTo, delet] = ['common-environment-variables', 'examples', false];
+Array.from(mainChildren).forEach( function(el) {
+    (el.id === delTo) && (delet = false);
+    (el.id === delFrom) && (delet = true);
+    (delet && el.remove());
+})
+#+end_src
+
+... Or as a function
+
+#+begin_src js
+function delFromTo(within, from, to) {
+  let delet = false;
+  Array.from(within).forEach(function(el) {
+    (el.id === to) && (delet = false);
+    (el.id === from) && (delet = true);
+    (delet && el.remove());
+  });
+}
+
+// remove excessive options:
+delFromTo(d.querySelector('main').children, 'logging-related-options', null);
+d.querySelector('main').children[0].remove(); // remove warning
+d.querySelector('main').children[0].textContent = 'nix'; // set h1 to command name
+
+delFromTo(d.querySelector('main').children, 'options', null);
+delFromTo(d.querySelector('main').children, 'common-evaluation-options', null);
+delFromTo(d.querySelector('main').children, 'common-evaluation-options', 'options-that-change-the-interpretation-of-installables');
+#+end_src
+
 * Issues
 ** The "Nix OpenGL" problem
 Oh joy. I can't wait. Apparently [[https://github.com/guibou/nixGL][guibou/NixGL]] helps deal with this.
 
 *** TODO deal with the Nix OpenGL usingwhen it becomes relevant
+
+** Wiki
+
+*** Dark mode doesn't work (Varnish caching PHP?)
+
+Just needed =nwg-look= to set my GTK settings
+
+#+begin_src emacs-lisp
+(defun invert-css-rgb (x)
+  (format "%06X" (- #x000000 x)))
+
+;; convert #abc => #554433
+(replace-regexp "\( +--.*\):#\(.\)\(.\)\(.\);$" "\1:#\2\2\3\3\4\4")
+
+(with-current-buffer
+(re-search-forward "[[:xdigit]]\\{6\\}"))
+
+(defun invert-rgb-matches (&optional buffer)
+  "replace matches in buffer, starting from current position"
+  (interactive)
+  (let ((regex "[[:xdigit:]]\\{6\\}")
+        (acc))
+    (save-excursion
+      (with-current-buffer
+          (or buffer (current-buffer))
+        (save-restriction
+          (widen)
+          (goto-char 1)
+          (while (search-forward-regexp regex nil t 1)
+            (let* ((rgb (string-to-number (match-string 0) 16))
+                   ;; (inv-rgb (format "%x" (invert-css-rgb rgb)))
+                   (inv-rgb (invert-css-rgb rgb)))
+              (push inv-rgb acc)
+              (replace-match inv-rgb t))))))
+    (nreverse acc)))
+
+(string-join (invert-rgb-matches) " ")
+
+;;(setq nix-wiki-colors (matches-in-buffer "[[:xdigit:]]\\{6\\}"))
+;;(nth 1 nix-wiki-colors)
+#+end_src
+
+Invert colors on the NixOS wiki
+
+#+begin_src css
+@media screen {
+  :root,
+  .skin-invert,
+  .notheme {
+    --color-base:#DFDEDD;
+    --color-base-fixed:#DFDEDD;
+    --color-base--hover:#BFBDBB;
+    --color-emphasized:#EFEBE7;
+    --color-subtle:#ABA6A2;
+    --color-placeholder:#8D8882;
+    --color-disabled:#8D8882;
+    --color-inverted:#000000;
+    --color-inverted-fixed:#000000;
+    --color-progressive:#CC9933;
+    --color-progressive--hover:#B48829;
+    --color-progressive--active:#DCCA99;
+    --color-progressivyye--focus:#CC9933;
+    --color-destructive:#28CCCC;
+    --color-destructive--hover:#03B6C4;
+    --color-destructive--active:#60CAD9;
+    --color-destructive--focus:#CC9933;
+    --color-visited:#959F4F;
+    --color-destructive--visited:#60AAAA;
+    --color-error:#28CCCC;
+    --color-warning:#114ACC;
+    --color-success:#E8879F;
+    --color-notice:#DFDEDD;
+    --color-content-added:#FF9BFF;
+    --color-content-removed:#74FFFF;
+    --filter-invert-icon:0;
+    --filter-invert-primary-button-icon:1;
+    --box-shadow-color-base:#FFFFFF;
+    --box-shadow-color-progressive--active:#DCCA99;
+    --box-shadow-color-progressive--focus:#CC9933;
+    --box-shadow-color-progressive-selected:#CC9933;
+    --box-shadow-color-progressive-selected--hover:#B48829;
+    --box-shadow-color-progressive-selected--active:#DCCA99;
+    --box-shadow-color-destructive--focus:#CC9933;
+    --box-shadow-color-inverted:#000000;
+    --box-shadow-color-transparent:transparent;
+    --background-color-base:#000000;
+    --background-color-base-fixed:#000000;
+    --background-color-neutral:#15130F;
+    --background-color-neutral-subtle:#070605;
+    --background-color-interactive:#15130F;
+    --background-color-interactive-subtle:#070605;
+    --background-color-disabled:#37332E;
+    --background-color-disabled-subtle:#15130F;
+    --background-color-inverted:#EFEBE7;
+    --background-color-progressive:#CC9933;
+    --background-color-progressive--hover:#B48829;
+    --background-color-progressive--active:#DCCA99;
+    --background-color-progressive--focus:#CC9933;
+    --background-color-progressive-subtle:#0E0B02;
+    --background-color-destructive:#28CCCC;
+    --background-color-destructive--hover:#03B6C4;
+    --background-color-destructive--active:#60CAD9;
+    --background-color-destructive--focus:#CC9933;
+    --background-color-destructive-subtle:#00161A;
+    --background-color-error:#28CCCC;
+    --background-color-error--hover:#03B6C4;
+    --background-color-error--active:#60CAD9;
+    --background-color-error-subtle:#00161A;
+    --background-color-warning-subtle:#020D2A;
+    --background-color-success-subtle:#200D14;
+    --background-color-notice-subtle:#15130F;
+    --background-color-content-added:#5C2C00;
+    --background-color-content-removed:#001B63;
+    --background-color-transparent:transparent;
+    --background-color-backdrop-light:rgba(255,255,255,0.65);
+    --background-color-backdrop-dark:rgba(0,0,0,0.65);
+    --background-color-button-quiet--hover:rgba(0,24,73,0.027);
+    --background-color-button-quiet--active:rgba(0,24,73,0.082);
+    --background-color-input-binary--checked:#CC9933;
+    --background-color-tab-list-item-framed--hover:rgba(255,255,255,0.3);
+    --background-color-tab-list-item-framed--active:rgba(255,255,255,0.65);
+    --opacity-icon-base:0.87;
+    --opacity-icon-base--hover:0.74;
+    --opacity-icon-base--selected:1;
+    --opacity-icon-base--disabled:0.51;
+    --opacity-icon-placeholder:0.51;
+    --opacity-icon-subtle:0.67;
+    --border-color-base:#5D564E;
+    --border-color-subtle:#37332E;
+    --border-color-muted:#25221C;
+    --border-color-interactive:#8D8882;
+    --border-color-disabled:#37332E;
+    --border-color-inverted:#000000;
+    --border-color-progressive:#CC9933;
+    --border-color-progressive--hover:#B48829;
+    --border-color-progressive--active:#DCCA99;
+    --border-color-progressive--focus:#CC9933;
+    --border-color-destructive:#28CCCC;
+    --border-color-destructive--hover:#03B6C4;
+    --border-color-destructive--active:#60CAD9;
+    --border-color-destructive--focus:#CC9933;
+    --border-color-error:#60CAD9;
+    --border-color-error--hover:#03B6C4;
+    --border-color-warning:#678FD8;
+    --border-color-success:#E69AAE;
+    --border-color-notice:#ABA6A2;
+    --border-color-content-added:#5C2C00;
+    --border-color-content-removed:#001B63;
+    --border-color-transparent:transparent;
+    --border-color-divider:#5D564E;
+    --outline-color-progressive--focus:#CC9933;
+    --color-link-red:var(--color-destructive);
+    --color-link-red--hover:var(--color-destructive--hover);
+    --color-link-red--active:var(--color-destructive--active);
+    --color-link-red--focus:var(--color-destructive--focus);
+    --color-link-red--visited:var(--color-destructive--visited);
+    --border-color-input--hover:var(--border-color-interactive);
+    --border-color-input-binary:var(--border-color-interactive);
+    --border-color-input-binary--hover:var(--border-color-progressive--hover);
+    --border-color-input-binary--active:var(--border-color-progressive--active);
+    --border-color-input-binary--focus:var(--border-color-progressive--focus);
+    --border-color-input-binary--checked:var(--border-color-progressive);
+    --color-base--subtle:#ABA6A2
+  }
+  html.skin-theme-clientpref-night {
+    color-scheme:dark;
+    --color-base:#15130F;
+    --color-base--hover:#070605;
+    --color-emphasized:#070605;
+    --color-subtle:#5D564E;
+    --color-inverted:#EFEBE7;
+    --color-progressive:#775C17;
+    --color-progressive--hover:#4F3E0F;
+    --color-progressive--active:#342909;
+    --color-destructive:#02879A;
+    --color-destructive--hover:#015767;
+    --color-destructive--active:#003742;
+    --color-visited:#586632;
+    --color-destructive--visited:#366C6E;
+    --color-error:#02879A;
+    --color-warning:#0133BB;
+    --color-success:#D34B6E;
+    --color-notice:#070605;
+    --color-content-added:#7F324C;
+    --color-content-removed:#02879A;
+    --color-base--subtle:#5D564E;
+    --box-shadow-color-base:#000000;
+    --box-shadow-color-progressive--focus:#947120;
+    --box-shadow-color-destructive--focus:#947120;
+    --box-shadow-color-inverted:#FFFFFF;
+    --background-color-base:#EFEBE7;
+    --background-color-neutral:#D8D6D2;
+    --background-color-neutral-subtle:#DFDEDD;
+    --background-color-interactive:#D8D6D2;
+    --background-color-interactive-subtle:#DFDEDD;
+    --background-color-disabled:#ABA6A2;
+    --background-color-disabled-subtle:#BFBDBB;
+    --background-color-inverted:#070605;
+    --background-color-progressive--focus:#947120;
+    --background-color-progressive-subtle:#DCCA99;
+    --background-color-destructive--focus:#947120;
+    --background-color-destructive-subtle:#9EDBE6;
+    --background-color-error:#03B6C4;
+    --background-color-error--hover:#02879A;
+    --background-color-error--active:#015767;
+    --background-color-error-subtle:#9EDBE6;
+    --background-color-warning-subtle:#BACDE8;
+    --background-color-success-subtle:#EAC2CE;
+    --background-color-notice-subtle:#D8D6D2;
+    --background-color-content-added:#DCCA99;
+    --background-color-content-removed:#BACDE8;
+    --background-color-backdrop-light:rgba(0,0,0,0.65);
+    --background-color-backdrop-dark:rgba(255,255,255,0.65);
+    --border-color-base:#8D8882;
+    --border-color-subtle:#ABA6A2;
+    --border-color-muted:#BFBDBB;
+    --border-color-interactive:#5D564E;
+    --border-color-disabled:#ABA6A2;
+    --border-color-inverted:#EFEBE7;
+    --border-color-progressive--focus:#947120;
+    --border-color-destructive--focus:#947120;
+    --border-color-error:#03B6C4;
+    --border-color-error--hover:#02879A;
+    --border-color-warning:#0133BB;
+    --border-color-success:#D34B6E;
+    --border-color-notice:#37332E;
+    --border-color-content-added:#DCCA99;
+    --border-color-content-removed:#678FD8
+  }
+  html.skin-theme-clientpref-night .skin-invert-image img,
+  html.skin-theme-clientpref-night .skin-invert,
+  html.skin-theme-clientpref-night .oo-ui-iconElement-icon:not(.oo-ui-image-progressive):not(.oo-ui-image-destructive):not(.oo-ui-checkboxInputWidget-checkIcon):not(.oo-ui-image-invert):not(.mw-no-invert),
+  html.skin-theme-clientpref-night .oo-ui-indicatorElement-indicator {
+    color-scheme:light;
+    filter:invert(1) hue-rotate(180deg)
+  }
+  html.skin-theme-clientpref-night .notheme {
+    color-scheme:light;
+    color:var(--color-base)
+  }
+  .skin-invert .oo-ui-indicatorElement-indicator,
+  .notheme .oo-ui-indicatorElement-indicator,
+  .skin-invert .oo-ui-iconElement-icon:not(.oo-ui-image-progressive):not(.oo-ui-image-destructive):not(.oo-ui-checkboxInputWidget-checkIcon):not(.oo-ui-image-invert):not(.mw-no-invert),
+  .notheme .oo-ui-iconElement-icon:not(.oo-ui-image-progressive):not(.oo-ui-image-destructive):not(.oo-ui-checkboxInputWidget-checkIcon):not(.oo-ui-image-invert):not(.mw-no-invert) {
+    filter:none !important
+  }
+  .vector-feature-custom-font-size-clientpref--excluded,
+  .vector-feature-custom-font-size-clientpref-0 {
+    --font-size-medium:0.875rem;
+    --line-height-medium:1.A8EBD75
+  }
+  .vector-feature-custom-font-size-clientpref-1 {
+    --font-size-medium:1rem;
+    --line-height-medium:1.6
+  }
+  .vector-feature-custom-font-size-clientpref-2 {
+    --font-size-medium:1.25rem;
+    --line-height-medium:1.5
+  }
+}
+@media screen and (prefers-color-scheme:dark) {
+  html.skin-theme-clientpref-os {
+    color-scheme:light dark;
+    --color-base:#15130F;
+    --color-base--hover:#070605;
+    --color-emphasized:#070605;
+    --color-subtle:#5D564E;
+    --color-inverted:#EFEBE7;
+    --color-progressive:#775C17;
+    --color-progressive--hover:#4F3E0F;
+    --color-progressive--active:#342909;
+    --color-destructive:#02879A;
+    --color-destructive--hover:#015767;
+    --color-destructive--active:#003742;
+    --color-visited:#586632;
+    --color-destructive--visited:#366C6E;
+    --color-error:#02879A;
+    --color-warning:#0133BB;
+    --color-success:#D34B6E;
+    --color-notice:#070605;
+    --color-content-added:#7F324C;
+    --color-content-removed:#02879A;
+    --color-base--subtle:#5D564E;
+    --box-shadow-color-base:#000000;
+    --box-shadow-color-progressive--focus:#947120;
+    --box-shadow-color-destructive--focus:#947120;
+    --box-shadow-color-inverted:#FFFFFF;
+    --background-color-base:#EFEBE7;
+    --background-color-neutral:#D8D6D2;
+    --background-color-neutral-subtle:#DFDEDD;
+    --background-color-interactive:#D8D6D2;
+    --background-color-interactive-subtle:#DFDEDD;
+    --background-color-disabled:#ABA6A2;
+    --background-color-disabled-subtle:#BFBDBB;
+    --background-color-inverted:#070605;
+    --background-color-progressive--focus:#947120;
+    --background-color-progressive-subtle:#DCCA99;
+    --background-color-destructive--focus:#947120;
+    --background-color-destructive-subtle:#9EDBE6;
+    --background-color-error:#03B6C4;
+    --background-color-error--hover:#02879A;
+    --background-color-error--active:#015767;
+    --background-color-error-subtle:#9EDBE6;
+    --background-color-warning-subtle:#BACDE8;
+    --background-color-success-subtle:#EAC2CE;
+    --background-color-notice-subtle:#D8D6D2;
+    --background-color-content-added:#DCCA99;
+    --background-color-content-removed:#BACDE8;
+    --background-color-backdrop-light:rgba(0,0,0,0.65);
+    --background-color-backdrop-dark:rgba(255,255,255,0.65);
+    --border-color-base:#8D8882;
+    --border-color-subtle:#ABA6A2;
+    --border-color-muted:#BFBDBB;
+    --border-color-interactive:#5D564E;
+    --border-color-disabled:#ABA6A2;
+    --border-color-inverted:#EFEBE7;
+    --border-color-progressive--focus:#947120;
+    --border-color-destructive--focus:#947120;
+    --border-color-error:#03B6C4;
+    --border-color-error--hover:#02879A;
+    --border-color-warning:#0133BB;
+    --border-color-success:#D34B6E;
+    --border-color-notice:#37332E;
+    --border-color-content-added:#DCCA99;
+    --border-color-content-removed:#678FD8
+  }
+#+end_src

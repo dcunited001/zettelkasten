@@ -1,0 +1,146 @@
+:PROPERTIES:
+:ID:       ffbdd4eb-643d-400e-9be2-203386f18310
+:END:
+#+TITLE: Ansible Lint: Getting JSON Schemas
+#+CATEGORY: slips
+#+TAGS:
+
+
++ [[https://superuser.com/questions/184307/bash-create-anonymous-fifo][Bash: named pipes and anon fifo]] hmmmm
+
+* ansible/ansible-lint
+
+Ansible Lint gets [[https://github.com/ansible/ansible-lint/tree/main/src/ansiblelint/schemas][its JSON schemas]] which can also be used by =yaml-language-server=.
+However, I'm unsure of where it actually puts them.
+
+There are many schemas here and they get updated once per hour by [[https://github.com/ansible/ansible-lint/blob/main/src/ansiblelint/schemas/__main__.py][this
+script]]. After =after pip install ansible-lint=, you can manually run it with:
+=python -m ansiblelint.schemas=.
+
+Unfortunately, it hardcodes the update threshold =(60*10) seconds= and uses the
+ =__name__ == "__main__"= pattern ...
+
++ the dependency is already in my path
++ at the time i didn't feel like instantiating another =.venv=
++ i briefly considered a few other options ... but only after i wrote this do i
+  consider the time.
+
+In the end, I just
+
++ Copied the =./src/ansiblelint/schemas/__main__.py= source to edit the =Path=
+  references,
++ Copied the =*.json= files to a directory,
++ Used =C-c C-p= to start a REPL and just evaluated it in chunks.
++ The REPL was just my system python environment.
+
+I had to set a logger after the fact to be sure it was verifying the JSON
+files.
+
+#+begin_src python
+# import logging
+import logging.config
+
+logging.basicConfig(filename=f'{os.environ["EMACSD"]}/schemas/example.log',
+                    encoding='utf-8',
+                    level=logging.DEBUG)
+_logger.setLevel(logging.DEBUG)
+#+end_src
+
+But ... it just bumped an etag on the =__schema__.json= file... (it didn't do
+anything.)
+
+** Strace >>> Search
+
+So, you do what any other reasonable person would do -- you get on stack
+overflow of course. I mean you strace it, since you can ask it specific
+questions and strace will never give you an dated or irrelevant answers.
+
+#+begin_quote
+I tried to get on s/o in 2008ish, but I didn't dilineate between the different
+s/o sites, so i also didn't quite understand they might have distinct moderation
+policies.
+
+i could never even so much as comment on a thing. though i probably wouldn't
+have used it often, it was discouraging. you really don't want to impede
+someone's initial participation or motivation.
+#+end_quote
+
+I've recently found that =tee= doesn't do much on the supply side of pipes
+
+#+begin_quote
+EDIT: (from future self) ... yes it does =>(dumb) >(ass)=
+
+nice to know it's taken me a decade to learn one thing about =tee= while living in
+roanoke.
+#+end_quote
+
+... so this is a bit of practice -- if
+you don't read bash source or use libs like python's =socket/server=, it's easy
+to get so stuck distrohopping that you don't learn much. This is all easy, but
+you don't encounter the deep stuff when searching for solutions to shallow
+problems.
+
+#+headers: :results output code :wrap src syslog-mode
+#+begin_src sh
+_tmp=$(mktemp)
+# exec >3$_tmp
+_cmd="/usr/bin/python -m ansiblelint.schemas"
+strace -o $_tmp -e %file $_cmd
+printf "\n\n"
+cat $_tmp | grep -e json
+# hmmm how to use the output >&3 without creating a file?
+#+end_src
+
+#+RESULTS:
+#+begin_src syslog-mode
+Schemas were updated.
+
+
+
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/__init__.cpython-311-x86_64-linux-gnu.so", 0x7ffde2c5f440, 0) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/__init__.abi3.so", 0x7ffde2c5f440, 0) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/__init__.so", 0x7ffde2c5f440, 0) = -1 ENOENT (No such file or directory)
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/__init__.py", {st_mode=S_IFREG|0644, st_size=14020, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/__init__.py", {st_mode=S_IFREG|0644, st_size=14020, ...}, 0) = 0
+openat(AT_FDCWD, "/usr/lib/python3.11/json/__pycache__/__init__.cpython-311.pyc", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/lib/python3.11/json/__init__.py", O_RDONLY|O_CLOEXEC) = 3
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json", {st_mode=S_IFDIR|0755, st_size=118, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json", {st_mode=S_IFDIR|0755, st_size=118, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json", {st_mode=S_IFDIR|0755, st_size=118, ...}, 0) = 0
+openat(AT_FDCWD, "/usr/lib/python3.11/json", O_RDONLY|O_NONBLOCK|O_CLOEXEC|O_DIRECTORY) = 3
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/decoder.py", {st_mode=S_IFREG|0644, st_size=12473, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/decoder.py", {st_mode=S_IFREG|0644, st_size=12473, ...}, 0) = 0
+openat(AT_FDCWD, "/usr/lib/python3.11/json/__pycache__/decoder.cpython-311.pyc", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/lib/python3.11/json/decoder.py", O_RDONLY|O_CLOEXEC) = 3
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json", {st_mode=S_IFDIR|0755, st_size=118, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/scanner.py", {st_mode=S_IFREG|0644, st_size=2425, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/scanner.py", {st_mode=S_IFREG|0644, st_size=2425, ...}, 0) = 0
+openat(AT_FDCWD, "/usr/lib/python3.11/json/__pycache__/scanner.cpython-311.pyc", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/lib/python3.11/json/scanner.py", O_RDONLY|O_CLOEXEC) = 3
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/lib-dynload/_json.cpython-311-x86_64-linux-gnu.so", {st_mode=S_IFREG|0755, st_size=44472, ...}, 0) = 0
+openat(AT_FDCWD, "/usr/lib/python3.11/lib-dynload/_json.cpython-311-x86_64-linux-gnu.so", O_RDONLY|O_CLOEXEC) = 3
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json", {st_mode=S_IFDIR|0755, st_size=118, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/encoder.py", {st_mode=S_IFREG|0644, st_size=16080, ...}, 0) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/json/encoder.py", {st_mode=S_IFREG|0644, st_size=16080, ...}, 0) = 0
+openat(AT_FDCWD, "/usr/lib/python3.11/json/__pycache__/encoder.cpython-311.pyc", O_RDONLY|O_CLOEXEC) = 3
+openat(AT_FDCWD, "/usr/lib/python3.11/json/encoder.py", O_RDONLY|O_CLOEXEC) = 3
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/site-packages/ansiblelint/schemas/__store__.json", {st_mode=S_IFREG|0644, st_size=3278, ...}, AT_SYMLINK_NOFOLLOW) = 0
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/site-packages/ansiblelint/schemas/__store__.json", {st_mode=S_IFREG|0644, st_size=3278, ...}, 0) = 0
+openat(AT_FDCWD, "/usr/lib/python3.11/site-packages/ansiblelint/schemas/__store__.json", O_RDONLY|O_CLOEXEC) = 3
+newfstatat(AT_FDCWD, "/usr/lib/python3.11/site-packages/ansiblelint/schemas/__store__.json", {st_mode=S_IFREG|0644, st_size=3278, ...}, 0) = 0
+access("/usr/lib/python3.11/site-packages/ansiblelint/schemas/__store__.json", W_OK) = -1 EACCES (Permission denied)
+#+end_src
+
+The gist: that python silently swallows an error after touching the
+=__schema__.json=. it's probably the =with= magic, if i had to guess.
+
+#+begin_quote
+... nevermind I mistook the grepped =json= references below. it fails by design
+after =not os.access(...)=.
+#+end_quote
+
+
+* Roam
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
++ [[id:28e75534-cb99-4273-9d74-d3e7ff3a0eaf][Ansible]]
++ [[id:f5f59e15-624a-4ca0-8bb5-83b3cf1ae087][Ansible Lint Reference]]

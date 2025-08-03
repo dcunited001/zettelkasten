@@ -1,0 +1,197 @@
+diff --git a/.wpilib/wpilib_preferences.json b/.wpilib/wpilib_preferences.json
+index 0d4a452..463cfa8 100644
+--- a/.wpilib/wpilib_preferences.json
++++ b/.wpilib/wpilib_preferences.json
+@@ -1,6 +1,6 @@
+ {
+   "enableCppIntellisense": false,
+   "currentLanguage": "java",
+-  "projectYear": "2024",
+   "teamNumber": 6328
+ }
++  "projectYear": "2025",
+diff --git a/build.gradle b/build.gradle
+old mode 100755
+new mode 100644
+index bb5fa92..56e9ee7
+--- a/build.gradle
++++ b/build.gradle
+@@ -1,8 +1,8 @@
+ plugins {
+     id "java"
+-    id "edu.wpi.first.GradleRIO" version "2024.3.2"
++    id "edu.wpi.first.GradleRIO" version "2025.3.2"
+     id "com.peterabeles.gversion" version "1.10"
+-    id "com.diffplug.spotless" version "6.12.0"
++    id "com.diffplug.spotless" version "6.25.0"
+ }
+ 
+ java {
+@@ -52,28 +52,15 @@ def includeDesktopSupport = true
+ // Configuration for AdvantageKit
+ repositories {
+     maven {
+-        url = uri("https://maven.pkg.github.com/Mechanical-Advantage/AdvantageKit")
+-        credentials {
+-            username = "Mechanical-Advantage-Bot"
+-            password = "\u0067\u0068\u0070\u005f\u006e\u0056\u0051\u006a\u0055\u004f\u004c\u0061\u0079\u0066\u006e\u0078\u006e\u0037\u0051\u0049\u0054\u0042\u0032\u004c\u004a\u006d\u0055\u0070\u0073\u0031\u006d\u0037\u004c\u005a\u0030\u0076\u0062\u0070\u0063\u0051"
+-        }
++        url = uri("https://frcmaven.wpi.edu/artifactory/littletonrobotics-mvn-release")
+     }
+     mavenLocal()
+ }
+ 
+-configurations.all {
+-    exclude group: "edu.wpi.first.wpilibj"
+-}
+-
+-task(checkAkitInstall, dependsOn: "classes", type: JavaExec) {
+-    mainClass = "org.littletonrobotics.junction.CheckInstall"
+-    classpath = sourceSets.main.runtimeClasspath
+-}
+-compileJava.finalizedBy checkAkitInstall
+-
+ // Defining my dependencies. In this case, WPILib (+ friends), and vendor libraries.
+ // Also defines JUnit 4.
+ dependencies {
++    annotationProcessor wpi.java.deps.wpilibAnnotations()
+     implementation wpi.java.deps.wpilib()
+     implementation wpi.java.vendor.java()
+ 
+@@ -82,7 +69,6 @@ dependencies {
+ 
+     roborioRelease wpi.java.deps.wpilibJniRelease(wpi.platforms.roborio)
+     roborioRelease wpi.java.vendor.jniRelease(wpi.platforms.roborio)
+-
+     nativeDebug wpi.java.deps.wpilibJniDebug(wpi.platforms.desktop)
+     nativeDebug wpi.java.vendor.jniDebug(wpi.platforms.desktop)
+     simulationDebug wpi.sim.enableDebug()
+@@ -95,7 +81,7 @@ dependencies {
+     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+ 
+     def akitJson = new groovy.json.JsonSlurper().parseText(new File(projectDir.getAbsolutePath() + "/vendordeps/AdvantageKit.json").text)
+-    annotationProcessor "org.littletonrobotics.akit.junction:junction-autolog:$akitJson.version"
++    annotationProcessor "org.littletonrobotics.akit:akit-autolog:$akitJson.version"
+ }
+ 
+ test {
+@@ -110,8 +96,9 @@ test {
+ // value to "true" to enable the sim GUI by default (this
+ // is the standard WPILib behavior).
+ wpi.sim.addGui().defaultEnabled = true
++wpi.sim.addDriverstation()
+ 
+-// Set the XRP Client Host
++//Sets the XRP Client Host
+ wpi.sim.envVar("HALSIMXRP_HOST", "192.168.42.1")
+ wpi.sim.addXRPClient().defaultEnabled = true
+ 
+diff --git a/settings.gradle b/settings.gradle
+index d94f73c..c493958 100644
+--- a/settings.gradle
++++ b/settings.gradle
+@@ -4,7 +4,7 @@ pluginManagement {
+     repositories {
+         mavenLocal()
+         gradlePluginPortal()
+-        String frcYear = '2024'
++        String frcYear = '2025'
+         File frcHome
+         if (OperatingSystem.current().isWindows()) {
+             String publicFolder = System.getenv('PUBLIC')
+@@ -20,8 +20,8 @@ pluginManagement {
+         }
+         def frcHomeMaven = new File(frcHome, 'maven')
+         maven {
+-            name 'frcHome'
+-            url frcHomeMaven
++            name = 'frcHome'
++            url = frcHomeMaven
+         }
+     }
+ }
+diff --git a/vendordeps/AdvantageKit.json b/vendordeps/AdvantageKit.json
+index 1f57c3b..2707c2b 100644
+--- a/vendordeps/AdvantageKit.json
++++ b/vendordeps/AdvantageKit.json
+@@ -1,40 +1,33 @@
+ {
+   "fileName": "AdvantageKit.json",
+   "name": "AdvantageKit",
+-  "version": "3.2.1",
++  "version": "4.1.2",
+   "uuid": "d820cc26-74e3-11ec-90d6-0242ac120003",
+-  "frcYear": "2024",
+-  "mavenUrls": [],
++  "frcYear": "2025",
++  "mavenUrls": [
++    "https://frcmaven.wpi.edu/artifactory/littletonrobotics-mvn-release/"
++  ],
+   "jsonUrl": "https://github.com/Mechanical-Advantage/AdvantageKit/releases/latest/download/AdvantageKit.json",
+   "javaDependencies": [
+     {
+-      "groupId": "org.littletonrobotics.akit.junction",
+-      "artifactId": "wpilib-shim",
+-      "version": "3.2.1"
+-    },
+-    {
+-      "groupId": "org.littletonrobotics.akit.junction",
+-      "artifactId": "junction-core",
+-      "version": "3.2.1"
+-    },
+-    {
+-      "groupId": "org.littletonrobotics.akit.conduit",
+-      "artifactId": "conduit-api",
+-      "version": "3.2.1"
++      "groupId": "org.littletonrobotics.akit",
++      "artifactId": "akit-java",
++      "version": "4.1.2"
+     }
+   ],
+   "jniDependencies": [
+     {
+-      "groupId": "org.littletonrobotics.akit.conduit",
+-      "artifactId": "conduit-wpilibio",
+-      "version": "3.2.1",
++      "groupId": "org.littletonrobotics.akit",
++      "artifactId": "akit-wpilibio",
++      "version": "4.1.2",
+       "skipInvalidPlatforms": false,
+       "isJar": false,
+       "validPlatforms": [
+         "linuxathena",
+-        "windowsx86-64",
+         "linuxx86-64",
+-        "osxuniversal"
++        "linuxarm64",
++        "osxuniversal",
++        "windowsx86-64"
+       ]
+     }
+   ],
+diff --git a/vendordeps/WPILibNewCommands.json b/vendordeps/WPILibNewCommands.json
+index 67bf389..3718e0a 100644
+--- a/vendordeps/WPILibNewCommands.json
++++ b/vendordeps/WPILibNewCommands.json
+@@ -3,7 +3,7 @@
+   "name": "WPILib-New-Commands",
+   "version": "1.0.0",
+   "uuid": "111e20f7-815e-48f8-9dd6-e675ce75b266",
+-  "frcYear": "2024",
++  "frcYear": "2025",
+   "mavenUrls": [],
+   "jsonUrl": "",
+   "javaDependencies": [
+diff --git a/vendordeps/XRPVendordep.json b/vendordeps/XRPVendordep.json
+index 3c7f1a1..28401fb 100644
+--- a/vendordeps/XRPVendordep.json
++++ b/vendordeps/XRPVendordep.json
+@@ -3,7 +3,7 @@
+   "name": "XRP-Vendordep",
+   "version": "1.0.0",
+   "uuid": "1571a1a5-ed3f-4f07-b7eb-b2beb17394e0",
+-  "frcYear": "2024",
++  "frcYear": "2025",
+   "mavenUrls": [],
+   "jsonUrl": "",
+   "javaDependencies": [

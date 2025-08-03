@@ -277,17 +277,55 @@ manhtml() {
 
 Then add the following rules to the inline CSS:
 
+#+name: manhtmlcss
 #+begin_example css
+
+body { font-size: small; }
 h2 { font-size: 1.0em; }
 h1 { font-size: 1.2em; }
-h2 { margin: 0.2em; }
-h3 { font-size: 0.9em; margin: 0.1em; }
-b { color: darkgreen; }
-i { color: indigo; }
+h2 { margin: 0.2em; color: navy; }
+h3 { font-size: 0.9em; margin: 0.1em; color: darkred; }
+b { color: darkgreen; font-weight: 650; }
+i { color: indigo; font-weight: 600; }
 p { font-size: 0.9em; line-height: 1.1em; }
 #+end_example
 
 Edit the DOM a bit and print
+
+***** Containers.conf
+
+#+begin_src shell :results output verbatim :var css=manhtmlcss
+# doesn't include manhtml() in scope ... or a mandb apparently
+# ... org-babel also cleans tmp files it creates
+
+d="$(mktemp -d)"
+# d=/tmp/tmp.yK7uS7yF2N
+regen=1
+for mp in containers{.conf,-storage.conf,-registries.conf,-policy.json}; do
+  [[ 1 -eq "$regen" ]] && manhtml $mp > $d/$mp.html
+  # these should be dt (mostly)
+  sed -i -E 's/<p style="margin-left:9%; "><b>/<p class="mandt"><b>/g' $d/$mp.html
+  # these should be dl (but may lack dt)
+  sed -i -E 's/<p style="margin-left:9%; ">/<p class="mandl">/g' $d/$mp.html
+  # inject the styles ... ¯\_(ツ)_/¯ lol
+  sed -i -E 's/ +<\/body>//g' $d/$mp.html
+  sed -i -E 's/ +<\/html>//g' $d/$mp.html
+  echo "<style type=\"text/css\">
+$css
+p.mandt { margin: 0.2em 0.5em }
+p.mandl { margin: 0.0em 2.0em; text-indent: 1.5em; }
+</style>" >> $d/$mp.html
+  echo "\n</body>\n</html>" >> $d/$mp.html
+done
+
+ls $d/*.html
+#+end_src
+
+#+RESULTS:
+: -rw-r--r-- 1 dc dc 202 Jul 30 22:41 /tmp/tmp.yK7uS7yF2N/containers.conf.html
+: -rw-r--r-- 1 dc dc 202 Jul 30 22:41 /tmp/tmp.yK7uS7yF2N/containers-policy.conf.html
+: -rw-r--r-- 1 dc dc 202 Jul 30 22:41 /tmp/tmp.yK7uS7yF2N/containers-registry.conf.html
+: -rw-r--r-- 1 dc dc 202 Jul 30 22:41 /tmp/tmp.yK7uS7yF2N/containers-storage.conf.html
 
 * Projects
 

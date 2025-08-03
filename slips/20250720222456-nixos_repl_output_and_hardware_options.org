@@ -129,6 +129,10 @@ Would not have done this if i had known...
   };
 #+end_example
 
+amdvlk: "pls use pre-2023 hardware"
+
+I'll pass.
+
 #+begin_example nix
   amdgpu = {
     amdvlk = {
@@ -196,14 +200,13 @@ Would not have done this if i had known...
   };
 #+end_example
 
+Corsair keyboard/mouse (nope)
+
 #+begin_example nix
   ckb = {
     enable = false;
     package = «derivation /nix/store/...-ckb-next-0.6.2.drv»;
   };
-#+end_example
-
-#+begin_example nix
   ckb-next = {
     enable = false;
     gid = null;
@@ -217,6 +220,8 @@ Would not have done this if i had known...
     usb = { enable = false; };
   };
 #+end_example
+
++ hardware.cpu.amd.sev :: AMD SEV [[https://www.amd.com/en/developer/sev.html][Secure Encrypted Virtualization]]
 
 #+begin_example nix
   cpu = {
@@ -260,6 +265,9 @@ Would not have done this if i had known...
   };
 #+end_example
 
++ hardware.deviceTree :: When nix's 120,000 packages don't cover u-boot for your
+  bleeding edge IoT device.
+
 #+begin_example nix
   decklink = { enable = false; };
   deviceTree = {
@@ -283,6 +291,8 @@ Would not have done this if i had known...
   };
 #+end_example
 
+For when your monitor is being difficult (hardware devs I guess)
+
 #+begin_example nix
   display = {
     edid = {
@@ -294,6 +304,13 @@ Would not have done this if i had known...
     outputs = «repeated»;
   };
 #+end_example
+
++ hardware.enableKSM :: changed to =hardware.ksm.enable=. this is an older kernel
+  enhancement to open more RAM for more VMs. =ksmd= merges identical pages of
+  memory, making it like post-facto CoW -- if the pages change, it will do CoW,
+  i think. it can open you up to side-channel/timing attacks and likely
+  increases CPU load & latency. useless with things like =hardware.cpu.amd.sev=
+  above
 
 #+begin_example nix
   enableAllFirmware = false;
@@ -331,6 +348,9 @@ Would not have done this if i had known...
   };
 #+end_example
 
++ hardware.hackrf :: support open source SDR devices
++ hardware.i2c :: serial devices
+
 #+begin_example nix
   hackrf = { enable = false; };
   i2c = {
@@ -345,6 +365,10 @@ Would not have done this if i had known...
     guids = [ ];
   };
 #+end_example
+
++ hardware.ipu6 :: support an intel IPU6 for your [[https://github.com/PhotonVision/photonvision/blob/46ac1baa6924c60669b26f1bc16a24b36d5f36e7/docs/source/docs/hardware/selecting-hardware.md?plain=1#L23][MIPI-connected camera]]
+  - IPU: image processing unit
+  - MIPI-CSI: the camera connector for Raspberry Pi's
 
 #+begin_example nix
   inputmodule = { enable = false; };
@@ -363,6 +387,8 @@ Would not have done this if i had known...
     zsa = { enable = false; };
   };
 #+end_example
+
+KSM
 
 #+begin_example nix
   ksm = {
@@ -386,6 +412,10 @@ Would not have done this if i had known...
   };
 #+end_example
 
++ hardware.logitech.enable :: add =pkgs.ltunify=
++ hardware.logitech.enableGraphical :: add =pkgs.solaar=
++ both setup =udev= rules, =lcd= sets up a daemon
+
 #+begin_example nix
   logitech = {
     enable = false;
@@ -407,6 +437,11 @@ Would not have done this if i had known...
     };
   };
 #+end_example
+
++ hardware.mcelog :: enable MCE, which monitors hardware to predict failures
++ new-lg4ff :: play GranTurismo Forza with your Logitech wheel
++ NFC-NCI :: apparently not covered by Analog Devices' [[https://www.analog.com/en/resources/app-notes/secure-microcontrollers-nfc-overview.html][Secure Microcontrollers
+  NFC Overview]] or this [[file:../topics/img/smartcards-components.png][handy diagram]]
 
 #+begin_example nix
   mcelog = { enable = false; };
@@ -452,6 +487,8 @@ Would not have done this if i had known...
     };
   };
 #+end_example
+
+I don't have nvidia
 
 #+begin_example nix
   nitrokey = { enable = false; };
@@ -529,6 +566,10 @@ Would not have done this if i had known...
   };
 #+end_example
 
++ onlykey :: open-source alternative to yubikey. a bit iffy (supports backups,
+  upgradable firmware). the limits are there for a reason (half legit, half
+  business model), but i really don't know...
+
 #+begin_example nix
   nvidiaOptimus = { disable = false; };
   onlykey = { enable = false; };
@@ -543,6 +584,8 @@ Would not have done this if i had known...
     s3tcSupport = «error: The option `hardware.open ... »;
   };
 #+end_example
+
+Your mouse has colors (and your user has direct hardware access)
 
 #+begin_example nix
   openrazer = {
@@ -561,6 +604,8 @@ Would not have done this if i had known...
   };
 #+end_example
 
+To support some wacom tablets?
+
 #+begin_example nix
   opentabletdriver = {
     blacklistedKernelModules = [
@@ -572,6 +617,8 @@ Would not have done this if i had known...
     package = «derivation /nix/store/...-OpenTabletDriver-0.6.5.1.drv»;
   };
 #+end_example
+
+For Mac's parallels hypervisor
 
 #+begin_example nix
   parallels = {
@@ -591,12 +638,19 @@ PCMCIA what the fuck
   };
 #+end_example
 
++ ensurePrinters :: sets up printers. similar to zerotier, removing config here
+  doesn't delete the printer.
+  + name, deviceUri, model, location, description, ppdOptions
++ ensureDefaultPrinter :: pass =$name= to =lpadmin -x= command to set the default
+
 #+begin_example nix
   printers = {
     ensureDefaultPrinter = null;
     ensurePrinters = [ ];
   };
 #+end_example
+
+Audio
 
 #+begin_example nix
   pulseaudio = {
@@ -626,11 +680,16 @@ PCMCIA what the fuck
   };
 #+end_example
 
+RAID
+
 #+begin_example nix
   raid = {
     HPSmartArray = { enable = false; };
   };
 #+end_example
+
++ rasdaemon :: like MCE above, preemptively log hardware exceptions and info to
+  make hardware failures easier to trace/explain later.
 
 #+begin_example nix
   rasdaemon = {
@@ -645,6 +704,8 @@ PCMCIA what the fuck
   };
 #+end_example
 
+SDR
+
 #+begin_example nix
   rtl-sdr = {
     enable = false;
@@ -652,12 +713,23 @@ PCMCIA what the fuck
   };
 #+end_example
 
+Saleae Logic Analyzers: "/effortlessly/ capture signals and decode protocols like
+SPI, I2C, I3C, CAN bus, Serial /and many more/..."
+
+#+begin_quote
+okay, yeh i don't have $250 - $1250, but i probably should.
+
+This is why i read through this stuff.
+#+end_quote
+
 #+begin_example nix
   saleae-logic = {
     enable = false;
     package = «derivation /nix/store/...-saleae-logic-2-2.4.29.drv»;
   };
 #+end_example
+
+I have linux and I don't need a scanner
 
 #+begin_example nix
   sane = {
@@ -687,6 +759,9 @@ PCMCIA what the fuck
   };
 #+end_example
 
++ hardware.sata.timeout :: you have a bad cable? j/k
+  - to ensure against premature RAID failures (you have RAS and MCE on right?)
+
 #+begin_example nix
   sata = {
     timeout = {
@@ -696,6 +771,11 @@ PCMCIA what the fuck
     };
   };
 #+end_example
+
++ hardware.sensor.hddtemp :: monitor drive temperature
+  - it isn't clear whether this works on ARM or NVMe drives
++ hardware.sensor.iio :: (ambient light sensors) your computer is trying to tell
+  you to go to sleep
 
 #+begin_example nix
   sensor = {
@@ -710,6 +790,9 @@ PCMCIA what the fuck
   };
 #+end_example
 
++ hardware.spacenavd :: 3D connexion devices: 3D mouse for CAD, blender, etc
++ hardware.steam-hardware :: steam controllers, HTC Vive
+
 #+begin_example nix
   spacenavd = { enable = false; };
   steam-hardware = { enable = false; };
@@ -720,6 +803,8 @@ PCMCIA what the fuck
     power-daemon = { enable = false; };
   };
 #+end_example
+
++ hardware.trackpoint
 
 #+begin_example nix
   trackpoint = {
