@@ -1,0 +1,282 @@
+:PROPERTIES:
+:ID:       027166e4-4321-4c75-8990-8198c7a47ae4
+:END:
+#+title: Cheatsheet: Hyprland
+
+* Hyprctl
+
+** Subcommands
+
+Use =-j= to output in json
+
+Read
+
+| activewindow         | Active window name & properties                     |
+| activeworkspace      | Active workspace & properties                       |
+| animations           | Config state on animations/beziers                  |
+| binds                | List: registered binds                              |
+| clients              | List: windows with properties                       |
+| configerrors         | List: config parsing errors                         |
+| cursorpos            | Cursor position (global layout)                     |
+| decorations <win_rx> | List: decorations and their info                    |
+| devices              | List:  connected keyboards and mice                 |
+| getoption <opt>      | Config option status (values)                       |
+| globalshortcuts      | List: global shortcuts                              |
+| instances            | List: running instances of Hyprland with their info |
+| layers               | List: surface layers                                |
+| layouts              | List: layouts available (including plugin'd ones)   |
+| monitors             | List: active outputs & properties                   |
+| monitors all         | List: active & inactive outputs                     |
+| rollinglog           | Tail log. Includes -f/--follow                      |
+| splash               | Current splash                                      |
+| systeminfo           | System info                                         |
+| version              | Version. Includes flags, commit, branch of build.   |
+| workspacerules       | List: workspace rules                               |
+| workspaces           | List: workspaces & properties                       |
+
+Write
+
+| dismissnotify   |                      | Dismiss all notifications                               |
+| dismissnotify   | [amount]             | Dismiss AMOUNT of notifications.                        |
+| dispatch        | <disp> [args]        | Call a keybind dispatcher with arguments                |
+| hyprpaper       | ...                  | hyprpaper request                                       |
+| hyprsunset      | ...                  | hyprsunset request                                      |
+| keyword         | <name> <value>       | Call a config keyword dynamically                       |
+| kill            |                      | kill to get into a kill mode. exit with escape          |
+| notify          | ...                  | Sends notification using Hyprland's notification system |
+| plugin          | ...                  | Plugin request                                          |
+| reload          |                      | Force config reload                                     |
+| reload          | cfg-only             | Force config reload. No monitor reload.                 |
+| setcursor       | <theme> <size>       | Cursor theme. Reload cursor manager                     |
+| seterror        | <color> <message...> | Set hyprctl error string. Color uses the config format. |
+| output          | ...                  | Add/remove fake outputs to preferred backend            |
+| setprop         | ...                  | Set window property                                     |
+| switchxkblayout | ...                  | Set xkb layout index                                    |
+
+* Inputs
+
+** devices
+
+*** Active keyboard layout
+
+List =$layout $variant= for the active keyboard input
+
+#+name: hyprDevices
+#+begin_src shell :results output silent code :wrap example json
+hyprctl devices -j
+#+end_src
+
+JQ query
+
+#+name: jqXkbLayout
+#+begin_src jq :results output verbatim :stdin hyprDevices :compact yes
+.keyboards
+  | map(select(.main))
+  | first
+  | "\(.layout) \(.variant)"
+#+end_src
+
+#+RESULTS: jqXkbLayout
+: "us altgr-intl"
+
+One-liner
+
+#+begin_src shell
+hyprctl devices -j \
+    | jq '.keyboards | map(select(.main)) | first | "\(.layout) \(.variant)"'
+#+end_src
+
+#+RESULTS:
+: us altgr-intl
+grep -C5 --include=*.nix -re environment.sessionVariables /data/ecto/x.files
+
+* Connecting UI
+
+** D-Bus
+
++ Should be preferred over socket where it makes sense, since it can respond to
+  D-Bus event sources other than hyprland
++ A single "fan-in" process can subscribe to multiple d-bus events, transform
+  their responses and emit to a file/socket. =eww= widgets would connect to this.
+
+** Socket
+
+Should be preferred over one-off bash scripts where possible ... e.g. for =eww= widgets
+
+#+begin_src shell
+awkProg='/^(active)?window>>/{print $0}'
+hyprsock=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
+
+# awk or sed can filter events
+socat -u "UNIX-CONNECT:$hyprsock" - \
+    | stdbuf -o0 \
+      awk -F '>>|,' $awkProg
+
+# this makes it a bit easier to follow events
+socat -u "UNIX-CONNECT:$hyprsock" -
+
+# and this emits notifications by wrapping event text in quotes
+socat -u "UNIX-CONNECT:$hyprsock" - \
+    | xargs -I'{}' notify-send --icon hyprsock '"{}"'
+
+# notify-send -- can't be a builtin like echo
+# -I'{} single quotes or \{\} to escape
+# '"{}"' xargs eats the single-quotes, but subs {} in any strings.
+#   a bit tricky, but it works here
+#+end_src
+
+This reverses a list of icons
+
+#+begin_src shell :results output verbatim
+iconset=/run/current-system/sw/share/icons/Adwaita/scalable/mimetypes
+n=$(ls $iconset | wc -l)
+# icons=$(ls $iconset)
+icons=$(ls $iconset | sed -E 's/(.+)\.(svg|png|ico)/\1/g')
+
+# modular arithmetic is dumb in awk. NR also can't be known in advance
+# -8 % 3 == 2 == 8 % 3 ... when cycles are preserved in Z^3
+
+ls $iconset \
+    | tr ' ' '\n' \
+    | awk -v arr="$icons" \
+    'BEGIN { split(arr,ay," ") }
+{ revi=length(ay) - (NR % length(ay));
+  print ay[revi], NR, revi;
+}' | tee >(xargs -n3 notify-send -i)
+
+# tee reads from stdin, writes to its stdout
+#   and broadcasts to xargs stdin
+
+# xargs -I'{}' notify-send -i '{}' '{}' '{}' # broadcasts args 3x
+#+end_src
+
+#+RESULTS:
+| x-office-spreadsheet-template  |  1 | 26 |
+| x-office-spreadsheet           |  2 | 25 |
+| x-office-presentation-template |  3 | 24 |
+| x-office-presentation          |  4 | 23 |
+| x-office-drawing               |  5 | 22 |
+| x-office-document-template     |  6 | 21 |
+| x-office-document              |  7 | 20 |
+| x-office-addressbook           |  8 | 19 |
+| video-x-generic                |  9 | 18 |
+| text-x-script                  | 10 | 17 |
+| text-x-preview                 | 11 | 16 |
+| text-x-generic                 | 12 | 15 |
+| text-html                      | 13 | 14 |
+| package-x-generic              | 14 | 13 |
+| model                          | 15 | 12 |
+| inode-symlink                  | 16 | 11 |
+| inode-directory                | 17 | 10 |
+| image-x-generic                | 18 |  9 |
+| font-x-generic                 | 19 |  8 |
+| audio-x-generic                | 20 |  7 |
+| application-x-sharedlib        | 21 |  6 |
+| application-x-generic          | 22 |  5 |
+| application-x-firmware         | 23 |  4 |
+| application-x-executable       | 24 |  3 |
+| application-x-addon            | 25 |  2 |
+| application-certificate        | 26 |  1 |
+| x-package-repository           | 27 | 27 |
+
+This displays a random icon for each notification. =tee= records the output below,
+which isn't emitted if =C-g= is used to prematurely kill the =ob-shell= process
+
+#+begin_src shell :var awkprog=awkRandLine :results output verbatim
+hyprsock=$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock
+iconset=/run/current-system/sw/share/icons/Adwaita/scalable/mimetypes
+n=$(ls $iconset | wc -l)
+icons=$(ls $iconset | sed -E 's/(.+)\.(svg|png|ico)/\1/g')
+
+socat -u "UNIX-CONNECT:$hyprsock" - \
+    | stdbuf -o0 awk -v arr="$icons" $awkprog \
+    | tee >(xargs -n3 notify-send -i)
+
+#    | xargs -n3 notify-send -i
+#    | xargs -I'{}' notify-send --icon hyprsock '"{}"'
+#+end_src
+
+#+RESULTS:
+: application-certificate hyprsock 'focusedmon>>DP-2,2'
+: application-x-addon hyprsock 'focusedmonv2>>DP-2,2'
+: application-certificate hyprsock 'activewindow>>Alacritty,dc@kratos:~'
+: application-x-executable hyprsock 'activewindowv2>>3f054490'
+: application-x-firmware hyprsock 'activelayout>>hl-virtual-keyboard,English (intl., with AltGr dead keys)'
+: application-x-generic hyprsock 'activelayout>>hl-virtual-keyboard,English (intl., with AltGr dead keys)'
+: application-x-firmware hyprsock 'openlayer>>swaync-notification-window'
+: application-x-executable hyprsock 'closelayer>>swaync-notification-window'
+: font-x-generic hyprsock 'openlayer>>swaync-notification-window'
+
+awkprog
+
+#+name: awkRandLine
+#+begin_example awk
+function randint(n) { return int(n * rand()) }
+
+BEGIN { split(arr,ay," "); }
+{
+  ico=randint(NR)+1; # a bit weird
+  # print NR, ay[ico % length(ay)], "'$0'";
+  printf "%s hyprsock '%s'\n", ay[ico % length(ay)], $0;
+  next;
+}
+#+end_example
+
+
+It works, but it seems to eventually encounter input without all args
+
+* Printable Wiki :noexport:
+
+Not enough highlighting to be useful
+
+#+begin_src javascript
+// remove headers
+Array.from(document.querySelectorAll('thead')).forEach(el => el.remove());
+
+// remove nav
+Array.from(document.querySelectorAll('nav')).forEach(el => el.remove());
+document.querySelector('aside').remove();
+
+// remove timestamp, prev/next from bottom
+document.querySelector('main').replaceChildren(document.querySelector('.content'))
+
+// on variables page: these are the [!] important notes ... you should already
+// know these. (removes code examples from other pages)
+// Array.from(document.querySelectorAll('.content > div')).forEach(el => el.remove());
+
+// i also removed the experimental section and errant <p> tags
+#+end_src
+
+Stylesheet (on light mode)
+
+#+begin_src css
+table { font-size: 0.7rem !important; margin-top: 0.1rem !important; }
+h2 { color: darkblue !important; font-size: 1.3rem !important; margin: 0.1rem !important; }
+h3 { color: darkgreen !important; font-size: 1.2rem !important; margin: 0.1rem !important; }
+td { padding: 0.1rem 0.3rem !important; }
+h4 { color: darkred !important; font-size: 1.0rem !important; margin: 0.1rem !important; }
+p { font-size: 0.9rem !important; line-height: 1.1rem !important; margin: 0.1rem !important; }
+code { color: darkgreen !important; }
+a { color: indigo !important; font-weight: 500 !important; }
+ul { margin: 0.3em 1.0em !important; }
+
+/* margin-top: 0.1em !important; margin-left: 1.0em !important; */
+
+li { line-height: 1.2em !important; margin: 0 0em !important; }
+li code { font-size: 0.8em !important; line-height: 0.8em !important; }
+
+/* code blocks */
+pre.chroma { border-radius: 3px !important; margin: 0.1em !important; padding: 0.2em !important; }
+
+/* picking a light color that's not too light is tough. colors with multiple */
+/* dyes are best ... nevermind @media print makes it transparent */
+/* background-color: lavenderblush !important; */
+
+.hextra-code-block { line-height: 1em; margin-top: 0.2em; }
+
+/* info box */
+.hx-overflow-x-auto { font-size: small; margin-top: 0.2em; }
+/* line-height: 1.0em !important; */
+.hx-leading-7 { line-height: 1.1em !important; } /* info box text */
+.hx-text-xl { font-size: 0.8em; } /* info box: icon text */
+#+end_src
