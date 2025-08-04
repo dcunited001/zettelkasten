@@ -1,0 +1,158 @@
+:PROPERTIES:
+:ID:       2007cf80-a08e-4d78-b670-c1be55c5f605
+:END:
+#+TITLE:     OCCT: Scratch
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+
+#+begin_quote
+A premature project I had started in late March 2023. I must have found a
+template somewhere.
+
+=trivial-build-system= would change to whatever's necessary and =guix.scm= would
+contain at least: =tree-sitter-tcl=, =tcl-ts-mode=, a test project and some CAD
+assets in various formats.
+
+It also needs a =Makefile= with:
+
+- some profile management
+- =channels{-lock}.scm=
+- Repl startup automation
+
+[[https://git.sr.ht/~abcdw/guile-ares-rs][~git.sr.ht/~abcdw/guile-ares-rs]] automates the startup & REPL state. Here it's
+needed for the TCL Wish repl. This would help automate the stateful BS
+encountered when booting up work for the day.
+
++ Once some useful =ob-tcl= could talk to =wish= then REPL setup can occur
+  in Emacs/org.
++ One kinda simple approach for less complext projects would be jinja-based
+  templating (like with the VyOS firewall's NFT automation). This doesn't scale
+  well in the end though.
+#+end_quote
+
+* Overview
+
+Repo for testing occt + emacs +org-babel. The goal is to enable loading the
+environment for passing TCL scripts to OCCT from org-mode.
+
+This should allow the generation of fairly simple shapes with simple operations
+-- but anything more complex than fillets with edge specification or simple
+boolean operations will probably require code that's unmaintainable. The idea
+behind the workflow is to use OCCT to /parametrically/ produce simple models
+which can be imported into other CAD programs.
+
+** Development Package Targets
+
+#+begin_src scheme :tangle guix.scm
+;; WOW! lol
+(use-modules (guix gexp)
+             (guix packages)
+             (guix download)
+             (guix git-download)
+             (guix build-system trivial)
+             (guix build-system copy)
+             ((guix licenses) #:prefix license:)
+
+             (gnu packages base)
+             (gnu packages tcl)
+             (gnu packages maths)
+             (gnu packages emacs-xyz))
+
+(package
+  (name "occt-scratch")
+  (version "0.0.1")
+  (source (local-file "."))
+  (build-system trivial-build-system)
+  (propagated-inputs (list opencascade-occt))
+  (home-page "")
+  (synopsis "")
+  (description "")
+  (license #f))
+#+end_src
+
+** Manifest
+
+#+begin_src scheme manifest.scm
+;; You can store it in a file that you may then pass to any 'guix' command
+;; that accepts a '--manifest' (or '-m') option.
+
+(concatenate-manifests
+  (list (specifications->manifest (list "git"))
+        (package->development-manifest
+          (specification->package "gcc-toolchain"))
+        (package->development-manifest
+          (specification->package "make"))))
+#+end_src
+
+* Notes
+
+Either use =buffer-env= or =guix shell -Df guix.scm= to establish the
+environment.
+
+** OCCT Environment
+
+Run =ls -al $GUIX_ENVIRONMENT= after loading =guix shell= to see what's there.
+
+*** Env Scripts
+
++ $GUIX_ENVIRONMENT/bin/custom_gcc_64.sh
++ $GUIX_ENVIRONMENT/bin/custom.sh
++ $GUIX_ENVIRONMENT/bin/DRAWEXE
++ $GUIX_ENVIRONMENT/bin/draw.sh
++ $GUIX_ENVIRONMENT/bin/env.sh
+
+** OCCT Tests
+
++ The =DRAWEXE= application basically is the test harness.
++ See [[https://dev.opencascade.org/doc/overview/html/occt_user_guides__test_harness.html][Draw Test Harness]] in docs and Doxygen for [[https://dev.opencascade.org/doc/refman/html/class_draw.html][Draw class]].
+
+** OCCT Draw
+
+Running =draw.sh= starts a console and the GUI. To do so, it loads the =env.sh=,
+=custom.sh=, and =custom_gcc_64.sh= scripts, in order. In the console or GUI,
+you'll need to run =pload ALL= to load all (some?) functionality.
+
+#+begin_quote
+NOTE: either some environment details are not being properly loaded. e.g. some
+GUI interactions are not enabled. Perhaps some packages are missing from the
+=guix.scm= propagated inputs.
+#+end_quote
+
+*** TCL Commands
+
+TCL commands are entered into the console.
+
+**** Draw [[https://dev.opencascade.org/doc/overview/html/occt_user_guides__test_harness.html#occt_draw_3_1][general commands]]
+
++ pload :: load script/module
++ help :: get help on commands
++ help help :: get help on help
++ spy :: record TCL macros into a file
+
+**** [[https://dev.opencascade.org/doc/overview/html/occt_user_guides__test_harness.html#occt_draw_8][Data Exchange]]
+
+Commands for loading IGES/STEP files
+
+**** Geometry Commands
+
+This will be more interesting if data is loaded from a file
+
++ beziercurve
++ bsplinecurve
+
+*** Errors
+
+The docs mention that =$CASROOT/src/
+
+**** Clicking anything in "File" :: bgerror failed to handle background error.
+**** Clicking Samples > View Samples :: Original error: no files matched glob pattern "*.tcl"
+
+* TCL
+
+Resources for TCL Lang and TCL in Emacs
+
+** Resources
++ [[https://www2.lib.uchicago.edu/keith/tcl-course/#exercises][Intro to the TCL Programming Language]] (1990's)
++ [[https://www.emacswiki.org/emacs?TclMode][Emacs Wiki: TCL Mode]]
++ [[https://wiki.tcl-lang.org/page/Tcl+Style+Guide][wiki.tcl-lang.org: Style Guide]] (last updated 2018)

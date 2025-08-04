@@ -1,0 +1,268 @@
+:PROPERTIES:
+:ID:       81a26cc3-22f3-4332-96c2-c71407d5149d
+:END:
+#+title: DC Guix: ts-hyprlang
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:aef34489-3943-4c2f-bf88-828f5ea39e16][Tree-sitter]]
++ [[id:b4e1fa85-53ca-467e-aac2-9a4e37b80144][TCL]]
+  
+* Resources
+** hyprlang
+
+Emacs TS mode: [[https://github.com/Nathan-Melaku/hyprlang-ts-mode][Nathan-Melaku/hyprlang-ts-mode]]
+
+TS Grammar: [[https://github.com/tree-sitter-grammars/tree-sitter-hyprlang][tree-sitter-grammars/tree-sitter-hyprlang]]
+
+** TCL
+
+[[https://github.com/tree-sitter-grammars/tree-sitter-tcl][tree-sitter-grammars/tree-sitter-tcl]] the community package. didn't have time
+to fix it.
+
+[[https://hg.sr.ht/~cdrozak/tree-sitter-tcl][~cdrozak/tree-sitter-tcl]] an older version, completely separate from the above
+project. this one's easier to build.
+
+*** TCL in OCC
+
+#+begin_quote
+oops i stumbled on an old idea.
+#+end_quote
+
++ I wanted to hack a bit on OpenCascade's hundreds of TCL test cases. I ported
+  the =syntax-table= from emacs' =tcl-mode= over to =tcl-ts-mode=, which worked as a
+  PoC. I had tried it on [[https://github.com/dcunited001/.emacs.guix/blob/master/lib/tcl-ts/test/Penrose.tcl][Penrose.tcl]], which generates a [[https://en.wikipedia.org/wiki/Penrose_triangle][penrose triangle]] -- /the
+  output can easily be exported to various formats/.
++ Without an =ob-tcl= that connects OCC's TCL =wish= repl, the workflow is too
+  stateful and org-babel isn't the best way to organize code.
+  - It _could_ work for hacking on CAD... _but model parameterization is always at
+    least as hard as dimensional analysis_.
+  - This is /apropos to/ FreeCAD's [[https://wiki.freecad.org/Topological_naming_problem/en][Topological Naming Problem]], though that's more
+    about the topology than the naming: it requires flexible data structures to
+    index topological features in a consistent & extensible manner.
+  - So the real problem here: CAD is just hard. Scripts that name features with
+    dimensional references need to consistently track the "configuration space"
+    of parameters with less constraints.
+  - That REPL is fairly standard, so a =comint-mode=
+  derivative already exists. IIRC I had started to test this out
++ TCL is pretty dumb (in a good way), so the code ages well (I think?). It has
+  some kind of advantages in binding to C/C++ FFI that make it automagic.
+
+#+begin_quote
+This was a good idea that I would have liked to explore turning into:
+
+- first a basic emacs-driven OpenSCAD (but with more dimensions)
+- then a means of sharing simple parts using a package manager ... but with
+  parameterizable packages or builds.
+
+e.g. 2080/etc aluminum with: pkg params like length; build params like a
+  composite package running a subtracted inner extrusion; composite packages
+  that bundle STEP-files by [[https://en.wikipedia.org/wiki/Uniform_Resource_Identifier][URI]] or simple screws/parts.
+
+it would totally fail at anything complex though, but probably worth at least
+trying to umm learn things about CAD and whatnot.
+#+end_quote
+
+* Overview
+
+
+** Main Issues
+
+I had tried getting Guix's private =tree-sitter-grammar= methods from
+=./gnu/packages/tree-sitter.scm= to work before, but I wasn't confident enough
+about scheme to be sure.
+
+This time around, I was able to get the =(@@ (gnu packages tree-sitter)
+tree-sitter-grammar)= imported. It's connections to other modules and definitions
+were simpler than I had realized. It's still a bit wonky to use regardless
+
+
+* Package
+
+#+begin_src scheme :tangle ts-hyprlang.scm
+(use-module (ellipsis packages tree-sitter)
+            ((guix licenses) #:prefix license:)
+            (gnu packages)
+            (gnu packages base)
+            (gnu packages crates-graphics)
+            (gnu packages crates-io)
+            (gnu packages node)
+            (gnu packages tree-sitter)
+            (guix build-system cargo)
+            (guix build-system gnu)
+            (guix build-system tree-sitter)
+            (guix gexp)
+            (guix git-download)
+            (guix hg-download)
+            (guix packages)
+            (guix utils)
+            (srfi srfi-1))
+#+end_src
+
+... =hidden-package= does not do what I assumed it would. it seemed to prevent the
+inheriting package from building ... but =-e (@@ ...)= syntax still worked.
+
++ still not sure whether =(hidden-package ...)= suppresses the package-name even
+  if redefined?
+
+#+begin_example shell
+# these are /not/ supposed to work at the same time IIRC
+guix build -L $HOME/.dotfiles/ellipsis \
+  -e '(@@ (ellipsis packages tree-sitter) ts-hyprlang)'
+guix build -L $HOME/.dotfiles/ellipsis \
+  -e '(@  (ellipsis packages tree-sitter) ts-hyprlang)'
+#+end_example
+
+That syntax is great for hacking a package outside of proper scheme module
+directories, but falls short when referring to packages by =package-name= like in
+=specfications->manifest=, making them tough to compose into profiles.
+
+I think these issues were from duplicate package definitions? Or something about
+how scheme identifies an entry point with =-s=. I think the entire module needs to
+be evaluated if you refer to the package by =(name "eg-hello")=, whereas the =-e=
+evaluation somehow reduces the scope of evaluated code ... ???
+
+#+begin_src scheme :tangle ts-hyprlang.scm
+(define tree-sitter-hyprlang
+  ;; (hidden-package
+  ((@@ (gnu packages tree-sitter) tree-sitter-grammar)
+   "hyprlang" "Hyprlang"
+   "171p3hj36a1jqflg9xv138445j4m4m16na6bgpm1km3l67jhvl54"
+   "3.1.0"
+   #:repository-url
+   "https://github.com/tree-sitter-grammars/tree-sitter-hyprlang")
+  ;;)
+  )
+#+end_src
+
+| keyword               | defaults                               |
+|-----------------------+----------------------------------------|
+| #:commit              | v$Tag                                  |
+| #:repository-url      | (...formatted-github-ref...)           |
+| #:grammar-directories | '(".")                                 |
+| #:article             | "a" or "an"                            |
+| #:inputs              | (list tree-sitter-ihopenot2many-langs) |
+| #:get-cleanup-snippet | tree-sitter-delete-generated-files     |
+| #:license             | license:expat                          |
+
+Using =tree-sitter-grammar= is easier from within a direct checkout, like in [[https://guix.gnu.org/manual/en/html_node/The-Perfect-Setup.html][§22.3
+The Perfect Setup]], but there's often "some assembly required."
+
+Here, I couldn't simply disable the tests, so I'm unsure of whether a patch
+would be accepted. Didn't have time, but maybe later. I still need to get
+gnus/email set up, which I'm thinking about just running on a server console
+session. It may be possible to submit something on codeberg, but idk for now.
+
+#+begin_src scheme :tangle ts-hyprlang.scm
+(define-public ts-hyprlang
+  (let ((base tree-sitter-hyprlang))
+    (package
+      (inherit base)
+      (name "ts-hyprlang")
+      (arguments
+       (substitute-keyword-arguments (package-arguments base)
+         ;; (delete 'check) from phases doesn't work
+         ((#:tests? _ #f) #f))))))
+#+end_src
+
+** tree-sitter-tcl
+
+The first tree-sitter lib I built was for =tree-sitter-tcl=. The newer package
+fails on tests.
+
+#+begin_example scheme
+;; requires npm peerDependencies "tree-sitter": "^0.22.4"
+
+(define-public tree-sitter-tcl
+  (let ((commit "8f11ac7206a54ed11210491cee1e0657e2962c47")
+        (revision "0"))
+  ((@@ (gnu packages tree-sitter) tree-sitter-grammar)
+   "tcl" "TCL"
+   "0dkxh6bn0kqn1gbyd5qwkg21fm634mxvas3w4ahv6zr5d8f95c96"
+   (git-version "1.1.0" revision commit)
+   #:commit commit
+   #:repository-url
+   "https://github.com/tree-sitter-grammars/tree-sitter-tcl")))
+#+end_example
+
+* Main Problems
+
+"Axes" of ambiguity, difficult to resolve as a dynamic system. Each affects the
+other, assertions about inner logic of scheme require faulty assumptions,
+meta-magic or brittle state.
+
++ Problems with definitions/references using @@ syntax? No, not here.
+ ok, you can't simply rename the package. I've screwed
++ Can I simply define the same =(package (name "eg-hello"))= used elsewhere?
+  - nope. this clearly breaks. I've played around with this a bunch, but never
+    explicitly answered that IIRC (smh...)
++ Did I need =(package/inherit ...)=? Instead =(package (inherit base) ...)=?
+  - I have no idea (need to look at the =define-syntax-rule=)
+  - Guix has moved from standard scheme records towards its own =(guix records)=.
+    The exact mechanics of =(inherit %a-guix-record)= are a bit opaque.
+  - Some lower level details are easier to trace. Given enough time, I could
+    find it (I may have), but any /exposure-based language learning/ needs quick
+    resolution of ambiguity. The docs are great, but some problems are very
+    difficult to overcome without explication by simply reading source.
+  - Without accumulating fundamentals, it's difficult branch out to write
+    scheme. Guix code is mostly configuration, especially in a personal
+    codebase: cargo-culting this creates lots of code to delete/prune/rearrange
+    later.
++ Did I need =(let ((base ts-hyprlang)) (package ...))=?
+  - This didn't seem to matter. =let= is the aspect of scheme that's a real
+    mind-fuck, but it's also one of the most valuable core principals of scheme.
+  - After reading through the lambda calculus for let (and extrapolating), the
+    core idea behind environments/bindings allows you to reason systematically
+    about composed mappings of variable bindings across language or system
+    interfaces.
+    - e.g. "does this go in =.profile=, =.envrc=, =.dir-locals.el=, =$project/.env=,
+      =~/.config/uwsm/env-sway=, source code, a big hash in the sky, etc, etc..."
+      become far simpler to reason about holistically -- and particularly how
+      you should name the bindings so they compose seamlessly without endless
+      shuffling and aimless refactoring.
+    - it clarifies that environment variables are a primarily a kernel construct
+      propagated downstream through processes by composing merged environment
+      deltas ... and everything else extends from that. it seems complex, but
+      it's an endless sea of complexity if you don't really see it from this
+      perspective (it's a perpective from the center of a panopticon vs some
+      remote periphery: everything becomes more proportional)
+  - The real mind-fuck is =identifier-syntax= ... which i really don't understand.
+
+** On Scheme Itself
+
+My issues are mostly with Geiser; that & some kind of environment setup that
+amorphously propagated "simple" but defintely anomalous UI/UX issues. The
+language itself is also difficult, but unrelated to Geiser.
+
+Learning scheme definitely requires guidance. The implementation doesn't matter:
+Scheme is not a language, it's a meta-language. "No two schemers are alike," a
+quote from a video on R6RS never to be found in my youtube history. Without a
+proper initiation into the SICP by the greybeards... it's hard to understand how
+one decides _which_ DSL or style and why. Deciding how to integrate these tools
+hides some dangerous chasms in any metaprogramming-centric language ... but
+again, scheme is a meta-language (both in it's application, as well as the
+motiviations behind ideas like Geiser or R6RS)
+
+SICP opens with the following:
+
+#+begin_quote
+"A computational process is indeed much like a sorcerer’s idea of a
+spirit. It cannot be seen or touched. It is not composed of matter at all.
+However, it is very real. It can perform intellectual work. It can answer
+questions. It can affect the world by disbursing money at a bank or by
+controlling a robot arm in a factory. The programs we use to conjure
+processes are like a sorcerer’s spells. They are carefully composed from
+symbolic expressions in arcane and esoteric programming languages that
+prescribe the tasks we want our processes to perform" -- SICP
+#+end_quote
+
+And by the end of chapter 4 you know their heads are in the philosophy. The
+video does it better though.
+
+#+begin_html
+<iframe width="560" height="315"
+src="https://www.youtube.com/embed/2Op3QLzMgSY?si=6Xvpc5-XTLD2Nkx2"
+title="YouTube video player" frameborder="0" allow="accelerometer; autoplay;
+clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+#+end_html
