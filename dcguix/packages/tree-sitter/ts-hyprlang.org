@@ -29,25 +29,6 @@ project. this one's easier to build.
 oops i stumbled on an old idea.
 #+end_quote
 
-+ I wanted to hack a bit on OpenCascade's hundreds of TCL test cases. I ported
-  the =syntax-table= from emacs' =tcl-mode= over to =tcl-ts-mode=, which worked as a
-  PoC. I had tried it on [[https://github.com/dcunited001/.emacs.guix/blob/master/lib/tcl-ts/test/Penrose.tcl][Penrose.tcl]], which generates a [[https://en.wikipedia.org/wiki/Penrose_triangle][penrose triangle]] -- /the
-  output can easily be exported to various formats/.
-+ Without an =ob-tcl= that connects OCC's TCL =wish= repl, the workflow is too
-  stateful and org-babel isn't the best way to organize code.
-  - It _could_ work for hacking on CAD... _but model parameterization is always at
-    least as hard as dimensional analysis_.
-  - This is /apropos to/ FreeCAD's [[https://wiki.freecad.org/Topological_naming_problem/en][Topological Naming Problem]], though that's more
-    about the topology than the naming: it requires flexible data structures to
-    index topological features in a consistent & extensible manner.
-  - So the real problem here: CAD is just hard. Scripts that name features with
-    dimensional references need to consistently track the "configuration space"
-    of parameters with less constraints.
-  - That REPL is fairly standard, so a =comint-mode=
-  derivative already exists. IIRC I had started to test this out
-+ TCL is pretty dumb (in a good way), so the code ages well (I think?). It has
-  some kind of advantages in binding to C/C++ FFI that make it automagic.
-
 #+begin_quote
 This was a good idea that I would have liked to explore turning into:
 
@@ -62,6 +43,63 @@ e.g. 2080/etc aluminum with: pkg params like length; build params like a
 it would totally fail at anything complex though, but probably worth at least
 trying to umm learn things about CAD and whatnot.
 #+end_quote
+
+I wanted to hack a bit on OpenCascade's hundreds of TCL test cases.
+
++ I ported the =syntax-table= from emacs' =tcl-mode= over to =tcl-ts-mode=, which
+  worked as a PoC.
++ I had tried it on [[https://github.com/dcunited001/.emacs.guix/blob/master/lib/tcl-ts/test/Penrose.tcl][Penrose.tcl]], which generates a [[https://en.wikipedia.org/wiki/Penrose_triangle][penrose triangle]] -- /the
+  output can easily be exported to various formats/.
+
+Without an =ob-tcl= that connects OCC's TCL =wish= repl, the workflow is too
+stateful and org-babel isn't the best way to organize code.
+
+- That REPL is fairly standard, so a =comint-mode= derivative already exists. It's
+  old. IIRC I had started to test this out and it seemed alright.
+
+It _could_ work for hacking on CAD... _but model parameterization is always at
+least as hard as dimensional analysis_. This is /apropos to/ FreeCAD's [[https://wiki.freecad.org/Topological_naming_problem/en][Topological
+Naming Problem]], though that's more about the topology than the naming: it
+requires flexible data structures to index topological features in a consistent
+& extensible manner.
+
++ Solving the topological naming problem for the program requires the UI relate
+  events to vertices/faces/edges/BREPs, then enumerate what's possible and
+  culling out what's not.
+  - The CAD program must be constructed from the ground up to allow features
+    like those from Inventor where you reorder operations. The similarity
+    between that UI and the ideas behind Haskell & functional programming are
+    profound.
+  - A typology of constraints is effectively enumerated by the constraints
+    available in CAD: 2D sketch, 3D coordinate relations, datum bases, =GD&T=.
+    Only some are valid. FreeCAD's topological naming problem emerged bc
+    higher-order morphisms (composition of multiple "inventor drag'n'drops")
+    need to rework data structures so indexing is consistent for subsequent
+    morphisms that should also be possible.
+    - i.e. the CAD program must retain clarity in it's organization of
+      topological object/index data to avoid problems _while also_ being capable
+      of reorganizing the topological structures.
+    - Ever notice how some Inventor operations take more time than others? And
+      how some break your project if your intuition doesn't clue you into
+      rewinding early with undo?
+  - BREPs must be closed manifolds because, among other reasons, it simplifies
+    and organizes the combinatorics of enumeration. That's a starting point.
++ If you've ever wondered about algebraic geometry/topology ... it's um hard.
+  Why is a 24-cell a unique 4D platonic polytope? IDK.
+  - This [[https://arxiv.org/pdf/math/9905023][1999 paper]] came up which is loosely related and "hey!" cool pictures
+    ... it really is close though. Only glanced at it though.
+
+So the real problem here: CAD is just hard. Scripts that name features with
+dimensional references need to consistently track the "configuration space" of
+parameters with less constraints.
+
+TCL is pretty dumb (in a good way), so the code ages well (I think?). It has
+some kind of advantages in binding to C/C++ FFI that make it automagic ... no
+idea what the TCL/FFI "it-factor" actually is though.
+
++ It's notably useful for driving automated testing in complicated scenarios,
+  particularly those involving electronics. Again, no idea what "it" is that
+  made TCL suited to that use.
 
 * Overview
 
@@ -184,85 +222,3 @@ fails on tests.
    #:repository-url
    "https://github.com/tree-sitter-grammars/tree-sitter-tcl")))
 #+end_example
-
-* Main Problems
-
-"Axes" of ambiguity, difficult to resolve as a dynamic system. Each affects the
-other, assertions about inner logic of scheme require faulty assumptions,
-meta-magic or brittle state.
-
-+ Problems with definitions/references using @@ syntax? No, not here.
- ok, you can't simply rename the package. I've screwed
-+ Can I simply define the same =(package (name "eg-hello"))= used elsewhere?
-  - nope. this clearly breaks. I've played around with this a bunch, but never
-    explicitly answered that IIRC (smh...)
-+ Did I need =(package/inherit ...)=? Instead =(package (inherit base) ...)=?
-  - I have no idea (need to look at the =define-syntax-rule=)
-  - Guix has moved from standard scheme records towards its own =(guix records)=.
-    The exact mechanics of =(inherit %a-guix-record)= are a bit opaque.
-  - Some lower level details are easier to trace. Given enough time, I could
-    find it (I may have), but any /exposure-based language learning/ needs quick
-    resolution of ambiguity. The docs are great, but some problems are very
-    difficult to overcome without explication by simply reading source.
-  - Without accumulating fundamentals, it's difficult branch out to write
-    scheme. Guix code is mostly configuration, especially in a personal
-    codebase: cargo-culting this creates lots of code to delete/prune/rearrange
-    later.
-+ Did I need =(let ((base ts-hyprlang)) (package ...))=?
-  - This didn't seem to matter. =let= is the aspect of scheme that's a real
-    mind-fuck, but it's also one of the most valuable core principals of scheme.
-  - After reading through the lambda calculus for let (and extrapolating), the
-    core idea behind environments/bindings allows you to reason systematically
-    about composed mappings of variable bindings across language or system
-    interfaces.
-    - e.g. "does this go in =.profile=, =.envrc=, =.dir-locals.el=, =$project/.env=,
-      =~/.config/uwsm/env-sway=, source code, a big hash in the sky, etc, etc..."
-      become far simpler to reason about holistically -- and particularly how
-      you should name the bindings so they compose seamlessly without endless
-      shuffling and aimless refactoring.
-    - it clarifies that environment variables are a primarily a kernel construct
-      propagated downstream through processes by composing merged environment
-      deltas ... and everything else extends from that. it seems complex, but
-      it's an endless sea of complexity if you don't really see it from this
-      perspective (it's a perpective from the center of a panopticon vs some
-      remote periphery: everything becomes more proportional)
-  - The real mind-fuck is =identifier-syntax= ... which i really don't understand.
-
-** On Scheme Itself
-
-My issues are mostly with Geiser; that & some kind of environment setup that
-amorphously propagated "simple" but defintely anomalous UI/UX issues. The
-language itself is also difficult, but unrelated to Geiser.
-
-Learning scheme definitely requires guidance. The implementation doesn't matter:
-Scheme is not a language, it's a meta-language. "No two schemers are alike," a
-quote from a video on R6RS never to be found in my youtube history. Without a
-proper initiation into the SICP by the greybeards... it's hard to understand how
-one decides _which_ DSL or style and why. Deciding how to integrate these tools
-hides some dangerous chasms in any metaprogramming-centric language ... but
-again, scheme is a meta-language (both in it's application, as well as the
-motiviations behind ideas like Geiser or R6RS)
-
-SICP opens with the following:
-
-#+begin_quote
-"A computational process is indeed much like a sorcerer’s idea of a
-spirit. It cannot be seen or touched. It is not composed of matter at all.
-However, it is very real. It can perform intellectual work. It can answer
-questions. It can affect the world by disbursing money at a bank or by
-controlling a robot arm in a factory. The programs we use to conjure
-processes are like a sorcerer’s spells. They are carefully composed from
-symbolic expressions in arcane and esoteric programming languages that
-prescribe the tasks we want our processes to perform" -- SICP
-#+end_quote
-
-And by the end of chapter 4 you know their heads are in the philosophy. The
-video does it better though.
-
-#+begin_html
-<iframe width="560" height="315"
-src="https://www.youtube.com/embed/2Op3QLzMgSY?si=6Xvpc5-XTLD2Nkx2"
-title="YouTube video player" frameborder="0" allow="accelerometer; autoplay;
-clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-#+end_html
