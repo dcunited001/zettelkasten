@@ -12,12 +12,10 @@
 
 * Resources
 
-
 * Issues
 
-
-
 ** Updating =$USER/.config/guix/current=
+
 ** Emacs
 
 *** Misc
@@ -42,7 +40,7 @@ It seems resolved when running the emacs server under =uwsm app=, though it's ju
 happened once running =bin/doomemacs= directly within =alacritty= and connecting
 with =bin/doomclient=
 
-** Other Native Tools
+*** Other Native Tools
 
 + vterm :: build requires cmake (and what else...?) either being bundled into
   =$DOOMDIR/.guix-profile= or having a compatible =gcc/cmake= toolchain shimmed in
@@ -54,7 +52,7 @@ with =bin/doomclient=
   libraries. I need to review the [[https://github.com/nnicandro/emacs-zmq/blob/master/zmq.el#L623][zmq.el]] build functionality, but this lib more
   likely to build/run without being obvious.
 
-*** PDF Tools
+**** PDF Tools
 
 + =ldd `which epdftools`= and =readelf -ha= show it's linked entirely outside of
   =$DOOMDIR/.guix-profile= paths
@@ -65,6 +63,167 @@ with =bin/doomclient=
 + There also seem to be a lot of unnecessary =*.so= files in this build for
   whatever reason: networking (gssapi, kerberos, etc), nss3 (potentially a separate
   cert cache (?)
+
+** Misc
+
+Polkit
+
++ add hyprpolkitagent to =users.users.$USER.packages
++ =systemctl --user enable --now hyprpolkitagent.service=
+
+** SDDM, UWSM and Hyprland
+** D-Bus
+
+*** Debugging
+
+You'll probably want these apps
+
+#+begin_src shell
+# enumerate d-bus services via introspection
+flatpak --user install io.qt.qdbusviewer
+
+# not available
+# flatpak --user install D-Feet
+
+# filter, record & diff pcaps for session bus
+flatpak --user install org.gnome.Bustle
+#+end_src
+
+Flatpak seems to =bwrap= an =xdg-dbus-proxy=, so that may affect things.
+
+*** "Ignoring duplicate name =org.somebodybus.service= ..."
+
+See below for more info.
+
+
+
+*** D-Bus Activation Environment
+
+See [[https://wiki.hypr.land/Nix/Hyprland-on-Home-Manager/#programs-dont-work-in-systemd-services-but-do-on-the-terminal][Hyprland on Home Manager: programs dont work in systemd services but do on
+the terminal]]
+
+Unless using UWSM, this needs to be invoked by hyprland's config somewhere,
+
+#+begin_src hyprlang
+exec-once = dbus-update-activation-environment --systemd --all
+#+end_src
+
+When using UWSM then =$XDG_CONFIG_HOME/uwsm/env= needs to provide =sessionVariables=
+
++ some require PAM authorization when using NixOS to configure the system. IDK
+  how Home Manager accomplishes this (I guess it req. authorization somehow?)
+
+*** D-Bus Broker
+
+=dbus-broker= is apparently less limited than the traditional =dbus-daemon= when
+refreshing the activation environment. Examples in =man
+dbus-update-activation-environment= show using a subshell to isolate the parent
+shell's environment from =Δenv= (... this is where Scheme's environment/binding
+concepts come in handy)
+
+The =man= also states:
+
+#+begin_quote
+*LIMITATIONS*
+
+=dbus-daemon= does not provide a way to =unset= environment variables after they
+have been set (although =systemd= does), so =dbus-update-activation-environment=
+does not offer this functionality either.
+
+POSIX does not specify the encoding of non-ASCII environment variable names or
+values and allows them to contain any non-zero byte, but neither =dbus-daemon= nor
+=systemd= supports environment variables with non-UTF-8 names or values.
+
+Accordingly, =dbus-update-activation-environment= assumes that any name or value
+that appears to be valid UTF-8 is intended to be UTF-8, and ignores other names
+or values with a warning.
+#+end_quote
+
+I had been having some trouble with this, as most docs still under-articulate
+differences between =uwsm= and other compositor methods. There weren't many
+examples in dotfiles. I suspected a difference here and made about =¾= of the
+changes. Still, I have both =dbus-daemon= and =dbus-broker=
+
+**** Stability in successive Home Manager updates
+
+You probably wanna pin =dbus-broker= and related dependencies, since there maybe
+remaining problems with long-term compositor sessions
+
+#+begin_quote
+various effects are exhibited on both my nix & arch hyprland sessions (though
+idk if it's related). Sessions lasting about a day seem to encounter issues with
+hyprland's keybindings and UI/Graphics glitching on chrome. The main symptoms
+are inconsistent focus switching after Chrome fails to switch between tabs.
+
+NOTE: this seems to be correlated to additional =xkbcomp= errors in =journalctl=.
+
++ Using Control, ignoring Lock.
++ Key <CAPS> added to map or multiple monitors.
+
+#+end_quote
+
+The user d-bus session should persist through the compositor session, so it's
+process isn't so easy to update in real-time (not without [[https://www.redhat.com/en/blog/kernel-live-patching-linux][the kind of elf-magic
+that patches a live kernel without reboot]]... Though I guess you could negotiate
+a swap-out of a running d-bus daemon (if only you had some degree of abstraction
+in front of it, like maybe some kind of "broker")
+
+Potential issues:
+
++ Interactions between user/system bus?
++ Warnings about =Ignoring duplicate name "org.freedesktop.qwerty"= ... oh...
++ Paths like =/nix/store/.../{bin,lib}= that may not be refreshed in memory of
+  running processes that leverage specialized invocation of processes.
++ Disowned processes that are unaccounted for, but still impact the running
+  system.
++ Assumptions about =*.so= linking, esp. when NixOS or Home Manager paths change.
+  Typically the full path must be specified in config-files when patching
+  shebangs --
++ Long-running d-bus service calls that return in a format that's changed
++ The D-Bus socket protocol should be fairly constant, so the wire protocol
+  shouldn't change. Redefining updated Interface XML /should/ be straightforward.
+
+**** Comparing =dbus-daemon= and =dbus-broker=
+
+Dependencies are fairly minimal, which I inferred after speccing out the above.
+D-Bus can't have many dependencies, if it needs to handle those problems. I've
+had D-Bus startup problems (the chopped and screwed desktop), but long-term
+issues would be hard to notice. GNU =shepherd= seems to have sidestepped the need
+for backwards compatibility and I guess now it makes a lot more sense.
+
+#+begin_src shell :results output verbatim
+echo -e "dbus-broker\n"
+ldd `which dbus-broker` | tr -d "	" | sort
+
+echo -e "\ndbus-daemon\n"
+ldd `which dbus-daemon` | tr -d "	" | sort
+#+end_src
+
+#+RESULTS:
+#+begin_example
+dbus-broker
+
+libcdvar-1.so.0 => /nix/store/370kymia4l5f8h9cpd2j65inn1rqb6yl-c-dvar-1.1.0/lib/libcdvar-1.so.0 (0x00007ff3bac81000)
+libcrbtree-3.so.0 => /nix/store/ygawynjpi8bv5aby4ghg998b1gdibvsf-c-rbtree-3.2.0/lib/libcrbtree-3.so.0 (0x00007ff3bac7b000)
+libc.so.6 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc.so.6 (0x00007ff3ba800000)
+libcutf8-1.so.0 => /nix/store/kpydsdwknvv3cfgzch97x2g48rdal4cb-c-utf8-1.1.0/lib/libcutf8-1.so.0 (0x00007ff3bab8b000)
+libm.so.6 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libm.so.6 (0x00007ff3bab92000)
+linux-vdso.so.1 (0x00007ff3bac91000)
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/ld-linux-x86-64.so.2 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib64/ld-linux-x86-64.so.2 (0x00007ff3bac93000)
+
+dbus-daemon
+
+libapparmor.so.1 => /nix/store/28dk0x39djdqlkcm0i1a2y3akpgyp8kk-libapparmor-4.1.1/lib/libapparmor.so.1 (0x00007fb0fb608000)
+libcap.so.2 => /nix/store/q2ps6hq2jr2xwvs60m39fnjrnsx94a3w-libcap-2.75-lib/lib/libcap.so.2 (0x00007fb0fb5f9000)
+libc.so.6 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libc.so.6 (0x00007fb0fb200000)
+libdbus-1.so.3 => /nix/store/231d6mmkylzr80pf30dbywa9x9aryjgy-dbus-1.14.10-lib/lib/libdbus-1.so.3 (0x00007fb0fb7a1000)
+libexpat.so.1 => /nix/store/l0d83xf43lsyhzqziy0am1cidhkcxs9q-expat-2.7.1/lib/libexpat.so.1 (0x00007fb0fb61f000)
+libm.so.6 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libm.so.6 (0x00007fb0fb510000)
+libpthread.so.0 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/libpthread.so.0 (0x00007fb0fb50b000)
+libsystemd.so.0 => /nix/store/n4kqvn450iwdyj83q80is8ija3lfi2iw-systemd-minimal-257.6/lib/libsystemd.so.0 (0x00007fb0fb64d000)
+linux-vdso.so.1 (0x00007fb0fb802000)
+/nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/ld-linux-x86-64.so.2 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib64/ld-linux-x86-64.so.2 (0x00007fb0fb804000)
+#+end_example
 
 * Initial Notes
 
