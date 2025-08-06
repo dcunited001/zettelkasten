@@ -225,6 +225,104 @@ linux-vdso.so.1 (0x00007fb0fb802000)
 /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib/ld-linux-x86-64.so.2 => /nix/store/zdpby3l6azi78sl83cpad2qjpfj25aqx-glibc-2.40-66/lib64/ld-linux-x86-64.so.2 (0x00007fb0fb804000)
 #+end_example
 
+** GPG
+
+This was working... now only SSH works.
+
++ =programs.gnupg.enable= will apparently also start a =/root/.gnupg=-based
+  gpg-agent for root only.
++ TLDR: from a fresh nixos-created =~/.gnupg= config which merges settings from a
+  magical =/nix/store= path somewhere, then it will create the private keystubs
+  from your yubikey, but it won't import your public keys.
+  - =gpg --import $muhkeys.asc= will fix this
+  - I need to refresh this =.asc= pubkey after creating new private keys anyways.
+
+*** =programs.gnupg.agent=
+
+**** Starting point
+
+#+begin_src nix
+{ config, lib, pkgs, ... }: {
+  programs.gnupg = {
+    agent = {
+      enable = true;
+      enableSSHSupport = true;
+      pinentryPackage = pkgs.pinentry-qt;
+    };
+  };
+}
+#+end_src
+
+The nixos-mediated =gpg-agent= service only imports the subkey keystubs that
+relate to the operations you're trying to run (e.g. decryption). A configuration
+like the above, on =gpg-service= socket activation creates =$GNUPGHOME= inside =$HOME=
+only if it doesn't exist.
+
++ gpg -d $decryptme :: imports two private keystubs
+  - ABCD...123.key :: encryption subkey
+  - DCBA...123.key :: signature subkey
++ ssh $somehost :: imports the other two private keystubs
+  - 1234...ABC.key :: authentication subkey
+  - 4321...CBA :: ... a =PIV-9A= subkey which is fantabulous news, since i've just
+    been relaying those keys to my hosts' =~/.ssh/authorized_keys= anyways, since
+    they only ever existed on cards anyways.
++ It does nothing with the master certification key, since that's never existed
+  off an airgapped filesystem.
+
+So... it imports keystubs from the yubikey into =$GNUPGHOME/.private-keys-v1.d=
+which don't contain secrets themselves when on a yubikey. That's nice to know,
+since I've been wondering how it was working seemlessly while recalling that I
+never fully set it up.
+
+#+begin_quote
+I think I ported over a configuration and needed it to =just work= ... when it
+did, I didn't spend too much effort thinking about it. I can =scp= to transfer
+to/from any host as long as one host has =ssh= and =gpg-agent= working.
+#+end_quote
+
+However, after doing so, =gpg -K= lists no private keys.
+
+Also, =gpg -k= lists no public keys for those identities. IIRC the public keys are
+required for private key operations... EDIT: they are.
+
+**** =programs.gnupg.agent.settings=
+
+I guess this creates an etc-like directory and gets merged into =~/.gnupg/*.conf=
+the program's running state somehow.
+
+**** =scdaemon.conf=
+
+This just needs to reside inside =~/.gnupg/scdaemon.conf= I think
+
+*** Misc Issues
+
+For me, problems like this usually involve invalid state in =pcscd= some way and
+some how.
+
+**** porting a GnuPG configuration system
+
+... from a previous system whether an -ixy system or not probably means:
+
++ your =pinentry= path will be messed up
++ and the =pcscd-driver= from your =scdaemon.conf=
++ The =nixos= settings don't cover =gpg.conf=, so import that file
+
+
+**** pinentry
+
++ you won't get a popup or it may request on an alternate =GPG_TTY=, so check
+  other vty's just in case.
++ for me, it's not popping up when responding to =gpg= operations only. not =ssh=
+  operations.
+
+**** sockets
+
+It's possible that, but i need to check my other systems to see what =gpgconf
+--list-dirs= shows...
+
+This wasn't the issue though (but i still see =dirmngr= sockets, which should be
+disabled by default)
+
 * Initial Notes
 
 ** TL;DR:
