@@ -1,0 +1,144 @@
+:PROPERTIES:
+:ID:       f6af081c-2a1e-4423-9278-da6e0b276aef
+:END:
+#+TITLE: Hyprland: XKB Common
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:bc406527-0255-4d70-b620-82495ac5c8fe][Hyprland]]
++ [[id:3d2330da-5a95-408a-b940-7d2b3b0c7fb2][Keyboard]]
++ [[id:003953f8-acde-4c26-8c6b-d0aa3b27002b][XKB]]
+
+* Overview
+
+Saving files in =~/.config/xkb= can crash hyprland pretty easily. I seem to be
+better off when I terminate =fcitx5= ... I think?
+
++ This session hasn't crashed yet, but saving =~/.config/xkb/rules/evdev= with
+  invalid =RMVLO -> KcCGST= mapping syntax seemed to crash it pretty good.
+
+Actually using XKB Common for more advanced stuff is pretty rough.
+
++ You almost certainly want toggles or layered/switched functionality.
++ Redefined keybinds need to satisfy X11/XWayland, Wayland & maybe console. ...
+  while also playing nice with your shiny =QMK k$yB$,000rd(s)= (which I've never
+  interacted with in person)
+
+But they are portable to any PC-104 keyboard. I would _not_ touch this if I
+thought I was going to lose or redo my customizations. With X11 there weren't so
+many compatibility layers ... but editing root files sucks. Here, you can
+accumulate what you need and it should function in many places.
+
++ 2011, 2013, 2014, 2015, 2016 ...everyone just uses QMK & i have no idea WTF
+  that is, 2017, 2019... etc
++ I mean some of the primary examples on libxkbcommon _are_ exactly what i
+  configured on mac, then linux, then mac, then linux....
+
+* =xkbtest= directory
+
+A better workflow is a second =~/.config/xkbtest= directory that contains small
+changes, either loading on top of =~/.config/xkb= via its paths or only containing
+what's necessary. Both are actually pretty challenging
+
++ Difficult getting =xkbcommon= and =xkbcli= paths right to compile keymaps or run
+  test tools.
+  - A small =Makefile= or =Justfile= can help env, with tooling startup via
+      watch/exec.
++ The other bigger problem: it's hard to know when XKB's namespacing are going
+  to cause issues with =xkbcli= compilation.
+  - e.g. Avoiding file-name collisions with maps that already exist
+
+It's probably easier to duplicate the code in =~/.config/{xkb,xkbtest}=, but when
+constructing path in =Makefile=, ensure that =xkbcli= doesn't load from your running
+user's =xkb= directory.
+
+#+begin_example shell
+# specify path and
+xkbcli list
+
+xkbcli compile-keymap --rules evdev \
+  --model pc104 \
+  --layout io \
+  --variant altgr-intl \
+  --options mylvl5:ins_switch
+
+# you can also test these in a VTY using screen/tmux
+
+diff --color \
+  <(no_set_xkb_env; xkbcli dump-keymap-wayland ...) \
+  <(set_test_xkb_env; xkbcli compile-keymap ...)
+
+xkbcli interactive-{wayland,x11,evdev}
+#+end_example
+
+Once the =xkbcli= compilation or xkbcli seems to give good results, then port in
+the customizations to hyprland.
+
+I have no idea why it's so difficult to find examples.
+
+
+* Extra Modifiers
+
+
+** =ISO_Level5_Shift= to =EightLevel= character entry.
+
++ I've got =<INS>= remapped as a =ISO_Level5_Shift= with the modifier bits
+  recognized by =wev= as such
++ But I need to debug the other details in the xkbcommon layout to understand
+  why characters don't come through.
+
+*~/.config/xkb/symbols/mylevel5*
+
+#+begin_example xkb
+// -*- mode: xkb -*-
+partial modifier_keys
+xkb_symbols "ins_switch" {
+  key <INS> {[  ISO_Level5_Shift  ], type[group1]="ONE_LEVEL" };
+};
+#+end_example
+
+*~/.config/xkb/rules/evdev*
+
+#+begin_example
+! option = symbols
+  mylvl5:ins_switch					= +mylevel5(ins_switch)
+
+! include %S/evdev
+#+end_example
+
+This may need to go in a different rules file... and the include may need to
+precede the option declaration.
+
+hyprland and other apps will need the =evdev.xml= completed, otherwise new
+options/layouts will not be discoverable.
+
+From there, you should be able add the option to variants in Hyprland's conf,
+=fcitx5=, etc.
+
+The keyboard's =fn= key remaps =print/break/pause= on top of =insert/home/end=, so
+i'll probably map one of those to an additional =super= or something. I want
+relative symmetry with functionality.
+
+* ...
+
+Needlessly depressing overview ...
+
+But no one ever gives a shit, if they even know what I went through, completely
+alone, basically 24/7 for 12 years.
+
+Like right now, the main reason I'm doing this is to attempt to get a =SUPER= key
+on the right-hand side of my basic =$10= dell keyboard ... it's over 10 years old
+and it's not that bad. But like every other stock/consumer/gamer piece of
+garbage, it's designed so grandma or some degenerate can press any of the 10
+function keys? So there's like TWO Function Keys with 10+ fn-based scancodes...
+In case someone forgets that a Fn Key exists and can't mute the music?
+
+Every single consumer garbage keyboard is like this, whether it's a $10 keyboard
+or a $3,500 laptop. THESE ARE NOT TOOLS MADE FOR EXPERTS OR FOR PEOPLE WHO GIVE
+A SHIT ABOUT DESKTOP COMPUTING AT ALL.
+
+I do like this pc104 keyboard though, but it SUCKS to not have symmetric modkeys
+(which give you FOUR different /basic/ approaches for keybindings and seriously
+reduce the accumulation of repetitive strain and more if you count modifiers
+that you press with each hand)

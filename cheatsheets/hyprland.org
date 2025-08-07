@@ -80,6 +80,41 @@ Write
 
 * Inputs
 
+** Modifiers
+
+hyprland seems to support mods defined in [[https://github.com/hyprwm/Hyprland/blob/3c6536d9328280b1811a2dbcc4596c1cafb80abd/src/devices/IKeyboard.hpp#L13][IKeyboard.hpp]] and implemented in
+[[https://github.com/hyprwm/Hyprland/blob/3c6536d9328280b1811a2dbcc4596c1cafb80abd/src/managers/KeybindManager.cpp#L226][KeybindManager.cpp]].
+
+From =CKeybindManager::stringToModMask= & used in configuration/unbinding. I swear
+I saw this list somewhere, but I can't find it.
+
+|-------------------+--------------------------+--------------+--------------------|
+| Bit               | Hyprland Config Sym      | XKB          | Desc               |
+|-------------------+--------------------------+--------------+--------------------|
+| HL_MODIFIER_SHIFT | SHIFT                    |              |                    |
+| HL_MODIFIER_CAPS  | CAPS                     |              |                    |
+| HL_MODIFIER_CTRL  | CTRL,CONTROL             |              |                    |
+| HL_MODIFIER_ALT   | ALT,MOD1                 |              |                    |
+| HL_MODIFIER_MOD2  | MOD2                     |              |                    |
+| HL_MODIFIER_MOD3  | MOD3                     | LVL5 -> MOD3 | ISO_LEVEL5 ... ish |
+| HL_MODIFIER_META  | SUPER,WIN,LOGO,MOD4,META |              |                    |
+| HL_MODIFIER_MOD5  | MOD5                     | LVL3 -> MOD5 | AltGr              |
+|-------------------+--------------------------+--------------+--------------------|
+See required XKB configuration here in notes on [[id:f6af081c-2a1e-4423-9278-da6e0b276aef][Hyprland: XKB Common]]
+
+#+begin_src hyprlang-ts
+$mod   = super
+$shift = shift
+$meta  = alt
+
+$mod3  = mod3
+$lvl5  = mod3
+bind = $mod3, d, exec, notify-send "fdsa" "asdf"
+
+# .... IT WORKS. No magical eight-level keybindings though.
+#+end_src
+
+
 ** Devices
 
 *** Active keyboard layout
@@ -115,7 +150,6 @@ hyprctl devices -j \
 : us altgr-intl
 
 grep -C5 --include=*.nix -re environment.sessionVariables /data/ecto/x.files
-
 * Rules
 
 ** Extracting classes
@@ -123,6 +157,116 @@ grep -C5 --include=*.nix -re environment.sessionVariables /data/ecto/x.files
 #+begin_src hyprlang
 
 #+end_src
+
+** Dispatchers
+*** Limitations
+
+These are limitations inferred from parameters/selectors on the dispatchers
+page. Maybe some of the wiki information is outdated (or I missed something)
+
++ Window rules or workspace rules may be used to accomplish similar intent as
+  tags/groups.
++ Using these features correctly is important anyways, esp if the behavior is
+  more complicated.
+  - i.e tags/groups are stateful and statefulness is the debil -- all
+    applications give you class/title, but you're responsible for ensuring the
+    exact state needed in order to utilize tags/groups
++ alternative approaches:
+  - the window class or a title prefix may address all windows of a specific
+    application ... thus they wouldn't need a tag if you want to address them
+    that way
+  - a workspace or monitor functions effectively as a tag in specific
+    situations, but requires all windows on that ws/monitor to be intended
+    targets of what a =tag= would otherwise be used for
+
+There is definitely rationale in not making /everything/ a feature. Big footgun.
+
+**** Tags
+
+The =tagwindow= dispatcher assigns tags, but the only dispatchers that accept a
+window param are:
+
+| {close,kill}window | movetoworkspace{,silent} |
+| {tag,focus}window  | {resize,move}window      |
+| alterzorder        | pin,setprop              |
+| moveoutofgroup     |                          |
+
+**** Groups
+
++ The only way to add a window to a group is to move the active window into it
++ =moveoutofgroup= accepts a window as a parameter
++ The =group= abstraction seems to lack an identifier or name, on which to access
+  them from dispatchers/scripts. It's potentially a later feature idk.
+
+* Workspaces
+
+** Special
+
+Special workspaces can show on any monitor (without some strange
+non-deterministic =hyprctl dispatch fu=). In the wiki, the "monitorlessness" is
+the primary distinguishing feature that is articulated, but =special= workspaces
+will also overlay on top of another workspace.
+
++ =special:$name= is the special workspace's name
+  - =workspace = special:$name, name:fdsa, ...= doesn't work
++ special workspaces only work with =movetoworkspace= and =movetoworkspacesilent=
+  - which seems somewhat limited (maybe i'm missing the context)
+
+Because you can't control their monitor arrangement, special workspaces:
+
++ may throw windows around when opened on a monitor with different resolution
++ float:false :: non-float: need controlled window-stack or windows where size/placement
+  doesn't matter ... or you should be fine with rearranging window stack ad hoc
+  - i.e. after jumping from monitor to monitor or when workspace first opened
++ float:true :: if they're intended to manage floating windows, then
+  - you'll eventually want size/placement constraints on their applications
+  - you should use percentages if your monitor resolutions are different.
+  - you should order your windows from a consistent origin (i.e. from 0x0,
+    top/left to bottom/right)
+  - otherwise, you need to be okay with the windows being thrown around or
+    finding them on alternate workspaces (e.g. when opening a window that
+    doesn't quite fit, it sometimes "remembers" the wrong workspace state)
+
+** Persistent
+
++ Once =persistent:true=, these don't go away easily: ensure they're removed via
+  =hyprctl workspaces=. This is a detail to apply later, once your workspaces
+  /function/ the way you want.
+  - persistent workspaces are created when config is reloaded, but they aren't
+    deleted if you remove the config lines.
++ Setting =monitor:$portId= isn't applied until after the workspace is created, so
+  it needs to be persistent if this is set...
+
+There are a few other issues with =persistent:t=
+
++ changing monitor configurations may leave persistent workspaces on a display
+  that no longer exists
+
+*** Making workspaces unpersistent
+
+Once special workspaces are created/persistent, I'm having a real hard time
+changing them. These all seem to do nothing
+
++ =hyprctl keyword workspaces '-97,name:newname'=
++ =hyprctl keyword workspaces '-97,persistent=0'=
++ =hyprctl keyword workspaces 'special:irc,name:newname'=
++ =hyprctl keyword workspaces 'special:irc,persistent=0'=
+
+Although i did get the =-1337= id at some point, which means there's been a
+problem.
+
+I also wasn't able to get non-special workspaces to change.
+
+*** Making workspaces unpersistent (round 2)
+
++ [[https://github.com/hyprwm/Hyprland/discussions/11146]] this user:
+  - prefixes persistent workspaces with a dot
+  - =workspace = n[s:.], persistent=true= adds persistent to workspaces beginning
+    with a dot, which is evaluated dynamically.
+  - then changes the name to not include the dot in =.wsname=
++ https://github.com/hyprwm/Hyprland/discussions/9879 describes the code that
+  defines persistent behavior
++ https://github.com/hyprwm/Hyprland/issues/9879
 
 * Notifications
 
@@ -154,7 +298,7 @@ done
 : ok
 
 
-* Events
+* IPC
 
 ** D-Bus
 
@@ -288,6 +432,26 @@ BEGIN { split(arr,ay," "); }
 
 
 It works, but it seems to eventually encounter input without all args
+
+* hypr-qtutils
+
+Three bins, all three wrap a QT app with styling and depend on =hyprutils=
+
++ hyprland-dialog
++ hyprland-donate-screen
++ hyprland-update-screen
+
+*** hyprland-dialog args
+
+args (no man page)
+
++ --title :: the popup text title
++ --apptitle :: the =title= used by the window manager
++ --text :: some text
++ --buttons :: delimited with =;=
+
+This will simply output text of the clicked button to =STDOUT=
+
 * Printable Wiki :noexport:
 
 Not enough highlighting to be useful

@@ -1,0 +1,584 @@
+:PROPERTIES:
+:ID:       003953f8-acde-4c26-8c6b-d0aa3b27002b
+:END:
+#+TITLE: XKB
+#+DESCRIPTION:
+#+TAGS:
+
+For complex XKB Common configuration
+
++ Look here first: [[https://xkbcommon.org/doc/current/keymap-text-format-v1.html#the-xkb_keycodes-section][The XKB keymap text format, V1]]
++ Then here: [[https://xkbcommon.org/doc/current/rule-file-format.html][The rules file]]
++ Then: [[https://xkbcommon.org/doc/current/user-configuration.html][User Configuration]]
+
+* Roam
++ [[id:3d2330da-5a95-408a-b940-7d2b3b0c7fb2][Keyboard]]
+
+* XKB (X11)
+
+** Docs
++ [[https://github.com/xkbcommon/libxkbcommon][libxkbcommon/libxkbcommon]]
++ [[https://people.freedesktop.org/~alanc/input/XKB-Config.html][The XKB Configuration Guide]] (Ivan U. Pascal)
+  - one of those things that probably should've shown up on Google earlier
+    ... but didn't
++ [[https://github.com/haata/KeyboardLayouts/tree/master][haata/KeyboardLayouts]]
++ [[https://www.x.org/docs/XKB/XKBproto.pdf][The X Keyboard Extension: Protocol Spec]] (nineteen ninety six... and it's official)
+  - another one of those "little things" that should've shown up in Google
+    search results, i donno, maybe the first time i seriously looked into xkb.
+    probably 2011/2012 i think? it never did. the best thing i found was Ivan's
+    guide in like 2016.
++ [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config][xkeyboard-config]] (freedesktop gitlab)
+   - [[https://github.com/JuliaBinaryWrappers/Xorg_xkeyboard_config_jll.jl][Generated Julia binary wrapper for xkeyboard-config]] (and [[https://github.com/JuliaBinaryWrappers/Xorg_xkbcomp_jll.jl][xkbcomp]] and so on)
+
+** Resources
++ [[https://www.reddit.com/r/linux/comments/1ydiu7/howto_different_xkb_config_for_only_certain/][Howto: Different xkb config for only certain attached evdev keyboards]]
++ [[https://www.reddit.com/r/linux/comments/ttj6yo/comment/i2y7xhi/?utm_source=share&utm_medium=web2x&context=3][r/linux comment(s) describing what's wrong with X11 input handling]]
++ XKB layout template generator: [[https://gitlab.freedesktop.org/whot/xkblayout][gitlab.freedesktop.org/whot/xkblayout]]
+  - [[https://who-t.blogspot.com/2020/09/user-specific-xkb-configuration-putting.html][User-specific XKB configuration generation]]
+
+** Issues
+*** identifier for =ctrl:swapcaps_hyper= renamed to =ctrl:hyper_capscontrl=
+
++ [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/issues/344]['Hyper' symbol options behave inconsistently]] (it references: [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/issues/344][#344]])
+  - the old =swapcaps_hyper= name still works, since it's defined in
+    =rules/compat/variantsMapping.lst=
+
+#+begin_src c
+// Swap the functions of the CapsLock key and the left Ctrl key,.
+// but make the Ctrl key a 'Hyper' modifier.
+partial modifier_keys.xkb_symbols "swapcaps_hyper" {
+    replace key <CAPS> { [ Control_L ] };
+    replace key <LCTL> { [ Hyper_L ] };
+    modifier_map Control { <CAPS> };
+    modifier_map Mod3 { <LCTL> };
+}
+#+end_src
+
+*** Dependencies for guix show =libxkbcommon=
+
++ it looks like both Arch and Guix use libxkbcommon (1.5.0, 1.3.0 respectively)
+  - =xkeyboard-config= provides the configs
++ libxkbcommon depends on =xkeyboard-config= for keymap data
+
+* XKB Common
+A good place to start is the [[https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland][FCITX5 doc on wayland]]
+
+** Docs
++ [[https://github.com/xkbcommon/libxkbcommon][xkbcommon/libxkbcommon]] see the [[https://github.com/xkbcommon/libxkbcommon/blob/master/doc/][doc]] directory
+
+** Resources
+
++ [[https://wayland-book.com/seat/xkb.html][A wayland-book section on XKB Common]]
+
+*** X11/Wayland Integration
+
++ This [[https://unix.stackexchange.com/a/355428][s/o answer]] describes how different compositors handle keymaps in wayland.
+
+*** Python
+
++ [[github:sde1000/python-xkbcommon][sde1000/python-xkbcommon]]
++ [[github:sde1000/python-xkbregistry][sde1000/python-xkbregistry]]
++ [[https://github.com/abo-abo/xkb-indicator][abo-abo/xkb-indicator]] a utility to provide xkb status for a GTK panel
+
+*** Registry and evdev
+
++ Debian [[https://packages.debian.org/sid/main/libxkbregistry-dev][libxkbregistry-dev]]
++ [[https://github.com/xkbcommon/libxkbcommon/issues/123][xkbcommon/libxkbcommon#123]] this discusses adding an API for the evdev.xml
+  registry
++ See [[https://github.com/xkbcommon/libxkbcommon/blob/eafd3aceca97d4984070115ec67f639b045b0d65/doc/user-configuration.md#discoverable-layouts][discoverable layouts]] in user-configuration.md
+
+
+** Topics
+
+*** Adding Modifier Keys
+
+**** [[https://github.com/xkbcommon/libxkbcommon/issues/425][xkbcommon/libxkbcommon#425]]
+
++ Support for Arbitrary Modifiers (Accessibility Keybinds)
++ Includes [[https://gist.github.com/whot/5503682310260a2115642bfb3a880afe][a gist]] for mapping arbitrary keys to modifiers
+
+**** Level 5
+
++ [[https://github.com/jbriales/xkb-extended-keys/tree/master][jbriales/xkb-extended-keys]] maps caps to a level 5 modifier using:
+
+#+begin_example xkb
+partial alphanumeric_keys modifier_keys
+xkb_symbols "Fn" {
+    key.type = "FOUR_LEVEL+LEVEL5";
+    // Explanation: key.type is set to assign a specific default type to all mappings below
+    // Note: NoSymbol is used in lower levels to preserve previous symbols
+
+    // A layer customization for having numeric row and symbols there close to home row
+    // ASDFGH...
+    key <CAPS>  { [  Return,    NoSymbol,   grave,        NoSymbol   ]   };
+    key <LatA>  { [  NoSymbol,  NoSymbol,   exclam,       NoSymbol   ]   };
+    key <LatS>  { [  NoSymbol,  NoSymbol,   at,           NoSymbol   ]   };
+    key <LatD>  { [  NoSymbol,  NoSymbol,   numbersign,   NoSymbol   ]   };
+
+    // ....
+
+    // QWERTY row
+
+
+    key <LatT> {
+        type[Group1]="FOUR_LEVEL+LEVEL5",
+        symbols[Group1] = [  NoSymbol,  NoSymbol,   NoSymbol,   NoSymbol,   ISO_Next_Group  ],
+        symbols[Group2] = [  NoSymbol,  NoSymbol,   NoSymbol,   NoSymbol,   ISO_Prev_Group  ]
+    };
+
+    // ...
+};
+#+end_example
+
+*** Rules File
+
+Grammar
+
+#+begin_src ebnf
+File         ::= { "!" (Include | Group | RuleSet) }
+
+Include      ::= "include" <ident>
+
+Group        ::= GroupName "=" { GroupElement } "\n"
+GroupName    ::= "$"<ident>
+GroupElement ::= <ident>
+
+RuleSet      ::= Mapping { Rule }
+
+Mapping      ::= { Mlvo } "=" { Kccgst } "\n"
+Mlvo         ::= "model" | "option" | ("layout" | "variant") [ Index ]
+Index        ::= "[" ({ NumericIndex } | { SpecialIndex }) "]"
+NumericIndex ::= 1..XKB_MAX_GROUPS
+SpecialIndex ::= "single" | "first" | "later" | "any"
+Kccgst       ::= "keycodes" | "symbols" | "types" | "compat" | "geometry"
+
+Rule         ::= { MlvoValue } "=" { KccgstValue } "\n"
+MlvoValue    ::= "*" | "<none>" | "<some>" | "<any>" | GroupName | <ident>
+KccgstValue  ::= <ident> [ { Qualifier } ]
+Qualifier    ::= ":" ({ NumericIndex } | "all")
+#+end_src
+
+*** Old Config Notes
+
+**** General
+
+The bad news is that each program that handles keyboard input in a different way
+needs to be configured in its own way.
+
++ So.... KDE, xwayland, etc must necessarily handle input differently. KDE may
+  propagate changes to XWayland.
++ This makes keyboard config changes kinda delicate: when updating the keyboard,
+  you need to ensure that all consumers of the keyboard configuration are
+  updated. This further complicates configuration of programs like =fcitx= and
+  =moz=.
+
+
+**** XWayland
+
+Use =setxkbmap=
+
+**** evdev.xml
+
+The =evdev.lst= and =evdev.xml= files historically provided a registry for
+X11. They are a PITA to deal with:
+
++ Most X11 GUI tools hide much of the details from you -- like providing the
+  =evdev.xml= descriptions instead of the actual X11/XKB =option= ID's, which
+  makes it a nuissance to figure out what keyboard options you need when you
+  invoke =setxkbmap=.
++ They also don't expect to find anything in =XDG= paths, nor do they give you
+  any options for adding to paths they search. As issue #123 mentions,
+  =evdev.xml= is hardcoded.
++ Editing =evdev.xml= requires =sudo=, is prone to typos and quite often your
+  changes get erased by package updates.
++ From what I infer from years of using XKB, there just haven't been many tools
+  available for generating the XML. It's always been something I did by hand.
+
+**** XDG
+
+See [[https://github.com/xkbcommon/libxkbcommon/blob/master/doc/user-configuration.md][user_configuration.md]] for main overview. The main configuration location is
+=~/.config/xkb=, but other paths are fine.
+
+***** Include Paths
+
+
+**** KDE (Garuda)
+
++ [[https://bugs.kde.org/show_bug.cgi?id=447206][Bug #447206]]
++ [[Support XKB_CONTEXT_NO_SECURE_GETENV flag ][KWin!3402]]
++ [[https://bugs.kde.org/show_bug.cgi?id=432818][Bug #432818]] i updated with information
+
+***** Misc
+
+****** Check logs to see whether keyboard is loaded
+
+Useful logs at =.local/share/sddm/wayland-session.log=.
+
+See Bug #447206. the author places this in
+=.config/plasma-workspace/env/setkeymap.sh=
+
+#+begin_src sh
+export QT_LOGGING_RULES="kwin_*.debug=true"
+export XKB_LOG_VERBOSITY=10
+export KWIN_XKB_DEFAULT_KEYMAP=yes
+export XKB_DEFAULT_LAYOUT=mylayout
+#+end_src
+
+***** FCITX
+
+The [[https://fcitx-im.org/wiki/Using_Fcitx_5_on_Wayland][FCITX5 wayland doc]] has fairly comprehensive information about how xkbcommon
+works with other tools. See also [[https://www.csslayer.info/wordpress/fcitx-dev/how-to-use-a-missing-keyboard-layout-in-fcitx-5/][How to use a missing keyboard layout in Fcitx5]]
+
++ Their docs indicate to select a single keyboard layout under "virtual
+  keyboards" but imply that this is one method that works (I think for setting
+  the input method for all KWin Wayland apps and all apps managed under KWin's
+  managed XWayland server)
+
+****** Misc Config Info
+
+XWayland apps will already need some shared launch scripts that set the
+environment for them. the following variables need to be set:
+
++ XMODIFIERS :: @im=fcitx
++ GTK_IM_MODULE :: not set
++ QT_IM_MODULE :: not set
++ SDL_IM_MODULE :: not set
+
+#+begin_quote
+Unlike X11, there is no generic way to set XKB layout to compositor, which means
+it can only be implemented for every individual desktop. Right now, Fcitx
+managed layout only works for KDE Plasma.
+
+As for non-KDE desktop, in order to make this "semi" work you'll need to ensure
+following:
+
+    The system layout in the group should be the same as the actual xkb layout
+    you configured for the compositor.  Configure only one layout.  If you need
+    other layout for text typing (e.g. Arabic), just add them to the Fcitx. As
+    long as the key is forwarded to fcitx, it should work.
+#+end_quote
+
++ In KDE Input Method, it will say "Not Available" if you can't load the keyboard
+
+#+begin_quote
+Use "Virtual keyboard" KCM to launch fcitx5. This is required to use text-input
+protocol. If you launch fcitx this way, make sure you do not use "restart" in
+the tray menu, since the socket passed from KWin can not be reused with the
+newly restarted fcitx.
+#+end_quote
+
+****** fcitx5-config-qt
+
+The logic in this app depends on:
+
+Region/language configured in KDE
+
++ for example, I'm only seeing =io= keyboards, even though i've set them up to
+  be registered as a separate =io= language/region. I'm still trying to figure
+  this one out.
+
+The system and user =evdev.xml=. If your =~/.config/xkb/rules/evdev.xml= is
+invalid -- and apparently if any =evdev.xml= in =~/.config/xkb= is invaid --
+then you'll see this output when starting =/usr/bin/fcitx5/=. changing the name
+of =evdev.xml= will prevent only the second output: it still recognizes
+/something/ in this directory.
+
+#+begin_example
+I2023-09-20 20:24:02.097978 inputmethodmanager.cpp:198] Found 4 input method(s) in addon keyboard
+*I2023-09-20 20:24:02.098026 inputmethodmanager.cpp:117] No valid input method group in configuration. Buildinga default one*
+I2023-09-20 20:24:02.105048 instance.cpp:366] Items in Default: [InputMethodGroupItem(keyboard-us,layout=)]
+I2023-09-20 20:24:02.105084 instance.cpp:371] Generated groups: [Default]*
+I2023-09-20 20:24:02.115670 addonmanager.cpp:193] Loaded addon kimpanel
+I2023-09-20 20:24:02.115866 addonmanager.cpp:193] Loaded addon virtualkeyboard
+#+end_example
+
+** Projects
+*** xkbcommon
+
+Notes on the code
+
+**** xkbregistry
+
+***** Contexts
+
+According to the =xkbregistry= docs & code, when a client application loads the
+registry it constructs a context that organizes the include paths. See comments
+in =xkbregistry.h= about context and the implementation/
+
+There are two other relevant contexts outside of xkbcommon, which are unrelated
+... but maybe relevant, as I still need to read the source
+
++ The [[https://wayland.app/protocols/][wayland-protocols]] input context: [[https://wayland.app/protocols/input-method-unstable-v1][zwp_input_method_context_v1]]
++ The fcitx5: [[https://fcitx-im.org/wiki/Basic_concept#Input_Context][Input Context]]
+
+*** xkbcli
+
+The main bin shipped with packages is =xkbcli=
+
+**** Search the xkbregistry =xkbcli list=
+
+List user customizations. It tells you if it can't parse your config.
+
+#+begin_src sh
+xkbcli list --skip-default-paths $XKB
+#+end_src
+
+Use =yq= to process the output.
+
+#+name: xkbcli_all
+#+begin_src sh :results output code silent
+xkbcli list --skip-default-paths | yq '.'
+#+end_src
+
+=to_entries= doesn't mix well with the syntax. I'm [[bad][not the only one]] that can't
+figure this out ... I got close. There are also no mentions of zip, though it's
+probably not that hard.
+
+#+begin_src jq :results output code :stdin xkbcli_all :compact yes
+. | to_entries | map({(.key): (.value | length)})
+#+end_src
+
+#+RESULTS:
+#+begin_src jq
+[{"models":191},{"layouts":592},{"option_groups":21}]
+#+end_src
+
+***** Babel Setup
+
++ setq-local doesn't work.
++ regardless of whether it's local, it's only calling yq (only jq)
++ in any case, you can just pipe to =yq '.' -y= and now it's json
+
+#+begin_src emacs-lisp
+;;
+(setq jq-interactive-command "jq"
+      jq-interactive-font-lock-mode #'json-mode
+      jq-interactive-default-options "")
+;; (setq jq-interactive-command "yq"
+;;       jq-interactive-font-lock-mode #'yaml-mode
+;;       jq-interactive-default-options "--yaml-roundtrip")
+#+end_src
+
+Error
+
+#+begin_quote
+jq: Unknown option -y
+Use jq --help for help with command-line options,
+or see the jq manpage, or online docs  at https://jqlang.github.io/jq
+#+end_quote
+
+**** Compiling a keymap
+
+***** RMLVO
+
+Specify the XKB-specific options until you get output that looks right. With
+=--rmlvo= it won't check the keymap.
+
+RMLVO parameters
+
+#+begin_src sh :results none :noweb-ref rmlvo_us :eval never
+xmodel="pc(pc105)"
+xlayout=us
+xrules=evdev
+xvariant="altgr-intl"
+xoptions='lv3:menu_switch,ctrl:hyper_capscontrol,lv3:ralt_alt'
+#+end_src
+
+Dump RMLVO
+
+#+begin_src sh :results output code :noweb yes
+<<rmlvo_us>>
+
+xkbcli compile-keymap \
+       --model=$xmodel \
+       --rules=$xrules \
+       --layout=$xlayout \
+       --variant=$xvariant \
+       --options=$xoptions \
+       --rmlvo # --verbose
+#+end_src
+
+#+RESULTS:
+#+begin_src sh
+rules: "evdev"
+model: "pc(pc105)"
+layout: "us"
+variant: "altgr-intl"
+options: "lv3:menu_switch,ctrl:hyper_capscontrol,lv3:ralt_alt"
+#+end_src
+
+To see just the warnings:
+
+#+begin_src sh
+xkbcli compile-keymap \
+       --verbose \
+       --rules evdev \
+       --model pc105 \
+       --layout io 1>/dev/null
+#+end_src
+
+***** Where to place the keymap
+
+ it might be that xkbcommon doesn't make any assumptions about where you put the
+ compiled output. In wayland, the client applications deal with far more
+ keyboard handling ... (which means i'm not looking forward to getting moz/fcitx
+ to work on 7 different window managers)
+
+Some of the tests provide more information, but they don't indicate what
+consumes the =xkbcli= output.
+
++ filecomp.c this references a bunch of test data to catch parse errors, etc.
++ there are a few python tests that act as higher level integration tests
+
+
+**** Determining whether changes are effective
+
+Options that aren't recognized will result in errors (warnings basically)
+telling you which ones are ignored.
+
+If the keymap is compiling, then you can diff it. Remove the variants in one
+invocation and diff the files.
+
+#+begin_src sh
+
+files=(novariants variants)
+xoptions=("''" "lv3:menu_switch,ctrl:hyper_capscontrol,lv3:ralt_alt")
+xmodel="pc(pc105)"
+xrules=evdev
+xlayout=us
+
+indices=(0 1)
+# imax=$((${#xoptions[@]} - 1)) ... jesus christ
+iseq=$(seq 0 $((${#xoptions[@]} - 1))) # godamit
+for i in  $indices ; do
+    xkbcli compile-keymap \
+           --model=$xmodel \
+           --rules=$xrules \
+           --layout=$xlayout \
+           --variant=$xvariant \
+           --options=${xoptions[$i]} \
+        | grep -i mod > "/tmp/xkb/${files[$i]}"
+done
+#+end_src
+
+Then =diff /tmp/xkb/*variants=
+
+**** xkbcommon config explainer
+
+#+begin_src sh :results output file :file img/xkb-configuration.svg
+dot -Tsvg /data/ecto/sway/keyboard/libxkbcommon/doc/diagrams/xkb-configuration.dot
+#+end_src
+
+#+RESULTS:
+[[file:img/xkb-configuration.svg]]
+
+** Issues
+
+*** Include Paths
+
+**** Load Order
+
+I misinterpreted a thing.
+
+#+begin_quote
+This one has the highest priority for user config, so if you distro-hop
+and this path is used, no keyboards for you. Assume =$XKB= is this directory.
+#+end_quote
+
+... nevermind this is totally not correct. The =--include=~/.xkb= is redundant
+And it also doesn't expand tildas.
+
+#+begin_src sh
+xkbcli compile-keymap --include-defaults --include="~/.xkb" \
+       --model="pc(pc105)" \
+       --rmlvo --verbose
+#+end_src
+
+Testing with the above script gives this output:
+
+#+begin_quote
+xkbcommon: DEBUG: Include path added: /home/dc/.config/xkb
+xkbcommon: DEBUG: Include path added: /home/dc/.xkb
+xkbcommon: DEBUG: Include path failed: /etc/xkb (No such file or directory)
+xkbcommon: DEBUG: Include path added: /usr/share/X11/xkb
+xkbcommon: DEBUG: Include path failed: ~/.xkb (No such file or directory)
+rules: "evdev"
+model: "pc(pc105fdsa)"
+layout: "us"
+variant: ""
+options: ""
+#+end_quote
+
+
+*** Changes to variant names
+
+Prefer colons instead of parens. The parens are deprecated.
+
++ =level3(ralt_alt)= should be =lv3:ralt_alt=
++ =ctrl:swapcaps_hyper= should be =ctrl:hyper_capscontrl=
+
+** Development
+
+The repo docs are setup around building/developing xkb.
+
+You'll need tools like:
+
++ meson
++ doxygen
++ afl afl-utils :: this is built on top of other compilers like clang/gcc and
+  instruments a built program with debugging symbols that facilitate fuzzing
++ clang14 llvm14 :: these are required by the =fuzz= meson build for
+  =afl-clang-fast=. On arch, the package for AFL tool is built to require
+  clang14 and llvm14
+
+*** Fuzzing keyboard format
+
+=libxkbcommon= includes utilitize to fuzz the imput format.
+
+#+begin_quote
+The xkb geometry files aren't supported in wayland by xkbcommon,
+but they do still ship with X11. I would like to take those definitions and
+include metadata to build SVG's for keymaps ... eventually.
+
+Thus, I'm interested in finally cracking the XKB code... so I guess i'll be
+taking this detour.
+#+end_quote
+
+To run the fuzzer, you need to setup the project build. When you run it for the
+first time, it generates =fuzz/build= which is a Meson build dependent on the
+root project's build definitions. You'll have to blow =fuzz/build= away and
+restart after running =meson setup build=.
+
+The first failure is at =Checking core_pattern...=
+
+The tool may fail if =/proc/sys/kernel/core_pattern= is set to dump to an
+external tool. Save the current value of the file, then follow AFL's
+instructions to set it to =core=.
+
+The next failure is at =Validating target binary...= and =afl-fuzz= reports the
+binary is not instrumented. I looked at the symbols in =fuzz/build/fuzz-keymap=
+using =elf-mode=, but didn't see anything obvious. For this task, the
+dynamically linked libraries should need to be instrumented for fuzzing. The
+fuzzing target only includes =config.h= or =xkbcommon/xkbcommon.h=.
+
+I probably need to rebuild the =fuzz/build= target, but there could still be a
+few issues:
+
++ =clang14= and =llvm14= weren't installed when the =afl= package was built. the
+  absence may change the build for =afl= ... maybe
++ Cleaning out the build artifacts and restarting from scratch may do the
+  trick. its not clear how meson/ninja would invalidate older build artifacts
+  for differential builds, esp if it's clang14 that's changed and some build
+  config artifacts were dynamically generated with the wrong values.
++ I don't know anything about meson/ninja, so if it's only generating /some/ of
+  the req. references to llvm14 in places, then it would be hard for me to
+  tell. There doesn't seem to be a =meson clean= task, so ... I donno.
+
+xkbcommon's fuzzer isn't intended to be widely used, so it may be intended to
+build on a system where only llvm14 is present. I checked and the yay package
+doesn't relink =clang= to =clang14=, but it's hard to know ... so this is where
+I stop lol.
+
+... ahhh and meson includes =.gitignore= in the =build= directory it generates,
+which is why I couldn't determine the projects' file delta. my
+=project-find-file= must take these into account.
