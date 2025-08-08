@@ -78,6 +78,92 @@ Write
 + c: click :: triggers when cursor remains within =binds:drag_threshold=
 + d: drag :: triggers when cursor moves outside =binds:drag_threshold=
 
+
+
+* Swaync
+
++ It's d-bus activatable, but don't kill the app.
+  you can also bring it back with =notify-send=
++ d-bus activation starts a systemd service, restart that instead (e.g. to
+  reload config/css)
+
+** CLI
+
+Startup
+
+|-------+--------------------|
+| -R,   | --reload-config    |
+| -rs,  | --reload-css       |
+| -sw,  | --skip-wait        |
+| -s,   | --subscribe        |
+| -swb, | --subscribe-waybar |
+|-------+--------------------|
++ --subscribe :: Sub 2 notification add, close events
++ --subscribe-waybar :: Sub 2 notification add, close events with waybar support
+
+*** Basic Usage
+
+|------+----------------|
+| -t,  | --toggle-panel |
+| -op, | --open-panel   |
+| -cp, | --close-panel  |
+|------+----------------|
+| -c,  | --count        |
+|      | --hide-latest  |
+|      | --close-latest |
+| -C,  | --close-all    |
+|------+----------------|
+| -d,  | --toggle-dnd   |
+| -D,  | --get-dnd      |
+| -dn, | --dnd-on       |
+| -df, | --dnd-off      |
+|------+----------------|
++ CSS Location change requires restart
++ DND CLI always prints
++ =--skip-wait= doesn't wait on =swaync= startup
+
+*** Advanced Usage
+
+Invokes action [ACTION_INDEX] of latest notification
+
+|-----+-------------------------|
+| -a, | --action [ACTION_INDEX] |
+|-----+-------------------------|
++ =--action= works on latest notification, so use something else for basic UI notifications
+  - app needs rebuild to completely disable scripting. probably better off as
+    =nixos= overlay or =home-manager= config (can't be edited)
+
+|------+-----------------------------|
+| -I,  | --get-inhibited             |
+| -In, | --get-num-inhibitors        |
+| -Ia, | --inhibitor-add [APP_ID]    |
+| -Ir, | --inhibitor-remove [APP_ID] |
+| -Ic, | --inhibitors-clear          |
+|------+-----------------------------|
+
++ --get-inhibited :: useful for widget polling
++ inhibiting works with =app-id= selector, but this would inhibit all
+  notifications sent by =notify-send='s d-bus target
+  - so per-app or per-installation configuration is pretty important.
+
+** Buttons Grid
+
+#+begin_src json
+
+{
+  "buttons-grid": {
+    "actions": [
+      {
+        "label": "直",
+        "type": "toggle",
+        "active": true,
+        "command": "sh -c '[[ \"$SWAYNC_TOGGLE_STATE\" == true ]] && nmcli radio wifi on || nmcli radio wifi off'",
+        "update-command": "sh -c '[[ \"$(nmcli radio wifi)\" == \"enabled\" ]] && echo true || echo false'"
+      }
+    ]
+  }
+}
+#+end_src
 * Inputs
 
 ** Modifiers
@@ -111,7 +197,63 @@ $mod3  = mod3
 $lvl5  = mod3
 bind = $mod3, d, exec, notify-send "fdsa" "asdf"
 
-# .... IT WORKS. No magical eight-level keybindings though.
+# .... IT WORKS.
+#+end_src
+
+To fully bind all eight levels, I think the =include= here was needed before the
+options. The rules don't seem to spec out the =io= keymap/symbols though... but
+these are definitely needed in =evdev.xml=
+
+*~/.config/xkb/rules/evdev*
+
+#+begin_src text
+! include %S/evdev
+
+! options = symbols
+  mylevel5:ins_switch	= +mylevel5(ins_switch)
+#+end_src
+
+*~/.config/xkb/symbols/mylevel5*
+
+#+begin_src xkb
+// -*- mode: xkb; aphelia-mode: -1 -*-
+
+partial modifier_keys
+xkb_symbols "ins_switch" {
+  key <INS> {[  ISO_Level5_Shift  ], type[group1]="ONE_LEVEL" };
+};
+#+end_src
+
+
+~/.config/xkb/symbols/io
+
+#+begin_src xkb
+// modifier keys may be required
+// default partial xkb_symbols alphanumeric_keys "basic" {
+//   // first define a default layout map
+//}
+//
+
+xkb_symbols "lvl8-altgr-intl" {
+  include "us(altgr-intl)"
+
+  key.type = "EIGHT_LEVEL";
+  name[Group1] = "IO Keyboard (AltGr Intl With Dead Keys)";
+
+  key<AE01>{[exclam,		1,	onesuperior,		exclamdown,		1,2,3,4]};
+  key<AE02>{[at,			2,	twosuperior,		dead_doubleacute,	1,2,3,4]};
+  key<AE03>{[numbersign,		3,	threesuperior,		dead_macron,		1,2,3,4]};
+  key<AE04>{[dollar,		4,	currency,		sterling,		1,2,3,4]};
+  key<AE05>{[percent,		5,	EuroSign,		dead_cedilla,		1,2,3,4]};
+  key<AE06>{[asciicircum,		6,	onequarter,		dead_circumflex,	1,2,3,4]};
+  key<AE07>{[ampersand,		7,	onehalf,		dead_horn,		1,2,3,4]};
+  key<AE08>{[asterisk,		8,	threequarters,		dead_ogonek,		1,2,3,4]};
+  key<AE09>{[parenleft,		9,	leftsinglequotemark,	dead_breve,		1,2,3,4]};
+  key<AE10>{[parenright,		0,	rightsinglequotemark,	dead_abovering,	1,2,3,4]};
+
+  // key <AE11> {[     minus, underscore,           yen,    dead_belowdot ] };
+  // key <AE12> {[     equal,       plus,      multiply,         division ] };
+};
 #+end_src
 
 
