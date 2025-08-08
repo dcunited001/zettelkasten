@@ -55,6 +55,15 @@
 
 + [[https://github.com/Lehmanator/json-schema-nix][Lehmanator/json-schema-nix]]
 
+** Reproducibility
+
++ [[https://www.nixhub.io/packages/hyprgui][nixhub.io]] which gives a devbox command and the package's 1234a1c2d3#hyprgui
+  revision, but not a nix command
++ [[https://lazamar.co.uk/nix-versions/][lazamar.co.uk/nix-versions]] gives the command to run for historical package
+  archives
+
+=nix-shell -p hyprgui -I nixpkgs=$nixpkgsArchiveUrl/d27c...bfb7c.tar.gz=
+
 * Topics
 
 ** Services
@@ -191,6 +200,157 @@ delFromTo(d.querySelector('main').children, 'common-evaluation-options', null);
 delFromTo(d.querySelector('main').children, 'common-evaluation-options', 'options-that-change-the-interpretation-of-installables');
 #+end_src
 
+** Foreign Distros
+
+*** numtide/system-manager
+
+This allows nix/flakes to manage files/services on foreign distributions.
+
++ it's not clear how rpath, shebangs or dynamic library compatibility is handled
++ system-manager does not support channels
++ the docs do indicate that =system-manager= can work with existing systemd
+  services.
+
++ [[https://github.com/nix-community/srvos?tab=readme-ov-file#non-flake-usage][nix-community/srvos]]
+
+**** Un-Storing Nix/Guix Build Artifacts
+
+"un-storing" nix builds is a bit difficult, though =guix pack= can be used to
+produced RPMs (that unpack and overwrite to =/gnu/store=). I can explain how it's
+possible to flatten the end-result of =guix pack= -- the SHAs in =/nix/store= are
+unique and can be identified. If needed, they could be replaced in 95% of
+circumstances, but there are other more complicated issues.
+
+Similar issues are encountered if:
+
++ you operate a service like =cachix= or a private nix store that spans multiple
+  servers (whether via a networked file system or not) and you have scaling
+  concerns
++ you want to distribute tasks to map out stores to plan for future usage
++ you want to "map-reduce" tasks across distributed stores and have store items
+  on other servers.
++ you want to determine why garbage collection went wrong
+
+#+begin_quote
+These seem somewhat unrelated to the above ... but they're not. It's the same
+problem of partial subsets of derivation trees -- but from a different
+perspective. It's just a different partial subset when debuilding/unstoring a
+flattened =guix pack= derivation. See [[https://codeberg.org/guix/data-service][guix/data-service]] and [[https://guix.gnu.org/manual/devel/en/html_node/Guix-Services.html][related services in
+the manual]]. idk whether it's theoretically possible or feasible.
+#+end_quote
+
+*** There be dragons
+
+[[https://www.reddit.com/r/NixOS/comments/1gsz9jw/how_to_overcome_nixhome_manager_in_generic_linux/][This reddit post]] has a lot of information on this
+
+**** Overcoming OpenGL issues
+
+This user has [[https://github.com/bsendpacket/nixcfg][channel.nix]] that pins channels and also detects whether the system
+is [[https://github.com/bsendpacket/nixcfg/blob/a3679bf73ac79a0acdc664de3a18ce24f530fed1/home.nix#L11][NixOS or not]]. User notes that dep. on =system= arch and store breaks functional
+purity of the derivations. The repository also contains a lot of one-off
+out-of-tree packages.
+
+**** Using flakes on foreign systems
+
+[[https://github.com/Skademaskinen/Archerus/blob/main/flake.nix][Skademaskinen/Archerus]] sets up a nixos server, an arch desktop and a gentoo laptop
+
+The flake uses =numtide/system-manager= and has several outputs:
+
++ nixosConfigurations :: one for each home-manager configuration and one for the
+  server, but these return an entire system configuration
++ systemConfigs :: contains =inputs.system-manager.lib.makeSystemConfig= to
+  produce =desktop= and =laptop= for arch/gentoo respectively.
+  - =makeSystemConfig= takes the foreign distribution and "homogenizes" it, so
+    that it fits into =nixosConfigurations=... I think
++ packages${system} :: here the systems are exposed alongside the packages
+  - mapping =config.system.build.vm= across =self.nixosConfigurations=. this output
+    is for automated testing.
+
+There's a dependency cycle: =systemConfigs= needs to complete as a derivation
+before the =nixosConfigurations= can accept it as input ... if I'm grokking right.
+I /think/ this could lead to derivations being calculated twice, though they'd
+mostly resolve to the same points. This is covered in the [[https://github.com/numtide/system-manager/blob/main/manual/src/usage/example-configuration.md][system-manager example
+configuration]] somewhat
+
+** Building Packages
+
+*** Out of tree (without flakes)
+
+Oh well. I needed to check this one off the list anyways.
+
+**** Overlay for deps (and from nixpkgs archives)
+
+Unfortunately, nnyyxxxx/hyprparser and hyprutils/hyprparser are both offline.
+These get identified from the crate.
+
+Instead, run:
+
+#+begin_src shell
+nix-shell -p hyprgui -I nixpkgs=https://github.com/NixOS/nixpkgs/archive/d27c0d08ef25912c134b755d40a1bd1d843bfb7c.tar.gz
+#+end_src
+
+This is nice because the author =nnyyxxxx= as been obliterated from the internet,
+including from AUR, from Github, etc... see [[https://repology.org/project/hyprgui/history][repology]] and this [[https://www.reddit.com/r/hyprland/comments/1i9fh8m/what_happened_to_hyprlauncher/][reddit post]]
+
+**** With =nix-build=
+
+This uses =rustPlatform.buildRustPackage=, the equivalent to =cargo-build-system= in
+Guix, but unfortunately the dependencies are no longer on Github.
+
+
+I wanted to explore =hyprlang= by generating code to a throwaway file... without
+using the GUI for much other than than that.
+
+Build with
+
+=nix-build -E 'with import <nixpkgs> {}; callPackage packages/hyprgui.nix {}'=
+
+#+begin_src nix
+{ lib, fetchFromGitHub, rustPlatform, pkg-config, glib, pango, cairo, gtk4
+, wrapGAppsHook4, }:
+
+rustPlatform.buildRustPackage rec {
+  pname = "hyprgui";
+  version = "0.2.0";
+
+  src = fetchFromGitHub {
+    owner = "MarkusVolk";
+    repo = "hyprgui";
+    rev = "refs/heads/main";
+    hash = "sha256-j0TNFlg2rc4j19HVVipLroSzHbD7+KxJ17cvE76jd4M=";
+    # rev = "refs/tags/v${version}";
+    # hash = "sha256-akV83bvPuSJUleP0mDcnAR1KFegOXyoKSD0CVyNDJmc=";
+  };
+
+  cargoHash = "sha256-SBI2Gk4FImGw8169xIV8L0fbfcKzn6PqvLg6XxbpurI=";
+
+  strictDeps = true;
+
+  nativeBuildInputs = [ pkg-config wrapGAppsHook4 ];
+
+  buildInputs = [ glib cairo pango gtk4 ];
+
+  prePatch = ''
+    substituteInPlace hyprgui.desktop \
+    --replace-fail "/usr/bin/" ""
+  '';
+
+  postInstall = ''
+    install -Dm644 -t $out/usr/share/icons hyprgui.png
+    install -Dm644 -t $out/usr/share/applications hyprgui.desktop
+    install -Dm644 -t $out/usr/share/licenses/${pname} LICENSE
+  '';
+
+  meta = {
+    description = "GUI for configuring Hyprland written in Rust";
+    homepage = "https://github.com/hyprutils/hyprgui";
+    license = lib.licenses.gpl2Only;
+    maintainers = with lib.maintainers; [ fccapria ];
+    badPlatforms = lib.platforms.darwin;
+    mainProgram = "hyprgui";
+  };
+}
+#+end_src
 * Issues
 ** The "Nix OpenGL" problem
 Oh joy. I can't wait. Apparently [[https://github.com/guibou/nixGL][guibou/NixGL]] helps deal with this.
