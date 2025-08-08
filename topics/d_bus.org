@@ -135,7 +135,163 @@ while read -r line; do
 done <<< "$processes"
 #+end_src
 
+** Integration
 
+It's nice when people spoonfeed you all the tooling necessary for d-bus code
+generation...
+
+*** Scripting
+
+**** Yubikey widget
+
+So basically, i want to have an [[https://elkowar.github.io/eww/widgets.html?highlight=sys#systray][eww widget]] that reports the current status of
+=pcscd=, GnuPG =scdaemon= cards, yubikey devices, =gpg-agent= and a few other things
+... it can be a PITA to track down the exact problem when there is one.
+
+This is a bit sensitive though, so it's important that a single [authorized]
+source of truth "throws data over the fence" towards the user-level widgets.
+
+The scripts these widgets rely on could ask for some themselves ... but that
+requires:
+
++ argument handling and CLI cleansing
++ staged output filtering
++ constant polling and/or temporary files
+
+There is also [[https://wiki.ffpy.org/getting-started/client-and-cli/#_top][Fabric-Development/fabric]] which offers a more direct interface to
+D-Bus events and a more direct interface to [[https://wiki.ffpy.org/api/fabric/][Hyprland's .socket2.sock]]. I like
+lisp though and eww's =yuck= language is lisp. It's script-based flow is simple.
+
+***** Example of event-driven flow
+
+[[https://codeberg.org/JustineSmithies/hyprland-dotfiles/src/branch/master/.config/eww/eww.yuck#L1-L39][JustineSmithies/hyprland-dotfiles .config/eww/eww.yuck]] and
+[[https://codeberg.org/JustineSmithies/hyprland-dotfiles/src/branch/master/.config/eww/scripts/workspace.sh][.config/eww/scripts/workspace.sh]] listen to the hyprland socket
+
+This is fairly simple.
+
+****** The difference from my =yubikey widget= and the above:
+
+Hyprland manages its =.socket2.sock= lifecycle. the socket needs to exist to write
+to it and processes need to exit gracefully ... or else. the socket's state is
+tied to the sender's memory address space (or smthn idk)
+
+Here, I need to manage the lifecycle and maybe have this run on another
+distribution. yeh idk... something fairly agnostic that retransmits data on
+D-Bus sounds much easier.
+
+#+begin_quote
+yes, I remember killing the shepherd service manager and refreshing the socket,
+this is the only way that I would ever know anything about a socket ... (i'm not
+complaining; I would nave NEVER encountered anything like this on arch)
+#+end_quote
+
++ this would involve quite a bit of logic whose responsibility is spread over
+  various bash scripts & systemd units.
+  - a small number of bash scripts with functions and a simple interface to be
+    called by a chain of SystemD units would manage alright (it's at least
+    mostly a single programming language.)
++ still, i'd rather implement some stream-processing: fan-in from d-bus events
+ specified by args and then write to a single socket,
+  - perhaps doing additional stages of filtering
+  - ultimately there should be a minimal number of consumers that can easily
+    construct the entire state of Eww widget value widget -- or whatever's
+    needed to receive a value in Eww's =(deflisten ...)=
++ An alternative: using state-deltas instead of whole values, which can be
+  somewhat seen in the D-Bus =PropertiesChanged= signal.
+  - this is convoluted: (1) the data format is necessarily more complex than
+    the schema of the value it's updated (2) interruptions can cause undefined
+    behavior or require error handling (3) D-Bus event sources need to
+    communicate upstream information (e.g. who asked, message id, response id,
+    etc) and then address it to other event receivers
+  - thus, D-Bus event sources/sinks are having a conversation: negotiating the
+    addressing/handling/etc and persisting/destructuring data so it can be
+    retransmitted is complex.
+
+***** Write to socket when yubikey un/plugged
+
+.......
+
+***** Create unit that writes to a socket/file when the =smartcard.target= state changes
+
+=systemctl --user list-dependencies --reverse smartcard.target=
+
+***** Discover d-bus information
+
+List any dependencies of the smartcard target
+
+#+begin_src shell
+dbus-monitor --session --profile "type='signal',interface='org.freedesktop.DBus.Properties'"
+# can also filter by also sender='org.freedesktop.systemd1'
+#+end_src
+
+When pluggin in, the =org.freedesktop.DBus{,.Properties}= interfaces light up
+
++ _2d :: is a =/= in hex: this is a device path
++ _2dxxx_2dxxx :: would then be the =/dev/bus/usb/xxx/xxx= device path
+  - no indication here of what type of device it is
++ _2e :: is =.= in hex :: so this signaling so =smartcard.target='s dependents get
+  activated potentially. d-bus has done most of the work for me here. I just
+  need to create something downstream from that target.
+
+| type |         timestamp |     serial | sender               | destination | path                                                                        | interface                       | member            | in_reply_to |
+|------+-------------------+------------+----------------------+-------------+-----------------------------------------------------------------------------+---------------------------------+-------------------+-------------|
+| sig  | 1754670158.038870 | 4294967295 | org.freedesktop.DBus | :1.1894     | /org/freedesktop/DBus                                                       | org.freedesktop.DBus            | NameAcquired      |             |
+| sig  | 1754670158.038879 | 4294967295 | org.freedesktop.DBus | :1.1894     | /org/freedesktop/DBus                                                       | org.freedesktop.DBus            | NameLost          |             |
+| sig  | 1754670162.921810 |       1643 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/shutdown_2etarget                            | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.921888 |       1646 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.921897 |       1647 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.921924 |       1649 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964258 |       1650 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/dev_2dbus_2dusb_2dxxx_2dxxx_2edevice         | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964269 |       1651 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/dev_2dbus_2dusb_2dxxx_2dxxx_2edevice         | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964274 |       1652 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964278 |       1653 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/sys_2ddevices_2dpci0000_3a00_2d0000......... | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964337 |       1654 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/sys_2ddevices_2dpci0000_3a00_2d0000......... | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964344 |       1659 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/sys_2ddevices_2dpci0000_3a00_2d0000......... | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964354 |       1660 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/sys_2ddevices_2dpci0000_3a00_2d0000......... | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964362 |       1661 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/dev_2dbus_2dusb_2d001_2d020_2edevice         | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670162.964395 |       1662 | :1.1217              | <none>      | /org/freedesktop/systemd1/unit/dev_2dbus_2dusb_2d001_2d020_2edevice         | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+
+Unplug and events are broadcast reporting the tear down of the device
+
+| type |         timestamp | serial | sender  | destination | path                                                                        | interface                       | member            | in_reply_to |
+|------+-------------------+--------+---------+-------------+-----------------------------------------------------------------------------+---------------------------------+-------------------+-------------|
+| sig  | 1754670167.221148 |   1663 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670167.221165 |   1664 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/sys_2ddevices_2dpci0000_3a00_2d0000......... | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670167.221176 |   1665 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/sys_2ddevices_2dpci0000_3a00_2d0000......... | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670167.221185 |   1666 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/dev_2dbus_2dusb_2dxxx_2dxxx_2edevice         | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670167.221253 |   1667 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/dev_2dbus_2dusb_2dxxx_2dxxx_2edevice         | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670167.221260 |   1671 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670167.221269 |   1672 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+| sig  | 1754670167.221276 |   1674 | :1.1217 | <none>      | /org/freedesktop/systemd1/unit/smartcard_2etarget                           | org.freedesktop.DBus.Properties | PropertiesChanged |             |
+
+
++ more information can be found using =--monitor= instead of =--profile=
+  - or using =qdbusviewer=, finding an =org.freedesktop.DBus.Properties=
+  - there are a million created by reflection, but it needs to be under the
+    correct path
+  - then rightclick and =Connect...=
+
+=qdbusviewer= shows: Connected to:...
+
++ service org.freedesktop.systemd1
++ path /org/freedesktop/systemd1/unit/smartcard_2etarget
++ interface org.freedesktop.DBus.Properties
++ signal PropertiesChanged
+
+These are likely the same arguments to supply =dbus-monitor= which is great
+because I hate GUI applications that reset the treeview/gridview (regardless of
+how unbelievably useful =qdbusviewer= was when I first found it)
+
+#+begin_quote
+Have I never mentioned how seriously upside down the world is and how I feel like
+the entire world conspired to prevent me from learning this stuff? It's
+literally soooooo easy. I'm not 100% serious... but seriously? it feels like
+people basically lie to me, knowing exactly what to say to prevent me from
+learning things that would dramatically increase my level of knowledge and/or
+access to experience. That's gotta be impossible right?
+
+fucking epistemic games... am i right?
+#+end_quote
 
 * Issues
 
