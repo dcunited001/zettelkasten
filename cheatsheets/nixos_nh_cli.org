@@ -1,0 +1,286 @@
+:PROPERTIES:
+:ID:       027166e4-4321-4c75-8990-8198c7a44321
+:END:
+#+title: Cheatsheet: NixOS: nh cli
+
+* Roam :noexport:
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+
+* Notes :noexport:
+
+This should export via =ox-latex= but I don't have a latex environment set up yet.
+
+I've already printed out references for some CLI, but there are many third-party
+tools as well.
+
+I avoided diving into these at first because I disdain "unnecessary
+abstractions" esp if they would delay learning the basics. However, I'm still a
+bit confused on use cases like:
+
++ maintaining generations of profiles as GC roots for system tools, which are
+  not necessarily projects.
++ mixed usage of =home-manager= with =nixos= or on foreign distributions, esp. when
+  trying to get a single codebase to use the former to use flakes and a simpler
+  channels-only evaluation for the system.
+  - Which profiles would be dominant? Will I overwrite things?
++ There are warnings about =nix profile= that state it will change your path and
+  make =nix-env=-managed profiles inaccessible. See [[https://nixos.wiki/wiki/Nix_command][Switching between =nix-env= and
+  =nix profile=]].
+  - I haven't used =nix-env= on this =nixos= system yet, but =~/.nix-profile/bin= is
+    in my path (and points to a non-existent
+    =~/.local/state/nix/profiles/profile=)
+  - That link points to a directory =~/.local/state/nix/profiles= which does
+    contain a =channels= profile.
+  - The profile corresponding to =users.users.dc.packages= sets up tools in
+    =/etc/profiles/per-user/dc/bin=
+
+On Guix this can be a source of confusion until you get it straightened out.
+
+* nh
+
+Common options:
+
+| -v --version | -h --help | -V --verbose |
+
+Subcommands
+
+| os | home | darwin | search | clean | completions |
+
+[[file:img/nix-nh-subcommands.svg]]
+
+** nh completions
+
+Shells
+
+| bash | elvish | fish | powershell | zsh |
+
+** nh search
+
+options
+
+|    | flag        | opt     | desc                  |
+|----+-------------+---------+-----------------------|
+| -l | --limit     | LIMIT   | N search results      |
+| -c | --channel   | CHANNEL | Channel name to query |
+| -P | --platforms |         |                       |
+| -j | --json      |         |                       |
+
+** nh os
+
+*** subcommands
+
+| subcmd   | args                       | desc |
+|----------+----------------------------+------|
+| info     |                            |      |
+| rollback |                            |      |
+| repl     | [installable]              |      |
+| boot     | [installable] [extra-args] |      |
+| build    | [installable] [extra-args] |      |
+| build-vm | [installable] [extra-args] |      |
+| switch   | [installable] [extra-args] |      |
+| test     | [installable] [extra-args] |      |
+
+*** options
+
+boot, build, switch, test, vm, rollback
+
+|    | flag                 | opt      | desc |
+|----+----------------------+----------+------|
+| -s | --specialization     |          |      |
+| -S | --no-specialization  |          |      |
+| -n | --dry                |          |      |
+| -a | --ask                |          |      |
+| -R | --by-pass-root-check |          |      |
+| -u | --update             |          |      |
+| -U | --update-input       | INPUT    |      |
+| -H | --hostname           | HOSTNAME |      |
+
+boot, build, switch, test, vm
+
+| -f | --file        | FIILE       |                              |
+| -E | --expr        | EXPR        |                              |
+|    | --no-nom      |             | don't use =nom= output monitor |
+|    | --target-host | TARGET_HOST |                              |
+|    | --build-host  | BUILD_HOST  |                              |
+
+rollback
+
+| -t | --to | TO | to a generation number |
+
+build-vm
+
+| build-vm | -B | --with-bootloader | $BL |   |
+
+info
+
+| -P | --profile | PROFILE |
+
+repl
+
+| -f,--file | -E,--expr | -H,--hostname |
+
+
+** nh home
+
+all suboptions accept INSTALLABLE EXTRA_ARGS
+
+| home | build | repl |
+
+repl
+
+| -f,--file | -E,--expr | -c,--configuration |
+
+home switch
+
+
+|    | flag                | opt           | desc |
+|----+---------------------+---------------+------|
+| -s | --specialization    |               |      |
+| -S | --no-specialization |               |      |
+| -n | --dry               |               |      |
+| -a | --ask               |               |      |
+| -u | --update            |               |      |
+| -U | --update-input      | INPUT         |      |
+| -c | --configuration     | CONFIGURATION |      |
+| -f | --file              | FILE          |      |
+| -E | --expr              | EXPR          |      |
+| -c | --configuration     | CONFIGURATION |      |
+| -b | --backup-extension  | EXT           |      |
+| -o | --out-link          | OUT_LINK      |      |
+|    | --no-nom            |               |      |
+
+** nh clean
+
+subcommands
+
+| all | user | profile |
+
+options for all subcommands
+
+| -k | --keep       | KEEP       | N generations |
+| -n | --dry        |            |               |
+| -a | --ask        |            |               |
+| -K | --keep-since | KEEP_SINCE | Range         |
+|    | --nogc       |            |               |
+|    | --nogcroots  |            |               |
+
+** nh darwin
+
+subcommands
+
+| subcmd | args                       | desc |
+|--------+----------------------------+------|
+| repl   | [installable]              |      |
+| switch | [installable] [extra-args] |      |
+| build  | [installable] [extra-args] |      |
+
+repl
+
+| -f,--file | -E,--expr | -H,--hostname |
+
+build switch
+
+|    | flag                 | opt      | desc |
+|----+----------------------+----------+------|
+| -n | --dry                |          |      |
+| -a | --ask                |          |      |
+| -R | --by-pass-root-check |          |      |
+| -o | --out-link           | OUT_LINK |      |
+| -u | --update             |          |      |
+| -U | --update-input       | INPUT    |      |
+| -H | --hostname           | HOSTNAME |      |
+|    | --no-nom             |          |      |
+
+* From completion :noexport:
+To get a list of options corresponding to subcommands from the completion
+generation:
+
+#+begin_src shell
+nh completions bash | grep -B1 opts=\"
+#+end_src
+
+To produce a graph that shows how subcommands relate to each other:
+
+#+name: nhSubcommands
+#+begin_src shell :results output verbatim
+nh completions bash \
+    | grep -E 'nh(__\w+)*?,(\w+)\)' \
+    | tr -d ' ' | tr -d ')' \
+    | sed -E 's/nh__//g' \
+    | sed -E 's/,/ -> /g'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+nh -> clean
+nh -> completions
+nh -> darwin
+nh -> home
+nh -> os
+nh -> search
+clean -> all
+clean -> profile
+clean -> user
+darwin -> build
+darwin -> repl
+darwin -> switch
+home -> build
+home -> repl
+home -> switch
+os -> boot
+os -> build
+os -> info
+os -> repl
+os -> rollback
+os -> switch
+os -> test
+#+end_example
+
+#+begin_src dot :file img/nix-nh-subcommands.svg :noweb yes
+digraph G {
+    graph[rankdir="LR"]
+    <<nhSubcommands()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/nix-nh-subcommands.svg]]
+
+#+begin_src shell :results output verbatim silent
+nh completions bash \
+    | grep --no-group-separator -B1 opts=\" \
+    | sed -e 's/ --verbose --help//g' \
+    | sed -e 's/ --version//g' \
+    | sed -e 's/-v -h //g' | sed -e 's/-V //g' \
+    | sed -E 's/^ +//g' | tr '\n' ' ' | sed -e 's/" nh/\nnh/g' \
+    | grep -ve '^cmd'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+nh) opts="os home darwin search clean completions
+nh__clean) opts="all user profile
+nh__clean__all) opts="-k -K -n -a --keep --keep-since --dry --ask --nogc --nogcroots
+nh__clean__profile) opts="-k -K -n -a --keep --keep-since --dry --ask --nogc --nogcroots <PROFILE>
+nh__clean__user) opts="-k -K -n -a --keep --keep-since --dry --ask --nogc --nogcroots
+nh__completions) opts="bash elvish fish powershell zsh
+nh__darwin) opts="switch build repl
+nh__darwin__build) opts="-n -a -f -E -o -u -U -H --dry --ask --file --expr --no-nom --out-link --update --update-input --hostname [INSTALLABLE] [EXTRA_ARGS]...
+nh__darwin__repl) opts="-f -E -H --file --expr --hostname [INSTALLABLE]
+nh__darwin__switch) opts="-n -a -f -E -o -u -U -H --dry --ask --file --expr --no-nom --out-link --update --update-input --hostname [INSTALLABLE] [EXTRA_ARGS]...
+nh__home) opts="switch build repl
+nh__home__build) opts="-n -a -f -E -o -u -U -c -s -S -b --dry --ask --file --expr --no-nom --out-link --update --update-input --configuration --specialisation --no-specialisation --backup-extension [INSTALLABLE] [EXTRA_ARGS]...
+nh__home__repl) opts="-f -E -c --file --expr --configuration [INSTALLABLE] [EXTRA_ARGS]...
+nh__home__switch) opts="-n -a -f -E -o -u -U -c -s -S -b --dry --ask --file --expr --no-nom --out-link --update --update-input --configuration --specialisation --no-specialisation --backup-extension [INSTALLABLE] [EXTRA_ARGS]...
+nh__os) opts="switch boot test build repl info rollback build-vm
+nh__os__boot) opts="-n -a -f -E -o -u -U -H -s -S -R --dry --ask --file --expr --no-nom --out-link --update --update-input --hostname --specialisation --no-specialisation --bypass-root-check --target-host --build-host [INSTALLABLE] [EXTRA_ARGS]...
+nh__os__build) opts="-n -a -f -E -o -u -U -H -s -S -R --dry --ask --file --expr --no-nom --out-link --update --update-input --hostname --specialisation --no-specialisation --bypass-root-check --target-host --build-host [INSTALLABLE] [EXTRA_ARGS]...
+nh__os__build__vm) opts="-n -a -f -E -o -u -U -H -s -S -R -B --dry --ask --file --expr --no-nom --out-link --update --update-input --hostname --specialisation --no-specialisation --bypass-root-check --target-host --build-host --with-bootloader [INSTALLABLE] [EXTRA_ARGS]...
+nh__os__info) opts="-P --profile
+nh__os__repl) opts="-f -E -H --file --expr --hostname [INSTALLABLE]
+nh__os__rollback) opts="-n -a -s -S -t -R --dry --ask --specialisation --no-specialisation --to --bypass-root-check
+nh__os__switch) opts="-n -a -f -E -o -u -U -H -s -S -R --dry --ask --file --expr --no-nom --out-link --update --update-input --hostname --specialisation --no-specialisation --bypass-root-check --target-host --build-host [INSTALLABLE] [EXTRA_ARGS]...
+nh__os__test) opts="-n -a -f -E -o -u -U -H -s -S -R --dry --ask --file --expr --no-nom --out-link --update --update-input --hostname --specialisation --no-specialisation --bypass-root-check --target-host --build-host [INSTALLABLE] [EXTRA_ARGS]...
+nh__search) opts="-l -c -P -j --limit --channel --platforms --json [QUERY]..."
+#+end_example
+

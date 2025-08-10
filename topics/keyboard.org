@@ -318,6 +318,77 @@ the command needs to be run like =setkeycodes $scancode $keycode=.
 + [[https://zwischenzugs.com/2019/04/23/the-missing-readline-primer/][The Missing Readline Primer]]
 ** Topics
 
+*** Mapping Out Subcommand Completion
+
+#+begin_quote
+I honestly prefer bash's more limited completion. I have =consult= in emacs, but
+i've never really set up =fzf=. I think my zshrc config is a bit too loose with
+the completion. it's ported in from Garuda. it's pretty good, but I removed
+=starship=. I don't like the dynamic functionality.
+
+not having zsh has been somewhat of a slow down. it'd be different if I pair
+with someone using it and ask questions, but i feel like i'm getting 12% of the
+features.
+#+end_quote
+
+This uses the =bash= keybindings to collect a list of subcommands through
+completion, +generating an associative array with composite keys.+
+
++ the point is at =¶= and the mark is at =¤=
++ you can record macros with =C-x (= to start and =C-x )= to end
++ then dump them to =.inputrc= format by running =print-last-kbd-macro= but you need
+  to =bind= it first
+
+The point here would be to quickly generate a simple =dot= graph of a CLI and it's
+subcommands (or a circle graph with subcommands pointing to common options).
+
+#+begin_example shell
+declare -A subcmds
+sc="nix build"
+$sc
+# shell-expand-line             C-M-e
+nix build¶ # backward-word      M-b
+nix¶build  # cut-word           C-w
+nix¶       #
+
+
+# step two ????
+
+# step three: profit
+nix build ¶ # insert-completions   M-*
+nix build . agda arion blender-bin bundlers cachix... ...¶
+
+# undo        C-/
+nix build ¶   # beginning-of-line         C-a
+nix build¶_   # backward-char             C-b
+¶nix build¤   # exchange-point-and-mark   C-x C-x
+¶             # kill-word                 C-w (this needs C-k C-u)
+subcmds[¶     # type this? lol shit
+subcmds[nix build¶      # yank             C-y
+subcmds[nix build]="¶"  # type ...
+subcmds[nix build]=". agda arion blender-bin ..."  # yank-pop   C-M-y
+#+end_example
+
+the previous command doesn't work, since self-insert counts as a command --
+=C-M-y= needs to be used directly after a =yank=. If you use =C-k= and =C-u=, you can
+kill the whole line from the middle (but this is equivalent to =C-a C-u=)
+
+idk if i will really finish. I've wanted to do extract the completion data to
+convert it to a graph for awhile. It's /somewhat/ impractical to get this to work
+as a subgraph, since =bash= associative arrays can only be nested using composite
+keys. This basically requires right-associative freemoniods ... i mean =IFS= (i've
+already typed those monoid notes up). Anyways, it's too messy, but it would be
+handy.
+
+There's probably a better way to introspect on:
+
++ the dynamic completion functions or data (idk about that spaghetti code)
++ use the =script= command to just record the dumped completion outputs
+  - iterate over the subcommands, maybe passing in commands directly to the tty
+  - then, given =script='s saved output, call =split= or =csplit= on the shell prompt
+  - the first line of each file should be what you typed
+  - it depends on the =script= options (there's a youtube video i can't find...)
+
 *** Keybindings.
 
 Run =bind -f $file= to emit your current bindings to a script.

@@ -6,6 +6,14 @@
 * Roam :noexport:
 + [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
 
+* Resources
+
+** Assuan Protocol
++ A golang [[https://github.com/jmhobbs/pinentry-client][jmhobbs/pinentry-client​]] and [[https://www.velvetcache.org/2023/03/26/a-peek-inside-pinentry][blog]]
++ [[https://pkg.go.dev/github.com/proglottis/gpgme][proglottis/gpgme]] contains a CGO implementation of assuan, intended for
+  integration with =gpgme=
+  - [[https://github.com/karampok/i3-bar?][karampok/i3-bar]] uses gpgme to provide a [[https://github.com/karampok/i3-bar/blob/master/yubikey/yubikey.go][yubikey status indicator]] for the
+    modular i3 widget framework [[https://github.com/soumya92/barista][soumya92/barista]]
 * Overview
 
 * Interaction
@@ -33,3 +41,88 @@ Use =gpg-connect-agent= to get a shell
   - in the future, may also return the status of all readers
   + The status is a list of one-character flags. status is mutually exclusive
 + reader_list :: req. internal CCID driver)
+
+** Assuan output
+
+#+begin_src shell
+for m in {version,pid,socket_name,connections,status,\
+reader_list,app_list,card_list,all_active_apps}; do
+    tee >(echo -n "$m ") | gpg-connect-agent "scd getinfo $m" /bye;
+done | grep -ve '^OK'
+#+end_src
+
+#+RESULTS:
+| version         | D | 2.4.7                                                             |                                  |         |     |
+| pid             | D | 9513                                                              |                                  |         |     |
+| socket_name     | D | /run/user/1000/gnupg/S.scdaemon                                   |                                  |         |     |
+| connections     | D | 1                                                                 |                                  |         |     |
+| status          | D | u                                                                 |                                  |         |     |
+| reader_list     | D | 1050:0407:X:0%0A                                                  |                                  |         |     |
+| app_list        | D | openpgp:%0Apiv:%0Anks:%0Ap15:%0Ageldkarte:%0Adinsig:%0Asc-hsm:%0A |                                  |         |     |
+| card_list       | S | SERIALNO                                                          | D2760001240100000006250195910000 |         |     |
+| all_active_apps | S | SERIALNO                                                          | D2760001240100000006250195910000 | openpgp | piv |
+
+*** Processing with =jc= and =jq=
+
+The =jc= tool is useful for parsing a myriad of Linux CLI output... hmmm
+
+#+begin_src shell :results output code :wrap example json
+gpg-connect-agent "scd getinfo reader_list" /bye \
+    | grep -ve '^OK' \
+    | jc --gpg --pretty
+#+end_src
+
+#+RESULTS:
+#+begin_example json
+[
+  {
+    "type": "D 1050",
+    "validity": "0407",
+    "key_length": "X",
+    "pub_key_alg": "0%0A",
+    "key_id": null,
+    "creation_date": null,
+    "expiration_date": null,
+    "certsn_uidhash_trustinfo": null,
+    "owner_trust": null,
+    "user_id": null,
+    "signature_class": null,
+    "key_capabilities": null,
+    "cert_fingerprint_other": null,
+    "flag": null,
+    "token_sn": null,
+    "hash_alg": null,
+    "curve_name": null,
+    "compliance_flags": null,
+    "last_update_date": null,
+    "origin": null,
+    "comment": null
+  }
+]
+#+end_example
+
+Nevermind, only works for listing keys the =gpg-agent= knows about, which itself
+is super useful. I found it when browsing through [[https://git.savannah.gnu.org/cgit/guix.git/tree/gnu/packages/admin.scm?h=master#n5351][./gnu/packages/admin.scm]]
+
+#+begin_src shell :results output code :wrap example json
+# gpg- "scd getinfo reader_list" /bye \
+gpg --with-colons -K | jc --gpg \
+   | jq -r 'map(select(.type == "fpr")
+            | "\(.user_id)") | join("\n")'
+
+#  | jq -c '. | map(select(.type == "fpr") | )' \
+#  | sed -e 's/},{/},\n {/g'
+#+end_src
+
+#+RESULTS:
+#+begin_example json
+9E013E9459081C7D2C10DEB69FCE9B3064CED760
+4BB1D0310A01C22658BD9EF7B5E0535B23DD6A7A
+5AFB345252F373347B1E0DD55AA3269777368E0F
+790C0D7722F1792670C0FBD8FC275EE2A3547885
+E0ED834CE469590E01EB58F34FFBCBA193874066
+FB1E288FF76D9A642F4EDB16D26DD3F2DE1C4DA4
+CC787C19E1437653C42BB4C8C639A78E588E1D42
+#+end_example
+
+* Assuan
