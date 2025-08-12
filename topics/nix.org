@@ -27,6 +27,9 @@
 *** Language
 
 + [[https://discourse.nixos.org/t/reference-diagram-for-nix-file-module-flake-function-use-cases-and-identification/43442/2][What even is a...]] flake/module/function/etc
++ [[https://nixcademy.com/posts/what-you-need-to-know-about-laziness/][What you need to know about laziness]]
+  - [[https://en.wikibooks.org/wiki/Haskell/Graph_reduction#Weak_Head_Normal_Form][Weak Head Normal Form]]
++ [[https://ianthehenry.com/posts/how-to-learn-nix/nix-language][How To Learn Nix (12) Nix Language]]
 
 ** Schema
 
@@ -39,7 +42,17 @@
 + [[github:serokell/deploy-rs][serokell/deploy-rs]]
 + [[awakesecurity/nix-deploy][awakesecurity/nix-deploy]]
 
-** Flakes & Channels
+** Channels
++ [[https://wiki.nixos.org/wiki/Channel_branches][Channel Branches]]
+
+*** Examples
+
++ Wroclaw/nixos-configuration
+
+*** Mixing with flakes
++ [[https://discourse.nixos.org/t/do-flakes-also-set-the-system-channel/19798][Do flakes also set the system channel? (2022)]]
+
+** Flakes
 
 *** Ecosystem
 
@@ -47,9 +60,8 @@
 + home-manager
 + dendritic
 
+
 *** Modules
-
-
 
 *** Packages
 
@@ -68,13 +80,234 @@
 + [[https://www.tweag.io/blog/2021-03-04-gomod2nix/][Announcing Gomod2nix]] (2021) not sure whether this is like [[https://gitlab.com/martin-baulig/config-and-setup/guix-packages/-/tree/work-wal-g/packages/baulig/build-system?ref_type=heads][baulig's go-module]]
   build system or not.
 
+** Packaging
+*** Variants
++ [[https://github.com/NixOS/rfcs/blob/c655bdaab40f7a467f75dbb5af4325d991874e44/rfcs/0140-simple-package-paths.md?plain=1#L164][RFC 0140 simple package paths]] explans the =with import <nixpkgs> {};
+  callPackage pkgs/applications/misc/hello.nix {}= pattern
+
+
+** Containers
++ [[https://blog.nicholaszolton.dev/posts/taking-control-of-your-code/][Taking Control of Your Code]]: podman,nginx,gitlab,https
+*** Podman
++ [[https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/9/html-single/building_running_and_managing_containers/index][RHEL9: Building, Running and Managing Containers]]
++ [[https://github.com/containers/podman/discussions/17610#discussioncomment-6550124][containers/podman#17610]] running containers as services using with
+  non-interactive users. see highlighted comment about a potential issue if
+  =useradd= doesn't run with =-F= which doesn't create =subid= mappings
+
+**** Rootless with service user
+(2025/3/11) [[https://github.com/nixos/nixpkgs/issues/389088][nixos/nixpkgs#389088: virtualisation.oci-containers.containers:
+podman rootless not working]]
+
+explains config for user-constrained OCI services:
+
+
 * Topics
+
+** Containers
+*** NixOS Containers
+
+Run [[https://wiki.nixos.org/wiki/NixOS_Containers][NixOS "systems" as containers]] on a system
+
+*** OCI Containers
+
+** Dev Tooling
+*** Search
++ 3timeslazy/nix-search-tv: search nix packages using tv/fzf
++ [[https://github.com/Azeirah/nix-deps-treemap][Azeirah/nix-deps-treemap]]
+
+*** LSP
+**** Inconsistent completion
+
+Does this have anything to do with lacking consistent info from channels? Or
+updating system/channel during LSP sessions without refreshing the sessions?
+
+**** nixd
++ [[https://raw.githubusercontent.com/nix-community/nixd/main/nixd/docs/nixd-schema.json][./nixd/docs/nixd-schema.json​]]
+** Secrets
+*** Secret Service
+
+**** GCR
+
++ To access SSH keys via ssh-agent ([[https://wiki.archlinux.org/title/GNOME/Keyring#SSH_keys][wrapped by GCR]])
+
+#+begin_src nix
+{ pkgs, ... }: {
+  systemd.extraConfig = "DefaultTimeoutStopSec=10s";
+  services.journald.extraConfig = "SystemMaxUse=300M";
+  services.dbus.packages = [ pkgs.gcr ];
+}
+# https://wiki.nixos.org/wiki/Secret_Service
+#+end_src
+
+That will [[https://github.com/maximbaz/dotfiles/blob/8a82a18c1dd767b185e6bbe3bd04be05bce4d08d/modules/linux/systemd.nix#L4][add =pkgs.gcr='s dbus-1 interfaces/etc]] to the system/session bus (I
+think to help with sops secret activation in either home/system)
+
+#+begin_quote
+Packages whose D-Bus configuration files should be included in
+the configuration of the D-Bus system-wide or session-wide
+message bus.  Specifically, files in the following directories
+will be included into their respective DBus configuration paths:
+{file}`«pkg»/etc/dbus-1/system.d`
+{file}`«pkg»/share/dbus-1/system.d`
+{file}`«pkg»/share/dbus-1/system-services`
+{file}`«pkg»/etc/dbus-1/session.d`
+{file}`«pkg»/share/dbus-1/session.d`
+{file}`«pkg»/share/dbus-1/services`
+#+end_quote
+
+*** SOPS nix
+
+**** Config Structure
+
++ 2022/10 [[https://samleathers.com/posts/2022-02-11-my-new-network-and-sops.html][my new network and sops]]
++ usage in [[https://github.com/nix-community/infra/tree/master/hosts/build01][nix-community/infra ./hosts/build01]]
+**** Adding as channel
+
+=niv= is recommended over channels, but the next version manager starting with =n=
+... nevermind
+
+#+begin_src shell
+# the name defaults to the last path component
+nix-channel --add https://github.com/Mic92/sops-nix
+nix-channel --update
+#+end_src
 
 ** Services
 
 *** NixOS misc
 
 + ngocbd/nylon: socks proxy
+
+
+*** SystemD Sockets
+** Networking
+
+*** Router
+
++ [[https://pavluk.org/blog/2022/01/26/nixos_router.html][My NixOS Router Journey]]
+
+
+** Overrides
+
+*** Loading an =overlay= with an =override=
+
+This wasn't working for me, but it was close
+
+#+begin_src nix
+{...}: {
+  nixpkgs.overlays = [
+    (final: prev: {
+      nh = prev.nh.overrideAttrs (old: {
+        src = prev.fetchFromGitHub {
+          owner = "nix-community";
+          repo = "nh";
+          tag = "v4.1.2";
+          hash = "sha256-v02NsZ589zzPq5xsCxyrG1/ZkFbbMkUthly50QdmYKo=";
+        };
+      });
+    })
+  ];
+}
+#+end_src
+
+At some point, it built the package at the newer version, but it wasn't adding
+it into the system. I know that it did bc it failed the hash check and GC
+removed it from the store. I don't know for sure that it was the right version,
+but it was failing when the tag lacked the "v" in "4.1.2"
+
+Since version "4.1.2" had already been built (or something idk), I couldn't
+rebuild it. That wasn't the problem though.
+
+*** Override a single package in =users.users.me.packages=
+
+This doesn't work because =overrideAttrs= requires being passed to =mkDerivation=...
+
+#+begin_src nix
+{...}: {
+  users.users.me = [
+    packages = with pkgs;
+
+      let
+        nh412 = nh.overrideAttrs (prev: {
+          src = fetchFromGitHub {
+            owner = "nix-community";
+            repo = "nh";
+            sha = "003dd72d3234361c93d5be7ec9766c88e0dd1052";
+            tag = "v4.1.2";
+            hash = "sha256-v02NsZ589zzPq5xsCxyrG1/ZkFbbMkUthly50QdmYKo=";
+          };
+        });
+
+      in [
+        # ...
+        nh412
+        # ...
+      ];
+  ]
+}
+#+end_src
+
+I tried using =override= instead.
+
+#+begin_src nix
+{...}: {
+  user.users.me = {
+    packages = with pkgs; [
+      # ...
+      (nh.override {
+        src = fetchFromGithub {
+            sha = "003dd72d3234361c93d5be7ec9766c88e0dd1052";
+            tag = "v4.1.2";
+            hash = "sha256-v02NsZ589zzPq5xsCxyrG1/ZkFbbMkUthly50QdmYKo=";
+        };
+      })
+      # ...
+    ];
+  };
+}
+#+end_src
+
+While this syntax is more flexible, it still doesn't work. The best way to
+explain the difference between the two:
+
++ override :: overrides args (at the top of the Nix file)
++ overrideAttrs :: overrides attrs (defined inside the =mkDerivation= block)
++ The discord user mentions: "nixos files are just functions, the args are
+  defined at the top of the file"... which I knew, but is like so obvious that
+  (damit i still need to learn the language)
+
+This is what I ended up going with
+
+#+begin_src nix
+{...}: {
+  user.users.me = {
+    packages = with pkgs; [
+      # ...
+      ((callPackage <nixpkgs/pkgs/by-name/nh/nh/package.nix>
+        { }).overrideAttrs {
+          src = pkgs.fetchFromGitHub {
+            owner = "nix-community";
+            repo = "nh";
+            # sha1 = "003dd72d3234361c93d5be7ec9766c88e0dd1052";
+            # tag = "v4.1.2";
+            rev = "1b80ec22d3ab66fa806e14cceec3457984226d37";
+            hash = "sha256-v02NsZ589zzPq5xsCxyrG1/ZkFbbMkUthly50QdmYKo=";
+          };
+          env.NH_REV = "1b80ec22d3ab66fa806e14cceec3457984226d37"; # src.rev;
+        })
+      # ...
+    ];
+  };
+}
+#+end_src
+
+Lingering issues:
+
++ callPackage :: this is apparently unnecessary and the path to call it on is
+  definitely verbose. for some =toplevel= packages it wouldn't be so bad.
++ env.NH_REV :: this is a bit difficult to get rid of, since it requires
+  composing =overrideAttrs=
+
 
 ** ZaneyOS
 
@@ -128,6 +361,24 @@ nix-channel --update
 Now nix should build and =direnv allow= should run flakes right.
 ** AMD Rocm
 See [[https://github.com/nixos-rocm/nixos-rocm][nixos-rocm/nixos-rocm]]
+
+
+
+*** JAX
+
+JAX and AMDGPU compatibility: [[https://discourse.nixos.org/t/rocm-package-caches/52167][Discourse On AMDGPU.jl + Jax]] (may still require
+some customization: MIOpen + RCCL?)
+
+*** Package Variants
+
+See [[https://github.com/NixOS/nixpkgs/tree/master/pkgs/top-level/variants.nix#L116][pkgs.pkgsRocm]] but don't evaluate it.
+
++ What's in variants.nix also connects to good examples of overrides/overlays.
++ =pkgs.pkgsCuda= doesn't evaluate in the REPL.
++ nothing exists for =pkgs.pkgsRocm.jax*=, but there is
+  =pkgs.pkgsRocm.tensorflowLite= if flatbuffers and coral are your thing.
+
+
 ** Printable Docs
 
 *** nix.dev

@@ -12,6 +12,304 @@
 
 * Resources
 
+* Topics
+
+** Personal Module Organization
+
+*** First reorg
+
+Before committing to it, I decided I didn't like mirroring nixpkgs. I don't
+understand how the =nix= language module imports fairs in various use-cases and,
+until I do, then I'm mainly trying to avoid creating a large knot of what is
+otherwise yaml.
+
+**** Needs
+
+Example bundles of system config:
+
++ =btrfs= for boot/disk/etc
++ =systemd-boot= with luks
++ =locate= with some protection on user access
++ =uwsm=-managed =hyprland= via =sddm=
++ hardware setup like for my printer, =ras= or =smartd=
++ =guix= service management
++ OCI container services with associated volumes & users
++ =podman= service configuration
++ merging =sops= files into deployed secrets
++ =x509= trust bundles
+
+**** Load order
+
+Nix uses Weak Head Normal Form via fixed-point combinator -- a higher-order
+function that juggles scopes of dependent lower order functions, until it
+reaches something it recognizes as a fix-point, the final value [or some
+sufficiently final value]. This requires a dependency graph connecting
+references with possible combinations, which gets reduced as computations
+progress.
+
+What this means for design:
+
++ you want concrete values where possible. concrete values are cheap.
+  - scalar values are cheap. scalar literal are ... um literal.
+  - 1-scalars whose variance is limited are also similar
++ everything is a =attrset= or a =list=, which is annoying at first. when you want
+  =clojure= go vroom, you restrict data structures to sets/vectors (and
+  dictionaries), preferring sets over vectors. dictionaries are cheap also.
+  - sets don't have order guarantees though (they're dictionary-like structures
+    internally with uniqueness guarantees)
+  - see notes on order-independence below. it's related.
++ you want "automagic" functions whose evaluation is withheld and whose results
+  can be known to be independent
+  - unless computation graph specifies otherwise, which is difficult
+  - e.g. dependent: =[x.a x.b]++[y.c y.d]++[(x.a z.e (z.w { x = { a = y.c }})]=
+  - preferably, this independence is also order-invariant
++ these automagic functions are like [[https://clojure.org/reference/reducers#_reduce_and_fold][the combinef arg from clojure's r/fold
+  reducers]], which allows clojure's JVM to chunk =r/fold= into independent tasks in
+  parallel whose results are later joined.
+  - e.g. =(r/fold + (λ (acc x) (+ x)) (range 1 100))=
+  - and also with =merge= to merge dictionaries, though that /can be
+    order-dependent/ depending on how threads are joined to an intermediate
+    result set and how dissimilar their computation time is
++ you want thin layers of composition & preferably those that are predictably
+  small where dependency is kept to a minimum
+  - again, these should be as independent as possible if perf is a concern
++ overutilization of =mkItSo= can extend computation time, depending on =nix=
+  internals and context
+  - particularly, whether it can reflect over the code to ensure that no result
+    of the value before =mkItSo= was to be referenced by its result. difficult as
+    the graph(s) inflate in size
+  - it can be fairly easily retain the "formula" or derivation to produce a
+    value before =mkItSo=, were it to be referenced later
+
+What this means for module structure
+
+idk
+
+*** Borrow from =<nixpkgs/nixos>=?
+
+This is best left to the exports.. The =nixpkgs= maintainers have about a
+decade's worth of experience organizing/naming the categories in their
+configuration ontology. Shamelessly copy at least the base of their module
+structure. I don't want too much re/organization right now.
+
++ C-u M-! :: and =find $nixpkgs/nixos/modules -type d=
++ C-u M-| :: after examining/selecting the output and =tree --fromfile .=
++ M-& :: =find $nixpkgs/nixos/modules -maxdepth 1 -type d -exec mkdir \{\} +=
+
+Before that, I had had =./modules/{services,services/guix,programs,users}=,
+considering everything as a "deployment/configuration service" in the sense
+that Guix uses it. Keeping track of the semantics b/w both is confusing.
+
+Mirroring the module structure helps to learn it as well, but wherever you see
+mirroring, it's usually a code smell. Unless it's too complex, this is alright
+... however, it's actually way more complex than simply enumerating the
+=<nixpgks/nixos>= module configuration in the =hosts/$host/configuration.nix=
+itself.
+
+I'm fairly sure that I'll migrate towards collections of related
+configurations, which would likely go directly in =./modules=
+
+#+begin_quote
+.
+└── modules
+   ├── config
+   │   ├── fonts
+   │   ├── gtk
+   │   ├── nix-channel
+   │   └── xdg
+   │       └── portals
+   ├── hardware
+   │   ├── cpu
+   │   ├── keyboard
+   │   ├── network
+   │   │   └── smc-2632w
+   │   │       └── firmware
+   │   │           └── cis
+   │   ├── onlykey
+   │   ├── raid
+   │   ├── sensor
+   │   └── video
+   │       ├── capture
+   │       ├── uvcvideo
+   │       └── webcam
+   ├── i18n
+   │   └── input-method
+   ├── image
+   ├── installer
+   │   ├── cd-dvd
+   │   ├── netboot
+   │   ├── scan
+   │   ├── sd-card
+   │   └── tools
+   │       └── manpages
+   ├── misc
+   │   ├── documentation
+   │   └── nixpkgs
+   ├── profiles
+   │   └── keys
+   ├── programs
+   │   ├── bash
+   │   ├── command-not-found
+   │   ├── digitalbitbox
+   │   ├── foot
+   │   ├── wayland
+   │   └── zsh
+   ├── security
+   │   ├── acme
+   │   ├── apparmor
+   │   ├── krb5
+   │   └── wrappers
+   ├── services
+   │   ├── accessibility
+   │   ├── admin
+   │   │   └── salt
+   │   ├── amqp
+   │   │   └── activemq
+   │   ├── audio
+   │   ├── backup
+   │   ├── blockchain
+   │   │   └── ethereum
+   │   ├── cluster
+   │   │   ├── corosync
+   │   │   ├── druid
+   │   │   ├── hadoop
+   │   │   ├── k3s
+   │   │   ├── kubernetes
+   │   │   │   └── addons
+   │   │   ├── pacemaker
+   │   │   ├── patroni
+   │   │   ├── rke2
+   │   │   └── spark
+   │   ├── computing
+   │   │   ├── boinc
+   │   │   ├── foldingathome
+   │   │   ├── slurm
+   │   │   └── torque
+   │   ├── continuous-integration
+   │   │   ├── buildbot
+   │   │   ├── github-runner
+   │   │   ├── gocd-agent
+   │   │   ├── gocd-server
+   │   │   ├── hercules-ci-agent
+   │   │   ├── hydra
+   │   │   ├── jenkins
+   │   │   └── woodpecker
+   │   ├── databases
+   │   ├── desktop-managers
+   │   ├── desktops
+   │   │   ├── deepin
+   │   │   ├── gnome
+   │   │   └── pipewire
+   │   ├── development
+   │   │   ├── jupyter
+   │   │   ├── jupyterhub
+   │   │   └── rstudio-server
+   │   ├── display-managers
+   │   ├── editors
+   │   ├── finance
+   │   │   ├── libeufin
+   │   │   └── taler
+   │   ├── games
+   │   ├── hardware
+   │   │   ├── nvidia-container-toolkit
+   │   │   └── sane_extra_backends
+   │   ├── home-automation
+   │   │   └── wyoming
+   │   ├── logging
+   │   ├── mail
+   │   ├── matrix
+   │   ├── misc
+   │   │   ├── guix
+   │   │   ├── servarr
+   │   │   ├── taskserver
+   │   │   └── tee-supplicant
+   │   ├── monitoring
+   │   │   └── prometheus
+   │   │       └── exporters
+   │   ├── network-filesystems
+   │   │   ├── litestream
+   │   │   ├── openafs
+   │   │   └── orangefs
+   │   ├── networking
+   │   │   ├── ax25
+   │   │   ├── firezone
+   │   │   ├── hylafax
+   │   │   ├── icecream
+   │   │   ├── ircd-hybrid
+   │   │   ├── iscsi
+   │   │   ├── jibri
+   │   │   ├── keepalived
+   │   │   ├── netbird
+   │   │   ├── nghttpx
+   │   │   ├── ntp
+   │   │   ├── scion
+   │   │   ├── ssh
+   │   │   ├── strongswan-swanctl
+   │   │   ├── suricata
+   │   │   └── znc
+   │   ├── printing
+   │   ├── scheduling
+   │   ├── search
+   │   ├── security
+   │   │   └── vaultwarden
+   │   ├── system
+   │   │   ├── cachix-agent
+   │   │   └── kerberos
+   │   ├── torrent
+   │   ├── tracing
+   │   ├── ttys
+   │   ├── video
+   │   │   ├── epgstation
+   │   │   └── go2rtc
+   │   ├── wayland
+   │   ├── web-apps
+   │   │   ├── icingaweb2
+   │   │   ├── kasmweb
+   │   │   └── porn-vault
+   │   ├── web-servers
+   │   │   ├── apache-httpd
+   │   │   ├── caddy
+   │   │   ├── h2o
+   │   │   ├── hitch
+   │   │   ├── jboss
+   │   │   ├── keter
+   │   │   ├── lighttpd
+   │   │   ├── nginx
+   │   │   ├── phpfpm
+   │   │   ├── trafficserver
+   │   │   ├── unit
+   │   │   └── varnish
+   │   └── x11
+   │       ├── desktop-managers
+   │       ├── display-managers
+   │       │   └── lightdm-greeters
+   │       ├── hardware
+   │       └── window-managers
+   ├── system
+   │   ├── activation
+   │   │   └── lib
+   │   ├── boot
+   │   │   ├── loader
+   │   │   │   ├── external
+   │   │   │   ├── generations-dir
+   │   │   │   ├── generic-extlinux-compatible
+   │   │   │   ├── grub
+   │   │   │   ├── init-script
+   │   │   │   ├── limine
+   │   │   │   └── systemd-boot
+   │   │   └── systemd
+   │   ├── etc
+   │   └── service
+   │       ├── portable
+   │       └── systemd
+   ├── tasks
+   │   └── filesystems
+   ├── testing
+   └── virtualisation
+       └── podman
+#+end_quote
+
+
 * Issues
 
 ** Updating =$USER/.config/guix/current=
@@ -237,6 +535,43 @@ linux-vdso.so.1 (0x00007fb0fb802000)
 
 ** GPG
 
+*** gpg-agent fails on =nixos-reboot=
+
+somehow my gpg-agent was working, even though I needed to change
+=programs.gnupg.agent.settings= so empty strings would be used in place of =null= or
+=true=.
+
+immediately after reboot, then system rebuild and service reactivation, the
+systemd unit failed once, leaving invalid sockets. I deleted them after(?)
+stopping the socket. i was getting =LISTEN_PID= and =LISTEN_FDS= errors, but the
+cause was had been lingering socket files. after restarting =gpg-agent.socket=,
+then =gpg-agent.service= it started successfully with the new configuration.
+
+**** gpg-agent sets up partial sockets
+
+The next problem: since GnuPG failed on the initial login, the SSH socket hadn't
+been created and wasn't being created on =gpg-agent --supervise= restarts. This
+can't be fixed by restarting the systemd user =sockets.target= since it has too
+many downstream dependants.
+
++ systemctl --user list-dependencies sockets.target :: check status of sockets
++ systemctl --user list-dependencies gpg-agent :: check status of sockets
++ Stop the =gpg-agent= service and then each of its sockets.
++ systemctl --user daemon reload :: run this just in case
++ restart the =gpg-agent= socket units first
++ then restart =gpg-agent=
+
+
+just restarting =gpg-agent= isn't working for me. i don't recall having run into
+this before, so i wonder whether something failed in how nixos applies updates
+to systemd, leaving that service manager with partially updated state...
+
+#+begin_quote
+or I'm a =systemd= dumbass which has literally been ... wellll nevermind
+#+end_quote
+
+*** =programs.gnupg.agent=
+
 This was working... now only SSH works.
 
 + =programs.gnupg.enable= will apparently also start a =/root/.gnupg=-based
@@ -247,7 +582,6 @@ This was working... now only SSH works.
   - =gpg --import $muhkeys.asc= will fix this
   - I need to refresh this =.asc= pubkey after creating new private keys anyways.
 
-*** =programs.gnupg.agent=
 
 **** Starting point
 
