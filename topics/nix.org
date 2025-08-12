@@ -123,6 +123,80 @@ updating system/channel during LSP sessions without refreshing the sessions?
 
 **** nixd
 + [[https://raw.githubusercontent.com/nix-community/nixd/main/nixd/docs/nixd-schema.json][./nixd/docs/nixd-schema.json​]]
+
+** Diffing
+
+*** Diff Running System with Evaluted System
+
+In [[https://discourse.nixos.org/t/how-to-find-derivations-that-have-already-been-built-by-various-nix-commands/17760/6][How to find derivations that have already been built]] the user mentions
+
+#+begin_src shell
+diff \
+  --side-by-side --color --width 320 --left-column \
+  <(nix path-info --derivation -rsSh .#checks.x86_64-linux.my-package | sort) \
+  <(nix path-info --derivation -rsSh .#devShell.x86_64-linux | sort)
+
+#+end_src
+
++ -rsSh :: recursive, size, closure size, hooman-readable
++ remove the args to just output the =.drv= for a =/nix/store= output
+
+Most examples in =nix-diff -h= regard flakes-based objects, but can also take a
+file-path.
+
+for nix-diff, wee need the paths with suffix .drv
+
+#+begin_src shell
+# currentSys=/run/current-system # the link... and vvv also the link
+# currentSys="$(nix-store -q --references /nix/var/nix/profiles/system | tail -n1)"
+
+currentSys=$(readlink /run/current-system)
+currentSysDrv=$(nix path-info --derivation /run/current-system)
+
+newSys=/nix/store/wr4arbzq250pdd6s425w5nha9z0kylm0-nixos-system-kratos-25.05.805977.88983d4b665f
+newSysDrv=$(nix path-info --derivation $newSys)
+#+end_src
+
++ =diffeoscope= could works, but is intended for archives. derivations are like
+  the metadata for a special type of archive, where the data is found in the
+  store.
++ plain =diff= seems to work on the raw system, though linking could be a problem
+
+#+begin_src shell
+diff --color -r "${currentSys}" "${newSys}"
+#+end_src
+
+plain =diff= also works on the derivation, but this only prints the differences
+between the top-level store items (the activation scripts)
+
+#+begin_src shell
+diff --color \
+    <(cat "${currentSysDrv}" | sed -e 's/],/],\n/g' | sed -e 's/),/),\n/g') \
+    <(cat "${newSysDrv}" | sed -e 's/],/],\n/g' | sed -e 's/),/),\n/g')
+#+end_src
+
+=nix-diff= is a more specific tool
+
+#+begin_src shell
+nix-diff "${currentSysDrv}" "${newSysDrv}"
+#+end_src
+
++ It also diffs the top-level =config.nix= entry-point but not the differences
+  between imported modules.
++ and (oof!) comments get diffed. =# noComments!= generally when working with
+  nix/guix builds & store-objects at scale.
+  - scheme is a lisp, so actually has more trouble keeping comments without
+    retaining the file.
+  - e.g. if a nested macro or macro accepts multiple s-expr at indices and these
+    are not homogenously processed, they can unroll into statements where it's
+    not clear how to retain the lexxed order of comment syntax. there's a =srfi=
+    for =(comment "syntax")= but this comments out content at s-expression level
+    and it's evaluation order is specific to this functionality (it /must/ be, but
+    idk how specifically and that's not the intent of the features).
++ Anyways, this is the same as the basic info available in guix's
+  =/run/current-system=, though I believe the provenance features can provide more
+  information (given that the derivations' =/nix/store= data can be found)
+
 ** Secrets
 *** Secret Service
 
@@ -171,7 +245,6 @@ will be included into their respective DBus configuration paths:
 nix-channel --add https://github.com/Mic92/sops-nix
 nix-channel --update
 #+end_src
-
 ** Services
 
 *** NixOS misc
@@ -179,6 +252,20 @@ nix-channel --update
 + ngocbd/nylon: socks proxy
 
 *** SystemD
+**** Problems
+
+***** =systemd.user.services= get created for all users
+
+Without defining outside of the system build, it should be possible to:
+
+- hook a target that enables a specific user's units.
+  - This could downstream from a =uwsm= target
+  - or a simple target with units to trigger that only exist in =$XDG_DATA_HOME=
+    for that user (created via =hjem= or =hm= or outside NixOS)
+- or to run a script that enables them after update.
+
+See [[https://github.com/NixOS/nixpkgs/blob/5a983011e0f4b3b286aaa73e011ce32b1449a528/nixos/lib/systemd-lib.nix#L72][./nixos/lib/systemd-lib.nix]]
+
 **** Examples
 
 ***** Composing and Inheriting
@@ -195,7 +282,6 @@ From NobbZ
 ***** Socket Setup With Dependencies
 
 + Just look at source for nixpkgs' gnupg.nix:
-
 **** Socket
 **** Timer
 **** Unit
