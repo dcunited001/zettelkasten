@@ -253,7 +253,31 @@ toolbox run -c "$toolbox" sudo dnf install -y $rpms
 #+end_src
 
 
-**** TODO more notes here. Also... podman/libvirt?
+*** GUI
+
+The [[https://github.com/Dvlv/toolbox-gui][Toolbox GUI]] will help to ease into this 452nd equivalent to a package
+manager. Ahhh =snap=. A nice GUI does help to initially feel out the concepts
+though.
+
+The toolbox-gui requires cloning the repo, as it's not published on flathub. It
+was last updated in 10/2022.
+
+#+begin_src sh
+git clone https://github.com/dvlv/toolbox-gui /tmp/toolbox-gui
+cd !$
+flatpak --user install toolbox-gui.flatpak
+#+end_src
+
+Also, both [[github:dvlv/toolbox-gui][dvlv/toolbox-gui]] and [[github:dvlv/BoxBuddyRS][dvlv/BoxBuddyRS]] were written by the Silverblue
+Guide guy
+
+
+And alas, the dependencies are a bit old:
+
++ org.gnome.Platform.Locale @ 42
++ org.freedesktop.Platform.GL @ 21.08
+
+However, you can just run the script from the cloned repo.
 
 ** Podman
 
@@ -311,7 +335,97 @@ It seems that it wasn't a driver issue:
   probably doesn't either.
 
 
-* Roam
+** Booting
 
+*** Fails when it can't find UUID
+
+I went to run =sudo ostree admin pin 0= to ensure a reference to the current
+deployment was pinned (following this Fedora Magazine guide), but got the
+mentioned error =cannot pin staged deployment=, so I rebooted.
+
+I'm not sure whether it's the UUID or whether I failed to note the LUKS
+password, but I have rebooted it several times. It's likely just an
+inconsistency in the LVM volume or something ... which is a pain to fix, but
+maybe easier?
+
++ The cause may be updating ostree multiple times without rebooting ... or
+  something. However, the UUID's in the boot partition and/or EFI shouldn't
+  change... IDK.
+
+This computer still doesn't have much on it, so i could reinstall, but the point
+of trying rpm-ostree was to ease into learning about CoreOS, butane, ignition
+and etc. You don't learn much by reinstalling. I don't want to handle this now,
+but maybe it's a quick fix.
+
+#+begin_quote
+These are always the most important issues to note down when fixing, but also
+the most difficult to properly note, since it's difficult to extract notes/info
+from the baremetal system.
+#+end_quote
+
+**** Triage
+
+
+Entered =initramfs= emergency mode or something. =dracut= tools are available,
+but no =cryptsetup= or =lsblk=. The =blkid= tool is available.
+
+To get the =PARTUUID= and =UUID= into my shell environment via =source
+/tmp/disks.sh=:
+
+#+begin_src sh
+echo rdsos="/run/initramfs/rdsosreport.txt" > /tmp/disks.sh
+
+# there's probably an easier way to render the `blkid` output
+getuuids() {
+    # local _out=$2
+
+    [[ -z "$1" ]] && echo "requires device name /dev/sdx" && return
+
+    # if [ -n "$2" ]; then
+    #    _out="use unix redirection for a great good"
+    # else
+    #    echo "requires output file" && return
+    # fi
+
+    local _disk=$1
+    local _prefix="$2"
+
+    #  this was working. if not, maybe i refactored improperly
+    blkid | grep -e $_disk | sed -d 's/.*\(PARTUUID.*\)/'"$_prefix"'\1/' # >> $_out
+    blkid | grep -e $_disk | sed -d 's/.*\(UUID.*\) TYPE.*/'"$_prefix"'\1/' # >> $_out
+}
+
+# call with `getuuids`
+
+# the shell doesn't have man :(
+alias grep="grep --color=always"
+unalias grep # the emergency shell doesn't interpret escape codes :(
+#+end_src
+
+Then ran =grep -e "$UUID" /run/initramfs/rdsoreport.txt | less= and similar for
+=$PARTUUID=. Then checked a few other things.
+
+**** Cause
+
+There are four boot entries: two sets of two ostree entries; each set has a =v0=
+and =v1= version. I looked at the boot entries, but I'm not sure why each =v0=
+and =v1= are duplicated.
+
++ Didn't unlock the luks device, so it couldn't mount the vg.
++ The =linux= line the grub referenced LVM UUIDs.
++ If it recreates a new LUKS device each =rpm/ostree= update
+
+I missed the grub countdown, initially, and it was likely trying to boot from
+the first =v0= entry.
+
+**** Fix
+
+Booting with the first =v1=. I think if I unset the pinned =rpm/ostree=
+references after I rebase, then it will clean the system out, but the primary
+boot entries should be listed first (or set default).
+
+
+
+* Roam
 + [[id:ca4acf9b-775b-4957-b19a-0988b7f429c5][RPM]]
 + [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]

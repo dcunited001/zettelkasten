@@ -1,0 +1,81 @@
+:PROPERTIES:
+:ID:       70d6c353-9833-47ed-9856-70aa7d7cc441
+:END:
+#+TITLE: Emacs: Org Babel Sessions
+#+CATEGORY: slips
+#+TAGS:
+
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fdcba][Unix]]
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
+
+* Overview
+
+Outlining some peculiarities of these features
+
+* Past is Prologue
+
+|-----------+-----------|
+| [[https://org-babel.readthedocs.io/en/latest/header-args/#prologue][:prologue]] | [[https://org-babel.readthedocs.io/en/latest/header-args/#epilogue][:epilogue]] |
+|-----------+-----------|
+
+** Prologue Accepts String Values
+
+TLDR: use =<< noweb() >>= call syntax instead, unless you want to generate
+commands with elisp/etc... among =org-babel= enthusiasts this may be known
+euphemistically as [[https://youtu.be/moi6yaXgjAg?si=On3HxVV3Uk23T_lM]["flipping the scissors"]]
+
+=#+name: foobsterPrologue=
+
+#+name: foobsterPrologue
+#+begin_src shell :results output verbatim :var bar="bar" baz="baz" qux=aWildBlockHasAppeared
+# every variable definition is essentially a prologue
+# babel handles this fairly safely, but you shouldn't change
+# (setq org-confirm-babel-evaluate t) ;; to nil (t by default)
+foo="I was never a qux" && $qux 2>&1
+#+end_src
+
+#+RESULTS: foobsterPrologue
+: zsh: command not found: echo there once was a string that became many strings and oops\\necho rm -rf no space remaining
+
+=#+name: foobsterChapter1=
+
+#+name: foobsterChapter1
+#+begin_src shell :results output verbatim :prologue "echo 'echo foobsterPrologue'"
+# :prologue "echo 'echo foobsterPrologue'"
+echo foo="${foo:-FOO}" bar="${bar:-BAR}" baz="${BAZ:-BAZ}"
+#+end_src
+
+#+RESULTS: foobsterChapter1
+: echo foobsterPrologue
+: foo=FOO bar=BAR baz=BAZ
+
+=#+name: foobsterEpilogue=
+
+#+name: foobsterEpilogue
+#+headers: :prologue (identity "echo Programming Languages Exhibit ... ")
+#+headers: :epilogue (identity "echo Carcinisation By Mysteriously Evolving Into Prolog ... ")
+#+begin_src shell :results output verbatim :noweb yes :var evalFoo=foobsterProlog
+# <<foobsterPrologue()>>: no comment for you
+<<foobsterChapter1()>>
+echo the "$bar"s done "$foo"bed me
+#+end_src
+
+#+RESULTS: foobsterEpilogue
+: Programming Languages Exhibit ...
+: foobsterPrologue
+: the BARs done FOObed me
+: Carcinisation By Mysteriously Evolving Into Prolog ...
+
+=#+name: aWildBlockHasAppeared=
+#+name: aWildBlockHasAppeared
+#+begin_src elisp :noweb yes
+(identity "echo there once was a string that became many strings and oops\\
+echo rm -rf no space remaining")
+#+end_src
+
+#+RESULTS: aWildBlockHasAppeared
+: echo there once was a string that became many strings and oops\
+: echo rm -rf no space remaining

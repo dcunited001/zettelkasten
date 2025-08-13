@@ -1,0 +1,278 @@
+:PROPERTIES:
+:ID:       7885fbfa-e658-4536-9cea-55364503d841
+:END:
+#+TITLE: Doom Emacs
+#+DESCRIPTION:
+#+TAGS:
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:4cdfd5a2-08db-4816-ab24-c044f2ff1dd9][Programming]]
++ [[id:aeff1aef-4321-4666-8a70-a81025c5c01b][Lisp]]
+
+* Docs
+* Resources
+* Topics
+
+** =def-project-mode=
+
+I'm always impressed that people manage to write the code in Doom Emacs ... but
+holy shit.
+
+*** Differences with .=dir-locals.el
+
+This is doom-specific, but much easier to manage than =.dir-locals.el=. These
+/could/ be distributed with projects as as small scripts.
+
+So they are mostly constrained by:
+
++ Your personal Doom emacs environment
++ The system of file paths on your FS..
++ dependency on macros/etc that Doom and =doom-lib.el= define
++ load order, potentially
+
+Whereas the constraints on =.dir-locals.el= are:
+
++ permission to eval (project-wide or local)
++ conflicts with file-local-variables
++ existance of =.dir-locals-2.el= (name may be wrong)
++ can't be nested: whether there's a =.dir-locals.el= in the path components
+  between =(buffer-file-name (current-buffer))= and =(project-root)=
+
++ =def-project-mode= does permit multiple defined modes matching
+  - (vs. only one =.dir-locals.el=)
+
+Remote files using =file-remote-p= +and allows you to specify+ /does not permit/ =tramp=
+path components ... for  =file/modes/when=
+
+- I thought this was checking an active connection, but it's just comparing the
+  =buffer-file-name= against the remote path. if it fails, the =file/modes/when=
+  block won't run
+  - the =match= block would run though (I think)
+- +(a little hard to open a buffer that's not an active connection ... but idk)+
+
+*** Setup
+
+The outer =(macroexpand-progn ...)= expands three s-exp's to evaluate:
+
++ if =:on-load= whether to create =,init-var=
++ the call to =(define-minor-mode ,name ...)=
++ the result of cond, which will do nothing else if =(or files modes when)==
+  succeeds (i.e. files/modes/when is mut. exclusive with match)
+  - ... technically, the cond will always match the first condition unless
+    files/mode/when are nil.
+  - so, it still takes the =:match= regexp into account
+
+Doom creates a symbol like =doom--enable-doom-nixos-dotfiles-mode-in-nix-mode-h=
+when =:modes= is set, which it binds via =(fset hook-name #',fn)=
+
++ The hook uses =auto-minor-mode-magic-alist=
++ =NAME-hook= and =NAME-map= get created
++ it doesn't autoload the mode, but [[https://github.com/doomemacs/doomemacs/blob/master/lisp/doom-projects.el#L312][doom doesn't make the assumption]] that the
+  mode will have already been loaded.
+
+*** Params
+
+| NAME | the NAME of the minor mode to create & activate (ends in -mode) |
+
+While the docs /say/ the below, I'm not sure how this happens
+
+#+begin_quote
+PLIST may contain any of these properties, *which are all checked* to see if NAME
+should be activated. _If they are /all/ true_ (?) NAME is activated.
+#+end_quote
+
+I mean idk maybe the implementation wrong, but "user error" is far more likely.
+
++ if /anything else/ hooks the minor mode, it runs. or if it gets eval'd.
++
++ unless files/modes/when are set, the =cond= selects =auto-minor-mode-alist= to
+  hook to.
+
+These keys determine what what causes the hook to fire
+
+| :modes MODES     | if buffers are derived from MODES (one or a list of symbols). |
+| :files FILES     | if project contains FILES;                                    |
+| :when PREDICATE  | if PREDICATE returns true (can be a form/symbol of function)  |
+
+This key determines which files to hook.
+
+| :match REGEXP    | if file name matches REGEXP                                   |
+
+What to do and when to do it
+
+| :add-hooks HOOKS | HOOKS is a list of hooks to add this mode's hook.             |
+| :on-load FORM    | FORM to run the first time this project mode is enabled.      |
+| :on-enter FORM   | FORM is run each time the mode is activated.                  |
+| :on-exit FORM    | FORM is run each time the mode is disabled.                   |
+
++ :files :: takes a string or a form comprised of nested =(and ...)= and/or =(or
+  ...)= forms. Each path is relative to the project root, however, if prefixed
+  with a =.= or =..=, it is relative to the current buffer.
+  - also takes a raw string.
++ :on-load :: won't fire twice, even if you use =load-library=. it interns a var
+  bound to the symbol =%s-init= using the mode name.
+
+* Issues
+
+** def-project-mode
+*** Rewire/Disable =def-project-mode!=
+A bit hard to rewire. If you want to prevent it from activating, you need to
+set it to something like:
+
+#+begin_src emacs-lisp
+;; undef-project-mode
+(def-project-mode! doom-nixos-dotfiles-mode
+  :match (rx-to-string (sha1 "foobster sha"))
+  :modes '(nix-mode))
+#+end_src
+
+And /I think/ that this re-evaluates the code in the macros.
+
+Whether the minor-mode was wired using =auto-minor-mode-magic-alist= makes it a
+bit tricky to unhook the minor mode.
+
+**** Testing
+
++ definitely use =:add-hooks= which I had removed to
+
+#+begin_src emacs-lisp
+(project-file-exists-p!
+ (list (buffer-file-name))
+ (projectile-acquire-root))
+
+(let ((nixos-regexp
+       (rx-to-string ;;   problem: can't easily use rx-to-string here
+        (string-join ;;     and i forgot how to use rx- and the rx-builder
+         (list (getenv "HOME") ".dotfiles" "nixos" "\\.\\*.nix") "/")))
+      ;; (nixos-regexp "\\(?:/home/dc/\\.dotfiles/nixos/\\\\\\.\\\\\\*\\.nix\\)")
+      (nixos-regexp "\\(?:/home/dc/\\.dotfiles/nixos/.*\\.nix\\)"))
+  (string-match-p nixos-regexp buffer-file-name))
+
+;; :when t to check whether it's the hooking or regexp that prevents loading
+(def-project-mode! +doom-nixos-dotfiles-mode
+  :match "\\(?:/home/dc/\\.dotfiles/nixos/.*\\.nix\\)"
+  :when t
+  :modes '(nix-mode))
+#+end_src
+
+*** Checking function behavior
+
+I analyzed the source code, but I could macroexp or check =helpful.el= with =f1-f=
+to =describe-function=, which shows the effective macro expansion (with some
+decoration)
+
+Mainly needed to validate what =fset= was doing here ... bc i still don't really
+understand that witchcraft, (other than sometimes it do be simple like that and
+other times it be fset'n a little too deep)
+
+The source shown for =doom--enable-+doom-nixos-dotfiles-mode-in-nix-mode=. It's
+purely the result of what's set in =(define-minor-mode ...)= afaik.
+
+#+begin_src emacs-lisp
+#[(&optional arg)
+  ((let ((last-message (current-message)))
+     (setq +doom-nixos-dotfiles-mode
+           (cond ((eq arg 'toggle) (not +doom-nixos-dotfiles-mode))
+                 ((and (numberp arg) (< arg 1)) nil) (t t)))
+     (when (boundp 'local-minor-modes)
+       (setq local-minor-modes
+             (delq '+doom-nixos-dotfiles-mode local-minor-modes))
+       (when +doom-nixos-dotfiles-mode
+         (push '+doom-nixos-dotfiles-mode local-minor-modes)))
+     (if (not +doom-nixos-dotfiles-mode) nil
+       (run-hook-with-args 'doom-project-hook '+doom-nixos-dotfiles-mode
+                           +doom-nixos-dotfiles-mode)
+       nil nil)
+     (run-hooks '+doom-nixos-dotfiles-mode-hook
+                (if +doom-nixos-dotfiles-mode '+doom-nixos-dotfiles-mode-on-hook
+                  '+doom-nixos-dotfiles-mode-off-hook))
+     (if (called-interactively-p 'any)
+         (progn
+           nil
+           (unless
+               (and (current-message)
+                    (not (equal last-message (current-message))))
+             (let ((local " in current buffer"))
+               (message "%s %sabled%s" "+Doom-Nixos-Dotfiles mode"
+                        (if +doom-nixos-dotfiles-mode "en" "dis") local))))))
+   (force-mode-line-update) +doom-nixos-dotfiles-mode)
+  (t) nil
+  "A project minor mode generated by `def-project-mode!'.\n\nThis is a minor mode.  If called interactively, toggle the\n`+Doom-Nixos-Dotfiles mode' mode.  If the prefix argument is positive,\nenable the mode, and if it is zero or negative, disable the mode.\n\nIf called from Lisp, toggle the mode if ARG is `toggle'.  Enable the\nmode if ARG is nil, omitted, or is a positive number.  Disable the mode\nif ARG is a negative number.\n\nTo check whether the minor mode is enabled in the current buffer,\nevaluate the variable `+doom-nixos-dotfiles-mode'.\n\nThe mode's hook is called both when the mode is enabled and when it is\ndisabled.\n\n\\{+doom-nixos-dotfiles-mode-map}"
+  (list
+   (if current-prefix-arg (prefix-numeric-value current-prefix-arg) 'toggle))]
+#+end_src
+
+What's shown below is the effective result of the =(fset hook-name #'fn)= line, I
+think. =doom--enable-+doom-nixos-dotfiles-mode-in-nix-mode-h=
+
+#+begin_example emacs-lisp
+;; Could not find source code, showing raw function object.
+#[nil
+  ((and
+    (not (and (boundp '+doom-nixos-dotfiles-mode) +doom-nixos-dotfiles-mode))
+    (and buffer-file-name (not (file-remote-p buffer-file-name nil t)))
+    (if buffer-file-name
+        (string-match-p "\\(?:/home/dc/\\.dotfiles/nixos/.*\\.nix\\)"
+                        buffer-file-name))
+    t t (+doom-nixos-dotfiles-mode 1)))
+  (t)]
+#+end_example
+
+For this test mode with =:when t=, it's basically the same code
+
+#+begin_src emacs-lisp
+(def-project-mode! +doom-nixos-test-mode
+  :match "\\(?:/home/dc/\\.dotfiles/nixos/.*\\.nix\\)"
+  :when t
+  :modes '(nix-mode))
+
+;; Could not find source code, showing raw function object.
+#[nil
+  ((and
+    (not (and (boundp '+doom-nixos-test-mode) +doom-nixos-test-mode))
+    (and buffer-file-name (not (file-remote-p buffer-file-name nil t)))
+    (if buffer-file-name
+        (string-match-p "\\(?:/home/dc/\\.dotfiles/nixos/.*\\.nix\\)"
+                        buffer-file-name))
+    t t (+doom-nixos-test-mode 1)))
+  (t)]
+#+end_src
+
+**** =fset= vs =setf=
+
+See? =fset= just =sets the f= ... except when it doesn't. And that's completely
+different than the =setf= macro which is actually more core than subr.
+
++ fset :: Set SYMBOL's function definition to DEFINITION, and return DEFINITION.
+  - Ahhh nevermind. now I remember. It's a lisp-2. You must use =fset= when: you
+    - you refer to a function by value
+    - you set a function's content by value
+  - =(symbol-function 'doom--enable-+doom-nixos-dotfiles-mode-in-nix-mode-h)=
++ setf :: Set each PLACE to the value of its VAL.
+  - Generalized version of =setq=.
+
+See push/pop in [[https://github.com/emacs-mirror/emacs/blob/master/lisp/subr.el#L260-L299][subr.el]]:
+
+#+begin_quote
+This is morally equivalent to (setf PLACE (cons NEWELT PLACE)), except that
+PLACE is evaluated only once (after NEWELT)."
+#+end_quote
+
+**** =oclosure= usage in =nadvice.el=
+
+These blocks above are wrapped in metadata structures (similar to what's used by
+[[https://www.gnu.org/software/emacs/manual/html_node/elisp/OClosures.html][closures and open closures]] for =advice=) which cause the emacs internals to handle
+them alternatively.
+
+That's why the definition doesn't start with =(defun ...)= and the
+docstring/interactive are found at the end (though idk if the emacs-lisp
+interpreter really "sees" a list whose =car= is =defun==)
+
+#+begin_example emacs-lisp
+(oclosure-define (advice
+                  (:predicate advice--p)
+                  (:copier advice--cons (cdr))
+                  (:copier advice--copy (car cdr how props)))
+  car cdr how props)
+#+end_example

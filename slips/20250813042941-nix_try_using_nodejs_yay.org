@@ -1,0 +1,142 @@
+:PROPERTIES:
+:ID:       4c10ffc7-c4eb-4178-a66e-3949c32aa97b
+:END:
+#+TITLE: Nix: Try Using NodeJS YAY
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:38638b3e-e023-460e-9670-84776e61468e][Browser]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fdcba][Unix]]
+
+* Docs
+*
+* Telnet Client
+
+bc =node= is something you need to check off your list with nix/guix.
+
+** node2nix
+
+#+begin_src shell
+d=$(mktemp -d)
+u=https://github.com/GoogleChromeLabs/telnet-client
+n=telnet-client
+cd $d && git clone $u $r
+cd $n
+node2nix -l package-lock.json -18
+nix-build -A package
+#+end_src
+
+Build fails, as Node 18 is EoL, but generates files:
+
++ default.nix :: entry point for =nix-build=
++ node-env.nix ::
++ node-packages.nix :: the package builds
+
+** napalm
+
+Trying [[https://github.com/nix-community/napalm][nix-community/napalm]]
+
++ Cleared out the files created earlier (thankfully very simple to clean the
+  system & dev env)
++ Looked around to create the simplest flake. Made some changes
+  - changed the flake template output names. kept impure system.
+  - needs compatible browser sorta shimmed in on top? but also ... it may not.
++ =nix flake check=, then =show=, then =git add flake.nix=
+  - then =nix develop .= check around... =env | grep -iE '(NPM|NODE)'=
+  - path looks a little empty
+
+#+begin_src flake.nix
+{
+  inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+  inputs.napalm.url = "github:nix-community/napalm";
+
+  # NOTE: This is optional, but is how to configure napalm's env
+  inputs.napalm.inputs.nixpkgs.follows = "nixpkgs";
+
+  outputs = { self, nixpkgs, napalm }:
+    let
+      system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages."${system}";
+      rev = self.shortRev or self.dirtyShortRev or "dirty";
+    in {
+      # Assuming the flake is in the same directory as package-lock.json
+      packages."${system}" = {
+        default = napalm.legacyPackages."${system}".buildPackage ./. { };
+
+        # chromeLabsTelnet = napalm.legacyPackages."${system}".buildPackage ./. { };
+        # default = chromeLabsTelnet;
+      };
+      devShells."${system}".default =
+        pkgs.mkShell { nativeBuildInputs = with pkgs; [ nodejs ]; };
+    };
+}
+#+end_src
+
+*** Running
+
+=nix build .= and =nix develop .= again. and =npm list= and =npm run --list=
+
+
+=npm run start=
+
+#+begin_quote
+> telnet-client@0.0.1 start
+> webpack serve --config webpack.dev.js
+
+[webpack-cli] Invalid options object. Dev Server has been initialized using an options object that does not match the API schema.
+ - options has an unknown property '_assetEmittingPreviousFiles'. These properties are valid:
+   object { allowedHosts?, bonjour?, client?, compress?, devMiddleware?, headers?, historyApiFallback?, host?, hot?, ipc?, liveReload?, onListening?, open?, port?, proxy?, server?, app?, setupExitSignals?, setupMiddlewares?, static?, watchFiles?, webSocketServer? }
+#+end_quote
+
+=npm run build= ... Damit
+
+#+begin_quote
+Error: EROFS: read-only file system,
+#+end_quote
+
+*** Troubleshooting
+
+~result=./result/_napalm-install~
+
+After =nix develop=, I wasn't sure whether to run in =$result/node_modules=. running
+=$result/node_modules/webpack-cli/bin/cli.js= from there got a bit further.
+
++ check config =npm config list =-l=. it shows some =/nix/store.../etc/.npmrc= that
+  doesn't exist. this could be added to the package definitions
++ logs are showing in =~/.npm/_logs= and =npx= touches files there
++ I tried linking =node_modules= into =$result/node_modules= ... nope
++ finally, I realized it configures node & npm to install from a local registry
+  (i already had the contents in the =/nix/store=) ...
+  - i figured if  =npm install= was super-fast ... then (yup).
+  - so now webpack runs ... but gets the same error.
+
+strace on =npm run start= doesn't show webpack errors. instead this file throws
+the last error (idk). the only errors in there relate to =package.json=
+
+#+begin_quote
+./lib/node_modules/npm/node_modules/@npmcli/run-script/lib/validate-options.js
+#+end_quote
+
+dump the tree of relevant =schema-util= usage
+
+#+begin_src shell
+grep -re schema-utils | grep -e \.js: \
+  | sed -E "s/^(.*):(.*)$/\1'\2'/"  \
+  | tree --fromfile .=
+#+end_src
+
+TLDR, i think =napalm= didn't properly build out the dependencies or the project
+is stale, versions have shift. Maybe webpack is launching another task. I can't
+quite tell from the strace. It can be a lot more difficult to get lower-level
+info from strace....
+
+
+* Bins
+
+Because microsoft loves you very much
+
+#+begin_export html
+<iframe width="560" height="315" src="https://www.youtube.com/embed/qLrnkK2YEcE?si=ETTU6ccDVK0owEwq" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+#+end_export

@@ -48,4 +48,86 @@ a ton of features that help with the CLI -- the ones I'm looking for are mostly
 _interactive_ features, so they're not going to show up in any scripts that I can
 grep.
 
+*** Enumerating =.service= files
+
+#+begin_src shell
+systemctl --user list-units --output=json | jq '.'
+#+end_src
+
+*** Enumerating =.service= files (WRONG)
+
+#+begin_quote
+not for lack of trying...
+
+Though this does discover units not in memory
+#+end_quote
+
+It's tough to get =find= to work
+
+#+begin_src shell
+find /home/dc/.local/share/{flatpak,systemd} -type f -name "*.service"
+#+end_src
+
+Use =systemd-path=
+
+#+begin_src shell :results output verbatim
+unitRgx='unit: '
+# cut -f1 -d' ' # doesn't split paths correctly
+paste \
+    <(systemd-path --no-pager | grep -e "$unitRgx" | sed -E 's/^(.*): (.*)$/\1/') \
+    <(systemd-path --no-pager | grep -e "$unitRgx" | sed -E 's/^(.*): (.*)$/\2/')
+#+end_src
+
+#+RESULTS:
+: systemd-system-unit	/nix/store/ymmaa926pv3f3wlgpw9y1aygdvqi1m7j-systemd-257.6/lib/systemd/system
+: systemd-user-unit	/nix/store/ymmaa926pv3f3wlgpw9y1aygdvqi1m7j-systemd-257.6/lib/systemd/user
+: systemd-search-system-unit	/etc/systemd/system.control:/run/systemd/system.control:/run/systemd/transient:/run/systemd/generator.early:/etc/systemd/system:/nix/var/nix/profiles/default/lib/systemd/system:/etc/systemd/system.attached:/run/systemd/system:/run/systemd/system.attached:/run/systemd/generator:/nix/store/ymmaa926pv3f3wlgpw9y1aygdvqi1m7j-systemd-257.6/lib/systemd/system:/run/systemd/generator.late
+: systemd-search-user-unit	/home/dc/.config/systemd/user.control:/run/user/1000/systemd/user.control:/run/user/1000/systemd/transient:/run/user/1000/systemd/generator.early:/home/dc/.config/systemd/user:/etc/xdg/systemd/user:/home/dc/.config/guix/current/etc/xdg/systemd/user:/home/dc/.guix-home/profile/etc/xdg/systemd/user:/home/dc/.guix-profile/etc/xdg/systemd/user:/home/dc/.local/share/flatpak/exports/etc/xdg/systemd/user:/var/lib/flatpak/exports/etc/xdg/systemd/user:/home/dc/.nix-profile/etc/xdg/systemd/user:/home/dc/.local/state/nix/profile/etc/xdg/systemd/user:/etc/profiles/per-user/dc/etc/xdg/systemd/user:/nix/var/nix/profiles/default/etc/xdg/systemd/user:/run/current-system/sw/etc/xdg/systemd/user:/etc/systemd/user:/run/user/1000/systemd/user:/run/systemd/user:/run/user/1000/systemd/generator:/home/dc/.local/share/systemd/user:/gnu/store/mpbhcsairkigzv53dyj6k779dwy2w9d0-shared-mime-info-2.3/share/systemd/user:/gnu/store/rx9fvgchvhjf0bvlad6xsaxkszjw622m-glib-2.83.3/share/systemd/user:/gnu/store/jd59bp9az0fbyrjniar2qd40il5ak4rd-gtk+-3.24.43/share/systemd/user:/gnu/store/m5vcc81k4d27509a708j6swdmqlkkpav-emacs-next-pgtk-31.0.50-1.9663c95/share/systemd/user:/home/dc/.local/share/flatpak/exports/share/systemd/user:/nix/store/vqlrn4r4pvgfwv2yqcc0n985974y3hrb-desktops/share/systemd/user:/home/dc/.config/guix/current/share/systemd/user:/home/dc/.guix-home/profile/share/systemd/user:/home/dc/.guix-profile/share/systemd/user:/var/lib/flatpak/exports/share/systemd/user:/home/dc/.nix-profile/share/systemd/user:/home/dc/.local/state/nix/profile/share/systemd/user:/etc/profiles/per-user/dc/share/systemd/user:/nix/var/nix/profiles/default/share/systemd/user:/run/current-system/sw/share/systemd/user:/nix/store/ymmaa926pv3f3wlgpw9y1aygdvqi1m7j-systemd-257.6/lib/systemd/user:/run/user/1000/systemd/generator.late
+
+Just the paths and pass to find
+
+#+begin_src shell :results output verbatim
+unitRgx='unit: '
+#pathRgx='dc/.local'
+#pathRgx='/'
+pathRgx='/etc/systemd/user'
+
+sysPaths=$(systemd-path --no-pager | grep -e "$unitRgx" \
+    | sed -E 's/^(.*): (.*)$/\2/' | tr ':' '\n' \
+    | sort | uniq | grep -E "$pathRgx")
+
+# cant pass directly to find?
+sysPaths=($(echo ${sysPaths[@]} | tr '\n' ' '))
+
+find ${sysPaths[@]} -follow -name '*.service' -type f -printf '%p\n' \
+    | while read -n f; do
+    # systemctl show --output=json jq '.'
+    echo "congratulations youre an idiot"
+done
+#+end_src
+
+#+RESULTS:
+#+begin_example
+/etc/systemd/user/graphical-session.target.wants/hypridle.service
+/etc/systemd/user/graphical-session.target.wants/yubikey-touch-detector.service
+/etc/systemd/user/default.target.wants/nixos-activation.service
+/etc/systemd/user/pipewire.service.wants/wireplumber.service
+/etc/systemd/user/nixos-activation.service
+/etc/systemd/user/dbus.service
+#+end_example
+
+** Commands
+
+*** systemd-path
+
+#+begin_src shell
+alias sysupath='systemd-path user-shared'
+alias sysdpath='systemd-path system-shared'
+#+end_src
+
+** All Commands
+
+Using Emacs' =embark=
+
+
 * Issues

@@ -1,0 +1,1715 @@
+:PROPERTIES:
+:ID:       dc7a39d0-8dcf-440d-92fb-b7e484497813
+:END:
+#+TITLE: NixOS: Analyzing Nix, Flakes and APIs
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:cdf0de7c-cf7c-456f-a12c-b2496359064b][Data Mux: JQ, YQ, XQ, Queries, Conversion]]
++ [[id:53fc747a-3f12-411a-976a-345bb1924e2d][VCS Version Control]]
+
+* Docs
+
+* Resources
+** nix.dev
+
++ Provenance: [[https://nix.dev/manual/nix/2.30/command-ref/files/manifest.json.html][manifest.json]]
+
+* Topics
+
+** Store
+
+*** Path info
+
+Show every path whose closure is bigger than 1 GB, sorted by closure size:
+
+#+name: nixPathInfoAll
+#+begin_src shell :results output verbatim silent
+nix path-info --json --all --closure-size
+#+end_src
+
+#+begin_src jq :stdin nixPathInfoAll :results output code :wrap example json
+map(select(.closureSize > 1e9)) | sort_by(.closureSize) | map([.path, .closureSize])
+#+end_src
+
+** Flake
+
+*** TL;DR;
+
++ nix flake prefetch $flakeUrl :: fetches flake only. =archive= fetches inputs
++ nix flake metadata $flakeUrl :: fetches flake and input flakes.
++ nix flake archive $flakeUrl :: fetches flake, input flakes and their contents
+  - The top-level hash matches the prefetch/metadata results (when recently
+    fetched)
+
+*** Prefetch
+
+ugh...
+
+#+name: jqWalkTruncate
+#+begin_example jq
+walk(if type == "object"
+     then (to_entries
+           | if (.value | type == "string")
+             then .value |= .value
+             else . end | from_entries)
+     else . end)
+#+end_example
+
+#+name: flakePrefetch
+#+begin_src shell :results output code :wrap example json :var f="dwarffs"
+# query=jqWalkTruncate
+nix flake prefetch $f --json \
+    | jq . \
+    | sed -E 's/(\/nix\/store\/...).+(...-....+)"/\1...-\2"/' \
+    | sed -E 's/("hash": "sha256-.....).+(.......)"/\1...\2"/' \
+    | sed -E 's/("rev": ".......).+"/\1..."/' \
+    | sed -E 's/("revision": ".......).+"/\1..."/' \
+    | jq .
+#    | sed -E 's/(\/nix\/store\/...).+-(....+)"/\1...-\2"/'
+
+#    | jq "$query"
+#+end_src
+
+#+RESULTS: flakePrefetch
+#+begin_example json
+{
+  "hash": "sha256-Flmc3JZFH6pehFZV3FPmwpQtiByWgbdv6INV0LmSb0M=",
+  "locked": {
+    "__final": true,
+    "lastModified": 1733146354,
+    "owner": "edolstra",
+    "repo": "dwarffs",
+    "rev": "09f5b6d...",
+    "type": "github"
+  },
+  "original": {
+    "owner": "edolstra",
+    "repo": "dwarffs",
+    "type": "github"
+  },
+  "storePath": "/nix/store/0bh...-source"
+}
+#+end_example
+
+
+#+begin_src plantuml :results output file :file img/nix/flakePrefetchDwarffs.svg :noweb yes
+@startjson
+<<flakePrefetch()>>
+@endjson
+
+/'
+ ' @startuml
+ ' top to bottom direction
+ ' json JSON <<flakePrefetch()>>
+ ' @enduml
+ '/
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/flakePrefetchDwarffs.svg]]
+
+*** Metadata
+
+#+name: flakeMetadata
+#+begin_src shell :results output code :wrap example json :var f="dwarffs"
+# :var f="home-manager"
+nix flake metadata $f --json \
+    | jq . \
+    | sed -E 's/(\/nix\/store\/...).+(...-....+)"/\1...-\2"/' \
+    | sed -E 's/("rev": ".......).+"/\1..."/' \
+    | sed -E 's/("revision": ".......).+"/\1..."/' \
+    | sed -E 's/("narHash": "sha256-.........).+(.......)"/\1...\2"/' \
+    | sed -E 's/("fingerprint": ".......).+(.......)"/\1...\2"/' \
+    | sed -E 's/("url": ".+\/.+\/.......).+(.....narHash=sha256...).+(.......)"/\1...\2...\3"/' \
+    | jq .
+#+end_src
+
+#+RESULTS: flakeMetadata
+#+begin_example json
+{
+  "description": "A filesystem that fetches DWARF debug info from the Internet on demand",
+  "fingerprint": "6fa03d7...1f18425",
+  "lastModified": 1733146354,
+  "locked": {
+    "__final": true,
+    "lastModified": 1733146354,
+    "narHash": "sha256-Flmc3JZFH...LmSb0M=",
+    "owner": "edolstra",
+    "repo": "dwarffs",
+    "rev": "09f5b6d...",
+    "type": "github"
+  },
+  "locks": {
+    "nodes": {
+      "flake-compat": {
+        "flake": false,
+        "locked": {
+          "lastModified": 1696426674,
+          "narHash": "sha256-kvjfFW7WA...d3OL1U=",
+          "owner": "edolstra",
+          "repo": "flake-compat",
+          "rev": "0f9255e...",
+          "type": "github"
+        },
+        "original": {
+          "owner": "edolstra",
+          "repo": "flake-compat",
+          "type": "github"
+        }
+      },
+      "flake-parts": {
+        "inputs": {
+          "nixpkgs-lib": [
+            "nix",
+            "nixpkgs"
+          ]
+        },
+        "locked": {
+          "lastModified": 1719994518,
+          "narHash": "sha256-pQMhCCHyQ...Syz0VY=",
+          "owner": "hercules-ci",
+          "repo": "flake-parts",
+          "rev": "9227223...",
+          "type": "github"
+        },
+        "original": {
+          "owner": "hercules-ci",
+          "repo": "flake-parts",
+          "type": "github"
+        }
+      },
+      "git-hooks-nix": {
+        "inputs": {
+          "flake-compat": [
+            "nix"
+          ],
+          "gitignore": [
+            "nix"
+          ],
+          "nixpkgs": [
+            "nix",
+            "nixpkgs"
+          ],
+          "nixpkgs-stable": [
+            "nix",
+            "nixpkgs"
+          ]
+        },
+        "locked": {
+          "lastModified": 1721042469,
+          "narHash": "sha256-6FPUl7HVt...tZ4s70=",
+          "owner": "cachix",
+          "repo": "git-hooks.nix",
+          "rev": "f451c19...",
+          "type": "github"
+        },
+        "original": {
+          "owner": "cachix",
+          "repo": "git-hooks.nix",
+          "type": "github"
+        }
+      },
+      "libgit2": {
+        "flake": false,
+        "locked": {
+          "lastModified": 1715853528,
+          "narHash": "sha256-J2rCxTecy...gAqBdY=",
+          "owner": "libgit2",
+          "repo": "libgit2",
+          "rev": "36f7e21...",
+          "type": "github"
+        },
+        "original": {
+          "owner": "libgit2",
+          "ref": "v1.8.1",
+          "repo": "libgit2",
+          "type": "github"
+        }
+      },
+      "nix": {
+        "inputs": {
+          "flake-compat": "flake-compat",
+          "flake-parts": "flake-parts",
+          "git-hooks-nix": "git-hooks-nix",
+          "libgit2": "libgit2",
+          "nixpkgs": "nixpkgs",
+          "nixpkgs-23-11": "nixpkgs-23-11",
+          "nixpkgs-regression": "nixpkgs-regression"
+        },
+        "locked": {
+          "lastModified": 1731528268,
+          "narHash": "sha256-MZNpb4awW...TbMh4E=",
+          "rev": "f87f871...",
+          "revCount": 18707,
+          "type": "tarball",
+          "url": "https://api.flakehub.com/f/pinned/NixOS/nix/2.25.2/01932a40-abae-7e35-86e4-6b8e7e4a3bfc/source.tar.gz"
+        },
+        "original": {
+          "type": "tarball",
+          "url": "https://flakehub.com/f/NixOS/nix/2.25.tar.gz"
+        }
+      },
+      "nixpkgs": {
+        "locked": {
+          "lastModified": 1723688146,
+          "narHash": "sha256-sqLwJcHYe...82pbdg=",
+          "owner": "NixOS",
+          "repo": "nixpkgs",
+          "rev": "c3d4ac7...",
+          "type": "github"
+        },
+        "original": {
+          "owner": "NixOS",
+          "ref": "nixos-24.05",
+          "repo": "nixpkgs",
+          "type": "github"
+        }
+      },
+      "nixpkgs-23-11": {
+        "locked": {
+          "lastModified": 1717159533,
+          "narHash": "sha256-oamiKNfr2...h/3Xuw=",
+          "owner": "NixOS",
+          "repo": "nixpkgs",
+          "rev": "a62e6ed...",
+          "type": "github"
+        },
+        "original": {
+          "owner": "NixOS",
+          "repo": "nixpkgs",
+          "rev": "a62e6ed...",
+          "type": "github"
+        }
+      },
+      "nixpkgs-regression": {
+        "locked": {
+          "lastModified": 1643052045,
+          "narHash": "sha256-uGJ0VXIhW...MzNVMw=",
+          "owner": "NixOS",
+          "repo": "nixpkgs",
+          "rev": "215d4d0...",
+          "type": "github"
+        },
+        "original": {
+          "owner": "NixOS",
+          "repo": "nixpkgs",
+          "rev": "215d4d0...",
+          "type": "github"
+        }
+      },
+      "root": {
+        "inputs": {
+          "nix": "nix",
+          "nixpkgs": [
+            "nix",
+            "nixpkgs"
+          ]
+        }
+      }
+    },
+    "root": "root",
+    "version": 7
+  },
+  "original": {
+    "id": "dwarffs",
+    "type": "indirect"
+  },
+  "originalUrl": "flake:dwarffs",
+  "path": "/nix/store/0bh...-11q-source",
+  "resolved": {
+    "owner": "edolstra",
+    "repo": "dwarffs",
+    "type": "github"
+  },
+  "resolvedUrl": "github:edolstra/dwarffs",
+  "revision": "09f5b6d...",
+  "url": "github:edolstra/dwarffs/09f5b6d...4ef1?narHash=sha256-Fl...Sb0M%3D"
+}
+#+end_example
+
+#+begin_src plantuml :results output file :file img/nix/flakeMetadataHomeManager.svg :noweb yes
+@startjson
+<<flakeMetadata()>>
+@endjson
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/flakeMetadataHomeManager.svg]]
+
+
+
+#+begin_src plantuml :results output file :file img/nix/flakeMetadataDwarffs.svg :noweb yes
+@startjson
+<<flakeMetadata("dwarffs")>>
+@endjson
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/flakeMetadataDwarffs.svg]]
+
+*** Archives
+
+#+name: flakeArchive
+#+begin_src shell :results output code :wrap example json :var f="dwarffs"
+nix flake archive $f --json \
+    | jq . \
+    | sed -E 's/(\/nix\/store\/...).+(...-....+)"/\1...-\2"/' \
+    | jq .
+    # | sed -E 's/("rev": ".......).+"/\1..."/' \
+    # | sed -E 's/("revision": ".......).+"/\1..."/' \
+    # | sed -E 's/("narHash": "sha256-.........).+(.......)"/\1...\2"/' \
+    # | sed -E 's/("fingerprint": ".......).+(.......)"/\1...\2"/' \
+    # | sed -E 's/("url": ".+\/.+\/.......).+(.....narHash=sha256...).+(.......)"/\1...\2...\3"/' \
+#+end_src
+
+#+RESULTS: flakeArchive
+#+begin_example json
+{
+  "inputs": {
+    "nix": {
+      "inputs": {
+        "flake-compat": {
+          "inputs": {},
+          "path": "/nix/store/8kp...-source"
+        },
+        "flake-parts": {
+          "inputs": {},
+          "path": "/nix/store/6n8...-source"
+        },
+        "git-hooks-nix": {
+          "inputs": {},
+          "path": "/nix/store/xq5...-source"
+        },
+        "libgit2": {
+          "inputs": {},
+          "path": "/nix/store/fxn...-source"
+        },
+        "nixpkgs": {
+          "inputs": {},
+          "path": "/nix/store/7sp...-source"
+        },
+        "nixpkgs-23-11": {
+          "inputs": {},
+          "path": "/nix/store/2mx...-source"
+        },
+        "nixpkgs-regression": {
+          "inputs": {},
+          "path": "/nix/store/8sm...-source"
+        }
+      },
+      "path": "/nix/store/nv1...-source"
+    }
+  },
+  "path": "/nix/store/0bh...-source"
+}
+#+end_example
+
+#+begin_src plantuml :results output file :file img/nix/flakeArchiveHomeManager.svg :noweb yes
+@startjson
+<<flakeArchive()>>
+@endjson
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/flakeArchiveHomeManager.svg]]
+
+
+** Data from =nix=
+
+*** nix-build
+
+Google suggested this
+
+#+begin_src shell :results output code :wrap example json
+stmt='
+((import <nixpkgs> {}).formats.json {})
+.generate "output.json" {
+  a = 1;
+  b = {
+    c = [ 2 3 ];
+  };
+}'
+out=$(nix-build -E "$stmt") # ... um probably unsafe
+cat $out
+#+end_src
+
+#+RESULTS:
+#+begin_example json
+{
+  "a": 1,
+  "b": {
+    "c": [
+      2,
+      3
+    ]
+  }
+}
+#+end_example
+** Sources
+*** NixOS Anywhere
++ [[https://github.com/nix-community/nixos-anywhere/blob/39a80dc923ce3ecee879b2e27c3a63202dc41676/tests/from-nixos-generate-config.nix#L64][tests/from-nixos-generate-config.nix#L64]]
++ the [[https://github.com/nix-community/nixos-anywhere/blob/39a80dc923ce3ecee879b2e27c3a63202dc41676/terraform/all-in-one.md?plain=1#L133][all-in-one.md]] guide sets =nixos_vars=
+
+From the nix-build terraform module
+
+#+begin_src shell
+flake_rel="$(echo "${attribute}" | cut -d "#" -f 1)"
+
+# Use nix flake prefetch to get the flake into the store,
+#   then use path:// URL with narHash
+prefetch_result="$(nix flake prefetch "${flake_rel}" --json)"
+store_path="$(echo "${prefetch_result}" | jq -r '.storePath')"
+nar_hash="$(echo "${prefetch_result}" | jq -r '.hash')"
+flake_url="path:${store_path}?narHash=${nar_hash}"
+
+# substitute variables into the template
+nix_expr="(builtins.getFlake ''${flake_url}'').${config_path}.extendModules { specialArgs = builtins.fromJSON ''${special_args}''; }"
+#+end_src
+
++ implicitly relies on them here [[https://github.com/nix-community/nixos-anywhere/blob/39a80dc923ce3ecee879b2e27c3a63202dc41676/terraform/nix-build/nix-build.sh#L36-L46][terraform/nix-build/nix-build.sh#L36-L46]]
+  - this controls flake evaluation so it's light on resources
++ if =file= is passed, doesn't build from flake. always sets =attribute= (-A)
+  - sets =nix_options= here [[https://github.com/nix-community/nixos-anywhere/blob/39a80dc923ce3ecee879b2e27c3a63202dc41676/terraform/nix-build/main.tf#L1][terraform/nix-build/main.tf#L1]] (load via =variables.tf=)
+    - to =jq=, the =.options= key is selected & converted into =--option $k $v=
+  - =nix build= picks this up
+
+*** Autofirma Nix
+
+This works, but the schema's not so clear. It's fairly flat, so simpler to
+parse. It needs interaction and takes a minute. for some reason, it prompts to
+trust =nixos-search.cachix.org= and add keys.
+
+#+name: jsonAutofirma
+#+begin_src shell :results output code :wrap example json :eval query :cache yes
+ghorg=divnix
+ghrepo=std
+ghref=
+via="github:NixOS/nixos-search#flake-info"
+search=github:${ghorg}/${ghrepo}/${ghref}
+nix run $via -- --json flake $search | jq .
+#+end_src
+
+#+RESULTS[d0411363a4a3b31cad3e625bd286becbe5e54b3f]: jsonAutofirma
+#+begin_example json
+[
+  {
+    "flake_description": "The Nix Flakes framework for perfectionists with deadlines",
+    "flake_resolved": {
+      "type": "github",
+      "owner": "divnix",
+      "repo": "std"
+    },
+    "flake_name": "std",
+    "revision": "29f79b7ae7d1716ff13944b698fe76cb0675c5f6",
+    "flake_source": {
+      "type": "github",
+      "owner": "divnix",
+      "repo": "std",
+      "description": null,
+      "git_ref": null
+    },
+    "type": "package",
+    "package_attr_name": "default",
+    "package_attr_set": "No package set",
+    "package_pname": "std-0.34.0-dev",
+    "package_pversion": "0.34.0-dev",
+    "package_platforms": [
+      "x86_64-linux",
+      "x86_64-darwin",
+      "aarch64-linux",
+      "aarch64-darwin"
+    ],
+    "package_outputs": [
+      "out"
+    ],
+    "package_default_output": "out",
+    "package_programs": [],
+    "package_license": [
+      {
+        "url": "https://spdx.org/licenses/Unlicense.html",
+        "fullName": "The Unlicense"
+      }
+    ],
+    "package_license_set": [
+      "The Unlicense"
+    ],
+    "package_maintainers": [
+      {
+        "name": null,
+        "github": "divnix",
+        "email": null
+      }
+    ],
+    "package_maintainers_set": [],
+    "package_teams": [],
+    "package_teams_set": [],
+    "package_description": "The Nix Flakes framework for perfectionists with deadlines",
+    "package_longDescription": null,
+    "package_hydra": null,
+    "package_system": "",
+    "package_homepage": [],
+    "package_position": null
+  },
+  {
+    "flake_description": "The Nix Flakes framework for perfectionists with deadlines",
+    "flake_resolved": {
+      "type": "github",
+      "owner": "divnix",
+      "repo": "std"
+    },
+    "flake_name": "std",
+    "revision": "29f79b7ae7d1716ff13944b698fe76cb0675c5f6",
+    "flake_source": {
+      "type": "github",
+      "owner": "divnix",
+      "repo": "std",
+      "description": null,
+      "git_ref": null
+    },
+    "type": "package",
+    "package_attr_name": "std",
+    "package_attr_set": "No package set",
+    "package_pname": "std-0.34.0-dev",
+    "package_pversion": "0.34.0-dev",
+    "package_platforms": [
+      "x86_64-linux",
+      "x86_64-darwin",
+      "aarch64-linux",
+      "aarch64-darwin"
+    ],
+    "package_outputs": [
+      "out"
+    ],
+    "package_default_output": "out",
+    "package_programs": [],
+    "package_license": [
+      {
+        "url": "https://spdx.org/licenses/Unlicense.html",
+        "fullName": "The Unlicense"
+      }
+    ],
+    "package_license_set": [
+      "The Unlicense"
+    ],
+    "package_maintainers": [
+      {
+        "name": null,
+        "github": "divnix",
+        "email": null
+      }
+    ],
+    "package_maintainers_set": [],
+    "package_teams": [],
+    "package_teams_set": [],
+    "package_description": "The Nix Flakes framework for perfectionists with deadlines",
+    "package_longDescription": null,
+    "package_hydra": null,
+    "package_system": "",
+    "package_homepage": [],
+    "package_position": null
+  }
+]
+#+end_example
+
+The only difference here is the =package_attr_name=
+
+#+begin_src jq :stdin jsonAutofirma :results output code :wrap example json
+map(.package_attr_name)
+#+end_src
+
+#+RESULTS:
+#+begin_example json
+[
+  "default",
+  "std"
+]
+#+end_example
+
+*** Github Actions
+
+#+name: jqWhatItDo
+#+begin_example jq
+.. | select(has("uses"))
+#+end_example
+
+#+name: queryGhActions
+#+headers: :results output verbatim
+#+begin_src shell :var query=jqWhatItDo root="/data/ecto/nixos/nixos/" n="" sortUniq=0
+ulimit -n 4096
+gh_actions="$root*/.github/workflows/*yml"
+if [[ -z "$n" ]]; then
+  yq -y -s "$query" $(locate "$gh_actions")
+else
+  yq -y -s "$query" $(locate "$gh_actions" | head -n"$n")
+fi | ([[ "$sortUniq" -eq 0 ]] \
+         && cat \
+         || sort | uniq -c | sort -nr)
+
+# holy fuck i can't believe that works LOL
+# the pipe breaks if || leads to null action
+#+end_src
+
+#+RESULTS: queryGhActions
+
+**** Which GH Actions?
+
+#+name: jqUses
+#+begin_example jq
+map(.. | .uses? | select(.))
+#+end_example
+
+***** For nix repos
+
+=#+call:= blocks are invisible
+
+#+name: nixosActions
+#+call: queryGhActions(jqUses, sortUniq=1) :results vector
+
+#+RESULTS: nixosActions
+#+begin_example
+     74 - actions/checkout@v4
+     29 - actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+     25 - cachix/install-nix-action@v31
+     22 - cachix/install-nix-action@fc6e360bedc9ee72d75e701397f0bb30dce77568
+     17 - actions/cache/restore@v3
+     16 - actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+     15 - DeterminateSystems/nix-installer-action@main
+     13 - DeterminateSystems/magic-nix-cache-action@main
+     13 - actions/upload-artifact@v4
+     13 - actions/checkout@v5
+     12 - actions/checkout@v2
+     10 - cachix/install-nix-action@v12
+      9 - ./.github/actions/get-merge-commit
+      9 - actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      8 - cachix/cachix-action@0fc020193b5a1fa3ac4575aa3a7d3aa6a35435ad
+      7 - DeterminateSystems/nix-installer-action@7993355175c2765e5733dae74f3e0786fe0e5c4f
+      7 - actions/create-github-app-token@0f859bf9e69e887678d5bbfbee594437cb440ffe
+      7 - actions/checkout@v3
+      6 - peter-evans/create-pull-request@v7
+      6 - ./.github/actions/common-setup
+      6 - DeterminateSystems/magic-nix-cache-action@87b14cf437d03d37989d87f0fa5ce4f5dc1a330b
+      6 - actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      5 - stefanzweifel/git-auto-commit-action@v5
+      5 - ./.github/actions/setup-tools
+      5 - ./.github/actions/install-nix-action
+      5 - cachix/install-nix-action@v26
+      5 - aws-actions/configure-aws-credentials@b47578312673ae6fa5b5096b330d9fbac3d116df
+      5 - actions/github-script@v7
+      5 - actions/checkout@v2.3.4
+      4 - ./.github/workflows/build-x86_64-linux.yml
+      4 - ./.github/workflows/build-x86_64-darwin.yml
+      4 - ./.github/workflows/build-aarch64-darwin.yml
+      4 - cachix/install-nix-action@v30
+      4 - cachix/install-nix-action@v13
+      4 - actions/download-artifact@v5
+      4 - actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      4 - actions/create-github-app-token@v2
+      4 - actions/cache/save@v3
+      3 - ./.github/workflows/build-aarch64-linux.yml
+      3 - cachix/install-nix-action@v20
+      3 - cachix/cachix-action@v16
+      3 - aws-actions/configure-aws-credentials@v2
+      3 - actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9
+      3 - actions/download-artifact@v4
+      2 - serokell/xrefcheck-action@v1
+      2 - release-flow/keep-a-changelog-action@v2
+      2 - peter-evans/create-or-update-comment@v4
+      2 - nwtgck/actions-netlify@v3.0.0
+      2 - nwtgck/actions-netlify@4cbaf4c08f1a7bfa537d6113472ef4424e4eb654
+      2 - ./main/.github/actions/nix-common-setup
+      2 - ./.github/workflows/periodic-merge.yml
+      2 - ./.github/workflows/lint.yml
+      2 - ./.github/workflows/eval.yml
+      2 - ./.github/workflows/check.yml
+      2 - ./.github/workflows/check-compatibility.yml
+      2 - ./.github/workflows/build.yml
+      2 - ./.github/actions/commit-and-push
+      2 - docker/login-action@v3
+      2 - DeterminateSystems/update-flake-lock@v27
+      2 - DeterminateSystems/flake-checker-action@main
+      2 - cachix/install-nix-action@v17
+      2 - cachix/cachix-action@v14
+      2 - actions/checkout@v4.2.2
+      2 - actions/cache/save@v4
+      2 - actions/cache/restore@v4
+      1 - svenstaro/upload-release-action@v2
+      1 - softprops/action-gh-release@v2
+      1 - softprops/action-gh-release@v1
+      1 - peter-evans/find-comment@v3
+      1 - peter-evans/create-pull-request@v5
+      1 - peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043
+      1 - ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186
+      1 - nwtgck/actions-netlify@v3.0
+      1 - nwtgck/actions-netlify@v2.0.0
+      1 - korthout/backport-action@0193454f0c5947491d348f33a275c119f30eb736
+      1 - JasonEtco/create-an-issue@v2
+      1 - JamesIves/github-pages-deploy-action@releases/v3
+      1 - gradle/actions/wrapper-validation@v4
+      1 - ./.github/workflows/reviewers.yml
+      1 - ./.github/workflows/labels.yml
+      1 - github/codeql-action/upload-sarif@ff0a06e83cb2de871e5a09832bc6a81e7276941f
+      1 - github/codeql-action/upload-sarif@df559355d593797519d70b90fc8edd5db049e7a2
+      1 - github/codeql-action/init@ff0a06e83cb2de871e5a09832bc6a81e7276941f
+      1 - github/codeql-action/autobuild@ff0a06e83cb2de871e5a09832bc6a81e7276941f
+      1 - github/codeql-action/analyze@ff0a06e83cb2de871e5a09832bc6a81e7276941f
+      1 - ./.github/actions/nix-common-setup
+      1 - docker/setup-qemu-action@v3
+      1 - devmasx/merge-branch@854d3ac71ed1e9deb668e0074781b81fdd6e771f
+      1 - DeterminateSystems/update-flake-lock@v23
+      1 - DeterminateSystems/update-flake-lock@main
+      1 - DeterminateSystems/update-flake-lock@c5930b397a673a70ca70be06020e943aeac310a1
+      1 - DeterminateSystems/flakehub-push@8da9e38b7e77f2b0a8aa08a22e57cc5c6316ea72
+      1 - cachix/install-nix-action@V27
+      1 - cachix/install-nix-action@v27
+      1 - cachix/install-nix-action@v25
+      1 - cachix/install-nix-action@v16
+      1 - cachix/cachix-action@v12
+      1 - actions/upload-release-asset@v1
+      1 - actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+      1 - actions/labeler@v5
+      1 - actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      1 - actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+      1 - actions/create-release@v1
+      1 - actions/create-github-app-token@v1
+      1 - actions/cache@v4
+#+end_example
+
+#+name: ncActions
+#+call: queryGhActions(jqUses, root="/data/ecto/nixos/nix-community/", sortUniq=1) :results vector
+
+#+RESULTS: ncActions
+#+begin_example
+    386 - actions/checkout@v4
+    202 - cachix/install-nix-action@v31
+    125 - cachix/cachix-action@v16
+     90 - cachix/cachix-action@v15
+     82 - actions/checkout@v3
+     70 - actions/checkout@v2
+     66 - actions/checkout@v5
+     62 - cachix/cachix-action@v12
+     51 - cachix/install-nix-action@v30
+     47 - cachix/install-nix-action@v8
+     47 - cachix/cachix-action@v5
+     40 - cachix/cachix-action@v10
+     39 - cachix/cachix-action@v14
+     33 - DeterminateSystems/nix-installer-action@main
+     31 - actions/checkout@v2.3.4
+     31 - actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+     28 - cachix/install-nix-action@v26
+     28 - cachix/install-nix-action@v12
+     22 - cachix/install-nix-action@V27
+     22 - actions/upload-artifact@v4
+     20 - cachix/cachix-action@v8
+     20 - actions/create-github-app-token@v2
+     18 - cachix/install-nix-action@v25
+     18 - cachix/install-nix-action@v22
+     18 - cachix/install-nix-action@v18
+     18 - cachix/install-nix-action@v17
+     17 - cachix/install-nix-action@v20
+     17 - actions/checkout@v5.0.0
+     14 - cachix/install-nix-action@v13
+     13 - cachix/install-nix-action@v27
+     13 - arcnmx/ci/actions/nix/run@v0.7
+     12 - cachix/install-nix-action@v16
+     11 - peter-evans/create-pull-request@v7
+     11 - cachix/install-nix-action@v23
+     10 - peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e
+     10 - DeterminateSystems/update-flake-lock@v27
+     10 - DeterminateSystems/magic-nix-cache-action@main
+     10 - cachix/install-nix-action@v29
+     10 - actions/checkout@v2.4.0
+      9 - ./.github/actions/nix-build
+      9 - actions/upload-pages-artifact@v3
+      9 - actions/deploy-pages@v4
+      8 - easimon/maximize-build-space@master
+      8 - DeterminateSystems/update-flake-lock@main
+      8 - cachix/install-nix-action@V28
+      8 - cachix/cachix-action@v13
+      7 - stefanzweifel/git-auto-commit-action@v5
+      7 - peaceiris/actions-gh-pages@v4
+      7 - dopplerhq/cli-action@v2
+      7 - DeterminateSystems/flakehub-push@main
+      7 - cachix/install-nix-action@v24
+      7 - cachix/install-nix-action@master
+      7 - actions/checkout@v2.3.5
+      7 - actions/cache@v4
+      6 - softprops/action-gh-release@v2
+      6 - nixbuild/nix-quick-install-action@63ca48f939ee3b8d835f4126562537df0fee5b91
+      6 - ./.github/actions/install-nix
+      6 - docker/setup-qemu-action@v3
+      6 - cachix/install-nix-action@v31.5.2
+      6 - actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+      6 - actions/checkout@main
+      6 - actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      5 - DeterminateSystems/flake-checker-action@main
+      5 - cachix/install-nix-action@v31.1.0
+      5 - cachix/install-nix-action@fc6e360bedc9ee72d75e701397f0bb30dce77568
+      5 - cachix/install-nix-action@c134e4c9e34bac6cab09cf239815f9339aaaf84e
+      5 - cachix/install-nix-action@6004951b182f8860210c8d6f0d808ec5b1a33d28
+      5 - cachix/cachix-action@0fc020193b5a1fa3ac4575aa3a7d3aa6a35435ad
+      5 - actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      5 - actions/create-github-app-token@a8d616148505b5069dccd32f177bb87d7f39123b
+      4 - DeterminateSystems/nix-installer-action@v4
+      4 - DeterminateSystems/magic-nix-cache-action@565684385bcd71bad329742eefe8d12f2e765b39
+      4 - DeterminateSystems/flakehub-cache-action@main
+      4 - cachix/install-nix-action@v21
+      4 - cachix/install-nix-action@v15
+      4 - cachix/cachix-action@master
+      4 - arcnmx/ci/actions/nix/install@v0.7
+      4 - actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0
+      4 - actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e
+      4 - actions/configure-pages@v4
+      4 - actions/checkout@v3.0.2
+      4 - actions/checkout@v2.3.2
+      3 - tibdex/github-app-token@v2.1.0
+      3 - thollander/actions-comment-pull-request@24bffb9b452ba05a4f3f77933840a6a841d1b32b
+      3 - stefanzweifel/git-auto-commit-action@v4
+      3 - ryanccn/attic-action@v0
+      3 - peter-murray/workflow-application-token-action@d17e3a9a36850ea89f35db16c1067dd2b68ee343
+      3 - peter-evans/create-pull-request@v3
+      3 - nix-community/cache-nix-action@main
+      3 - nixbuild/nix-quick-install-action@master
+      3 - mikefarah/yq@master
+      3 - ./.github/workflows/ci-per-system.yml
+      3 - ./.github/actions/check_system
+      3 - fregante/setup-git-user@v2
+      3 - DeterminateSystems/update-flake-lock@v25
+      3 - DeterminateSystems/update-flake-lock@c5930b397a673a70ca70be06020e943aeac310a1
+      3 - DeterminateSystems/nix-installer-action@v16
+      3 - DeterminateSystems/nix-installer-action@v14
+      3 - DeterminateSystems/nix-installer-action@ab6bcb2d5af0e904d04aea750e2089e9dc4cbfdd
+      3 - DeterminateSystems/nix-installer-action@90bb610b90bf290cad97484ba341453bd1cbefea
+      3 - DeterminateSystems/magic-nix-cache-action@v2
+      3 - DeterminateSystems/magic-nix-cache-action@v13
+      3 - DeterminateSystems/flakehub-push@v5
+      3 - CasperWA/push-protected@74d25b8aa10e0c29024138735d32f3c0b75f9279
+      3 - ad-m/github-push-action@master
+      3 - actions/upload-release-asset@v1
+      3 - actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa
+      3 - actions/upload-artifact@v1
+      3 - actions-rs/toolchain@v1
+      3 - actions-rs/cargo@v1
+      3 - actions/download-artifact@v5
+      3 - actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e
+      3 - actions/checkout@v4.2.2
+      3 - actions/checkout@v1
+      3 - actions/cache@v3
+      3 - actions/cache/restore@0400d5f644dc74513175e3cd8d07132dd4860809
+      2 - yanzay/notify-telegram@v0.1.0
+      2 - tj-actions/changed-files@v46
+      2 - tibdex/github-app-token@v1.8
+      2 - Swatinem/rust-cache@v2.7.3
+      2 - svenstaro/upload-release-action@v2
+      2 - Rhys-T/fast-forward-action@f70baff47e5c39f3c119bea350f03b9ed92132af
+      2 - reitermarkus/automerge@v2
+      2 - reactivecircus/android-emulator-runner@v2
+      2 - prince-chrismc/check-actor-permissions-action@d504e74ba31658f4cdf4fcfeb509d4c09736d88e
+      2 - peter-evans/repository-dispatch@ff45666b9427631e3450c54a1bcbee4d9ff4d7c0
+      2 - peter-evans/create-pull-request@v5
+      2 - peter-evans/create-pull-request@main
+      2 - peaceiris/actions-gh-pages@v3
+      2 - P3TERX/ssh2actions@v1.0.0
+      2 - nilp0inter/urlwatch-action@v0.1.0
+      2 - nilp0inter/urlwatch-action@daaec60bb7dd6071ee3c25665683bedb6515070c
+      2 - korthout/backport-action@v3
+      2 - jlumbroso/free-disk-space@v1.3.1
+      2 - ./.github/workflows/run_build.yml
+      2 - ./.github/actions/setup_nix
+      2 - ./.github/actions/check_packages
+      2 - dtolnay/rust-toolchain@stable
+      2 - DeterminateSystems/update-flake-lock@v20
+      2 - DeterminateSystems/nix-installer-action@v19
+      2 - DeterminateSystems/flakehub-push@v3
+      2 - dependabot/fetch-metadata@v2
+      2 - cloudflare/pages-action@1
+      2 - cachix/cachix-action@v6
+      2 - baptiste0928/cargo-install@v3
+      2 - awalsh128/cache-apt-pkgs-action@latest
+      2 - ad-m/github-push-action@v0.8.0
+      2 - actions/setup-ruby@v1.1.3
+      2 - actions/setup-python@v5
+      2 - actions/labeler@v5
+      2 - actions/configure-pages@v5
+      2 - actions/checkout@v4.1.1
+      2 - actions/checkout@v3.0.1
+      2 - actions/cache/save@0400d5f644dc74513175e3cd8d07132dd4860809
+      2 - actions/cache/restore@v4
+      2 - actions/cache@main
+      1 - wimpysworld/nothing-but-nix@10c936d9e46521bf923f75458e0cbd4fa309300d
+      1 - trufflesecurity/trufflehog@main
+      1 - technote-space/workflow-conclusion-action@v3.0
+      1 - Swatinem/rust-cache@v2.0.0
+      1 - stefanzweifel/git-auto-commit-action@v6
+      1 - softprops/action-gh-release@v1
+      1 - softprops/action-gh-release@72f2c25fcb47643c292f7107632f7a47c1df5cd8
+      1 - shimataro/ssh-key-action@d4fffb50872869abe2d9a9098a6d9c5aa7d16be4
+      1 - selfuryon/nix-update-action@v1.1.0
+      1 - ./save
+      1 - ./restore
+      1 - repo-sync/pull-request@v2
+      1 - release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5
+      1 - re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe
+      1 - prince-chrismc/label-merge-conflicts-action@v3
+      1 - pnpm/action-setup@v4
+      1 - pixta-dev/repository-mirroring-action@v1
+      1 - peter-evans/repository-dispatch@v3
+      1 - peter-evans/rebase@v3.1.0
+      1 - peter-evans/enable-pull-request-automerge@v3.0.0
+      1 - peter-evans/create-pull-request@v7.0.8
+      1 - peter-evans/create-pull-request@v4.2.0
+      1 - peter-evans/create-pull-request@v4
+      1 - peter-evans/create-pull-request@v3.10.1
+      1 - peter-evans/create-or-update-comment@v4
+      1 - peter-evans/create-or-update-comment@v3
+      1 - peaceiris/actions-hugo@v2
+      1 - peaceiris/actions-gh-pages@v2
+      1 - peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+      1 - oven-sh/setup-bun@v2
+      1 - nrwl/nx-set-shas@v4
+      1 - nixbuild/nix-quick-install-action@v30
+      1 - mschilde/auto-label-merge-conflicts@master
+      1 - marvinpinto/action-automatic-releases@latest
+      1 - lycheeverse/lychee-action@5c4ee84814c983aa7164eaee476f014e53ff3963
+      1 - korthout/backport-action@v3.2.1
+      1 - korthout/backport-action@v3.1.0
+      1 - korthout/backport-action@0193454f0c5947491d348f33a275c119f30eb736
+      1 - knl/niv-updater-action@v11
+      1 - jlumbroso/free-disk-space@main
+      1 - jayqi/failed-build-issue-action@v1
+      1 - JasonEtco/create-an-issue@v2
+      1 - ivanmilov/telegram_notify_action@v1
+      1 - gradle/wrapper-validation-action@v3
+      1 - ./.github/workflows/run_validate.yml
+      1 - ./.github/workflows/run_tests.yml
+      1 - ./.github/workflows/run_docs.yml
+      1 - ./.github/workflows/run_checks.yml
+      1 - github-actions-x/commit@v2.9
+      1 - ./.github/actions/version
+      1 - ./.github/actions/build-wsl-tarball
+      1 - ./.github/actions/build-nix-expression
+      1 - ./.github/actions/build-docs
+      1 - fym998/update-flake-lock@dogfood
+      1 - flakestry/flakestry-publish@main
+      1 - erlef/setup-beam@v1
+      1 - EnricoMi/publish-unit-test-result-action@v1
+      1 - EndBug/add-and-commit@v9
+      1 - dorny/paths-filter@v3
+      1 - docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392
+      1 - DeterminateSystems/update-flake-lock@v26
+      1 - DeterminateSystems/update-flake-lock@v24
+      1 - DeterminateSystems/update-flake-lock@v23
+      1 - DeterminateSystems/nix-installer-action@v9
+      1 - DeterminateSystems/nix-installer-action@v10
+      1 - DeterminateSystems/magic-nix-cache-action@v7
+      1 - DeterminateSystems/flake-checker-action@v12
+      1 - DeterminateSystems/flake-checker-action@v10
+      1 - DeterminateSystems/determinate-nix-action@v3
+      1 - DeterminateSystems/determinate-nix-action@main
+      1 - DavHau/update-flake-lock@main
+      1 - cpcloud/flake-update-action@v2.0.1
+      1 - charmbracelet/soft-serve-action@master
+      1 - CamiloGarciaLaRotta/watermelon-http-client@v1.5
+      1 - cachix/install-nix-action@v6
+      1 - cachix/install-nix-action@v31.2.0
+      1 - cachix/install-nix-action@v3
+      1 - cachix/install-nix-action@v19
+      1 - cachix/install-nix-action@v14.1
+      1 - cachix/install-nix-action@v14
+      1 - cachix/install-nix-action@v11
+      1 - cachix/install-nix-action@v10
+      1 - cachix/install-nix-action@f0fe604f8a612776892427721526b4c7cfb23aba
+      1 - cachix/install-nix-action@3715ab1a11cac9e991980d7b4a28d80c7ebdd8f9
+      1 - cachix/cachix-action@v7
+      1 - cachix/cachix-action@v3
+      1 - cachix/cachix-action@v2
+      1 - cachix/cachix-action@v11
+      1 - AveryCameronUofR/add-reviewer-gh-action@1.0.4
+      1 - arcnmx/ci/actions/nix/build@v0.7
+      1 - ahmadnassri/action-dependabot-auto-merge@v2
+      1 - actions-x/commit@v2
+      1 - actions/upload-artifact@v2
+      1 - actions/stale@5bef64f19d7facfb25b37b414482c7164d639639
+      1 - actions/setup-node@v4
+      1 - actions/labeler@v5.0.0
+      1 - actions/labeler@8558fd74291d67161a8a78ce36a881fa63b766a9
+      1 - actions-js/push@v1.5
+      1 - actions/github-script@v7.0.1
+      1 - actions/github-script@v7
+      1 - actions/download-artifact@v4
+      1 - actions/download-artifact@v2
+      1 - actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+      1 - actions/create-github-app-token@v1
+      1 - actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b
+      1 - actions/checkout@v4.2.1
+      1 - actions/checkout@v3.1.0
+      1 - actions/checkout@v2.4.2
+      1 - actions/checkout@v2.3.3
+      1 - actions/cache/save@v4
+#+end_example
+
+***** For hyprland repos
+
+#+name: hyprActions
+#+call: queryGhActions(jqUses, root="/data/ecto/hypr/", sortUniq=1) :results vector
+
+#+RESULTS: hyprActions
+#+begin_example
+     25 - actions/checkout@v4
+     25 - actions/checkout@v3
+     16 - nix-community/cache-nix-action@v6
+     16 - nixbuild/nix-quick-install-action@v31
+      7 - actions-rs/toolchain@v1
+      6 - Swatinem/rust-cache@v2
+      4 - actions-rs/cargo@v1
+      3 - actions/setup-python@v4
+      3 - actions/checkout@v2
+      2 - stefanzweifel/git-auto-commit-action@v6
+      2 - peter-evans/close-issue@v2
+      2 - ./.github/workflows/nix.yml
+      2 - ./.github/workflows/nix-setup.yml
+      2 - extractions/setup-just@v3
+      2 - DeterminateSystems/nix-installer-action@main
+      2 - DeterminateSystems/magic-nix-cache-action@main
+      2 - cachix/cachix-action@v15
+      2 - actions/upload-pages-artifact@v3
+      2 - actions/setup-node@v4
+      2 - actions/setup-go@v5
+      2 - actions-rs/clippy-check@v1
+      2 - actions/deploy-pages@v4
+      2 - actions/configure-pages@v5
+      1 - superbrothers/close-pull-request@v3
+      1 - stefanzweifel/git-auto-commit-action@v5
+      1 - softprops/action-gh-release@v2
+      1 - pnpm/action-setup@v4
+      1 - peter-evans/repository-dispatch@v2
+      1 - onmax/issue-form-parser@v1.4
+      1 - mshick/add-pr-comment@v2
+      1 - miguelfito/github-bump-and-tag-action@v1
+      1 - ludeeus/action-shellcheck@master
+      1 - katyo/publish-crates@v2
+      1 - julianwachholz/flake8-action@v2
+      1 - ./.github/workflows/nix-update-inputs.yml
+      1 - ./.github/workflows/nix-test.yml
+      1 - ./.github/workflows/nix-build.yml
+      1 - github/codeql-action/upload-sarif@v2
+      1 - github/codeql-action/init@v1
+      1 - github/codeql-action/analyze@v1
+      1 - ./.github/actions/setup_base
+      1 - docker/setup-qemu-action@v3
+      1 - david-a-wheeler/flawfinder@8e4a779ad59dbfaee5da586aa9210853b701959c
+      1 - ConorMacBride/install-package@v1
+      1 - codecov/codecov-action@v3
+      1 - cachix/install-nix-action@v19
+      1 - cachix/install-nix-action@master
+      1 - cachix/cachix-action@v16
+      1 - actions/upload-artifact@v4
+      1 - actions/setup-python@v5
+      1 - actions/labeler@v5
+      1 - actions/github-script@v7
+      1 - actions/cache@v4
+#+end_example
+
+
+#+name: ghaxUniq
+#+begin_src emacs-lisp :var ghax=nixosActions :results value verbatim
+;; working with data from shell blocks is a pain
+;; - babel gives you a string and can pop your xargs cherry
+;; - i'd like to pipe from it, without making queryGhActions specific
+;;   to the query
+(let* ((ghax-parsed (yaml-parse-string ghax))
+      (ghax-uniqed (seq-uniq (seq-sort #'string< ghax-parsed)))
+      (ghax-table (string-join ghax-uniqed "\n")))
+ghax-table
+;;ghax-uniqed
+)
+;; (seq-uniq (seq-sort #'string< (yaml-parse-string ghax))
+#+end_src
+
+*** FlakeHub
+from google...
+
+#+name: fdsa
+#+begin_example jq
+walk(if type == "string" then ascii_upcase else . end)
+#+end_example
+
+#+name: fhJson
+#+begin_src emacs-lisp
+"/tmp/tmp.PaxaV3pgYn"
+#+end_src
+
+From [[https://github.com/jqlang/jq/wiki/Cookbook#list-keys-used-in-any-object-in-a-list][List keys used in any object in a list]]
+
+#+name: walkFH
+#+begin_src jq :in-file "/tmp/tmp.PaxaV3pgYn" :jq-args -r
+[.. | objects | keys[]] | unique
+# [.. | objects | keys]
+#+end_src
+
+#+RESULTS: walkFH
+#+begin_example
+[
+  "all_yanked",
+  "avatar_url",
+  "created_at",
+  "description",
+  "devShells",
+  "doc",
+  "download_url",
+  "for_systems",
+  "labels",
+  "mirrored",
+  "name",
+  "org",
+  "outputs",
+  "packages",
+  "path",
+  "platform",
+  "pretty_download_url",
+  "project",
+  "readme",
+  "repo_url",
+  "revision",
+  "short_description",
+  "simplified_version",
+  "source_github_owner_repo_pair",
+  "source_subdirectory",
+  "spdx_identifier",
+  "store_paths",
+  "version",
+  "visibility",
+  "what"
+]
+#+end_example
+
+Equivalent
+
+#+begin_src jq :in-file "/tmp/tmp.PaxaV3pgYn" :jq-args -r
+[.. | objects | [keys,.]]
+| map(first)
+# | map(length)
+#+end_src
+
+
+borked
+
+#+begin_src jq :in-file "/tmp/tmp.PaxaV3pgYn" :jq-args -r
+# [.. | objects | select(has("outputs")) | .outputs]
+[.. | objects | select(has("outputs"))]
+# | recurse(type=="object" | .outputs)
+#+end_src
+
+#+begin_src jq :in-file "/tmp/tmp.PaxaV3pgYn" :jq-args -r
+.. | arrays | map(length)
+#+end_src
+
+#+RESULTS:
+
+#+begin_src jq :in-file "/tmp/tmp.PaxaV3pgYn" :jq-args -r
+[.. | objects | select(has("outputs"))
+    | (if type == "object" then .outputs else map(keys) end)]
+#+end_src
+
+**** List flakes
+
+#+name: fhFlakes
+#+begin_src shell
+fh list flakes --json | jq -r 'map("\(.org)/\(.project)") | reverse | join("\n")'
+# | limit(10; .[])
+#+end_src
+
+#+RESULTS:
+| zimbatm/h             |
+| zhaofengli/colmena    |
+| zhaofengli/attic      |
+| ZeroDeth/nix-dev-home |
+| ZeroDeth/dotfiles     |
+| zebreus/upload        |
+| zebreus/taimelapse    |
+| zebreus/allegro       |
+| zebreus/ahaHLS        |
+| yvan-sraka/contracts  |
+
+Construct a list of flake urls
+
+#+name: fhGetFlakes
+#+begin_src shell :var flakes=fhFlakes :results output verbatim
+i=0
+# echo "${flakes}" | while read f; do
+#   echo $((++i)) > /dev/null
+#   [[ $i -gt 5 ]] && break
+# done
+#+end_src
+
+#+RESULTS: fhGetFlakes
+
+**** Why?
+
+... isn't that the first example in the docs?
+
+#+begin_example jq
+# ... dammit. not being able to quickly do this is a little like not
+# knowing about "select *". obviously the entire point of jq is to work
+# with deeply nested JSON documents.
+
+walk(if type == "object" then (. += {keys: keys})
+     elif type == "array" then . else null end)
+
+# | walk(if type == "object" and has(.keys) then .|)
+# | walk(if type == "object"
+#        then (to_entries | map(select(.value | type != "null")))
+#        else . end) #if type != "null" then . end)
+
+# walk(if type == "object" then ([keys]) else . end)
+# walk(if type == "object" then (. += {keys: keys}) else . end)
+walk(.) | walk(..) | walk(..) | ["you'll never even buy a car"] | @text
+
+# it really helps to get exposure to new technologies, but i live in a
+# technology desert.
+#+end_example
+
+* File System
+
+#+name: jqFlakeMetaInputs
+#+begin_example jq
+map(.. | .inputs? | select(.))
+#+end_example
+
+#+name: flakeMetadataMerge
+#+begin_src shell :results output code :wrap example json :var f="dwarffs" q=jqFlakeMetaInputs
+nix flake metadata $f --json \
+    | jq "$q"
+#+end_src
+
+#+RESULTS: flakeMetadataMerge
+#+begin_example json
+[
+  {
+    "nixpkgs-lib": [
+      "nix",
+      "nixpkgs"
+    ]
+  },
+  {
+    "flake-compat": [
+      "nix"
+    ],
+    "gitignore": [
+      "nix"
+    ],
+    "nixpkgs": [
+      "nix",
+      "nixpkgs"
+    ],
+    "nixpkgs-stable": [
+      "nix",
+      "nixpkgs"
+    ]
+  },
+  {
+    "flake-compat": "flake-compat",
+    "flake-parts": "flake-parts",
+    "git-hooks-nix": "git-hooks-nix",
+    "libgit2": "libgit2",
+    "nixpkgs": "nixpkgs",
+    "nixpkgs-23-11": "nixpkgs-23-11",
+    "nixpkgs-regression": "nixpkgs-regression"
+  },
+  {
+    "nix": "nix",
+    "nixpkgs": [
+      "nix",
+      "nixpkgs"
+    ]
+  }
+]
+#+end_example
+
+
+#+begin_example jq
+# redundant:
+# | select(any(. == "inputs"))
+# | select(last == "inputs")
+paths | select(last == "inputs") #as $p | getpath($p)
+#+end_example
+
+fdsa
+
+#+begin_example jq
+[.. | objects | paths | select(last == "inputs")] | unique
+#+end_example
+
+** Hyprland
+
+#+begin_src shell :results output verbatim :var r="hypr"
+locate "/data/ecto/$r/*/flake.nix"
+#+end_src
+
+
+#+RESULTS:
+#+begin_example
+/data/ecto/hypr/hyprland-community/hpr-scratcher/nix/flake.nix
+/data/ecto/hypr/hyprland-community/hypr-binds/flake.nix
+/data/ecto/hypr/hyprland-community/hyprland-autoname-workspaces/flake.nix
+/data/ecto/hypr/hyprland-community/hyprland-rs/flake.nix
+/data/ecto/hypr/hyprland-community/hyprland.c/flake.nix
+/data/ecto/hypr/hyprland-community/hyprls/flake.nix
+/data/ecto/hypr/hyprland-community/hyprnix/flake.nix
+/data/ecto/hypr/hyprland-community/hyprparse/flake.nix
+/data/ecto/hypr/hyprland-community/pyprland/flake.nix
+/data/ecto/hypr/hyprwm/Hyprland/flake.nix
+/data/ecto/hypr/hyprwm/aquamarine/flake.nix
+/data/ecto/hypr/hyprwm/contrib/flake.nix
+/data/ecto/hypr/hyprwm/hyprcursor/flake.nix
+/data/ecto/hypr/hyprwm/hyprgraphics/flake.nix
+/data/ecto/hypr/hyprwm/hypridle/flake.nix
+/data/ecto/hypr/hyprwm/hyprland-infra/flake.nix
+/data/ecto/hypr/hyprwm/hyprland-plugins/flake.nix
+/data/ecto/hypr/hyprwm/hyprland-protocols/flake.nix
+/data/ecto/hypr/hyprwm/hyprland-qt-support/flake.nix
+/data/ecto/hypr/hyprwm/hyprland-qtutils/flake.nix
+/data/ecto/hypr/hyprwm/hyprlang/flake.nix
+/data/ecto/hypr/hyprwm/hyprlock/flake.nix
+/data/ecto/hypr/hyprwm/hyprpaper/flake.nix
+/data/ecto/hypr/hyprwm/hyprpicker/flake.nix
+/data/ecto/hypr/hyprwm/hyprpolkitagent/flake.nix
+/data/ecto/hypr/hyprwm/hyprsunset/flake.nix
+/data/ecto/hypr/hyprwm/hyprsysteminfo/flake.nix
+/data/ecto/hypr/hyprwm/hyprutils/flake.nix
+/data/ecto/hypr/hyprwm/hyprwayland-scanner/flake.nix
+/data/ecto/hypr/hyprwm/xdg-desktop-portal-hyprland/flake.nix
+#+end_example
+
+** Where are flakes?
+
+#+begin_src shell :results output verbatim
+ecto=(crypto astral hypr talos x.files hacknet dcim clab hashicorp)
+
+for r in ${ecto[@]}; do
+  echo "============================================="
+  echo locate "/data/ecto/$r/*/flake.nix\n\n"
+  locate "/data/ecto/$r/*/flake.nix" | sed -e "s/\/data\/ecto\/$r\///g" | tree --fromfile .
+
+  echo '\n\n'
+done
+#+end_src
+
+#+RESULTS:
+#+begin_example
+=============================================
+locate /data/ecto/vyos/*/flake.nix
+
+
+.
+
+1 directory, 0 files
+
+
+
+=============================================
+locate /data/ecto/astral/*/flake.nix
+
+
+.
+
+1 directory, 0 files
+
+
+
+=============================================
+locate /data/ecto/hypr/*/flake.nix
+
+
+.
+├── hyprland-community
+│   ├── hpr-scratcher
+│   │   └── nix
+│   │       └── flake.nix
+│   ├── hypr-binds
+│   │   └── flake.nix
+│   ├── hyprland-autoname-workspaces
+│   │   └── flake.nix
+│   ├── hyprland.c
+│   │   └── flake.nix
+│   ├── hyprland-rs
+│   │   └── flake.nix
+│   ├── hyprls
+│   │   └── flake.nix
+│   ├── hyprnix
+│   │   └── flake.nix
+│   ├── hyprparse
+│   │   └── flake.nix
+│   └── pyprland
+│       └── flake.nix
+└── hyprwm
+    ├── aquamarine
+    │   └── flake.nix
+    ├── contrib
+    │   └── flake.nix
+    ├── hyprcursor
+    │   └── flake.nix
+    ├── hyprgraphics
+    │   └── flake.nix
+    ├── hypridle
+    │   └── flake.nix
+    ├── Hyprland
+    │   └── flake.nix
+    ├── hyprland-infra
+    │   └── flake.nix
+    ├── hyprland-plugins
+    │   └── flake.nix
+    ├── hyprland-protocols
+    │   └── flake.nix
+    ├── hyprland-qt-support
+    │   └── flake.nix
+    ├── hyprland-qtutils
+    │   └── flake.nix
+    ├── hyprlang
+    │   └── flake.nix
+    ├── hyprlock
+    │   └── flake.nix
+    ├── hyprpaper
+    │   └── flake.nix
+    ├── hyprpicker
+    │   └── flake.nix
+    ├── hyprpolkitagent
+    │   └── flake.nix
+    ├── hyprsunset
+    │   └── flake.nix
+    ├── hyprsysteminfo
+    │   └── flake.nix
+    ├── hyprutils
+    │   └── flake.nix
+    ├── hyprwayland-scanner
+    │   └── flake.nix
+    └── xdg-desktop-portal-hyprland
+        └── flake.nix
+
+34 directories, 30 files
+
+
+
+=============================================
+locate /data/ecto/talos/*/flake.nix
+
+
+.
+
+1 directory, 0 files
+
+
+
+=============================================
+locate /data/ecto/x.files/*/flake.nix
+
+
+.
+├── akirak
+│   └── emacs2
+│       ├── flake.nix
+│       ├── lock
+│       │   └── flake.nix
+│       ├── nix
+│       │   └── presets
+│       │       └── default
+│       │           └── flake.nix
+│       └── partitions
+│           └── checks
+│               └── flake.nix
+├── alyraffauf
+│   ├── bazznix
+│   │   └── flake.nix
+│   ├── nixcfg
+│   │   └── flake.nix
+│   └── secrets
+│       └── flake.nix
+├── aylur
+│   └── dotfiles
+│       └── flake.nix
+├── benmezger
+│   └── dotfiles
+│       └── flake.nix
+├── budimanjojo
+│   └── nix-config
+│       └── flake.nix
+├── gtrunsec
+│   └── dotfiles
+│       └── flake.nix
+├── hlissner
+│   └── dotfiles
+│       └── flake.nix
+├── hyde-project
+│   └── dotfiles
+│       └── flake.nix
+├── jessfraz
+│   └── dotfiles
+│       └── flake.nix
+├── jjba23
+│   └── dotfiles
+│       └── resources
+│           └── flakes
+│               ├── haskell-dev
+│               │   └── flake.nix
+│               └── scala-dev
+│                   └── flake.nix
+├── jsoo1
+│   └── dotfiles
+│       └── nix
+│           └── flake.nix
+├── kitnil
+│   └── dotfiles
+│       ├── dotfiles
+│       │   ├── dns
+│       │   │   └── flake.nix
+│       │   ├── docker
+│       │   │   ├── nixos
+│       │   │   │   └── flake.nix
+│       │   │   └── tor-bridges
+│       │   │       └── flake.nix
+│       │   ├── firefox
+│       │   │   └── flake.nix
+│       │   ├── libvirt
+│       │   │   └── xml-patch
+│       │   │       └── flake.nix
+│       │   ├── maintenance
+│       │   │   ├── github
+│       │   │   │   └── flake.nix
+│       │   │   └── gitlab
+│       │   │       └── flake.nix
+│       │   └── nix
+│       │       ├── 3proxy
+│       │       │   └── flake.nix
+│       │       ├── bird
+│       │       │   └── flake.nix
+│       │       ├── container-systemd
+│       │       │   └── flake.nix
+│       │       ├── container-systemd-builder
+│       │       │   └── flake.nix
+│       │       ├── container-systemd-taskexecutor
+│       │       │   └── flake.nix
+│       │       ├── flake.nix
+│       │       ├── openvpn
+│       │       │   └── flake.nix
+│       │       ├── tinyproxy
+│       │       │   └── flake.nix
+│       │       ├── vendir
+│       │       │   └── flake.nix
+│       │       └── yggdrasil
+│       │           └── flake.nix
+│       ├── private_dot_emacs.d
+│       │   └── insert
+│       │       └── nix
+│       │           └── flake.nix
+│       ├── src
+│       │   └── nix
+│       │       └── vosk
+│       │           └── flake.nix
+│       └── vosk
+│           └── flake.nix
+├── ManoftheSea
+│   └── SeaofDirac
+│       └── flake.nix
+├── maximbaz
+│   └── dotfiles
+│       └── flake.nix
+├── michal_atlas
+│   └── dotfiles
+│       └── flake.nix
+├── NobbZ
+│   └── dotfiles
+│       ├── flake.nix
+│       └── nixos
+│           └── modules
+│               └── flake.nix
+├── plasmaa0
+│   └── dotfiles
+│       └── configuration
+│           └── flake.nix
+├── purplg
+│   └── dotfiles
+│       └── dot-config
+│           └── home-manager
+│               └── flake.nix
+├── rasendubi
+│   └── emacs
+│       └── flake.nix
+├── SoraTenshi
+│   └── dotfiles
+│       └── flake.nix
+├── youngker
+│   └── nix
+│       ├── flake.nix
+│       └── templates
+│           ├── android
+│           │   └── flake.nix
+│           ├── cpp
+│           │   └── flake.nix
+│           └── rust
+│               └── flake.nix
+└── zaney
+    └── zaneyos
+        └── flake.nix
+
+95 directories, 51 files
+
+
+
+=============================================
+locate /data/ecto/hacknet/*/flake.nix
+
+
+.
+
+1 directory, 0 files
+
+
+
+=============================================
+locate /data/ecto/dcim/*/flake.nix
+
+
+.
+
+1 directory, 0 files
+
+
+
+=============================================
+locate /data/ecto/clab/*/flake.nix
+
+
+.
+
+1 directory, 0 files
+
+
+
+=============================================
+locate /data/ecto/hashicorp/*/flake.nix
+
+
+.
+└── waypoint
+    └── flake.nix
+
+2 directories, 1 file
+
+
+
+#+end_example
+
+* JQ
+
+I'm always looking to use a zipper with getpaths/etc... but learning this on
+your own just really sucks. I somehow missed the functions like =objects=, which
+do like 90% of the heavy lifting. Seriously, I've spent like 150hrs trying to
+learn =jq= and I've made less progress than I would if I worked beside someone who
+used it for a week. Printing out the docs helps a ton, but so would just having
+a mentor from time to time
+
+"Learning in public" isn't really so great. Just creating potential pretext for
+lurkers, though i guess not everyone who reads it is lurking. It depends...
+There's almost no feedback on it though.
