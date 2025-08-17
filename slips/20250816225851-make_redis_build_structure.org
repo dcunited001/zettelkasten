@@ -1,0 +1,402 @@
+:PROPERTIES:
+:ID:       fed64143-5418-40a1-a630-859c24421fe0
+:END:
+#+TITLE: Make: Redis Build Structure
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:3daa7903-2e07-4664-8a20-04df51b715de][C/C++ (cpp)]]
+
+* Resources
++ [[https://github.com/clementvidon/Makefile_tutor][clementvidon/Makefile_tutor]]
+
+* Overview
+
+
+* Why Tree?
+
+The nice thing about tree is that it supports JSON with =-J= or HTML or even =dot=
+output... but you just have to massage the inputs. Once it sees =:\s= with no
+slashses, it assumes that's the end of the path string, so it stops nesting.
+This _almost_ works beautifly for =Makefile= tasks from grep results... Almost.
+
+
+** Why One-liners?
+
+I try to stick to one-liners. As soon as you deviate from that:
+
++ you certainly need to juggle about 4 or more variables for =$(mktemp -XYZ)= if
+  you go that wrong
++ nothing gets easier when if your =tee=-fu is weak: juggling file-descriptors is
+  a bit riskier AND requires more error handling
+
+You should avoid placing too much piped command output in scripts, as scripts
+themselves should provide the basis for piping (means they include more than the
+necessary output). This is great, actually, as you don't need to worry about the
+configuration overhead of CLI option parsing for filtering ... but it just
+passes the buck down to the consumer
+
+So... TLDR: determine AoT, ahead-of-time ... is this a script? or is it a
+command? Either way, determining where that content lives so it can be used
+in-context is the next question.
+
++ It should basically never be an alias, if someone else should use it: aliases
+  are a technique that are personal to you).
++ If it's a script, you may place it with a package or automation
++ if it's a =~/bin= script, it's likely you will have a tough time organizing
+  those later. Try having like 20+ unstaged =./bin= scripts in your dotfiles (or
+  looking at the commited filesand seeing about 150)
+
+For Guix and Nix, those can be distributed in =nixpkgs= or wherever you define
+your package override. That way, you get the extra personal commands (in some
+contexts), but only where you need them. This isn't great for packages deployed
+to servers, but is okay for packages deployed into the profile for =guix-home= or
+=hm=.
+
+** Why Makefiles?
+
+... but if it seems like an alias or =./bin= script would work, you can use it as
+a task in a =Makefile=. Then it gets distributed with your own git repository.
+
++ However, you don't want to pollute the =Makefile= your project uses to be
+  distributed, especially as part of a build.
++ For more technical projects, you want that to be clean (for *others* to
+  distribute your package!).
++ So, then maybe a =Justfile= makes sense for personal projects. That language is
+  "simpler" but IMO ... it's never simpler to juggle two similar languages (e.g.
+  try learning both Spanish and Italian very quickly)
++ =Makefile= and =Justfile= easily pop up using techniques like =locate= or =find=.
++ Most users are using =.github/workflows= now, but these are in a hidden
+  directory (not a huge issue), but also require _pinning_ GH Action
+  repositories
+  - These a bit more distant from you. You need a bit more social access to get
+    the overview on GH Actions. They also vary per language/framework
++ Unfortunately, packaging your personal automation/usage with projects you
+  intend to become widely used isn't so great.
+
+It's really so much easier to think dynamically and write the CLI invocations
+ad-hoc. Just remember it. Here, you'll encounter several main problems:
+
++ tough to remember everything (esp. on every platform)
++ CLI, source and commands do change over time
++ you didn't have time to read the docs as well as you thought. Even if you did,
+  quite a bit of it will only pop out when reading after getting experience.
++ relying on member means engraining techniques further into your mind. This
+  creates a tendency to rely on "muscle memory" instead of dynamic retrieval and
+  recombination of complex information (the brain prefers to avoid that bc it
+  optimizes it's behavior/response to minimize energy consumption)
+
+Regardless, it's easier to structure your education process by understanding the
+telos of organzating this all -- Ahead of Time (AoT).
+
+** Questions I'm trying to answer here:
+
++ How should Makefiles in dotfiles organize their targets?
++ How should Makefiles be organized if there are multiple build contexts?
+
+So the fasted way to learn here (for me) is to find a decent widely used project
+with a modular Makefile. Redis was recommended by [[https://github.com/clementvidon/Makefile_tutor][clementvidon/Makefile_tutor]]
+
+You could ask someone with a ton of experience in C/C++, but they're getting
+harder to find as scripting languages overtook compiled languages in popularity.
+
+* In depth
+
+#+begin_src shell :results output verbatim
+tmp=/tmp/tmp.ck26yj9tJv
+grep -Hrne '.*: ' \
+    --include="Makefile" \
+    --include="*.mk" $tmp \
+    | rev | sed -E 's/ :([0-9]+):(.*\/.*)$:/ \1 § \2 ¶ /g' | rev \
+    | tree --noreport --fromfile .
+
+#    | sed -E 's/^(.*\/.*):([0-9]+):/\1 § \2 ¶ /g' \
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── tmp
+    └── tmp.ck26yj9tJv
+        ├── deps
+        │   ├── fast_float
+        │   │   ├── Makefile:13:libfast_float: fast_float_strtod.o
+        │   │   ├── Makefile:16:32bit: FASTFLOAT_CFLAGS += -m32
+        │   │   ├── Makefile:17:32bit: FASTFLOAT_LDFLAGS += -m32
+        │   │   ├── Makefile:18:32bit: libfast_float
+        │   │   └── Makefile:20:fast_float_strtod.o: fast_float_strtod.cpp
+        │   ├── fpconv
+        │   │   ├── Makefile:15:libfpconv.a: fpconv_dtoa.o
+        │   │   └── Makefile:18:fpconv_dtoa.o: fpconv_dtoa.h fpconv_dtoa.c
+        │   ├── hdr_histogram
+        │   │   ├── Makefile:15:libhdrhistogram.a: hdr_histogram.o
+        │   │   └── Makefile:18:hdr_histogram.o: hdr_histogram.h hdr_histogram.c
+        │   ├── hiredis
+        │   │   ├── Makefile:150:all: dynamic static hiredis-test pkgconfig
+        │   │   ├── Makefile:152:dynamic: $(DYLIBNAME) $(SSL_DYLIB)
+        │   │   ├── Makefile:154:static: $(STLIBNAME) $(SSL_STLIB)
+        │   │   ├── Makefile:156:pkgconfig: $(PKGCONFNAME) $(SSL_PKGCONF)
+        │   │   ├── Makefile:159:alloc.o: alloc.c fmacros.h alloc.h
+        │   │   ├── Makefile:160:async.o: async.c fmacros.h alloc.h async.h hiredis.h read.h sds.h net.h dict.c dict.h win32.h async_private.h
+        │   │   ├── Makefile:161:dict.o: dict.c fmacros.h alloc.h dict.h
+        │   │   ├── Makefile:162:hiredis.o: hiredis.c fmacros.h hiredis.h read.h sds.h alloc.h net.h async.h win32.h
+        │   │   ├── Makefile:163:net.o: net.c fmacros.h net.h hiredis.h read.h sds.h alloc.h sockcompat.h win32.h
+        │   │   ├── Makefile:164:read.o: read.c fmacros.h alloc.h read.h sds.h win32.h
+        │   │   ├── Makefile:165:sds.o: sds.c sds.h sdsalloc.h alloc.h
+        │   │   ├── Makefile:166:sockcompat.o: sockcompat.c sockcompat.h
+        │   │   ├── Makefile:167:test.o: test.c fmacros.h hiredis.h read.h sds.h alloc.h net.h sockcompat.h win32.h
+        │   │   ├── Makefile:169:$(DYLIBNAME): $(OBJ)
+        │   │   ├── Makefile:172:$(STLIBNAME): $(OBJ)
+        │   │   ├── Makefile:176:$(SSL_DYLIBNAME): $(SSL_OBJ)
+        │   │   ├── Makefile:179:$(SSL_STLIBNAME): $(SSL_OBJ)
+        │   │   ├── Makefile:182:$(SSL_OBJ): ssl.c hiredis.h read.h sds.h alloc.h async.h win32.h async_private.h
+        │   │   ├── Makefile:186:hiredis-example-libevent: examples
+        │   │   │   └── example-libevent.c adapters
+        │   │   │       └── libevent.h $(STLIBNAME)
+        │   │   ├── Makefile:189:hiredis-example-libevent-ssl: examples
+        │   │   │   └── example-libevent-ssl.c adapters
+        │   │   │       └── libevent.h $(STLIBNAME) $(SSL_STLIBNAME)
+        │   │   ├── Makefile:192:hiredis-example-libev: examples
+        │   │   │   └── example-libev.c adapters
+        │   │   │       └── libev.h $(STLIBNAME)
+        │   │   ├── Makefile:195:hiredis-example-libhv: examples
+        │   │   │   └── example-libhv.c adapters
+        │   │   │       └── libhv.h $(STLIBNAME)
+        │   │   ├── Makefile:198:hiredis-example-glib: examples
+        │   │   │   └── example-glib.c adapters
+        │   │   │       └── glib.h $(STLIBNAME)
+        │   │   ├── Makefile:201:hiredis-example-ivykis: examples
+        │   │   │   └── example-ivykis.c adapters
+        │   │   │       └── ivykis.h $(STLIBNAME)
+        │   │   ├── Makefile:204:hiredis-example-macosx: examples
+        │   │   │   └── example-macosx.c adapters
+        │   │   │       └── macosx.h $(STLIBNAME)
+        │   │   ├── Makefile:207:hiredis-example-ssl: examples
+        │   │   │   └── example-ssl.c $(STLIBNAME) $(SSL_STLIBNAME)
+        │   │   ├── Makefile:210:hiredis-example-poll: examples
+        │   │   │   └── example-poll.c adapters
+        │   │   │       └── poll.h $(STLIBNAME)
+        │   │   ├── Makefile:218:hiredis-example-ae: examples
+        │   │   │   └── example-ae.c adapters
+        │   │   │       └── ae.h $(STLIBNAME)
+        │   │   ├── Makefile:224:hiredis-example-libuv: examples
+        │   │   │   └── example-libuv.c adapters
+        │   │   │       └── libuv.h $(STLIBNAME)
+        │   │   ├── Makefile:228:hiredis-example-libuv: examples
+        │   │   │   └── example-libuv.c adapters
+        │   │   │       └── libuv.h $(STLIBNAME)
+        │   │   ├── Makefile:237:hiredis-example-qt: examples
+        │   │   │   └── example-qt.cpp adapters
+        │   │   │       └── qt.h $(STLIBNAME)
+        │   │   ├── Makefile:245:hiredis-example: examples
+        │   │   │   └── example.c $(STLIBNAME)
+        │   │   ├── Makefile:248:hiredis-example-push: examples
+        │   │   │   └── example-push.c $(STLIBNAME)
+        │   │   ├── Makefile:251:examples: $(EXAMPLES)
+        │   │   ├── Makefile:262:hiredis-test: test.o $(TEST_LIBS)
+        │   │   ├── Makefile:265:hiredis-%: %.o $(STLIBNAME)
+        │   │   ├── Makefile:268:test: hiredis-test
+        │   │   ├── Makefile:271:check: hiredis-test
+        │   │   ├── Makefile:285:$(PKGCONFNAME): hiredis.h
+        │   │   ├── Makefile:293:\011@echo Name: hiredis >> $@
+        │   │   ├── Makefile:294:\011@echo Description: Minimalistic C client library for Redis. >> $@
+        │   │   ├── Makefile:295:\011@echo Version: $(HIREDIS_MAJOR).$(HIREDIS_MINOR).$(HIREDIS_PATCH) >> $@
+        │   │   ├── Makefile:296:\011@echo Libs: -L\$${libdir} -lhiredis >> $@
+        │   │   ├── Makefile:297:\011@echo Cflags: -I\$${pkgincludedir} -I\$${includedir} -D_FILE_OFFSET_BITS=64 >> $@
+        │   │   ├── Makefile:299:$(SSL_PKGCONFNAME): hiredis_ssl.h
+        │   │   ├── Makefile:307:\011@echo Name: hiredis_ssl >> $@
+        │   │   ├── Makefile:308:\011@echo Description: SSL Support for hiredis. >> $@
+        │   │   ├── Makefile:309:\011@echo Version: $(HIREDIS_MAJOR).$(HIREDIS_MINOR).$(HIREDIS_PATCH) >> $@
+        │   │   ├── Makefile:310:\011@echo Requires: hiredis >> $@
+        │   │   ├── Makefile:311:\011@echo Libs: -L\$${libdir} -lhiredis_ssl >> $@
+        │   │   ├── Makefile:312:\011@echo Libs.private: -lssl -lcrypto >> $@
+        │   │   ├── Makefile:314:install: $(DYLIBNAME) $(STLIBNAME) $(PKGCONFNAME) $(SSL_INSTALL)
+        │   │   ├── Makefile:324:install-ssl: $(SSL_DYLIBNAME) $(SSL_STLIBNAME) $(SSL_PKGCONFNAME)
+        │   │   ├── Makefile:335:\011@echo "WARNING: if this fails under Linux you probably need to install libc6-dev-i386"
+        │   │   ├── Makefile:349:coverage: gcov
+        │   │   └── Makefile:359:.PHONY: all test check clean dep install 32bit 32bit-vars gprof gcov noopt
+        │   ├── linenoise
+        │   │   ├── Makefile:12:linenoise.o: linenoise.h linenoise.c
+        │   │   └── Makefile:14:linenoise_example: linenoise.o example.o
+        │   ├── lua
+        │   │   ├── etc
+        │   │   │   ├── Makefile:19:\011@echo 'Please choose a target: min noparser one strict clean'
+        │   │   │   └── Makefile:25:noparser: noparser.o
+        │   │   ├── Makefile:126:.PHONY: all $(PLATS) clean test install local none dummy echo pecho lecho
+        │   │   ├── Makefile:61:install: dummy
+        │   │   └── src
+        │   │       ├── Makefile:120:.PHONY: all $(PLATS) default o a clean depend echo none
+        │   │       ├── Makefile:124:lapi.o: lapi.c lua.h luaconf.h lapi.h lobject.h llimits.h ldebug.h \
+        │   │       ├── Makefile:127:lauxlib.o: lauxlib.c lua.h luaconf.h lauxlib.h
+        │   │       ├── Makefile:128:lbaselib.o: lbaselib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:129:lcode.o: lcode.c lua.h luaconf.h lcode.h llex.h lobject.h llimits.h \
+        │   │       ├── Makefile:132:ldblib.o: ldblib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:133:ldebug.o: ldebug.c lua.h luaconf.h lapi.h lobject.h llimits.h lcode.h \
+        │   │       ├── Makefile:136:ldo.o: ldo.c lua.h luaconf.h ldebug.h lstate.h lobject.h llimits.h ltm.h \
+        │   │       ├── Makefile:139:ldump.o: ldump.c lua.h luaconf.h lobject.h llimits.h lstate.h ltm.h \
+        │   │       ├── Makefile:141:lfunc.o: lfunc.c lua.h luaconf.h lfunc.h lobject.h llimits.h lgc.h lmem.h \
+        │   │       ├── Makefile:143:lgc.o: lgc.c lua.h luaconf.h ldebug.h lstate.h lobject.h llimits.h ltm.h \
+        │   │       ├── Makefile:145:linit.o: linit.c lua.h luaconf.h lualib.h lauxlib.h
+        │   │       ├── Makefile:146:liolib.o: liolib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:147:llex.o: llex.c lua.h luaconf.h ldo.h lobject.h llimits.h lstate.h ltm.h \
+        │   │       ├── Makefile:149:lmathlib.o: lmathlib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:150:lmem.o: lmem.c lua.h luaconf.h ldebug.h lstate.h lobject.h llimits.h \
+        │   │       ├── Makefile:152:loadlib.o: loadlib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:153:lobject.o: lobject.c lua.h luaconf.h ldo.h lobject.h llimits.h lstate.h \
+        │   │       ├── Makefile:155:lopcodes.o: lopcodes.c lopcodes.h llimits.h lua.h luaconf.h
+        │   │       ├── Makefile:156:loslib.o: loslib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:157:lparser.o: lparser.c lua.h luaconf.h lcode.h llex.h lobject.h llimits.h \
+        │   │       ├── Makefile:160:lstate.o: lstate.c lua.h luaconf.h ldebug.h lstate.h lobject.h llimits.h \
+        │   │       ├── Makefile:162:lstring.o: lstring.c lua.h luaconf.h lmem.h llimits.h lobject.h lstate.h \
+        │   │       ├── Makefile:164:lstrlib.o: lstrlib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:165:ltable.o: ltable.c lua.h luaconf.h ldebug.h lstate.h lobject.h llimits.h \
+        │   │       ├── Makefile:167:ltablib.o: ltablib.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:168:ltm.o: ltm.c lua.h luaconf.h lobject.h llimits.h lstate.h ltm.h lzio.h \
+        │   │       ├── Makefile:170:lua.o: lua.c lua.h luaconf.h lauxlib.h lualib.h
+        │   │       ├── Makefile:171:luac.o: luac.c lua.h luaconf.h lauxlib.h ldo.h lobject.h llimits.h \
+        │   │       ├── Makefile:174:lundump.o: lundump.c lua.h luaconf.h ldebug.h lstate.h lobject.h \
+        │   │       ├── Makefile:176:lvm.o: lvm.c lua.h luaconf.h ldebug.h lstate.h lobject.h llimits.h ltm.h \
+        │   │       ├── Makefile:178:lzio.o: lzio.c lua.h luaconf.h llimits.h lmem.h lstate.h lobject.h ltm.h \
+        │   │       ├── Makefile:180:print.o: print.c ldebug.h lstate.h lua.h luaconf.h lobject.h llimits.h \
+        │   │       ├── Makefile:43:default: $(PLAT)
+        │   │       ├── Makefile:51:$(LUA_A): $(CORE_O) $(LIB_O)
+        │   │       ├── Makefile:55:$(LUA_T): $(LUA_O) $(LUA_A)
+        │   │       └── Makefile:58:$(LUAC_T): $(LUAC_O) $(LUA_A)
+        │   ├── Makefile:101:.PHONY: fast_float
+        │   ├── Makefile:126:lua: .make-prerequisites
+        │   ├── Makefile:130:.PHONY: lua
+        │   ├── Makefile:139:jemalloc: .make-prerequisites
+        │   ├── Makefile:144:.PHONY: jemalloc
+        │   ├── Makefile:35:.PHONY: default
+        │   ├── Makefile:43:.make-cflags: distclean
+        │   ├── Makefile:45:.make-prerequisites: .make-cflags
+        │   ├── Makefile:50:.make-ldflags: distclean
+        │   ├── Makefile:52:.make-prerequisites: .make-ldflags
+        │   ├── Makefile:65:.PHONY: distclean
+        │   ├── Makefile:73:hiredis: .make-prerequisites
+        │   ├── Makefile:77:.PHONY: hiredis
+        │   ├── Makefile:79:linenoise: .make-prerequisites
+        │   ├── Makefile:83:.PHONY: linenoise
+        │   ├── Makefile:85:hdr_histogram: .make-prerequisites
+        │   ├── Makefile:89:.PHONY: hdr_histogram
+        │   ├── Makefile:91:fpconv: .make-prerequisites
+        │   ├── Makefile:95:.PHONY: fpconv
+        │   └── Makefile:97:fast_float: .make-prerequisites
+        ├── Makefile:16:.PHONY: install
+        ├── Makefile:8:default: all
+        ├── modules
+        │   ├── common.mk:24:all: $(TARGET_MODULE)
+        │   ├── common.mk:26:$(TARGET_MODULE): get_source
+        │   ├── common.mk:30:get_source: $(SRC_DIR)
+        │   ├── common.mk:41:distclean: clean
+        │   ├── common.mk:47:install: $(TARGET_MODULE)
+        │   ├── common.mk:51:.PHONY: all clean distclean pristine install
+        │   ├── Makefile:14:prepare_source: get_source handle-werrors setup_environment
+        │   ├── Makefile:19:distclean: clean_environment
+        │   ├── Makefile:28:setup_environment: install-rust handle-werrors
+        │   ├── Makefile:30:clean_environment: uninstall-rust
+        │   ├── Makefile:38:\011echo "Detected architecture: $${ARCH} and libc: $${LIBC_TYPE}"; \
+        │   ├── Makefile:56:\011\011*) echo >&2 "Unsupported architecture: '$${ARCH}'"; exit 1 ;; \
+        │   ├── Makefile:58:\011echo "Downloading and installing Rust standalone installer: $${RUST_INSTALLER}"; \
+        │   ├── Makefile:73:\011\011echo "WARNING: Rust toolchain not found or uninstall script is missing."; \
+        │   ├── Makefile:77:handle-werrors: get_source
+        │   ├── Makefile:8:all: prepare_source
+        │   ├── Makefile:90:.PHONY: all clean distclean install $(SUBDIRS) setup_environment clean_environment install-rust uninstall-rust handle-werrors
+        │   ├── redisjson
+        │   │   └── Makefile:11:get_source: $(SRC_DIR)
+        │   └── vector-sets
+        │       ├── Makefile:49:.SUFFIXES: .c .so .xo .o
+        │       ├── Makefile:51:all: vset.so
+        │       ├── Makefile:56:vset.xo: ..
+        │       ├── Makefile:58:vset.so: vset.xo hnsw.xo vset_config.xo
+        │       ├── Makefile:69:all: $(TARGET) $(MODULE)
+        │       ├── Makefile:72:$(TARGET): $(OBJS)
+        │       ├── Makefile:76:%.o: %.c
+        │       ├── Makefile:79:expr-test: expr.c fastjson.c fastjson_test.c
+        │       └── Makefile:87:.PHONY: all clean
+        ├── src
+        │   ├── Makefile:387:all: $(REDIS_SERVER_NAME) $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME) $(REDIS_CHECK_RDB_NAME) $(REDIS_CHECK_AOF_NAME) $(TLS_MODULE)
+        │   ├── Makefile:389:\011@echo "Hint: It's a good idea to run 'make test' ;)"
+        │   ├── Makefile:399:.PHONY: all
+        │   ├── Makefile:401:persist-settings: distclean
+        │   ├── Makefile:416:.PHONY: persist-settings
+        │   ├── Makefile:424:.make-prerequisites: persist-settings
+        │   ├── Makefile:428:.make-prerequisites: persist-settings
+        │   ├── Makefile:432:$(REDIS_SERVER_NAME): $(REDIS_SERVER_OBJ) $(REDIS_VEC_SETS_OBJ)
+        │   ├── Makefile:436:$(REDIS_SENTINEL_NAME): $(REDIS_SERVER_NAME)
+        │   ├── Makefile:440:$(REDIS_CHECK_RDB_NAME): $(REDIS_SERVER_NAME)
+        │   ├── Makefile:444:$(REDIS_CHECK_AOF_NAME): $(REDIS_SERVER_NAME)
+        │   ├── Makefile:448:$(TLS_MODULE_NAME): $(REDIS_SERVER_NAME)
+        │   ├── Makefile:452:$(REDIS_CLI_NAME): $(REDIS_CLI_OBJ)
+        │   ├── Makefile:456:$(REDIS_BENCHMARK_NAME): $(REDIS_BENCHMARK_OBJ)
+        │   ├── Makefile:465:%.o: %.c .make-prerequisites
+        │   ├── Makefile:471:$(COMMANDS_DEF_FILENAME).def: commands
+        │   │   └── *.json ..
+        │   │       └── utils
+        │   │           └── generate-command-code.py
+        │   ├── Makefile:474:fmtargs.h: ..
+        │   │   └── utils
+        │   │       └── generate-fmtargs.py
+        │   ├── Makefile:480:commands.c: $(COMMANDS_DEF_FILENAME).def
+        │   ├── Makefile:486:.PHONY: clean
+        │   ├── Makefile:488:distclean: clean
+        │   ├── Makefile:494:.PHONY: distclean
+        │   ├── Makefile:496:test: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME) $(REDIS_CLI_NAME) $(REDIS_BENCHMARK_NAME)
+        │   ├── Makefile:499:test-modules: $(REDIS_SERVER_NAME)
+        │   ├── Makefile:502:test-sentinel: $(REDIS_SENTINEL_NAME) $(REDIS_CLI_NAME)
+        │   ├── Makefile:505:test-cluster: $(REDIS_SERVER_NAME) $(REDIS_CLI_NAME)
+        │   ├── Makefile:508:check: test
+        │   ├── Makefile:517:.PHONY: lcov
+        │   ├── Makefile:519:bench: $(REDIS_BENCHMARK_NAME)
+        │   ├── Makefile:524:\011@echo "WARNING: if it fails under Linux you probably need to install libc6-dev-i386"
+        │   ├── Makefile:540:install: all
+        │   └── modules
+        │       ├── Makefile:21:.SUFFIXES: .c .so .xo .o
+        │       ├── Makefile:23:all: helloworld.so hellotype.so helloblock.so hellocluster.so hellotimer.so hellodict.so hellohook.so helloacl.so
+        │       ├── Makefile:28:helloworld.xo: ..
+        │       │   └── redismodule.h
+        │       ├── Makefile:30:helloworld.so: helloworld.xo
+        │       ├── Makefile:33:hellotype.xo: ..
+        │       │   └── redismodule.h
+        │       ├── Makefile:35:hellotype.so: hellotype.xo
+        │       ├── Makefile:38:helloblock.xo: ..
+        │       │   └── redismodule.h
+        │       ├── Makefile:40:helloblock.so: helloblock.xo
+        │       ├── Makefile:43:hellocluster.xo: ..
+        │       │   └── redismodule.h
+        │       ├── Makefile:45:hellocluster.so: hellocluster.xo
+        │       ├── Makefile:48:hellotimer.xo: ..
+        │       │   └── redismodule.h
+        │       ├── Makefile:50:hellotimer.so: hellotimer.xo
+        │       ├── Makefile:53:hellodict.xo: ..
+        │       │   └── redismodule.h
+        │       ├── Makefile:55:hellodict.so: hellodict.xo
+        │       ├── Makefile:58:hellohook.xo: ..
+        │       │   └── redismodule.h
+        │       ├── Makefile:60:hellohook.so: hellohook.xo
+        │       ├── Makefile:63:helloacl.xo: ..
+        │       │   └── redismodule.h
+        │       └── Makefile:65:helloacl.so: helloacl.xo
+        └── tests
+            └── modules
+                ├── Makefile:101:.PHONY: clean
+                ├── Makefile:88:.PHONY: all
+                ├── Makefile:90:all: $(TEST_MODULES)
+                ├── Makefile:95:%.xo: %.c ..
+                └── Makefile:98:%.so: %.xo
+#+end_example
+
+
+* Redis commands
+
+Ahh fugkit this is too out-of-scope
+
+#+begin_src shell
+cat src/commands/*.json \
+  | jq --compact-output --stream  '
+arrays
+| walk([arrays,
+  (select(type != "boolean") | length),
+  (select(type == "boolean") | length)])' | tee -a >(wc -l)
+# 18618
+#+end_src

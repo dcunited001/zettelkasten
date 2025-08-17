@@ -1,7 +1,7 @@
 :PROPERTIES:
 :ID:       dc7a39d0-8dcf-440d-92fb-b7e484497813
 :END:
-#+TITLE: NixOS: Analyzing Nix, Flakes and APIs
+#+TITLE: NixOS: Analyzing Nix, Flakes, APIs as JSON
 #+CATEGORY: slips
 #+TAGS:
 
@@ -1699,6 +1699,95 @@ locate /data/ecto/hashicorp/*/flake.nix
 
 
 
+#+end_example
+
+** Instantiate
+
+From the manix source, I found src/src/nixpkgs_tree_docsource.rs, which contains
+basically this command:
+
+#+name: nixpkgsTreeDocsource
+#+begin_example nix
+let pkgs = import <nixpkgs> { };
+  f = with builtins; v: (mapAttrs
+    (name: value:
+      if (tryEval value).success
+        && ! (tryEval (pkgs.lib.isDerivation value)).value
+        && isAttrs value
+      then mapAttrs (_: _: {}) value
+      else {}
+    )
+    v
+  );
+in
+(f (pkgs // { pkgs = {}; lib = {}; })) // { lib = f pkgs.lib; }
+
+#+end_example
+
+Note on babel: =:eval query :cache yes= is a bit finicky with file results. I'm
+not 100% sure what is getting hashed -- likely the =#+name= and a subset of args
+passed to the equivalent of =#+call= -- it doesn't change when the file content
+changes. So to force re-eval, set =:eval query= and use =C-u C-c C-c= on the
+specific block or call. Then call the downstream blocks with =C-c C-c=
+
+#+name: nixpkgsTreeDocsourceGen
+#+headers: :dir (expand-file-name ".dotfiles/nixos" (getenv "HOME"))
+#+headers: :var nixosDocsource=nixpkgsTreeDocsource
+#+headers: :file (expand-file-name "img/nix/nixpkgsTreeDocsourceGen.json")
+#+begin_src shell :results output file :eval query :cache yes
+nix-instantiate --json --strict --eval \
+    -I '<nixpkgs/nixos>' -I nixos-config=./hosts/kratos/configuration.nix \
+    --expr "$nixosDocsource"
+#+end_src
+
+#+RESULTS[3dd33fd2fbcbb2847c39381c720eca9387cadc0e]: nixpkgsTreeDocsourceGen
+[[file:img/nix/nixpkgsTreeDocsourceGen.json]]
+
+It's about 13M, so it definitely justifies "cache/gitignore" lol.
+
+At first, it looks like a simple mapping of keys & packages, but it's not.
+
+#+name: nixpkgsDocQueryShell
+#+headers: :var nixpkgsJson=nixpkgsTreeDocsourceGen lines=10 query="to_entries | map(.value)"
+#+begin_src shell :results output verbatim
+jq -r $query $nixpkgsJson | head -n$lines
+#+end_src
+
+#+RESULTS: nixpkgsDocQueryShell
+#+begin_example
+[
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+  {},
+#+end_example
+
+Now we can change up simple queries like this:
+
+~#+call: nixpkgsDocQueryShell(lines=10,query=".")~
+
+The top-level schema looks like this (if only I knew what that =manix=
+nix-instantiate script was doing . . .)
+
+#+call: nixpkgsDocQueryShell(lines=10,query=".")
+
+#+RESULTS:
+#+begin_example
+{
+  "7z2hashcat": {},
+  "AAAAAASomeThingsFailToEvaluate": {},
+  "AMB-plugins": {},
+  "ArchiSteamFarm": {},
+  "AusweisApp2": {},
+  "BeatSaberModManager": {},
+  "CHOWTapeModel": {},
+  "ChowCentaur": {},
+  "ChowKick": {},
 #+end_example
 
 * JQ

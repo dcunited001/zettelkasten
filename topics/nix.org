@@ -124,7 +124,6 @@ explains config for user-constrained OCI services:
 Run [[https://wiki.nixos.org/wiki/NixOS_Containers][NixOS "systems" as containers]] on a system
 
 *** OCI Containers
-
 ** Dev Tooling
 *** Search
 + 3timeslazy/nix-search-tv: search nix packages using tv/fzf
@@ -138,6 +137,59 @@ updating system/channel during LSP sessions without refreshing the sessions?
 
 **** nixd
 + [[https://raw.githubusercontent.com/nix-community/nixd/main/nixd/docs/nixd-schema.json][./nixd/docs/nixd-schema.json​]]
+
+** Docs
+
+*** Man
+
+**** Manix
+***** Update cache
+
+After updating the cache within the intended environment, it doesn't matter much
+which =manix= runs for search.
+
+#+begin_src shell
+nix run 'github:nix-community/manix' mapAttrs # apparently
+#+end_src
+
+****** Running without flakes
+
+#+begin_src shell
+nix run --file '<nixpkgs>' pkgs.manix -- --update-cache '*'
+#+end_src
+
++ This refused to handle home-manager docs, since I've set that up in a flake
+  I'm still building my system with nixos-rebuild
+
+
+***** Find cache
+
+This emits +13M of strace in about 3 seconds... lulz that's not bad, Rust.
+
+#+begin_src shell
+tmp=$(mktemp)
+strace -e all -o $tmp manix mergeAttrs && less $tmp
+#+end_src
+
+It's in =$XDG_CACHE_DIR/manix=
+
+#+begin_src shell :results output verbatim :dir (getenv "HOME")
+ls .cache/manix/* | tree --fromfile . # ~/.cache/manix/*
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── .cache
+    └── manix
+        ├── comments.bin
+        ├── last_version.txt
+        ├── nixpkgs_doc_database.bin
+        ├── nixpkgs_tree.bin
+        └── options_nixos_database.bin
+
+3 directories, 5 files
+#+end_example
 
 ** Home Manager
 *** Mixing Packages & Profiles with =hm=
@@ -246,7 +298,21 @@ it first & that requires acclimation to the tooling/ecosystem)
 ** Dependencies
 + [[http://www.chriswarbo.net/projects/nixos/nix_dependencies.html][Dependency solving in Nix]]
 
+** Devices
+*** Udev
 
+nixos/nixpkgs: android-udev-rules
+
+-
+- [[https://github.com/NixOS/nixpkgs/blob/e3222f1adc65f1e8a77f5c4dae8a9dba14038bec/nixos/modules/programs/adb.nix#L27-L31][./nixos/modules/programs/adb.nix]]
+
+#+begin_src shell
+vendor=1050
+device=
+busid="$(lsusb | grep Yubico | sed -E 's/^Bus ([0-9]+).*$/\1/g')"
+devid="$(lsusb | grep Yubico | sed -E 's/^Bus.*Device ([0-9]+).*$/\1/g')"
+devpath="/dev/bus/usb/$busid/$devid"
+#+end_src
 
 ** Diffing
 

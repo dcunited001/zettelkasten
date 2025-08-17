@@ -164,7 +164,12 @@ If compiling with =make -j4=, then invoke like =bear -- make -j4=.
 
 + Makefile [[https://www.gnu.org/software/make/manual/html_node/Force-Targets.html][FORCE]] and [[https://stackoverflow.com/questions/2145590/what-is-the-purpose-of-phony-in-a-makefile][.PHONY]] ... ahh the phony joke
 + [[https://earthly.dev/blog/makefile-variables/][Understanding and using makefile variables]]
++ [[https://www.gnu.org/prep/standards/html_node/Directory-Variables.html][Vars for Installation Directories]]
 
+
+*** Tutorials
+
++ [[https://github.com/berkeley-scf/tutorial-make-workflows][berkeley-scf/tutorial-make-workflows]]
 ** Topics
 *** Task Dependency Graph
 
@@ -190,6 +195,83 @@ echo -n $out
 
 #+RESULTS:
 [[file:/data/org/roam/topics/img/regpg.svg]]
+
+*** Manual
+
+**** §7.2 Makefile Conventions
+
++ [[https://www.gnu.org/prep/standards/html_node/Makefile-Basics.html][Makefile Basics]]
+
+Don't assume PATH
+
+[[https://www.gnu.org/prep/standards/html_node/Standard-Targets.html][Standard Targets]]
+
+| ./         | program is built as part of the make          |
+| $(srcdir)/ | file is an unchanging part of the source code |
+
+|-------+------------------+---------------+------+--------------|
+| dev   | clean            | install       | doc  | install doc  |
+|-------+------------------+---------------+------+--------------|
+| all   | clean            | install       | html | install-html |
+| check | distclean        | install-strip | ps   | install-ps   |
+| dist  | mostlyclean      | installcheck  | dvi  | install-dvi  |
+| TAGS  | maintainer-clean | installdirs   | pdf  | install-pdf  |
+|       |                  | uninstall     | info |              |
+|-------+------------------+---------------+------+--------------|
+
+
+
+
+***** Portable Scripts
+
++ [[https://www.gnu.org/savannah-checkouts/gnu/autoconf/manual/autoconf-2.72/html_node/Portable-Shell.html#Portable-Shell][Portable Shell Programming]]
+
+only these commands should be used directly
+
+awk cat cmp cp diff echo expr false grep install-info ln ls
+mkdir mv printf pwd rm rmdir sed sleep sort tar test touch tr true
+
+use these tools after locating them:
+
+$(AR) $(BISON) $(CC) $(FLEX) $(INSTALL) $(LD) $(LDCONFIG) $(LEX)
+$(MAKE) $(MAKEINFO) $(RANLIB) $(TEXI2DVI) $(YACC)
+
+$(CHGRP) $(CHMOD) $(CHOWN) $(MKNOD)
+
+only use compression programs like gzip in the dist rule
+*** Examples
+
+**** Dotfiles
+
+... meh. i tried cut/paste. too hard. got the oneliner to work once. idk how.
+
+#+begin_src shell
+RESTORE=$(echo -en '\001\033[0m\002')
+EROTSER=$(echo -en '\001\033[0m\002' | rev)
+GREEN=$(echo -en '\001\033[00;32m\002')
+DER=$(echo -en '\001\033[00;31m\002' | rev)
+
+locate '/data/ecto/x.files/*/Makefile' \
+    | xargs -n1 grep -Hne '.*: ' \
+    | sed -E 's/^(.*\/.*):([0-9]+):/\1 § \2 ¶ /g' \
+    | tree --fromfile .
+#+end_src
+
+#+begin_src shell
+locate '/data/ecto/x.files/*/Makefile' \
+    | xargs -n1 grep -Hne '.*: ' \
+    | sed -E 's/^(.*\/.*):([0-9]+):/\1 § \2 ¶ /g' \
+    | rev | sed -E 's/(.*) :(.*) ¶ /\1 :¹\2² ¶ /g' \
+    | rev \
+
+#    | notree --fromfile .
+# ... i give up :ノ\ノ(；￣Д￣)ノ\ノ-
+#
+# | tr '¹' "${GREEN}" | tr '²' "${RESTORE}"
+# sed -E "s/¹/${GREEN/\\\\/\\\\/}//"
+#+end_src
+
+
 ** Issues
 
 * GNU M4
