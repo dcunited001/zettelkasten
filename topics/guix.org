@@ -17,10 +17,12 @@
 + [[https://debbugs.gnu.org/db/ix/full.html][debbugs]] (debian bugs)
 
 *** IRC
+** Docs
 
 ** Channels
 + [[https://www.fosskers.ca/en/blog/contributing-to-emacs][flatwhatson/guix-channel]]
 
+****
 ** Articles
 
 + [[https://gexp.no/blog/hacking-anything-with-gnu-guix.html][Guix for Development]]
@@ -56,8 +58,60 @@ Another good writeup on running a Guix Channel. [[https://peterloleungyau.github
 See [[id:bd7dd6c8-7035-4e7a-b730-0d7f9c61ef9f][DC Guix]] or the backlinks.
 
 * Topics
-
 ** Docs
+*** Dash
+
+*** Dash
++ [[https://github.com/lshprung/gnu-guix-dash-docset][ishprung/gnu-guix-dash-docset]], built using [[https://github.com/lshprung/dash-docset-builder][ishprung/dash-docset-builder]]
+
+#+begin_src shell
+git clone --recurse-submodules $url
+#+end_src
+
+Narrow the list in =SUPPORTED_TARGETS= down to what's needed in =Makefile=, call
+=make GNU_Make= or =make all=. These get pulled in as =src/config/*/config.mk= via
+=include= in =src/Makefile=.
+
+Check tasks:
+
+#+begin_src shell
+grep --include='Makefile' --include="*.mk" -re '^[^    ].*: '
+#+end_src
+
+Then run in an environment with the =guix= build dependencies and =bs4=, at least
+for the =GNU_Guix= target.
+
+#+begin_src shell
+guix shell -D guix python python-beautifulsoup4 python-requests
+make GNU_GUIX GNU_Coding_Standards GNU_Make
+#+end_src
+
+**** Zeal Network Access
+
+This isn't a problem for the GNU sites, since they're fairly minimal
+
+Though apparently the =org.zealdocs=Zeal= app starts a webserver at
+=127.0.0.1:4XXXX=, can run javascript and may forward requests for assets, though
+it blocks some of them according to strace.
+
+#+begin_src shell
+strace -e network -o zeal.strace flatpak run org.zealdocs.Zeal
+# ss -rdtu
+#+end_src.
+
+The logs show the process mostly blocks outbound requests. Some of the build
+scripts attempt to shim in the CSS by replacing the =<link/>= tags.
+
+#+begin_example strace
+zeal.core.httpserver: Mounted '/home/dc/.var/app/org.zealdocs.Zeal/data/Zeal/Zeal/docsets/nixos.docset/Contents/Resources/Documents' to '/nixos'.
+zeal.core.httpserver: Mounted '/home/dc/.var/app/org.zealdocs.Zeal/data/Zeal/Zeal/docsets/nixpkgs.docset/Contents/Resources/Documents' to '/nixpkgs'.
+zeal.browser.urlrequestinterceptor: Blocked request: GET 'https://www.gnu.org/software/gnulib/manual.css' (resource_type=2, navigation_type=0).
+zeal.browser.urlrequestinterceptor: Blocked request: GET 'https://www.gnu.org/software/gnulib/manual.css' (resource_type=2, navigation_type=0).
+#+end_example
+
+It's mainly that you're not anticipating this.
+
+*** Building
 
 The =texi= build calls into =./doc/build.scm=. This file leverages a lot of
 scheme-fu and tricks from =./guix/gexp.scm=.
@@ -77,7 +131,7 @@ However, later on, it may make sense to do something with
 work going into Guile's support for wasm. Thus, such work would be more a
 contribution towards Guile than Guix.
 
-*** Syntax Highlighting
+**** Syntax Highlighting
 
 The scheme in the Guix docs is highlighted via =guile-syntax-highlight= in
 [[https://git.savannah.gnu.org/cgit/guix.git/tree/doc/build.scm][doc/build.scm]]:
@@ -88,7 +142,7 @@ The scheme in the Guix docs is highlighted via =guile-syntax-highlight= in
   without necessarily containing their definitions in the global scheme
   environment.
 
-*** build.scm structure
+**** build.scm structure
 
 This is a script and not a module itself:
 
@@ -118,7 +172,7 @@ top-level entry points:
 + =(define guile-split-node-indexes (for-all-languages ...))=
 + =(define (merge-index-alists alist1 alist2) ...)=
 
-And =%languages= refers to human langauges  
+And =%languages= refers to human langauges
 
 The final top-level sexp calls into these definitions:
 
@@ -187,7 +241,6 @@ The final top-level sexp calls into these definitions:
                    #:version version
                    #:date date))
 #+end_src
-
 ** Programming Langauges
 ** CWT: [[https://www.commonwl.org/][Common Workflow Language]]
 
@@ -206,7 +259,13 @@ The final top-level sexp calls into these definitions:
 
 See [[https://git.sr.ht/~unmatched-paren/conf/tree/root/item/hashrepo.fish][hashrepo.fish in ~unmatched-paren/conf]] via [[https://www.youtube.com/watch?v=8m8igXrKaqU&t=2022s&pp=ygULZ3VpeCBzb2NpbGE%3D][Guix Patch Reviews Using Mumi by jgart]]
 
+** Makefiles
 
+These can help maintain a linked profile so they aren't GC'd
+
++ System Crafters [[https://forum.systemcrafters.net/t/using-make-to-manage-guix-home-and-system-profiles/307][Using Make To Manage Guix Home And System Profiles]]
++ [[https://codeberg.org/guix/guix/issues/431][guix/guix#431]] Feature Request: missing an easy and immediate way to update
+  pinned channels
 
 ** Channels
 
