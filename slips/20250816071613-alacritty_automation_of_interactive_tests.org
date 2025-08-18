@@ -11,6 +11,8 @@ NOTE: this is quite early and I may not finish, but I'm hoping to basically:
 + dump and diff environments
 + write a separate controller script that induces seizures with pastel colors by
   swapping out cattpuccin themes
+
+UPDATE: yeh... probably not going to finish.
 #+end_quote
 
 * Roam
@@ -32,19 +34,68 @@ slice, I believe. So to consistently dump/diff the environments under different
 shells, I need to ensure their master processes are started up under the same
 =uwsm= context that the =Hyprland= process uses.
 
+** =alacritty-msg=
+
 + Can't use =alacritty-msg= to =include= a config file
+  - instead prepend the parent keys for assignment (see below in the jq output)
 + it's a little dicey to send config values over =alacritty-msg=. Instead, I'll
-  probably parse each toml and generate a script to run that calls the values
+  probably parse each toml and generate individual scripts to run that calls the
+  values.
+  - i want to tightly control which values are constants or are lazily
+    "evaluated" ... when the templates are evaluated.
+
++ alacritty msg config -w -1 -r :: To reset the values of all windows to the
+  config file the started with
++ alacritty msg config -w "$ALACRITTY_WINDOW_ID" <key="value"> ::
+  + set the values for a specific window. the command needs to retain the
+    quotes: ~'colors.primary.background="#ffffff"'~ works, but without the outer
+    quotes, it doesn't. Those are a pain in =jq=
++ =alacritty msg= commands will affect processes that a given alacritty process
+  knows about, but I think it's expecting to guess the socket names from it's
+  own naming convention.
+  + run the commands to create windows within an existing alacritty shell. this
+    isn't great automation: it's slow to type & start, and the controlling
+    alacritty process needs to remain online.
+  + the second is true regardless ... but specifying window rules is less of a
+    problem if you have a script to start the controller and it's subprocesses,
+    as it's easier to control the overall env vars, shared state, window titles,
+    etc
+
+*** +Using Window Title+
+
+ummm.. =alacritty-msg= accepts =--window-id= with values of =ALACRITTY_WINDOW_ID= for
+each process... (so none of what's below works). A window title is only useful
+for controlling alacritty from the outside.
+
++ to scope changes to alacritty,
+  - you can use a window title system to help manage this. the state for window
+    titles to manage needs to exist within a running alacritty/shell. so you can
+    spec =alacritty msg= commands by a single window title (easy) or manage the
+    state in many window titles (harder)
+  - +if it's okay to expect to drive automation using mouse events (or with a bit
+    more work in hyprland)+, (this definitely isn't going to work) then you can
+    send the window title into the hyprland mouse events, I think.
+    - there's a chance that this only works if the socket name is identical to
+      the window name (or 1-to-1 mapped with the window name, given a simple
+      formula)
+
+I thought this was going to be easier to manage: if the window title permitted
+control from both the alacritty controller and hyprland, the there's a kinda
+uniform interface (with less potential for state drift, etc)
+
+* Code
 
 ** Themes
 
 I cloned =alacritty/alacritty-theme= to =~/.config/alacritty-themes=
 
 #+name: alacrittyThemeToml
-#+headers: :var themes=(identity alacritty-themes) t="afterglow" q="."
+#+headers: :var themes=(identity alacritty-themes) t="afterglow" q="." raw=""
 #+begin_src shell :results output code :wrap example json
-tomlq "$q" "${themes}/${t}.toml"
+tomlq $raw "$q" "${themes}/${t}.toml"
 #+end_src
+
+The majority of themes have these keys
 
 #+call: alacrittyThemeToml(t="dracula", q=".colors | keys | join(\" \")")
 
@@ -52,6 +103,73 @@ tomlq "$q" "${themes}/${t}.toml"
 #+begin_example json
 "bright normal primary"
 #+end_example
+
+The majority of themes have these keys
+
+#+call: alacrittyThemeToml(t="dracula", q=".colors | map([.primary,.normal,.color] | map(join(\",\")) | join(\" \")")
+
++ path(..| select(type=="string")) :: get all paths with string value
++ path(..| select(type=="object")) | select(length == 2) :: get all paths with
+  object value, req uniform max depth to work as intended
+
+#+name: alacrittyMainColors
+#+begin_example jq
+. as $in
+| path(..| select(type=="object")) | select(length == 2) as $p
+| [{ key: ($p | join(".")),
+     value: ($in | getpath($p) | to_entries | map("\(.key)=\(.value)"))}]
+| map(.key as $k | .value
+                 | reduce .[] as $v ([]; . + ["\($k).\($v)"]))
+| add | map("alacritty msg config \"" + . + "\"") []
+
+# with add[], it magically converts [..., ["fdsa"]] [..., ["asdf"]]
+# into flat sets of lines. hence the map(...) []
+
+# this works but is far from ideal:
+#
+# req. wrap(to_entries) | unwrap,map/assign/reduce
+#
+# | map(.key as $k | .value | reduce .[] as $v ([]; . + ["\($k).\($v)"]))
+#+end_example
+
+#+headers: output verbatim
+#+call: alacrittyThemeToml(t="github_dark", q=alacrittyMainColors, raw="-r")
+
+#+RESULTS:
+#+begin_example json
+alacritty msg config -w -1 "colors.primary.background=#24292e"
+alacritty msg config -w -1 "colors.primary.foreground=#d1d5da"
+alacritty msg config -w -1 "colors.normal.black=#586069"
+alacritty msg config -w -1 "colors.normal.red=#ea4a5a"
+alacritty msg config -w -1 "colors.normal.green=#34d058"
+alacritty msg config -w -1 "colors.normal.yellow=#ffea7f"
+alacritty msg config -w -1 "colors.normal.blue=#2188ff"
+alacritty msg config -w -1 "colors.normal.magenta=#b392f0"
+alacritty msg config -w -1 "colors.normal.cyan=#39c5cf"
+alacritty msg config -w -1 "colors.normal.white=#d1d5da"
+alacritty msg config -w -1 "colors.bright.black=#959da5"
+alacritty msg config -w -1 "colors.bright.red=#f97583"
+alacritty msg config -w -1 "colors.bright.green=#85e89d"
+alacritty msg config -w -1 "colors.bright.yellow=#ffea7f"
+alacritty msg config -w -1 "colors.bright.blue=#79b8ff"
+alacritty msg config -w -1 "colors.bright.magenta=#b392f0"
+alacritty msg config -w -1 "colors.bright.cyan=#56d4dd"
+alacritty msg config -w -1 "colors.bright.white=#fafbfc"
+#+end_example
+
+
+Never knew that I could emit problematic values using =debug= ... ~@%#@!%$#~. The
+problem here, which I've suspected yet never confirmed: the parser needs some
+hints. i.e. =($in | debug | getpath($p))= needs those parentheses.
+
+#+name: jqHasDebug
+#+begin_example jq
+. as $in
+| path(..| select(type=="object")) | select(length == 2) as $p
+| [$p | join("."), ($in | debug | getpath($p))]
+#+end_example
+
+#+call: alacrittyThemeToml(t="github_dark", q=jqHasDebug)
 
 ** Setup
 
@@ -118,40 +236,76 @@ windowrule = workspace name:$wsAla, class:^(Alacritty:$wsAlaClass)$, title:($wsA
 # windowrule = size 1024 768, class:^(Alacritty:$wsAlaClass)$, title:($wsAlaPrefix):(.*)$
 # windowrule = move 5% 100%-w-5%, class:^(Alacritty:$wsAlaClass)$, title:($wsAlaPrefix):(.*)$
 #+end_src
+
 ** Setup Alacritty sessions
 
 I started a session via =wofi= on =hyprland= launched with =uwsm=.
 
 * Available Themes
 
+Most configure =[.bright .cursor .normal]= and the dark themes reset =[.primary]=,
+so I'll focus on dark themes.
+
+#+header: :var themes=(identity alacritty-themes)
+#+begin_src shell
+paste <(ls $themes/*.toml | grep 'dark' | sort | sed -E "$r") \
+    <(ls $themes/*.toml | grep 'dark' |  sort | xargs -n1 tomlq "$q")
+#+end_src
+
+#+RESULTS:
+| alabaster_dark.toml               | bright cursor normal primary         |
+| ashes_dark.toml                   | bright cursor normal primary         |
+| ayu_dark.toml                     | bright normal primary                |
+| base16_default_dark.toml          | bright cursor normal primary         |
+| dark_pastels.toml                 | bright normal primary                |
+| dark_plus.toml                    | bright normal primary                |
+| dark_pride.toml                   | bright cursor normal primary         |
+| enfocado_dark.toml                | bright normal primary                |
+| everforest_dark.toml              | bright normal primary                |
+| github_dark_colorblind.toml       | bright indexed_colors normal primary |
+| github_dark_default.toml          | bright indexed_colors normal primary |
+| github_dark_dimmed.toml           | bright indexed_colors normal primary |
+| github_dark_high_contrast.toml    | bright cursor normal primary         |
+| github_dark.toml                  | bright indexed_colors normal primary |
+| github_dark_tritanopia.toml       | bright cursor normal primary         |
+| gruber_darker.toml                | bright normal primary                |
+| gruvbox_dark.toml                 | bright normal primary                |
+| gruvbox_material_hard_dark.toml   | bright normal primary                |
+| gruvbox_material_medium_dark.toml | bright normal primary                |
+| horizon_dark.toml                 | bright normal primary                |
+| kimbie_dark.toml                  | bright normal primary                |
+| marine_dark.toml                  | bright normal primary                |
+| one_dark.toml                     | bright normal primary                |
+| papercolor_dark.toml              | bright cursor normal primary         |
+| pastel_dark.toml                  | bright cursor normal primary         |
+| pencil_dark.toml                  | bright normal primary                |
+| remedy_dark.toml                  | bright normal primary                |
+| selenized_dark.toml               | bright normal primary                |
+| solarized_dark.toml               | bright normal primary                |
+| tango_dark.toml                   | bright normal primary                |
+
 Here are the available themes with the =.colors | keys= that they configure.
 
-Each one configures =[.bright .cursor .normal]=, so I'll focus on those.
-
-#+headers: :var themes=(identity alacritty-themes)
+#+header: :var themes=(identity alacritty-themes)
 #+begin_src shell
 q=".colors | keys | sort | join(\" \")"
 r='s/(.*)\/(.*toml)$/\2/g'
-paste <(ls $themes/*.toml | sort | sed -E "$r") \
-    <(ls $themes/*.toml | sort | xargs -n1 tomlq "$q")
+paste <(ls $themes/*.toml | grep -v 'dark' | sort | sed -E "$r") \
+      <(ls $themes/*.toml | grep -v 'dark' | sort | xargs -n1 tomlq "$q")
 #+end_src
 
 #+RESULTS:
 | acme.toml                          | bright normal primary                                                                            |
 | afterglow.toml                     | bright cursor dim normal primary                                                                 |
-| alabaster_dark.toml                | bright cursor normal primary                                                                     |
 | alabaster.toml                     | bright cursor normal primary                                                                     |
 | alacritty_0_12.toml                | bright dim hints normal primary search                                                           |
 | argonaut.toml                      | bright cursor normal primary                                                                     |
-| ashes_dark.toml                    | bright cursor normal primary                                                                     |
 | ashes_light.toml                   | bright cursor normal primary                                                                     |
 | aura.toml                          | bright cursor normal primary selection                                                           |
 | autumn.toml                        | bright cursor normal primary                                                                     |
-| ayu_dark.toml                      | bright normal primary                                                                            |
 | ayu_light.toml                     | bright normal primary                                                                            |
 | ayu_mirage.toml                    | bright normal primary                                                                            |
 | baitong.toml                       | bright cursor footer_bar hints line_indicator normal primary search selection vi_mode_cursor     |
-| base16_default_dark.toml           | bright cursor normal primary                                                                     |
 | blood_moon.toml                    | bright normal primary                                                                            |
 | bluish.toml                        | bright normal primary                                                                            |
 | breeze.toml                        | bright dim normal primary                                                                        |
@@ -167,9 +321,6 @@ paste <(ls $themes/*.toml | sort | sed -E "$r") \
 | citylights.toml                    | bright cursor normal primary                                                                     |
 | Cobalt2.toml                       | bright cursor normal primary                                                                     |
 | cyber_punk_neon.toml               | bright cursor normal primary                                                                     |
-| dark_pastels.toml                  | bright normal primary                                                                            |
-| dark_plus.toml                     | bright normal primary                                                                            |
-| dark_pride.toml                    | bright cursor normal primary                                                                     |
 | dawnfox.toml                       | bright cursor dim footer_bar hints normal primary search selection vi_mode_cursor                |
 | dayfox.toml                        | bright cursor dim footer_bar hints normal primary search selection vi_mode_cursor                |
 | deep_space.toml                    | bright cursor normal primary                                                                     |
@@ -177,19 +328,11 @@ paste <(ls $themes/*.toml | sort | sed -E "$r") \
 | dracula_plus.toml                  | bright cursor normal primary                                                                     |
 | dracula.toml                       | bright normal primary                                                                            |
 | duskfox.toml                       | bright cursor dim footer_bar hints normal primary search selection vi_mode_cursor                |
-| enfocado_dark.toml                 | bright normal primary                                                                            |
 | enfocado_light.toml                | bright normal primary                                                                            |
-| everforest_dark.toml               | bright normal primary                                                                            |
 | everforest_light.toml              | bright normal primary                                                                            |
 | falcon.toml                        | bright cursor normal primary                                                                     |
 | flat_remix.toml                    | bright normal primary                                                                            |
 | flexoki.toml                       | bright cursor dim normal primary                                                                 |
-| github_dark_colorblind.toml        | bright indexed_colors normal primary                                                             |
-| github_dark_default.toml           | bright indexed_colors normal primary                                                             |
-| github_dark_dimmed.toml            | bright indexed_colors normal primary                                                             |
-| github_dark_high_contrast.toml     | bright cursor normal primary                                                                     |
-| github_dark.toml                   | bright indexed_colors normal primary                                                             |
-| github_dark_tritanopia.toml        | bright cursor normal primary                                                                     |
 | github_light_colorblind.toml       | bright indexed_colors normal primary                                                             |
 | github_light_default.toml          | bright indexed_colors normal primary                                                             |
 | github_light_high_contrast.toml    | bright cursor normal primary                                                                     |
@@ -198,31 +341,24 @@ paste <(ls $themes/*.toml | sort | sed -E "$r") \
 | gnome_terminal.toml                | bright normal primary                                                                            |
 | google.toml                        | bright normal primary                                                                            |
 | gotham.toml                        | bright normal primary                                                                            |
-| gruber_darker.toml                 | bright normal primary                                                                            |
-| gruvbox_dark.toml                  | bright normal primary                                                                            |
 | gruvbox_light.toml                 | bright normal primary                                                                            |
-| gruvbox_material_hard_dark.toml    | bright normal primary                                                                            |
 | gruvbox_material_hard_light.toml   | bright normal primary                                                                            |
-| gruvbox_material_medium_dark.toml  | bright normal primary                                                                            |
 | gruvbox_material_medium_light.toml | bright normal primary                                                                            |
 | gruvbox_material.toml              | bright normal primary                                                                            |
 | hardhacker.toml                    | bright cursor normal primary                                                                     |
 | hatsunemiku.toml                   | bright normal primary                                                                            |
 | high_contrast.toml                 | bright cursor normal primary                                                                     |
-| horizon_dark.toml                  | bright normal primary                                                                            |
 | hyper.toml                         | bright cursor normal primary                                                                     |
 | inferno.toml                       | bright normal primary                                                                            |
 | iris.toml                          | bright normal primary                                                                            |
 | iterm.toml                         | bright normal primary                                                                            |
 | kanagawa_dragon.toml               | bright indexed_colors normal primary selection                                                   |
 | kanagawa_wave.toml                 | bright indexed_colors normal primary selection                                                   |
-| kimbie_dark.toml                   | bright normal primary                                                                            |
 | kimbie_light.toml                  | bright normal primary                                                                            |
 | konsole_linux.toml                 | bright cursor dim normal primary search                                                          |
 | linux.toml                         | bright normal primary                                                                            |
 | low_contrast.toml                  | bright cursor normal primary                                                                     |
 | Mariana.toml                       | bright cursor normal primary selection                                                           |
-| marine_dark.toml                   | bright normal primary                                                                            |
 | material_theme_mod.toml            | bright normal primary                                                                            |
 | material_theme.toml                | bright normal primary                                                                            |
 | meliora.toml                       | bright cursor dim footer_bar hints indexed_colors normal primary search selection vi_mode_cursor |
@@ -245,37 +381,29 @@ paste <(ls $themes/*.toml | sort | sed -E "$r") \
 | nord.toml                          | bright normal primary                                                                            |
 | oceanic_next.toml                  | bright normal primary                                                                            |
 | omni.toml                          | bright cursor dim normal primary                                                                 |
-| one_dark.toml                      | bright normal primary                                                                            |
 | one_light.toml                     | bright normal primary                                                                            |
 | oxocarbon.toml                     | bright cursor normal primary                                                                     |
 | palenight.toml                     | bright normal primary                                                                            |
 | panda.toml                         | bright cursor normal primary                                                                     |
-| papercolor_dark.toml               | bright cursor normal primary                                                                     |
 | papercolor_light.toml              | bright cursor normal primary                                                                     |
 | papertheme.toml                    | bright normal primary                                                                            |
-| pastel_dark.toml                   | bright cursor normal primary                                                                     |
-| pencil_dark.toml                   | bright normal primary                                                                            |
 | pencil_light.toml                  | bright normal primary                                                                            |
 | rainbow.toml                       | bright normal primary                                                                            |
-| remedy_dark.toml                   | bright normal primary                                                                            |
 | rigel.toml                         | bright cursor normal primary                                                                     |
 | rose_pine_dawn.toml                | bright cursor hints normal primary selection vi_mode_cursor                                      |
 | rose_pine_moon.toml                | bright cursor hints normal primary selection vi_mode_cursor                                      |
 | rose_pine.toml                     | bright cursor hints normal primary selection vi_mode_cursor                                      |
 | seashells.toml                     | bright cursor normal primary selection                                                           |
-| selenized_dark.toml                | bright normal primary                                                                            |
 | selenized_light.toml               | bright normal primary                                                                            |
 | seoul256-light.toml                | bright cursor dim footer_bar hints normal primary search selection vi_mode_cursor                |
 | smoooooth.toml                     | bright cursor normal primary selection                                                           |
 | snazzy.toml                        | bright normal primary                                                                            |
-| solarized_dark.toml                | bright normal primary                                                                            |
 | solarized_light.toml               | bright normal primary                                                                            |
 | solarized_osaka.toml               | bright normal primary                                                                            |
 | sonokai.toml                       | bright cursor normal primary selection                                                           |
 | spacegray.toml                     | bright cursor normal primary                                                                     |
 | synthwave_84.toml                  | bright normal primary                                                                            |
 | taerminal.toml                     | bright cursor normal primary                                                                     |
-| tango_dark.toml                    | bright normal primary                                                                            |
 | tender.toml                        | bright normal primary                                                                            |
 | terafox.toml                       | bright cursor dim footer_bar hints normal primary search selection vi_mode_cursor                |
 | terminal_app.toml                  | bright normal primary                                                                            |
@@ -291,3 +419,42 @@ paste <(ls $themes/*.toml | sort | sed -E "$r") \
 | wombat.toml                        | bright normal primary                                                                            |
 | xterm.toml                         | bright normal primary                                                                            |
 | zenburn.toml                       | bright normal primary                                                                            |
+
+* Scheme, Again?
+
+The ideas of =let= and environment binding from scheme ... the key is
+controlling the order/sequence/context of evaluation to merge environment
+changes (whether env vars, alacritty colors, templated commands, etc) into
+bundles of functionality that can be evaluated within specific contexts.
+
+Approaching it the wrong way means:
+
++ erroneous behavior
++ restriction on automation
++ increased cognitive load
++ security problems if specific variables or options are evaluated
+  - generally this isn't a great idea anyways
+
+To be sure, do NOT allow =jq= to be templated at the final stage of evaluation.
+=bash= CANNOT clean =jq= queries. These should be =CONSTANT= only. Like below:
+
+Doing that is a PITA and significantly restricts how dynamic the behavior is.
+
+#+begin_example jq
+#!/etc/profiles/per-user/dc/bin/jq -rf
+
+"Title: \(.title) (\(.initialTitle))
+Class: \(.class) (\(.initialClass))
+Workspace \(.workspace.id) (\(.workspace.name))
+On Monitor \(.monitor)
+(\(.size | @text)) @ (\(.at | @text))"
+#+end_example
+
+** seccomp is dumb
+
+IDK whether the "escape potential" or =jq= is as bad as for =bash=. If you wanted to
+be sure, you can use a =nix= or =guix= wrapper script, then assign that restricted
+capabilities [[https://www.youtube.com/watch?v=RT0PWBWp8wc][using seccomp]], or app armor ([[https://learn.microsoft.com/en-us/azure/aks/secure-container-access][docs detailing the difference]])..
+that's a little heavy handed for this and hard to configure for large
+applications. (But if you wanted to more certain that dynamic behavior didn't
+lead to something unexpected)...
