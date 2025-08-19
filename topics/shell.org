@@ -100,11 +100,35 @@ tee -a >(echo .) >(echo 1)  | tee -a >(echo 2)  | tee -a >(echo "3")
 *** Append clipboard to =gpg= stream
 
 #+begin_src sh
+id="aionfork@gmail.com"
 d="$(date +%s)"
 t=$(($d - 120*24*60*60))
 f=fdsa.gpg
 tee -a  >(wl-paste) >(gpg -ad $f) |\
-  gpg -aer aionfork@gmail.com --faked-system-time=$t > $f.bak
+    gpg -aer $id --faked-system-time=$t > $f.bak
+#+end_src
+
+#+begin_src sh
+gpg -dr $id $f.gpg | file -
+
+# --no-throw-keyids may be useful for recovering data later
+gpg --list-only --list-packets $f.gpg | grep ':pubkey'
+
+# maybe move these to an airgapped computer,
+# - extract tree of paths that needs to be recreated
+# - filter what's definitely not mine
+# - assume **/*.gpg > *.gpg.dec
+# - migrate with dec files stored @ paths
+# - ensure **/*.gpg.dec.gpg are decryptable by both keyids...
+gpgAllMessages=$(mktemp)
+gpgMigrateList=$(mktemp); echo -n ''> $gpgMigrateList
+locate '/data/*.gpg/' > $gpgAllMessages
+for g in $gpgAllMessages; do
+    # todo: read/cut output lines one at a time,
+    # cut ':pubkey' keyid,
+    # prepend "$g " path
+    gpg --list-only --list-packets $g | grep ':pubkey' > $gpgMigrateList
+done
 #+end_src
 
 **** split and csplit
