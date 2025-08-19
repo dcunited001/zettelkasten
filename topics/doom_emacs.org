@@ -19,6 +19,23 @@
 I'm always impressed that people manage to write the code in Doom Emacs ... but
 holy shit.
 
+#+begin_src emacs-lisp
+;; NOTE: def-project-mode doesn't hook derived-modes of parent modes
+
+(defvar +ecto-dotfiles-regexp
+  (rx-let ((ecto-xdotfiles-path  (literal (expand-file-name "x.files" "/data/ecto"))))
+    (rx bos (and ecto-xdotfiles-path (* (char))))) ;; "/"
+  "Regexp to match XKB files for `+df-xkb-mode'.")
+
+(def-project-mode! +ecto-xdotfiles-mode
+  :match +ecto-dotfiles-regexp
+  ;; ... so this doesn't work
+  :modes '(text-mode prog-mode)
+  :on-enter (progn
+              ;; some .tar.gz blow up ripgrep... so much for memory safety, right? it doesn't blowup grep
+              (setq-local consult-ripgrep-args (concat consult-ripgrep-args " --no-search-zip"))))
+#+end_src
+
 *** Differences with .=dir-locals.el
 
 This is doom-specific, but much easier to manage than =.dir-locals.el=. These
@@ -38,7 +55,6 @@ Whereas the constraints on =.dir-locals.el= are:
 + existance of =.dir-locals-2.el= (name may be wrong)
 + can't be nested: whether there's a =.dir-locals.el= in the path components
   between =(buffer-file-name (current-buffer))= and =(project-root)=
-
 + =def-project-mode= does permit multiple defined modes matching
   - (vs. only one =.dir-locals.el=)
 
@@ -91,20 +107,20 @@ I mean idk maybe the implementation wrong, but "user error" is far more likely.
 
 These keys determine what what causes the hook to fire
 
-| :modes MODES     | if buffers are derived from MODES (one or a list of symbols). |
-| :files FILES     | if project contains FILES;                                    |
-| :when PREDICATE  | if PREDICATE returns true (can be a form/symbol of function)  |
+| :modes MODES    | if buffers are derived from MODES (one or a list of symbols). |
+| :files FILES    | if project contains FILES;                                    |
+| :when PREDICATE | if PREDICATE returns true (can be a form/symbol of function)  |
 
 This key determines which files to hook.
 
-| :match REGEXP    | if file name matches REGEXP                                   |
+| :match REGEXP | if file name matches REGEXP |
 
 What to do and when to do it
 
-| :add-hooks HOOKS | HOOKS is a list of hooks to add this mode's hook.             |
-| :on-load FORM    | FORM to run the first time this project mode is enabled.      |
-| :on-enter FORM   | FORM is run each time the mode is activated.                  |
-| :on-exit FORM    | FORM is run each time the mode is disabled.                   |
+| :add-hooks HOOKS | HOOKS is a list of hooks to add this mode's hook.        |
+| :on-load FORM    | FORM to run the first time this project mode is enabled. |
+| :on-enter FORM   | FORM is run each time the mode is activated.             |
+| :on-exit FORM    | FORM is run each time the mode is disabled.              |
 
 + :files :: takes a string or a form comprised of nested =(and ...)= and/or =(or
   ...)= forms. Each path is relative to the project root, however, if prefixed
@@ -116,6 +132,31 @@ What to do and when to do it
 * Issues
 
 ** def-project-mode
+
+whitelisting these paths is needed bc emacs is single threaded and needs GC to
+be tuned. It's usually not a problem unless you are grepping through 2,000
+repositories (usually only small sets of 30-50, but potentially much larger
+paths). see [[https://github.com/ectorepo/ectorepo][ectorepo/ectorepo]]
+
+Honestly, I really don't like LSP anyways. too stateful. the CLI args are never
+described with a simple =-h= option because why would you ever do that. 75% of the
+servers are 97% based on the same typescript template from microsoft ... but you
+can't tell which parts they changed. almost none of the editors
+
+#+begin_quote
+People talk about "just how fast ripgrep is" but it's really hard for me to
+imagine them actually using it because i don't see much mention of the ignore
+files in people's dotfiles. only rarely. what exactly are you grepping? i run
+into problems where ripgrep crashes all the time because it hit one or two
+files. it's not inherently better and any performance comparison i've seen is
+just junk science -- i.e. using cherry-picked examples with entirely the wrong
+time/space complexity. None of it matters until there's spatial complexity
+anyways and if you don't anchor your regexps, you don't care about perf
+
+I'm certain that =ripgrep= is faster ... i'm sure it is. just not that much
+faster.
+#+end_quote
+
 *** Rewire/Disable =def-project-mode!=
 A bit hard to rewire. If you want to prevent it from activating, you need to
 set it to something like:
