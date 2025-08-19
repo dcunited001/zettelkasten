@@ -1271,6 +1271,242 @@ walk(.) | walk(..) | walk(..) | ["you'll never even buy a car"] | @text
 # technology desert.
 #+end_example
 
+
+** JSON
+
++ toJSON
++ fromJSON
+
+*** JSON Without Escaping
+
+#+begin_quote
+NOTE: Don't eval =nix= without understanding the quoting...
+
+Emacs/Babel try to be safe: =:noweb= is raw text, except when =<< itGetsCalled()
+>>=, though there it's evaled and subbed in as raw text -- whereas =:var= is a
+language-aware prefix of variables inserted with quoting at block header. See
+the [[https://github.com/dcunited001/zettelkasten/blob/master/slips/20230501130726-org_babel_files_modified_during_execution.org?plain=1#L66][/tmp/babel-XXXXXX/langXXXXXX files]] to be sure.
+
+Also, see [[https://codeberg.org/theesm/ob-nix/src/main/ob-nix.el#L57-L68][ob-nix.el]], =C-c C-c= on =nix= source blocks will run:
+
+=nix-instantiate --eval --verbose  -- /tmp/babel-f5DgW7/nixLwy9wy.nix=
+
+Changing a block from =example= to =src= while =:var ref= still refers to =#+name: ref=
+will cause that block to be evaluated -- yielding =<LAMBDA>= or an indeterminate
+value. You can't get formatting or =lang-mode= in most =example= blocks. If you want
+to reformat the nix code, mark the text and use =C-u M-|= then =nixfmt=.
+#+end_quote
+
+[[https://discourse.nixos.org/t/how-to-generate-nix-source-from-json/28633/8][How To Generate Nix Source From Json]]
+
+#+name: nixFormatsJson
+#+begin_example nix
+((import <nixpkgs> { }).formats.json { }).generate "derivation-name" {
+  a = 1;
+  b = { c = [ 2 3 ]; };
+}
+#+end_example
+
+Given an evaluation, generate json
+
+#+name: nixFormattedJson
+#+begin_src shell :var expr=nixFormatsJson :results output code :wrap example json
+drvResult=$(nix-build  -I '<nixpkgs>' -E $expr)
+# /nix/store/w3mz856ky5g81c32sw7d6ja8ama76f06-derivation-name
+
+cat $drvResult
+#+end_src
+
+#+RESULTS: nixFormattedJson
+#+begin_example json
+{
+  "a": 1,
+  "b": {
+    "c": [
+      2,
+      3
+    ]
+  }
+}
+#+end_example
+
+There is still a JSON =result= at the root
+
+#+name: nixFromJson
+#+begin_example nix
+builtins.fromJSON (builtins.readFile ./result)
+#+end_example
+
+#+begin_src shell :var expr=nixFromJson :results output code :wrap example nix
+nix-instantiate --eval -E "$expr"
+#+end_src
+
+#+RESULTS:
+#+begin_example nix
+{ a = 1; b = { c = [ 2 3 ]; }; }
+#+end_example
+
+**** Using =fromJSON=
+
+[[https://discourse.nixos.org/t/generate-configuration-from-json/40149/2][Generate configuration from json]]
+
+#+name: justSomeJson
+#+begin_example json :noweb-ref justSomeJson
+{
+    "interfaces": [
+        {
+            "name": "vlan10",
+            "vid": 10,
+            "ipv4": "192.168.10.254",
+            "ipv6": "fdcd:f764:d926:501::1/64",
+            "dhcp-range": "192.168.10.100-192.168.10.200"
+        },
+        {
+            "name": "vlan20",
+            "vid": 20,
+            "ipv4": "192.168.20.254",
+            "ipv6": "fdcd:f764:d926:500::1/64",
+            "dhcp-range": "192.168.20.100-192.168.20.200"
+        }
+    ]
+}
+#+end_example
+
+Send through via org-babel after =jq= with no =--raw-output= to fuck it up ...
+
+... or use =nix-instantiate -A config.foobjson=
+
+#+name: nixFromJson2
+#+begin_example nix :noweb yes
+{ config, libs, foobJson, ... }:
+
+let
+  # without org-babel :noweb
+  gen = builtins.fromJSON (builtins.readFile foobJson);
+
+  # Inspiration: from above (vis-a-vis below)
+  # https://github.com/mdlayher/homelab/blob/c84446a6c4d7ba85c883d806497b23c51d790a1f/nixos/routnerr-3/networking.nix
+  vlanNetdev = ({ name, vid, enabled ? false, ... }: {
+    name = name;
+    value = {
+      enable = enabled;
+      netdevConfig = {
+        Name = name;
+        Kind = "vlan";
+      };
+      vlanConfig.Id = vid;
+    };
+  });
+
+  netdevs = builtins.map vlanNetdev gen.interfaces;
+in {
+  # ...plus merging any other netdevs using //
+  networking.vlans = netdevs;
+}
+#+end_example
+
+=cat `which nixos-rebuild` | less= is freakin me out man. "what is the simplest
+example system I can pass into an attr set?"
+
+
+#+name: fdsa
+#+header: :var expr=nixFromJson2
+#+header: :dir (expand-file-name ".dotfiles/nixos" (getenv "HOME"))
+#+begin_src shell :results output code :wrap example nix :noweb yes
+host=./hosts/kratos/configuration.nix
+# ^^ nope ... nope vv              (i suspected the procsub may not)
+protosystem=$(cat) <<EOF
+{config, pkgs, ...}: { system.stateVersion = "25.05"; }
+EOF
+
+jsonFile=/tmp/tmp.9IByp9cTZ8.json
+tmp=$(mktemp -d)
+echo $protosystem > $tmp/proto.nix
+echo $expr > $tmp/nixexpr.nix
+
+#    --arg configuration <(echo $protosystem)
+#     -I nixos-config=<(echo $protosystem)  <<EOF
+#    -I nixos-config=$tmp/proto.nix \
+nix repl --file '<nixpkgs/nixos>' \
+    -I nixos-config=$tmp/nixexpr.nix \
+    --arg foobJson "$jsonFile" <<EOF
+    :p config.networking.vlans
+EOF
+# cat $nixFromJsonExpr
+#  :p config.system.network
+rm -rf $tmp
+#+end_src
+
+woops... somehow I dumped 600,000 lines into the file... i give up
+
+***** misc attempts
+
+#+begin_src shell
+# it doesn't respect TERM=dumb
+TERM=dumb nix repl \
+    --file '<nixpkgs/nixos>' \
+    -I "nixos-config=./hosts/kratos/configuration.nix" <<EOF
+  :p $protosystem {config=config; pkgs=pkgs;}
+EOF
+#+end_src
+
+This worked, sorta
+
+#+begin_src shell
+TERM=dumb nix repl \
+    --file '<nixpkgs/nixos>' \
+    -I "nixos-config=./hosts/kratos/configuration.nix" <<EOF
+  :p config.system.stateVersion
+EOF
+#+end_src
+
+None of this works:
+
++ --eval :: doesn't run against =/nix/store= ... important
++ to be fair, apparently =nixos-rebuild= is actually complicated:
+  - [[https://discourse.nixos.org/t/import-list-in-configuration-nix-vs-import-function/11372][Import list in `configuration.nix` vs `import` function]]
+  - I was trying to avoid =import=
+
+#+begin_example shell
+# nix-instantiate --eval \
+#     -I "nixos-config=/etc/nixos/configuration.nix" \
+#     -I '<nixpkgs/nixos>' \
+#     -E nothing
+
+# nix-instantiate --eval \
+#      -I "nixos-config=<(echo $protosystem)" \
+#      -I '<nixpkgs/nixos>' \
+#      -E config
+
+#     -I "nixos-config=<(echo $protosystem)" \
+
+#    -E "__tryEval $protosystem"
+#    -E system.build.toplevel
+#    -E "import $protosystem"
+
+#    -I "nixos-config=/etc/nixos/configuration.nix" \
+#    -E "services"
+#    -E "config"
+#    -E "({config, ...}: config.system.StateVersion)"
+
+#     --arg foobjson "./result"
+# -A config.foobjson "./result" \
+#+end_example
+
+
+***** =:noweb= doesn't work here
+
++ =gen = builtins.fromJSON "<< justSomeJson >>"=
++ shell block requires EOF (bc zsh? or metachars? idk)
++ also: doesn't chain from example to example
+  - noweb subs in shell block, not in ref'd example; it would with org-tangle
+
+#+begin_example shell :results output code :wrap example nix  :var expr=nixFromJson2 :noweb yes
+cat <<EOF
+<<nixFromJson2()>>
+EOF
+#+end_example
+
 * File System
 
 #+name: jqFlakeMetaInputs
