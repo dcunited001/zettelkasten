@@ -1,0 +1,478 @@
+:PROPERTIES:
+:ID:       259e67ca-539b-4877-ae9e-86240da54321
+:END:
+#+TITLE: Disk Setup: LUKS For Guix, Vyos, Etc
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:80ccbcbb-a244-418f-be86-47e8969928a5][LUKS]]
+
+#+begin_quote
+NAME        MAJ:MIN RM   SIZE RO TYPE MOUNTPOINTS
+sda           8:0    1 114.6G  0 disk
+├─sda1        8:1    1     1M  0 part
+├─sda2        8:2    1    50M  0 part
+└─sda3        8:3    1    64G  0 part
+sdb           8:16   1 116.6G  0 disk
+├─sdb1        8:17   1   3.7G  0 part
+└─sdb2        8:18   1   2.8M  0 part
+nvme0n1     259:0    0 931.5G  0 disk
+├─nvme0n1p1 259:1    0   512M  0 part
+└─nvme0n1p2 259:2    0 867.3G  0 part
+#+end_quote
+
+* misc
+
+** doc
+
+Planning to prefix commands with =$= then =replace-regexp=
+
+** Improve
+
+*** ISO image
+
+problems
+
++ [ ] =loadkeys= does not honour caps->ctrl
++ [ ] provenance: can't find the system definition (forgot
+  prov. service, but should be some way to deal)
++ [ ] =guix describe= on root user only shows guix (and not the
+  other channels... womp womp)
++ [ ] hostname: usb-gpg-image ...??
+  
+nice to have
+
++ [ ] clone [fairly recent] dotfiles somehow?
+  - to quicken feedback loop
+  - eliminates 1 minor place where dep on network (& synchronization)
+  - it'd be nice to =rsync -av= to (image... partition)
+    
+**** =(image... )=
+
+wrap 1 (or more) OS records in a =(image ...)= to:
+
++ boot more than one distro (require unpack & shift partitions,
+  rewrite grub ... or multiple GPT's with bootable parts)
++ .dotfiles provenance :: to get the version of .dotfiles (_with_ the
+  .git index, stashes & unstaged files)
+  - at image level: requires much less non-determinism
+  - a bit tricky to spec =(file-systems ...)= so could be a separate
+    service target
++ flatpak :: separate =/flatpak= partition (portable, right?)
+  - does a bind-mount do this well?
+
+bootable windows?
+
+**** misc services
+
++ add =netboot.xyz= container service pointing to mbusb iso's
+  - =(requirements '(... target-launches-it-on-cmd)=
+
+
+* emacs
+
+Themes don't work, so =root= emacs looks like =$(id -u)= emacs
+
+*** nifty
+
++ =C-u M-!= and =C-u M-:= are super useful... hard to set variables though
++ =M-x man= is super helpful. the pages open in the opposite window to
+  the one you're typing in (and the buffers stay open until you kill
+  them)
++ org: promote/demote is set to =C-c C-{<,>}= ... but this =loadkeys=
+  wont type it
+
+
+*** problems
+
++ even on =vty= other than one, a new usb device will garble the TTY the
+  emacs app is hosted in. use =C-x t o= twice to erase the ghost text
+  - this probably needs to 
+  - force the buffer to clear all the positions
+  - ......... apparently =M-<left/right>= jump between tty's (this is
+    _extremely convenient_. is this =kmscon= or =seatd= or what?)
+
+** set brightness
+
+#+begin_src shell
+mbright=$(cat /sys/class/backlight/amdgpu_bl0/max_brightness)
+echo $((mbright *  3/4)) > /sys/class/backlight/amdgpu_bl0/brightness
+#+end_src
+
+* home
+
+prep some dirs to diff & mount as overlay...
+
+** copy orig
+
+#+begin_src shell
+mkdir -p /mnt/usb/home
+cp -pR /home/dc /mnt/usb/home/usbdc
+cp -pR /root /mnt/usb/home/usbroot
+#+end_src
+
+** get hypr conf
+
+login, then:
+
+#+begin_src shell
+cp -pR /home/dc /mnt/usb/home/dc # nope ... nevermind?
+#+end_src
+
+** now create
+
+#+begin_src shell
+h1=/home/dc/
+h2=/mnt/usb/home/dc
+mkdir -p $h2/{.config/org}
+chown -R dc:users $h2
+mv $h1/.config/hypr $h2/.config
+ln # ... args?
+#+end_src
+
+** mount =$h2= onto =$h1=
+
+... shit how to create new files on the right FS? (also not a separate
+device...) oh well
+
+#+begin_src shell
+cp -pR $h2 /tmp/dc # in case?
+#+end_src
+
+** diff
+
+#+begin_src shell
+diff -r /mnt/usb/home/usbdc /home/dc
+#+end_src
+
+#+begin_example diff
+Only in /home/dc: .bash_history
+Only in /home/dc: .bash_profile
+Only in /home/dc: .bashrc
+Only in /home/dc: .cache
+Only in /home/dc: .config
+Only in /home/dc: .dbus
+Only in /home/dc: .emacs.d
+Only in /home/dc: .guile
+Only in /home/dc: guix-home-config.scm
+Only in /home/dc: .screen
+Only in /home/dc: .Xdefaults
+Only in /home/dc: .zprofile
+#+end_example
+
+** rsync
+
+(... typing =M-x man-rsync= ... then =C-g= and =M-x man= suggests rsync.... ?? um how?)
+
+... it's the =yank= and =kill-ring=
+
+#+begin_src shell
+rsync -av $h1 $h2
+#+end_src
+
+save =*scratch-buffer*= to =/mnt/usb/home/dc/org/diffhome.org=
+
+
+* Guix Home
+
+** For ISO
+
+Even when a home config isn't supplied on =guix system= build for ISO,
+a =$HOME/guix-home-config.scm= template is created.
+
+
+
+* Vyos
+
+need to check whether my Vyos image uses DHCP or autosets a networking
+config (it does start SSH)
+
+** dmsetup (TODO: move)
+
+#+begin_src shell
+dmsetup create $(ls /mnt/usb/boot/isos/vyos*.iso) vyos
+#+end_src
+
+nevermind, dmsetup requires a concise table spec (or cli flags to pass =<(tbl file)= ). it's
+not luks, so it won't load. mount autopicks the first device.
+
+*** concise_table_spec
+
+=<name>,<uuid>,<minor>,<flags>,<table>[,<table>+]= followed by
+optional =[;<name>,<uuid>,<minor>,<flags>,<table>[,<table>+]]=
+
+examples:
+
++ "A simple linear read-only device"
+  - =test-linear-small,,,ro,\= slash newline
+  - =0 2097152 linear /dev/loop0 0,\= table 1
+  - =2097152 2097152 linear /dev/loop1 0= table 2
+
++ "Two linear devices"
+  - =test-linear-small,,,,\=
+    - =0 2097152 linear /dev/loop0 0;\= dev1 table
+  - =test-linear-large,,,,\=
+    - =0 2097152 linear /dev/loop1 0,\= dev2 table
+  -  =2097152 2097152 linear /dev/loop2 0=
+
+The table specs here being linear:
+
+=$start $len linear $linDev $linStart=
+
+*** sfdisk
+
+$ sfdisk -lJ vyos-1.5-rolling-202501171533-generic-amd64.iso
+
+#+name: sfdiskJson
+#+begin_example json
+{
+  "partitiontable": {
+    "label": "dos",
+    "id": "0x4cd96b11",
+    "device": "/mnt/usb/boot/isos/vyos-1.5-rolling-202501171533-generic-amd64.iso",
+    "unit": "sectors",
+    "sectorsize": 512,
+    "partitions": [{
+      "node": "/mnt/usb/boot/isos/vyos-1.5-rolling-202501171533-generic-amd64.iso1",
+       "start": 64,
+       "size": 1155008,
+       "type": "0",
+       "bootable": true
+     },{
+       "node": "/mnt/usb/boot/isos/vyos-1.5-rolling-202501171533-generic-amd64.iso2",
+       "start": 540,
+       "size": 9536,
+       "type": "ef"
+     }]
+  }
+}
+#+end_example
+
+#+name: sf2dmsetupTable
+#+begin_src jq :cmd-line "-r" :stdin sfdiskJson
+.partitiontable.partitions
+| map(. | "\(.start) \(.size) linear /dev/loop\(.index.dammitJq) 0")
+| join(",")
+| "dontloopmebro,,,ro,\(.)"
+| @text
+#+end_src
+
+#+RESULTS: sf2dmsetupTable
+: dontloopmebro,,,ro,64 1155008 linear /dev/loopnull 0,540 9536 linear /dev/loopnull 0
+
+piping this to a =#!/bin/jq= script should fairly easily produce output for
+=dmsetup=... though it doesn't include uuids.
+
+#+begin_quote
+note: i checked =jc= but it doesn't have a dmsetup parser
+
+I'm not sure if the above jq output is correct for dmsetup. It's been awhile
+#+end_quote
+
+*** nevermind (it's definitely mounting both)
+
+........ but 501MB sounds like a pretty minimal ubuntu 
+
+** why?
+
+#+begin_quote
+mainly bc i forgot a displayport cable... i mean
+
+i need the ip to try something quickly, but i'd need to connect a vyos
+system....
+#+end_quote
+
+Vyos can run containers directly on the router... so provided the
+install(or setup) is simple, this makes it much easier for
+network-glue between containers to survive pluggable WAN connections
+
++ so that makes app(liances) that interact with hardware directly easy
+  to also bind to network services.
++ provided that you can either spec the hardware connections to
+  containers (or disconnect hardware after boot and "chown" it to a VM)
++ for route/switch (on appliances), vyos config makes responding to
+  unexpected host LAN network state far simpler, since you can correct
+  the DSL and restart services.
+  - for local logging, graphana or other monitoring services should
+    give you insight on the device -- these are more resiliant, since
+    they shouldn't have deps on the network you connected to (except
+    maybe for log "pushing" .... push-based is also easier here)
+  - if the applicance runs on a single node (for simple things), you
+    shoudn't need etcd/k3s/k0s for ingress/routing (though you lack
+    declarative specs, k8s *.hml, operators/ecosystem)
+    
+however, the minimal size of the vyos ISO implies
+
++ kernel likely needs tweaking. i wouldn't recommend if you need
+  security, since it's likely speciallized. i'd diff the kconfig with
+  a minimal debian
++ not the only concern, since you're really putting a lot of trust in
+  the container networking and your route/switch config
+
+*** FRC
+
+this should be nice for running services like AdvantageScope or
+something
+
++ it's built on ubuntu (you need ubuntu)
++ there shouldn't be much reason why you couldn't also run virtd VMs
+  to host a developer system
+  - this isolates device ownership from the host to the guest (for better/worse)
++ services can share a single postgres/reddit and expose web services
+  through nginx/caddy
++ a stable subnet with consistent addressing/DNS/etc connect the robot
+  networktables/video/logging to container services (options like ipv6
+  overlay.... ok nvm)
+
+maybe not for competitions, but it definitely makes managing the
+logs/etc easier
+
+
+
+* Guix Home
+
+** For ISO
+
+Even when a home config isn't supplied on =guix system= build for ISO,
+a =$HOME/guix-home-config.scm= template is created.
+
+
+
+* Vyos
+
+need to check whether my Vyos image uses DHCP or autosets a networking
+config (it does start SSH)
+
+** dmsetup (TODO: move)
+
+$ dmsetup create $(ls /mnt/usb/boot/isos/vyos*.iso) vyos
+
+nevermind, dmsetup requires a concise table spec (or cli flags to pass =<(tbl file)= ). it's
+not luks, so it won't load. mount autopicks the first device.
+
+*** concise_table_spec
+
+=<name>,<uuid>,<minor>,<flags>,<table>[,<table>+]= followed by
+optional =[;<name>,<uuid>,<minor>,<flags>,<table>[,<table>+]]=
+
+examples:
+
++ "A simple linear read-only device"
+  - =test-linear-small,,,ro,\= slash newline
+  - =0 2097152 linear /dev/loop0 0,\= table 1
+  - =2097152 2097152 linear /dev/loop1 0= table 2
+
++ "Two linear devices"
+  - =test-linear-small,,,,\=
+    - =0 2097152 linear /dev/loop0 0;\= dev1 table
+  - =test-linear-large,,,,\=
+    - =0 2097152 linear /dev/loop1 0,\= dev2 table
+  -  =2097152 2097152 linear /dev/loop2 0=
+
+The table specs here being linear:
+
+=$start $len linear $linDev $linStart=
+
+*** sfdisk
+
+$ sfdisk -lJ vyos-1.5-rolling-202501171533-generic-amd64.iso
+
+<e
+{
+   "partitiontable": {
+      "label": "dos",
+      "id": "0x4cd96b11",
+      "device": "/mnt/usb/boot/isos/vyos-1.5-rolling-202501171533-generic-amd64.iso",
+      "unit": "sectors",
+      "sectorsize": 512,
+      "partitions": [
+         {
+            "node": "/mnt/usb/boot/isos/vyos-1.5-rolling-202501171533-generic-amd64.iso1",
+            "start": 64,
+            "size": 1155008,
+            "type": "0",
+            "bootable": true
+         },{
+            "node": "/mnt/usb/boot/isos/vyos-1.5-rolling-202501171533-generic-amd64.iso2",
+            "start": 540,
+            "size": 9536,
+            "type": "ef"
+         }
+      ]
+   }
+} 
+>e
+
+<s jq :jq-args "-r"
+.partitiontable.partitions
+ | map(.                     | "\(.start) \(.size) linear /dev/loop\(.index.dammitJq) 0" ) |
+ | join(",")                 |                                                             |
+ | "dontloopmebro,,,ro,\(.)" |                                                             |
+ | @text                     |                                                             |
+>s
+
+piping this to a =#!/bin/jq= script should fairly easily produce
+output for =dmsetup=... though it doesn't include uuids.
+
+*** nevermind (it's definitely mounting both)
+
+........ but 501MB sounds like a pretty minimal ubuntu 
+
+** why?
+
+<q
+mainly bc i forgot a displayport cable... i mean
+
+i need the ip to try something quickly, but i'd need to connect a vyos
+system....
+>q
+
+Vyos can run containers directly on the router... so provided the
+install(or setup) is simple, this makes it much easier for
+network-glue between containers to survive pluggable WAN connections
+
++ so that makes app(liances) that interact with hardware directly easy
+  to also bind to network services.
++ provided that you can either spec the hardware connections to
+  containers (or disconnect hardware after boot and "chown" it to a VM)
++ for route/switch (on appliances), vyos config makes responding to
+  unexpected host LAN network state far simpler, since you can correct
+  the DSL and restart services.
+  - for local logging, graphana or other monitoring services should
+    give you insight on the device -- these are more resiliant, since
+    they shouldn't have deps on the network you connected to (except
+    maybe for log "pushing" .... push-based is also easier here)
+  - if the applicance runs on a single node (for simple things), you
+    shoudn't need etcd/k3s/k0s for ingress/routing (though you lack
+    declarative specs, k8s *.hml, operators/ecosystem)
+    
+however, the minimal size of the vyos ISO implies
+
++ kernel likely needs tweaking. i wouldn't recommend if you need
+  security, since it's likely speciallized. i'd diff the kconfig with
+  a minimal debian
++ not the only concern, since you're really putting a lot of trust in
+  the container networking and your route/switch config
+
+*** FRC
+
+this should be nice for running services like AdvantageScope or
+something
+
++ it's built on ubuntu (you need ubuntu)
++ there shouldn't be much reason why you couldn't also run virtd VMs
+  to host a developer system
+  - this isolates device ownership from the host to the guest (for better/worse)
++ services can share a single postgres/reddit and expose web services
+  through nginx/caddy
++ a stable subnet with consistent addressing/DNS/etc connect the robot
+  networktables/video/logging to container services (options like ipv6
+  overlay.... ok nvm)
+
+maybe not for competitions, but it definitely makes managing the
+logs/etc easier
+
+

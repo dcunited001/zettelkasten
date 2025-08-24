@@ -1,0 +1,105 @@
+:PROPERTIES:
+:ID:       15143c8e-b6fc-4dc0-a35e-0fc6cbcc0cd9
+:END:
+#+TITLE: NixOS: Provision Machines Remotely via SSH
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:48d763a8-5579-4585-a9a2-e7cbb11701fe][Homelab]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+
+* Docs
++ [[https://nix.dev/tutorials/nixos/provisioning-remote-machines][Provisioning Remote Machines]] provision via SSH after DHCP & =sshd= startup
++ [[https://nixos.org/manual/nixos/stable/#sec-building-image][Building a NixOS Live ISO]]
++ See [[https://github.com/drduh/YubiKey-Guide?tab=readme-ov-file#install-software][drduh/YubiKey-Guide under install-software]]
+
+* Overview
+
+** =npins=
+
+Somewhat compatible with flakes, but typically mutally exclusive.
+
+** Startup image
+
+While this /can be/ the NixOS Installer, you'd need to rebuild it to enable =sshd=
+and add necessary ssh keys. Rebuilding the entire nixos installer is likely to
+be slow & results in a large-ish image.
+
++ it's more efficient to build a minimal system with =kexec= support, an =sshd=
+  service and the necessary SSH keys.
+
+* Testing =npins=
+
+I'll need to understand how to work what =npins= produces into my existing
+flake/dotfiles
+
+#+begin_src shell
+t=$(mktemp -d)
+
+nix-shell -p npins
+npins init
+npins add github nix-community disko
+npins add github nix-community nixos-anywhere
+#+end_src
+
+** =npins init= and =npins add=
+
+Creates:
+
+#+begin_example
+.
+└── npins
+    ├── default.nix
+    └── sources.json
+#+end_example
+
+For now, =npins add= only seems to add entries to =npins/sources.json=
+
+After =disko= and  =nixos-anywhere=, you get
+
+#+begin_example json
+{
+  "pins": {
+    "disko": {
+      "type": "GitRelease",
+      "repository": {
+        "type": "GitHub",
+        "owner": "nix-community",
+        "repo": "disko"
+      },
+      "pre_releases": false,
+      "version_upper_bound": null,
+      "release_prefix": null,
+      "submodules": false,
+      "version": "v1.12.0",
+      "revision": "7121f74b976481bc36877abaf52adab2a178fcbe",
+      "url": "https://api.github.com/repos/nix-community/disko/tarball/v1.12.0",
+      "hash": "0wbx518d2x54yn4xh98cgm65wvj0gpy6nia6ra7ns4j63hx14fkq"
+    },
+    "nixos-anywhere": {
+      "type": "GitRelease",
+      "repository": {
+        "type": "GitHub",
+        "owner": "nix-community",
+        "repo": "nixos-anywhere"
+      },
+      "pre_releases": false,
+      "version_upper_bound": null,
+      "release_prefix": null,
+      "submodules": false,
+      "version": "1.11.0",
+      "revision": "55fc48f9677822393cd9585b6742e1194accf365",
+      "url": "https://api.github.com/repos/nix-community/nixos-anywhere/tarball/1.11.0",
+      "hash": "01k91p2i7vqdvwkdh76fw9baj906mny3p85ix980rjzhr6yc4m45"
+    },
+    "nixpkgs": {
+      "type": "Channel",
+      "name": "nixpkgs-unstable",
+      "url": "https://releases.nixos.org/nixpkgs/nixpkgs-25.11pre846420.97eb7ee0da33/nixexprs.tar.xz",
+      "hash": "0wq0s44ail00drd9b00lhsm9gwm6wk157lz5gadn9d3ci4mb30nc"
+    }
+  },
+  "version": 5
+}
+#+end_example
