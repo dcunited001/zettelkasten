@@ -19,6 +19,102 @@
 
 * Topics
 
+** Facter
+
+*** Collect
+
+#+begin_src shell
+# sudo is required, as is "--option experimental-features 'nix-command flakes'"
+sudo nix run nixpkgs#nixos-facter -- -o factor.json
+#+end_src
+
+*** Query
+
+still wish it was a bit easier to zip these paths.
+
+#+begin_src shell :results output verbatim
+yq -r  'paths | select(last == "index") | join("/")' ~/.dotfiles/nixos/hosts/anywhere/facter.yml \
+    | tree --noreport --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── hardware
+    ├── bridge
+    │   ├── 0
+    │   │   └── index
+    │   ├── 1
+    │   │   └── index
+    │   ├── 2
+    │   │   └── index
+    │   └── 3
+    │       └── index
+    ├── disk
+    │   ├── 0
+    │   │   └── index
+    │   └── 1
+    │       └── index
+    ├── graphics_card
+    │   └── 0
+    │       └── index
+    ├── hub
+    │   ├── 0
+    │   │   └── index
+    │   └── 1
+    │       └── index
+    ├── keyboard
+    │   └── 0
+    │       └── index
+    ├── memory
+    │   └── 0
+    │       └── index
+    ├── monitor
+    │   └── 0
+    │       └── index
+    ├── network_controller
+    │   ├── 0
+    │   │   └── index
+    │   └── 1
+    │       └── index
+    ├── network_interface
+    │   ├── 0
+    │   │   └── index
+    │   ├── 1
+    │   │   └── index
+    │   └── 2
+    │       └── index
+    ├── pci
+    │   ├── 0
+    │   │   └── index
+    │   ├── 1
+    │   │   └── index
+    │   ├── 2
+    │   │   └── index
+    │   ├── 3
+    │   │   └── index
+    │   ├── 4
+    │   │   └── index
+    │   ├── 5
+    │   │   └── index
+    │   └── 6
+    │       └── index
+    ├── storage_controller
+    │   ├── 0
+    │   │   └── index
+    │   └── 1
+    │       └── index
+    ├── unknown
+    │   └── 0
+    │       └── index
+    ├── usb
+    │   └── 0
+    │       └── index
+    └── usb_controller
+        └── 0
+            └── index
+#+end_example
+
 ** Store
 
 *** Path info
@@ -33,7 +129,6 @@ nix path-info --json --all --closure-size
 #+begin_src jq :stdin nixPathInfoAll :results output code :wrap example json
 map(select(.closureSize > 1e9)) | sort_by(.closureSize) | map([.path, .closureSize])
 #+end_src
-
 ** Flake
 
 *** TL;DR;
@@ -51,6 +146,15 @@ map(select(.closureSize > 1e9)) | sort_by(.closureSize) | map([.path, .closureSi
 + nix repl . :: start a repl using the flake
 + trace ::
 + builtins.trace ::
+*** nixtract
+
++ [[https://github.com/tweag/nixtract][tweag/nixtract]]
+
+**** JSON Schema
+
+#+begin_src shell
+nixtract --output-schema
+#+end_src
 
 *** Prefetch
 
@@ -424,6 +528,135 @@ nix flake archive $f --json \
 #+RESULTS:
 [[file:img/nix/flakeArchiveHomeManager.svg]]
 
+** Flake Schemas
+
+See [[https://github.com/DeterminateSystems/flake-schemas?tab=readme-ov-file#experimenting-with-flake-schemas][DeterminateSystems/flake-schemas#Experimenting-with-flake-schemas]]
+
+#+name: extractFlakeSchema
+#+headers: :results output file
+#+begin_src shell :var flakeUrl="DeterminateSystems/flake-schemas" out="nixpkgs.schema.json" q="."
+url="https://flakehub.com/f/$flakeUrl/*"
+outfile=./img/nix/$out
+nix run github:DeterminateSystems/nix-src/flake-schemas -- \
+  flake show --json "$url" | jq "$q" > $outfile
+echo -n $outfile
+#+end_src
+
+#+RESULTS: extractFlakeSchema
+[[file:./img/nix/nixpkgs.schema.json]]
+
+*** Schemas
+
+These dump to =./img/nix/*.json=
+
+#+name: jqDelDoc
+#+begin_example jq
+walk(if (type=="object") then del(.doc) else . end)
+#+end_example
+
+#+name: catSchema
+#+begin_src shell :var schema="./img/nix/nixpkgs.schema.json"
+# ... bc it's easier this way
+cat $schema
+#+end_src
+
+**** nixpkgs
+
+#+name: nixpkgsSchemaFile
+#+call: extractFlakeSchema(flakeUrl="NixOS/nixpkgs", q=jqDelDoc, out="nixpkgs.schema.json") :eval query :cache yes
+
+#+RESULTS[6ac45c9d77966eb6f13036b6f78ae4366d58d596]: nixpkgsSchemaFile
+[[file:./img/nix/nixpkgs.schema.json]]
+
+#+name: nixpkgsSchema
+#+call: catSchema(schema="./img/nix/nixpkgs.schema.json") :results output silent
+
+#+begin_src plantuml :results output file :file img/nix/nixpkgs.schema.json.png :noweb yes
+@startjson
+<<nixpkgsSchema()>>
+@endjson
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/nixpkgs.schema.json.svg]]
+
+
+
+*** Not Realy Understanding
+
+#+name: jqMainFlakes
+#+begin_example jq
+map(select(.project == "nixpkgs"
+           or .project == "devShells"
+           or .project == "apps"
+           or .project == "checks"
+           or .project == "darwinConfigurations"
+           or .project == "darwinModules"
+           or .project == "devShells"
+           or .project == "dockerImages"
+           or .project == "formatter"
+           or .project == "homeConfigurations"
+           or .project == "homeModules"
+           or .project == "hydraJobs"
+           or .project == "legacyPackages"
+           or .project == "nixosConfigurations"
+           or .project == "nixosModules"
+           or .project == "overlays"
+           or .project == "packages"
+           or .project == "chemas"
+           or .project == "templates"))
+#+end_example
+
+
+#+begin_src shell :results output code :wrap example json :var q=jqMainFlakes
+fh list flakes --json | jq "$q"
+#+end_src
+
+#+RESULTS:
+#+begin_example json
+[
+  {
+    "org": "dwirx",
+    "project": "nixpkgs"
+  },
+  {
+    "org": "michaelvanstraten",
+    "project": "templates"
+  },
+  {
+    "org": "NixOS",
+    "project": "nixpkgs"
+  },
+  {
+    "org": "rigille",
+    "project": "packages"
+  },
+  {
+    "org": "weiseguy1",
+    "project": "templates"
+  }
+]
+#+end_example
+
+#+begin_src shell :results output code :wrap example org
+fh list flakes | sed -e 's/,.*//g' \
+    | sed -E 's/(.*)\/(.*)/#+call extractFlakeSchema(flakeUrl="\1\/\2", out="\2.schema.json")/g' \
+    | grep nixpkgs
+#+end_src
+
+#+RESULTS:
+#+begin_example org
+,#+call extractFlakeSchema(flakeUrl="bobvanderlinden/nixpkgs-ruby", out="nixpkgs-ruby.schema.json")
+,#+call extractFlakeSchema(flakeUrl="cachix/nixpkgs-python", out="nixpkgs-python.schema.json")
+,#+call extractFlakeSchema(flakeUrl="DeterminateSystems/nixpkgs-weekly", out="nixpkgs-weekly.schema.json")
+,#+call extractFlakeSchema(flakeUrl="dwirx/nixpkgs", out="nixpkgs.schema.json")
+,#+call extractFlakeSchema(flakeUrl="karitham/knixpkgs", out="knixpkgs.schema.json")
+,#+call extractFlakeSchema(flakeUrl="Mic92/nixpkgs-review", out="nixpkgs-review.schema.json")
+,#+call extractFlakeSchema(flakeUrl="nix-community/nixpkgs-fmt", out="nixpkgs-fmt.schema.json")
+,#+call extractFlakeSchema(flakeUrl="NixOS/nixpkgs", out="nixpkgs.schema.json")
+,#+call extractFlakeSchema(flakeUrl="ryantm/nixpkgs-update", out="nixpkgs-update.schema.json")
+,#+call extractFlakeSchema(flakeUrl="stackbuilders/nixpkgs-terraform", out="nixpkgs-terraform.schema.json")
+#+end_example
 
 ** Data from =nix=
 
@@ -1583,6 +1816,7 @@ paths | select(last == "inputs") #as $p | getpath($p)
 fdsa
 
 #+begin_example jq
+
 [.. | objects | paths | select(last == "inputs")] | unique
 #+end_example
 

@@ -1,0 +1,255 @@
+:PROPERTIES:
+:ID:       23b71ad1-3767-4205-96af-61936d9dff72
+:END:
+#+TITLE: NixOS: Trying disko, facter and nixos-anywhere
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:80ccbcbb-a244-418f-be86-47e8969928a5][LUKS]]
++ [[id:d8216961-cd6a-47cd-b82a-8cd67fe7190f][BTRFS]]
+
+* Resources
+
+* Notes
+
+** Boot Basic Installer ISO
+
+After building [[https://github.com/dcunited001/ellipsis/blob/1a6aa5072c1c0062240bbc7debda5e3a31ccf055/nixos/hosts/anywhere/configuration.nix][this ISO]] and imaging it to a USB, I booted up.
+
+* Disko
+
+** Questions
+
+*** When does it format?
+
+Any questions on this, then use =disko --dry-run --mode format disko-config.nix=
+and =disko= will emit the script it plans to use.
+
+Disko will fail if it can't make =/etc/fstab= +and =/etc/crypttab=+ match what it
+reads from your configuration. The project doesn't mention =/etc/crypttab= idk
+why.
+
+*** Incremental changes
+
++ Incremental changes are possible (via [[https://github.com/nix-community/disko/pull/568][#568]]), but this is a bit dicey
+
+*** Host specific details
+
+This is maybe a bad pattern with automated tools like =disko=. If disks'
+configurations are parameterized by hostname/etc, then disko may assume it needs
+to run formatting operations.
+
++ Hard-coding details like this limit reuse
++ parameterizing the =disko.nix= configuration, add to derivation depth,
+  order-dependencies, etc -- in general, this increases cognitive load and
+  (maybe) the chance that =some. thing. unexpect. happ←=
+
+
+* Disko API
+
+** lib/types
+
+#+begin_quote
+Warning: this was mostly from a =grep= for =lib.mkOption= ...
+#+end_quote
+
++ Instead, grepping for =[lL]ib.[a-zA-Z]+.*{= covers almost everything (<500
+  results in the =./lib= directory)
++ Embark then lets you search these search results.
++ The indentation pretty much covers where types are nested
++ I think =manix= will get these (but the disko repo says it has trouble
+  generating docs)
+
+So then, I just skipped these. The examples are pretty good.
+
+| gpt | mdadm | mdraid | table | bcachefs |
+
+There are several options not covered below
+
++ _mount, _unmount :: looks like hooks, but they may act differently depending
+  on what's being hooked.
++ _create
++ _config
+
+
+*** Basic
+**** disk
+
+| type | device |
+
+disk-specific
+
+| name | destroy  | imageName | imageSize |
+
+internal
+
+| _meta | _config | _pkgs |
+
+**** filesystem
+
+| type | device | mountpoint | mountOptions | extraArgs |
+
+fs-specific
+
+| format |
+
+**** nodev
+
+| type | fsType | device | mountpoint | mountOptions |
+
+internal
+
+| _meta | _config | _pkgs |
+
+**** swap
+
+| type | device | mountOptions | extraArgs |
+
+swap-specific
+
+| discardPolicy | priority | randomEncryption | resumeDevice |
+*** Partition Table
+
+*** Btrfs
+**** btrfs
+
+| type | device | mountpoint | mountOptions | extraArgs |
+
+attrsOf
+
+| swaptype.<attrName>               | size | path | priority  | options      |            |
+| subvolumes.<btrfsPath>.<attrname> | name | type | extraArgs | mountOptions | mountpoint |
+
+internal
+
+| _parent | _meta | _config | _pkgs |
+
+**** bcachefs_filesystem
+
+| type | device | filesystem | extraFormatArgs | label |
+
+internal
+
+| _parent | _meta | _config | _pkgs |
+
+*** Device Mapper
+
+The device mapping for the PV's VG is based on a string-match (afaik). This is
+during =_create=, but also when the =disko= configuration is assembling device
+dependencies.
+
+**** lvm_pv
+
+| type | device |
+
+lvm_pv-specific
+
+| vg |
+
+internal
+
+| _parent | _meta | _config | _pkgs |
+
+**** lvm_vg
+
+| name |
+
+lvm_vg-specific
+
+| type | lvs |
+
++ type :: mirror, raid0, raid1, raid4, raid5, raid6, thin-pool, thinlv
+
+| lvs.<name> | name | priority | size | lvm | extraArgs | pool |
+
+**** luks
+
+doesn't mention =/etc/crypttab=
+
+| type | name | device |
+
+luks-specific
+
+| settings     | keyFile         | passwordFile  | askPassword | additionalKeyFiles |
+| initrdUnlock | extraFormatArgs | extraOpenArgs |             |                    |
+
++ initrdUnlock :: whether to add an entry to unlock disk during initrd
++ extraFormatArgs :: pass to =cryptsetup luksFormat=
++ extraOpenArgs :: pass to =cryptsetup luksOpen=
+
+*** ZFS
+
+**** zfs
+
+| type | device |
+
+zfs-specific
+
+| pool |
+
+internal
+
+| _parent | _meta | _config | _pkgs |
+
+**** zfs_fs
+
+
+| name | type | device | mountpoint | mountOptions |
+
+zfs_fs-specific
+
+| options | pool | _name |
+
++ _name :: "fully quantified name" for the dataset
+
+internal
+
+| _parent | _meta | _config | _pkgs | _createFilesystem |
+
+**** zfs_volume
+
+| name | type | mountOptions |
+
+zfs_volume-specific
+
+| options | partitionType |
+
++ options :: dataset =options=
++ size :: dataset =size=
++ extraArgs :: extra args passed to =zfs create=
++ partitionType :: diskoLib.partitionType
+
+internal
+
+| _parent | _meta | _config | _pkgs |
+
+**** zpool
+
+| name | type | mountpoint | mountOptions
+
+zpool-specific
+
+| mode | options | rootFsOptions | datasets |
+
+internal
+
+=vdev= is a submodule. =vdev.members= is =lib.types.listOf lib.types.string=
+
+| mode | members |
+
+attrsOf
+
+topology
+
+| type | vdev | spare | log | dedup | special | cache |
+
+Valid =modeOptions=
+
+| "" | mirror | raidz | raidz1 | raidz2 | raidz3 | {attr = set} |
+
+internal
+
+| _meta | _config | _pkgs |
+

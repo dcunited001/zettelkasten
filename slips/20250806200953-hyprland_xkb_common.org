@@ -120,6 +120,242 @@ The keyboard's =fn= key remaps =print/break/pause= on top of =insert/home/end=, 
 i'll probably map one of those to an additional =super= or something. I want
 relative symmetry with functionality.
 
+* Modifier Bits
+
+** TLDR
+
+Need to check binds occasionally to grok how =# hyprlang if SOMEENVVAR= actually
+works. I'm hoping I don't need to restart or relogin while I do that.
+
+So, i remapped music/audio to keybinds, but =# hyprlang= resets the value to blank
+is wrong. Are they actually mapped as such?... Nope. The keys triggering the
+actions aren't either.
+
+#+begin_src shell :results output table :var q=jqHyprBindCSV
+# what's on lvl5?
+hjbinds 32 | jq -r "$q"
+
+# I guess I need an option to return everything that matches the mask
+#+end_src
+
+#+RESULTS:
+| arg | catch_all | description | dispatcher | has_description | key | keycode | locked | longPress | modmask | mouse | non_consuming | release | repeat | submap |
+|  11 | false     |             | workspace  | false           |     |      10 | false  | false     |      32 | false | false         | false   | false  |        |
+|  12 | false     |             | workspace  | false           |     |      11 | false  | false     |      32 | false | false         | false   | false  |        |
+|  13 | false     |             | workspace  | false           |     |      12 | false  | false     |      32 | false | false         | false   | false  |        |
+
+#+name: jqHyprBindCSV
+#+begin_example jq
+# this should apparently go in ~/.jq/convert.jq
+def json2csv:
+  (map(keys) | add | unique) as $cols
+  | map(. as $row | $cols | map($row[.])) as $rows
+  | $cols, $rows[]
+  | @csv;
+
+map(select(.dispatcher == "workspace")) | json2csv
+#+end_example
+
+
+Thanks to: [[https://nntrn.github.io/jq-recipes/transform/json2csv.html][jq recipes (json2csv)]]
+
+... as this wasn't going anywhere
+
+#+begin_example jq
+map(select(.dispatcher == "workspace")) | ([.[0] | keys] + [.[1:] | values])
+# => [ [keys...], {"what": "the"}, {"eff": "??"}, {"and": "how get keythings?"}] ]
+#+end_example
+
+** Dumping =wev=
+
+#+name: wevDump
+#+begin_src shell
+wev | grep depressed | sed -E 's/  +//g' | sort | uniq | cut -f2- -d' '
+# and mark region, then C-u M-| "sort -k '1.7,1.8'" if necessary
+
+# halfway faking the babel here, to avoid re-eval without worrying about :cache
+#+end_src
+
+#+RESULTS: wevDump
+| 00000001: | Shift   |         |      |      |      |
+| 00000004: | Control |         |      |      |      |
+| 00000020: | Mod3    |         |      |      |      |
+| 00000021: | Shift   | Mod3    |      |      |      |
+| 00000024: | Control | Mod3    |      |      |      |
+| 00000025: | Shift   | Control | Mod3 |      |      |
+| 00000028: | Mod1    | Mod3    |      |      |      |
+| 00000029: | Shift   | Mod1    | Mod3 |      |      |
+| 0000002C: | Control | Mod1    | Mod3 |      |      |
+| 0000002D: | Shift   | Control | Mod1 | Mod3 |      |
+| 00000041: | Shift   | Mod4    |      |      |      |
+| 00000060: | Mod3    | Mod4    |      |      |      |
+| 00000061: | Shift   | Mod3    | Mod4 |      |      |
+| 00000064: | Control | Mod3    | Mod4 |      |      |
+| 00000065: | Shift   | Control | Mod3 | Mod4 |      |
+| 00000068: | Mod1    | Mod3    | Mod4 |      |      |
+| 00000069: | Shift   | Mod1    | Mod3 | Mod4 |      |
+| 0000006C: | Control | Mod1    | Mod3 | Mod4 |      |
+| 0000006D: | Shift   | Control | Mod1 | Mod3 | Mod4 |
+
+And in reverse with =C-u M-| rev= the modifiers are "more clear"
+
+#+begin_example
+3doM :02000000
+3doM tfihS :12000000
+3doM lortnoC :42000000
+3doM lortnoC tfihS :52000000
+3doM 1doM :82000000
+3doM 1doM tfihS :92000000
+3doM 1doM lortnoC :C2000000
+3doM 1doM lortnoC tfihS :D2000000
+4doM :04000000
+4doM tfihS :14000000
+4doM 3doM :06000000
+4doM 3doM tfihS :16000000
+4doM 3doM lortnoC :46000000
+4doM 3doM lortnoC tfihS :56000000
+4doM 3doM 1doM :86000000
+4doM 3doM 1doM lortnoC :C6000000
+4doM 3doM 1doM lortnoC tfihS :D6000000
+#+end_example
+
+That's got most of them, but =Altgr= is hard to combine for me as =fn-home=. it may
+be missing one or two. I was mainly interested in the modifier bits.
+
++ Ctrl is Mod1 :: adds =8=
++ Altgr is Mod2 :: adds =16=
++ LVL5 as Mod3 :: adds =32=
++ Super is Mod4 :: adds =64=
+
+To update my =hjbinds= script:
+
+#+begin_example emacs-lisp
+;; this was a string, but now it's "emacs-lisp"
+;; "
+(mapcar (-partial #'+ 32) (list
+0  1
+       4  5
+               8  9  12 13
+64 65
+       68 69
+               72 73 76 77
+               )) ;; => (32 33 36 37 40 41 44 45 96 97 100 101 104 105 108 109)
+;; "
+#+end_example
+
+At the end of =mapcar=, hit C-u C-x C-e.
+
++ I used the same approach to update =MODMASKS= below
++ A different approach would be to munge the text for =tree=, but that:
+  - There's less control over the output.
+  - It requires a bit too much prep: is it now a script for a script? which part
+    of this is automated?
++ Another simpler way would be to grab =MODMASKS=, loop over it and use =case=
+  with bitmasks ... without =;;= for shift, ctrl, alt.
+
+After trying the below bitmask ... is it just me or are bitmasks more convenient
+than basically every other feature in =/bin/sh=? That's strange. =Food for thoug--
+... (Error | out | of | memory | ??)=
+
+** hjbinds
+
+The script dumps binds. It only processes one bind.
+
+#+begin_src shell
+# list everything.
+lvl5mod=32
+for i in "$(hjbinds --list-mods)"; do
+  if (( $lvl5mod & $i != 0 )); then echo $i; fi;
+done | tr '\n' ' '
+# that's not really that hard.
+
+# bad ux though, but so is not being able to write #!/bin/sh & packages
+#+end_src
+
+#+RESULTS:
+: 32 33 36 37 40 41 44 45 96 97 100 101 104 105 108 109
+
+The Gemini result for "bash bitmasking" was pretty useful. I didn't know about
+the =(( ... ))= syntax ... but the conditional fails if =(( ... ))= evalutes to =0=,
+since it's um a =test=, which I guess is the point.
+
+Anyways... The script dumps binds.
+
+#+begin_src shell
+#!/bin/sh
+
+MODBITS=(1 4 8 16 32 64)
+# Value for -M must match a valid mask: ${MODBITS[@]}
+# nevermind... i'd rather have the caller loop the results
+# M|+M) matchmasks=$OPTARG ;;
+
+MODMASKS=(0 1 4 5 8 9 12 13 16 17 20 21 24 25 28 29 32 33 36 37 40 41 44 45 64 65 68 69 72 73 76 77 80 81 84 85 88 89 92 93 96 97 100 101 104 105 108 109)
+
+MODHELP="
+modmasks:
+
+             shift:
+             0  1        ctrl:
+                         4  5         alt:
+                                      8   9   12  13
+    altgr:   16 17
+                         20  21
+                                      24  25  28  29
+    lvl5:    32 33
+                         36 37
+                                      40  41  44  45
+    super:   64 65
+                         68 69
+                                      72  73  76  77
+      A-s:   80 81
+                         84 85
+                                      88  89  92  93
+    A-H-s:   96 97
+                        100 101
+                                      104 105 108 109
+"
+
+[[ "$1" == "--list-mods" ]] && echo "${MODMASKS[@]}" && exit 0
+
+select=""
+while getopts :lroenmd OPT; do
+    case $OPT in
+        l|+l) select+=".locked and " ;;
+        r|+r) select+=".release and " ;;
+        # c|+c) select+=".click" ;;
+        # g|+g) select+=".drag" ;;
+        o|+o) select+=".longPress and " ;;
+        e|+e) select+=".repeat and " ;;
+        n|+n) select+=".non_consuming and " ;;
+        m|+m) select+=".mouse and " ;;
+        d|+d) select+=".has_description and " ;;
+        *)
+            echo "usage: `basename $0` [+-lroenmd} [--] modmask...
+
+${MODHELP[@]}
+"
+            exit 2
+    esac
+done
+shift `expr $OPTIND - 1`
+OPTIND=1
+
+[[ $# -lt 1 ]] && echo "requires modmask" && exit 1;
+
+modmask=""
+for m in ${MODMASKS[@]}; do
+    if [[ "$1" == "$m" ]]; then
+        modmask="$1";
+    fi
+done
+
+[[ -z "$modmask" ]] && echo "a valid modmask is required" && exit 1;
+
+set -o pipefail # ... outside of shell?
+hyprctl binds -j | jq '. | map(select('"$select .modmask == $modmask"'))'
+
+# | select(.submap == "" and .modmask == 0) '
+#+end_src
 * ...
 
 Needlessly depressing overview ...

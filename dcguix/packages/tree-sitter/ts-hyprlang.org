@@ -3,11 +3,22 @@
 :END:
 #+title: DC Guix: ts-hyprlang
 
+
+notes on arch:
+
++ =yay -Syu automake autoconf gettext texlive graphviz help2man guile-gnutls guile-git=
++ set =ACLOCAL_PATH=/usr/share/local=
++ ./bootstrap
++ ./configure --localstatedir=/gnu/var
+
+
 * Roam
 + [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
 + [[id:aef34489-3943-4c2f-bf88-828f5ea39e16][Tree-sitter]]
 + [[id:b4e1fa85-53ca-467e-aac2-9a4e37b80144][TCL]]
-  
+
+
+
 * Resources
 ** hyprlang
 
@@ -15,96 +26,11 @@ Emacs TS mode: [[https://github.com/Nathan-Melaku/hyprlang-ts-mode][Nathan-Melak
 
 TS Grammar: [[https://github.com/tree-sitter-grammars/tree-sitter-hyprlang][tree-sitter-grammars/tree-sitter-hyprlang]]
 
-** TCL
-
-[[https://github.com/tree-sitter-grammars/tree-sitter-tcl][tree-sitter-grammars/tree-sitter-tcl]] the community package. didn't have time
-to fix it.
-
-[[https://hg.sr.ht/~cdrozak/tree-sitter-tcl][~cdrozak/tree-sitter-tcl]] an older version, completely separate from the above
-project. this one's easier to build.
-
-*** TCL in OCC
-
-#+begin_quote
-oops i stumbled on an old idea.
-#+end_quote
-
-#+begin_quote
-This was a good idea that I would have liked to explore turning into:
-
-- first a basic emacs-driven OpenSCAD (but with more dimensions)
-- then a means of sharing simple parts using a package manager ... but with
-  parameterizable packages or builds.
-
-e.g. 2080/etc aluminum with: pkg params like length; build params like a
-  composite package running a subtracted inner extrusion; composite packages
-  that bundle STEP-files by [[https://en.wikipedia.org/wiki/Uniform_Resource_Identifier][URI]] or simple screws/parts.
-
-it would totally fail at anything complex though, but probably worth at least
-trying to umm learn things about CAD and whatnot.
-#+end_quote
-
-I wanted to hack a bit on OpenCascade's hundreds of TCL test cases.
-
-+ I ported the =syntax-table= from emacs' =tcl-mode= over to =tcl-ts-mode=, which
-  worked as a PoC.
-+ I had tried it on [[https://github.com/dcunited001/.emacs.guix/blob/master/lib/tcl-ts/test/Penrose.tcl][Penrose.tcl]], which generates a [[https://en.wikipedia.org/wiki/Penrose_triangle][penrose triangle]] -- /the
-  output can easily be exported to various formats/.
-
-Without an =ob-tcl= that connects OCC's TCL =wish= repl, the workflow is too
-stateful and org-babel isn't the best way to organize code.
-
-- That REPL is fairly standard, so a =comint-mode= derivative already exists. It's
-  old. IIRC I had started to test this out and it seemed alright.
-
-It _could_ work for hacking on CAD... _but model parameterization is always at
-least as hard as dimensional analysis_. This is /apropos to/ FreeCAD's [[https://wiki.freecad.org/Topological_naming_problem/en][Topological
-Naming Problem]], though that's more about the topology than the naming: it
-requires flexible data structures to index topological features in a consistent
-& extensible manner.
-
-+ Solving the topological naming problem for the program requires the UI relate
-  events to vertices/faces/edges/BREPs, then enumerate what's possible and
-  culling out what's not.
-  - The CAD program must be constructed from the ground up to allow features
-    like those from Inventor where you reorder operations. The similarity
-    between that UI and the ideas behind Haskell & functional programming are
-    profound.
-  - A typology of constraints is effectively enumerated by the constraints
-    available in CAD: 2D sketch, 3D coordinate relations, datum bases, =GD&T=.
-    Only some are valid. FreeCAD's topological naming problem emerged bc
-    higher-order morphisms (composition of multiple "inventor drag'n'drops")
-    need to rework data structures so indexing is consistent for subsequent
-    morphisms that should also be possible.
-    - i.e. the CAD program must retain clarity in it's organization of
-      topological object/index data to avoid problems _while also_ being capable
-      of reorganizing the topological structures.
-    - Ever notice how some Inventor operations take more time than others? And
-      how some break your project if your intuition doesn't clue you into
-      rewinding early with undo?
-  - BREPs must be closed manifolds because, among other reasons, it simplifies
-    and organizes the combinatorics of enumeration. That's a starting point.
-+ If you've ever wondered about algebraic geometry/topology ... it's um hard.
-  Why is a 24-cell a unique 4D platonic polytope? IDK.
-  - This [[https://arxiv.org/pdf/math/9905023][1999 paper]] came up which is loosely related and "hey!" cool pictures
-    ... it really is close though. Only glanced at it though.
-
-So the real problem here: CAD is just hard. Scripts that name features with
-dimensional references need to consistently track the "configuration space" of
-parameters with less constraints.
-
-TCL is pretty dumb (in a good way), so the code ages well (I think?). It has
-some kind of advantages in binding to C/C++ FFI that make it automagic ... no
-idea what the TCL/FFI "it-factor" actually is though.
-
-+ It's notably useful for driving automated testing in complicated scenarios,
-  particularly those involving electronics. Again, no idea what "it" is that
-  made TCL suited to that use.
-
 * Overview
 
+Running the tests wasn't an issue the second time around (in "From Guix Source")
 
-** Main Issues
+** Original Issues
 
 I had tried getting Guix's private =tree-sitter-grammar= methods from
 =./gnu/packages/tree-sitter.scm= to work before, but I wasn't confident enough
@@ -114,8 +40,234 @@ This time around, I was able to get the =(@@ (gnu packages tree-sitter)
 tree-sitter-grammar)= imported. It's connections to other modules and definitions
 were simpler than I had realized. It's still a bit wonky to use regardless
 
+* From Guix Source
 
-* Package
+#+begin_quote
+Note: these notes are for my own benefit. I tried to correct where I could ...
+but probably won't edit it from here on out. You should apply a healthy dose of
+cynicism to everything anyways...
+#+end_quote
+
+On nix, clone guix source to =$checkout=
+
+*guixCheckoutEnv*
+
+#+name: guixCheckoutEnv
+#+begin_src shell
+state=/gnu/var
+store=/gnu/store
+socket=$state/guix/daemon-socket/socket
+#+end_src
+
+*guixWorkspaceEnv*
+
+#+name: guixWorkspaceEnv
+#+begin_src shell
+checkout=/data/ecto/guix/guix
+checkout2=/tmp/tmp.vyK3CrIXNJ/guix
+patch=$checkout/../tree-sitter-hyprlang.patch
+#+end_src
+
++ checkout :: it may help to checkout multiple repos
+  - probably not smart to build in tmp: OOM errors + other potential
+    constraints/security implications (though you're also in a container in
+    =./pre-inst-dir=)
+  - building a kernel for an image can require up to 16GB (safe bet, these also
+    get /built/ inside a =tmpfs=, usually RAM-based)
+
+Ultimately, these =$deps= were only needed because partly built the project with
+./bootstrap, ./configure make & make clean. I guess some state wasn't cleaned.
+
++ I may have specified =./configure --localstatedir=$state= without
+  =--share=$share=, in which case leaving/rentering the container for =make clean=
+  may not have had the intended effect.
+
+#+begin_src shell
+deps=(help2man strace pkg-config gettext autoconf automake glibc make)
+#+end_src
+
++ deps :: +used after build to forward dependencies into container.+ (wrong)
+  - alternatively, I guess you could =./pre-inst-env guix shell=, but these should
+    be the same store items if a single =--localstatedir=$state= is shared with
+    the host system
+  - similar approaches could also migrate a system to a new store (on a new file
+    system), or for chrooting. Using a =$state= dir would require a clean rebuild.
+    - There are better options for those tasks, but it's just important to
+      recognize there doesn't need to be a singular monolithic store.
+
+** Build Guix
+
+The =manifest.scm= provides a generic set of dependencies and tools like
+=git:send-email=, =mumi= for submitting patches
+
+From =$checkout= enter a =guix shell=
+
+#+begin_src shell
+guix shell --container \
+    --share=$socket \
+    --share=$store \
+    -m manifest.scm # no deps are needed
+#+end_src
+
+Setup above *guixCheckoutEnv*
+
+#+begin_src shell
+./bootstrap
+./configure --localstatedir=$state
+make
+make check
+#+end_src
+
+From here prepend the shell script =./pre-inst-env= to your =guix= calls in the
+container
+
++ =$checkout= is built into =./pre-inst-env=
++ =$state= is hard-built into =scripts/guix=
++ I am forwarding my host's =$socket= ... which I think is correct.
++ Analyzing the =./pre-inst-env= then naturally leads into [[https://guix.gnu.org/manual/devel/en/guix.html#Updating-the-Guix-Package][22.16 Updating the Guix
+  Package]], which describes how to update the =guix= package which the build-daemon
+  uses... anyways... =tree-sitter-hyprland= is what I was doing.
+
+*** Errors on =make check=
+
+I've found the logs for one of these
+
+#+begin_example log
+make[4]: *** [Makefile:7263: tests/derivations.log] Error 1
+make[4]: Leaving directory '/tmp/tmp.vyK3CrIXNJ/guix'
+make[3]: *** [Makefile:7246: check-TESTS] Error 2
+make[3]: Leaving directory '/tmp/tmp.vyK3CrIXNJ/guix'
+make[2]: *** [Makefile:7494: check-am] Error 2
+make[2]: Leaving directory '/tmp/tmp.vyK3CrIXNJ/guix'
+make[1]: *** [Makefile:6997: check-recursive] Error 1
+make[1]: Leaving directory '/tmp/tmp.vyK3CrIXNJ/guix'
+#+end_example
+
+I tried to compare the builds. They look like mostly the same failures, though
+=$checkout= and =$checkout2= were built under containers with slightly different
+parameters. They're mostly a few limited network failures invovling
+=web.archive.org= and =Disarchive=.
+
+#+begin_src shell :results output code :wrap example diff
+diff $checkout/guix/tests/derivations.log $checkout2/tests/derivations.log
+#+end_src
+
+** Add =tree-sitter-hyprlang=
+
+Save diff of package content to =tree-sitter-hyprlang.patch=
+
+#+name: tsHyprlandPatch
+#+begin_example diff
+diff --git a/gnu/packages/tree-sitter.scm b/gnu/packages/tree-sitter.scm
+index 608ccfb85ed..6aeecdd4dc5 100644
+--- a/gnu/packages/tree-sitter.scm
++++ b/gnu/packages/tree-sitter.scm
+@@ -525,6 +525,14 @@ (define-public tree-sitter-hcl
+      #:commit commit
+      #:license license:asl2.0)))
+
++(define-public tree-sitter-hyprlang
++  (tree-sitter-grammar
++   "hyprlang" "Hyprlang"
++   "171p3hj36a1jqflg9xv138445j4m4m16na6bgpm1km3l67jhvl54"
++   "3.1.0"
++   #:repository-url
++   "https://github.com/tree-sitter-grammars/tree-sitter-hyprlang"))
++
+ (define-public tree-sitter-java
+   (tree-sitter-grammar
+    "java" "Java"
+#+end_example
+
+** Build =tree-sitter-hyprlang=
+
+Back out of the original =guix shell --container= and enter a new one.
+
+Within the =guix shell --container=
+
+#+begin_src shell
+guix shell --container \
+    --share=$socket \
+    --share=$store \
+    -m manifest.scm -m manifest.scm # ${deps[@]} # are not required (!)
+#+end_src
+
+Build using the =./pre-inst-env guix=
+
+#+begin_src shell
+./pre-inst-env guix build --check tree-sitter-hyprlang
+#+end_src
+
+Run that multiple times to check determinism
+
+** Create Patch
+
+Then create the patch with =magit=. It's easier this way, though =git diff= can be
+used.
+
+#+begin_quote
+After checking [[https://guix.gnu.org/manual/devel/en/guix.html#Submitting-Patches][Submitting Patches]], PRs are now the preferred way to contribute.
+#+end_quote
+
+*** With Magit
+
+Use =magit= to open a diff buffer. Usually, just stage the changes and run =dd= over
+the staging category. In the diff buffer, hit =Ws= which prompts for a file. I'm
+working in a guix checkout using =git-repo=, so I want it in the parent directory
+of the =./guix= checkout, so it can't conflict with updates.
+
+=magit-patch-save= eventually calls =magit-git-insert=, which in this case calls
+this command =git diff -p --no-ext-diff -- > $patch= ... which I believe gives you
+the correct format (I don't think it needs the git ref info in it)
+
+#+begin_src emacs-lisp
+;; with: '((rev nil) (typearg nil) (args "--no-ext-diff") (files nil))
+(magit-git-insert "diff" rev "-p" typearg args "--" files)
+#+end_src
+
+- Usually magit displays all git commands it's run in the process buffer, accessed
+  via =$=. But it handles this differently.
+- I followed =xref= references & instrumented it: hover over =magit-git-insert= and,
+  in doom emacs, hit =C-c l d f= for =+emacs-lisp/edebug-instrument-defun-on=.
+- This instruments the caller, the parent =defun= -- i used to mess up by
+  instrumenting =defun= itself... step with =n=, eval with =e=, continue until
+  breakpoint with =c=.
+- Later use =+emacs-lisp/edebug-instrument-defun-off= or
+  =edebug-remove-instrumentation= and remove breakpoints.
+
+*** Apply patch
+
+If needed, apply the patch against the source tree
+
+#+begin_src shell
+patch --dry-run -p1 -d $checkout2 < $patch
+# remove --dry-run after success
+#+end_src
+
+*** Send Patch
+
+See [[https://guix.gnu.org/manual/devel/en/guix.html#Sending-a-Patch-Series][Sending a patch series]]. Use =git send-email= or =mumi=
+
+This seems antequated, but the workflow actually has its place. It made sense
+for a larger project. It also typically involves designated teams on the other
+end -- so do issues & PR's though. I think there's maybe less automation and
+more intelligent people in these projects. IDK, I only ever really sent one or
+two (one).
+
+You'll learn a lot about quite a bit that you never otherwise would and not
+simply about mail servers. The function of =diff= and =patch= provide an interesting
+connection between the derivative and category theory: there's are wierd natural
+transformations between various combinations of diff, patch, [inverse] patch and
+diff (again).
+
+*** Send Pull Request
+
+And this is where I stop. I need an account and I need to ask about the basic
+process.
+
+* Old
+
+** Package
 
 #+begin_src scheme :tangle ts-hyprlang.scm
 (use-module (ellipsis packages tree-sitter)
@@ -203,7 +355,7 @@ session. It may be possible to submit something on codeberg, but idk for now.
          ((#:tests? _ #f) #f))))))
 #+end_src
 
-** tree-sitter-tcl
+*** tree-sitter-tcl
 
 The first tree-sitter lib I built was for =tree-sitter-tcl=. The newer package
 fails on tests.
@@ -222,3 +374,89 @@ fails on tests.
    #:repository-url
    "https://github.com/tree-sitter-grammars/tree-sitter-tcl")))
 #+end_example
+
+* TCL
+
+[[https://github.com/tree-sitter-grammars/tree-sitter-tcl][tree-sitter-grammars/tree-sitter-tcl]] the community package. didn't have time
+to fix it.
+
+[[https://hg.sr.ht/~cdrozak/tree-sitter-tcl][~cdrozak/tree-sitter-tcl]] an older version, completely separate from the above
+project. this one's easier to build.
+
+** TCL in OCC
+
+#+begin_quote
+oops i stumbled on an old idea.
+#+end_quote
+
+#+begin_quote
+This was a good idea that I would have liked to explore turning into:
+
+- first a basic emacs-driven OpenSCAD (but with more dimensions)
+- then a means of sharing simple parts using a package manager ... but with
+  parameterizable packages or builds.
+
+e.g. 2080/etc aluminum with: pkg params like length; build params like a
+  composite package running a subtracted inner extrusion; composite packages
+  that bundle STEP-files by [[https://en.wikipedia.org/wiki/Uniform_Resource_Identifier][URI]] or simple screws/parts.
+
+it would totally fail at anything complex though, but probably worth at least
+trying to umm learn things about CAD and whatnot.
+#+end_quote
+
+I wanted to hack a bit on OpenCascade's hundreds of TCL test cases.
+
++ I ported the =syntax-table= from emacs' =tcl-mode= over to =tcl-ts-mode=, which
+  worked as a PoC.
++ I had tried it on [[https://github.com/dcunited001/.emacs.guix/blob/master/lib/tcl-ts/test/Penrose.tcl][Penrose.tcl]], which generates a [[https://en.wikipedia.org/wiki/Penrose_triangle][penrose triangle]] -- /the
+  output can easily be exported to various formats/.
+
+Without an =ob-tcl= that connects OCC's TCL =wish= repl, the workflow is too
+stateful and org-babel isn't the best way to organize code.
+
+- That REPL is fairly standard, so a =comint-mode= derivative already exists. It's
+  old. IIRC I had started to test this out and it seemed alright.
+
+It _could_ work for hacking on CAD... _but model parameterization is always at
+least as hard as dimensional analysis_. This is /apropos to/ FreeCAD's [[https://wiki.freecad.org/Topological_naming_problem/en][Topological
+Naming Problem]], though that's more about the topology than the naming: it
+requires flexible data structures to index topological features in a consistent
+& extensible manner.
+
++ Solving the topological naming problem for the program requires the UI relate
+  events to vertices/faces/edges/BREPs, then enumerate what's possible and
+  culling out what's not.
+  - The CAD program must be constructed from the ground up to allow features
+    like those from Inventor where you reorder operations. The similarity
+    between that UI and the ideas behind Haskell & functional programming are
+    profound.
+  - A typology of constraints is effectively enumerated by the constraints
+    available in CAD: 2D sketch, 3D coordinate relations, datum bases, =GD&T=.
+    Only some are valid. FreeCAD's topological naming problem emerged bc
+    higher-order morphisms (composition of multiple "inventor drag'n'drops")
+    need to rework data structures so indexing is consistent for subsequent
+    morphisms that should also be possible.
+    - i.e. the CAD program must retain clarity in it's organization of
+      topological object/index data to avoid problems _while also_ being capable
+      of reorganizing the topological structures.
+    - Ever notice how some Inventor operations take more time than others? And
+      how some break your project if your intuition doesn't clue you into
+      rewinding early with undo?
+  - BREPs must be closed manifolds because, among other reasons, it simplifies
+    and organizes the combinatorics of enumeration. That's a starting point.
++ If you've ever wondered about algebraic geometry/topology ... it's um hard.
+  Why is a 24-cell a unique 4D platonic polytope? IDK.
+  - This [[https://arxiv.org/pdf/math/9905023][1999 paper]] came up which is loosely related and "hey!" cool pictures
+    ... it really is close though. Only glanced at it though.
+
+So the real problem here: CAD is just hard. Scripts that name features with
+dimensional references need to consistently track the "configuration space" of
+parameters with less constraints.
+
+TCL is pretty dumb (in a good way), so the code ages well (I think?). It has
+some kind of advantages in binding to C/C++ FFI that make it automagic ... no
+idea what the TCL/FFI "it-factor" actually is though.
+
++ It's notably useful for driving automated testing in complicated scenarios,
+  particularly those involving electronics. Again, no idea what "it" is that
+  made TCL suited to that use.

@@ -14,301 +14,9 @@
 * Resources
 
 * Main Issues
-** Updating =$HOME/.config/guix/current=
 
-I need to file an issue with =nixos/nixpkgs=, but I haven't had time. I need to
-fix the locale, so this is the best time to type it out.
+See [[id:dc0857c8-0fd2-431b-bda4-49dc3913054e][Guix on NixOS: Updating Guix]]
 
-For now, I need a service to help manage updates, but =guix pull= functionality is
-basically broken on Nix for some reason. There are automated GC services and
-IIRC, what =<nixpkgs/nixos>= provides should also keep the current guix for user &
-root.
-
-*$HOME/.config/guix/current/etc/profile:*
-
-#+begin_example shell
-# Source this file to define all the relevant environment variables in Bash
-# for this profile.  You may want to define the 'GUIX_PROFILE' environment
-# variable to point to the "visible" name of the profile, like this:
-#
-#  GUIX_PROFILE=/path/to/profile ; \
-#  source /path/to/profile/etc/profile
-#
-# When GUIX_PROFILE is undefined, the various environment variables refer
-# to this specific profile generation.
-
-export PATH="${GUIX_PROFILE:-/gnu/store/ijnsp0239xqi00kqwngp6abypij9rvh1-profile}/bin${PATH:+:}$PATH"
-#+end_example
-
-*** Testing
-
-Below, setting =GUIX_PROFILE= before sourcing changes whether the value is a
-symlink or =/gnu/store/ijnsp0239xqi00kqwngp6abypij9rvh1-profile=
-
-#+begin_src shell
-readlink ~/.config/guix/current
-readlink -f ~/.config/guix/current
-#+end_src
-
-#+RESULTS:
-| /gnu/var/guix/profiles/per-user/dc/current-guix     | I haven't tried this one |
-| /gnu/store/ijnsp0239xqi00kqwngp6abypij9rvh1-profile |                          |
-
-**** PROFILES
-
-In separate alacritty terminals, record =env= to be diffed...
-
-I'm mocking this out to script it =Makefile= and later, a systemd service. For
-that, I may need to check environment consistency again. I'm not 100% sure
-whether I'd need a login session there (or a profile reset).
-
-****
-** The TLDR Here
-
-Early on when the main profile is being updated, Guix errors out when it finds
-there's a symlink that already exists: =/var/guix/profiles/per-user/current-guix=.
-It's not able to infer this exists.
-
-File trees are below that show Guix GC roots and the layout on my file system
-
-*** Updating the current guix
-I had to "hack" this a bit to bootstrap the user's current Guix
-
-+ When installing NixOS and setting up guix/emacs, the =guix= binary would fail to
-  update, as it tried to fetch the entire commit history.
-  - The only way I could get =.config/guix/current= set up was to ask the Nix =guix=
-    to install a profile at that location.
-  - I couldn't determine whether this profile is equivalent to what Guix System
-    installs... but it did work.
-  - This new profile created via =guix package -P $HOME/.config/guix/current=
-    updates fine until later it refuses when hitting the same problem.
-+ I have a custom partition for the =/gnu/store= and I added =/gnu/var= to keep it
-  the entire Guix contained. There's a symlink from =/var/guix -> /gnu/var/guix=.
-  That may not be equivalent/sufficient for guix.
-+ I retried a more standard configuration without symlinks or alternate paths
-  - I tried installing Guix multiple times, even deleting/recreating the btrfs
-    subvolume.
-  - IIRC I even reinstalled NixOS. I needed to anyways: I had created btrfs
-    subvolumes created under the wrong subvolume (I wanted any detachable
-    component to be under).
-+ I tried ensuring state of services would reset after updating the NixOS
-  configuration: if I changed details of =config.guix. configured =/var/guix=
-
-*** Root Updates
-
-+ I also configured this for =root=. the =guix-daemon= processes launched are
-  definitely =nix= binaries (another potential problem if there's drift as
-  profiles become out of sync).
-  - The build daemons evaluate serialized scheme delivered to them, so /I think/
-    it's okay if they aren't in the same profile ....
-  - it's not ideal though... I should've just installed guix via their
-    installer, but I wouldn't get the "efficient configuration of service
-    automation" from =<nixpkgs/nixos>... This is a primary reason I'm using
-    NixOS or Guix System.
-  - I'm not 100% clear on implications/differences for installing Guix's
-    distributed nix (as the =.tar.gz= which unpacks). I do know that =/gnu/store= is
-    a [[https://codeberg.org/guix/guix/src/branch/master/configure.ac#L49-L54][./configure.ac param]], though. It has some implications for subsitutes,
-    which I'm just now seeing: see line [[https://codeberg.org/guix/guix/src/branch/master/configure.ac#L299-L306][L#299-L306]]. I had otherwise considered
-    building the installable =.tar.gz= to deploy onto the NixOS.
-
-*** Btrfs
-
-#+begin_src shell
-btrfs subvolume list /
-#+end_src
-
-#+begin_example
-ID 256 gen 83866 top level 5 path @
-ID 257 gen 85383 top level 5 path @nix
-ID 258 gen 85459 top level 5 path @var
-ID 259 gen 85459 top level 5 path @log
-ID 260 gen 85377 top level 5 path @tmp
-ID 261 gen 85308 top level 5 path @cache
-ID 262 gen 78 top level 256 path srv
-ID 263 gen 78 top level 258 path @var/lib/portables
-ID 264 gen 78 top level 258 path @var/lib/machines
-ID 265 gen 85437 top level 256 path tmp
-ID 267 gen 85290 top level 5 path @guix
-#+end_example
-
-*** Guix
-
-#+begin_src shell
-tree -d /var/guix
-#+end_src
-
-#+begin_example
-/var/guix
-├── daemon-socket
-├── db
-├── gcroots
-│   ├── auto
-│   │   ├── 2ydzg59y5mz5hghfmhkrzglik1kwwx5n -> /var/guix/profiles/per-user/root/current-guix-1-link
-│   │   ├── 5y70y1in3dv9x2980s3k1cqa6bw4a9pb -> /home/dc/.dotfiles/.doom.d/.guix-profile-4-link
-│   │   ├── 7rjdqk3z3c4jvsqzmhadzja0gmfjdryf -> /var/guix/profiles/per-user/dc/current-guix-4-link
-│   │   ├── 905dlwvvl8037b413vmmzbj17wzhycvy -> /var/guix/profiles/per-user/dc/current-guix-6-link
-│   │   ├── adin1sqb5ry73g1f6bsbqc1rlw1q0rgy -> /home/dc/.dotfiles/.doom.d/.guix-profile-3-link
-│   │   ├── awn0jmhvqggpgqh8bc43hgnpbn5ssbv0 -> /home/dc/.dotfiles/.doom.d/.guix-profile-2-link
-│   │   ├── fn53mkf2ign7cgcgmznpiwc5x2ly8h7j -> /home/dc/.dotfiles/.doom.d/.guix-profile-5-link
-│   │   ├── gav6imdxamg2zng9sjywn3l49pyybg8q -> /var/guix/profiles/per-user/dc/current-guix-1-link
-│   │   ├── k3a3ilqj77mi9382hq8i9wfxmd8krx3p -> /var/guix/profiles/per-user/dc/current-guix-5-link
-│   │   └── rbb5q8i25gjl69lw5n8pj78kdzqapr6x -> /home/dc/.dotfiles/.doom.d/.guix-profile-1-link
-│   └── profiles -> /gnu/var/guix/profiles
-├── profiles
-│   └── per-user
-│       ├── dc
-│       │   ├── current-guix -> current-guix-1-link
-│       │   ├── current-guix-1-link -> /gnu/store/ijnsp0239xqi00kqwngp6abypij9rvh1-profile
-│       │   ├── current-guix-4-link -> /gnu/store/wph6x9p5kqsry8nb14gi8vbbpzkhxv2a-profile
-│       │   ├── current-guix-5-link -> /gnu/store/acfnv6iga300zqr66rkbwyy8awhhvc0y-profile
-│       │   ├── current-guix-6-link -> /gnu/store/4jp0wv65h0vwbghlmn4pp2apd4b2f9a9-profile
-│       │   ├── guix-profile -> guix-profile-3-link
-│       │   ├── guix-profile-2-link -> /gnu/store/00qz6hjy51r54ai6rd558nmp3xb15w6j-profile
-│       │   └── guix-profile-3-link -> /gnu/store/b0a5qw9aqv1gbdyfprlr6f901rfly0hr-profile
-│       └── root
-│           ├── current-guix -> current-guix-1-link
-│           └── current-guix-1-link -> /gnu/store/prmplx86sxn5cb38nah57rpckxh4jhbq-profile
-├── substitute
-│   └── cache
-│       ├── 4refhwxbjmeua2kwg2nmzhv4dg4d3dorpjefq7kiciw2pfhaf26a
-│       ├── kzwjeblndsbkjzmjailrt4bnhguil7tqjmewzcyw22hgajbhfy3q
-│       └── qyv76pf7kxlagcjija7xnvmaigp4okfrqqnl75nhldw5lhy7ibza
-├── temproots
-└── userpool
-#+end_example
-
-** Locale
-
-In Emacs, I'm getting prompted to select for an encoding system.
-
-+ It's likely the =glib= is starting to drift between =nix= and =guix=. These issues
-  can be strange.
-+ If an binary with an older =glib= version tries to integrate with newer dynamic (from
-  disk or in RAM) tries to link
-
-This is mostly something to watch out for, even when running Nix profiles on a
-foreign distro.
-
-+ It's easier to manage with a more limited set of nix paths, but could be seen
-  when running builds of old flakes in dev projects without updating.
-+ locking glib versions can lead to cache-miss on ... well pretty much every
-  single c-program you'd compile. so, for nix/guix, you'd like to keep it in
-  sync. not every minor version is problematic, but... you can't know without
-  =®f<éá>%#¹61^¹^åf·åéµ˛¤ßçëí®ïhñß= ... or staying in-tune with specific
-  updates.
-+ Encoding was necessary for minimizing program size & bounding compute costs,
-  which was way more important early on. Since then (I think), it's been
-  necessary to stage updates as hardware limitations were relaxed or changes
-  were necessary. It's interesting, but I've never properly looked into it...
-+ There must have been an unprecedented amount of cooperation to ensure personal
-  computing could be universal (from open source & vendors). It's easily
-  forgotten how much effort that represents.
-
-| From uwsm-activated emacs       | Alacritty                       | Alacritty + Guix Current        |
-|---------------------------------+---------------------------------+---------------------------------|
-| LANG=en_US.UTF-8                | LANG=en_US.UTF-8                | LANG=en_US.UTF-8                |
-| LC_CTYPE="en_US.UTF-8"          | LC_CTYPE="en_US.UTF-8"          | LC_CTYPE="en_US.UTF-8"          |
-| LC_NUMERIC="en_US.UTF-8"        | LC_NUMERIC="en_US.UTF-8"        | LC_NUMERIC="en_US.UTF-8"        |
-| LC_TIME="en_US.UTF-8"           | LC_TIME="en_US.UTF-8"           | LC_TIME="en_US.UTF-8"           |
-| LC_COLLATE="en_US.UTF-8"        | LC_COLLATE="en_US.UTF-8"        | LC_COLLATE="en_US.UTF-8"        |
-| LC_MONETARY="en_US.UTF-8"       | LC_MONETARY="en_US.UTF-8"       | LC_MONETARY="en_US.UTF-8"       |
-| LC_MESSAGES="en_US.UTF-8"       | LC_MESSAGES="en_US.UTF-8"       | LC_MESSAGES="en_US.UTF-8"       |
-| LC_PAPER="en_US.UTF-8"          | LC_PAPER="en_US.UTF-8"          | LC_PAPER="en_US.UTF-8"          |
-| LC_NAME="en_US.UTF-8"           | LC_NAME="en_US.UTF-8"           | LC_NAME="en_US.UTF-8"           |
-| LC_ADDRESS="en_US.UTF-8"        | LC_ADDRESS="en_US.UTF-8"        | LC_ADDRESS="en_US.UTF-8"        |
-| LC_TELEPHONE="en_US.UTF-8"      | LC_TELEPHONE="en_US.UTF-8"      | LC_TELEPHONE="en_US.UTF-8"      |
-| LC_MEASUREMENT="en_US.UTF-8"    | LC_MEASUREMENT="en_US.UTF-8"    | LC_MEASUREMENT="en_US.UTF-8"    |
-| LC_IDENTIFICATION="en_US.UTF-8" | LC_IDENTIFICATION="en_US.UTF-8" | LC_IDENTIFICATION="en_US.UTF-8" |
-| LC_ALL=                         | LC_ALL=                         | LC_ALL=                         |
-
-In order to keep =glib= compatibility in sync, the guix profile for my Doom Emacs
-installation needs to be updated frequently.
-
-+ It shouldn't be huge problem -- emacs mostly shells out and read in content
-  ... it doesn't care about the programs it's calling.
-+ It would mostly affect string-references in-memory in C-programs linked
-  against =glib=, in socket communication with other programs.
-+ Most other interfaces across which information is exchanged -- terminal
-  (comint-mode), network, file-system -- they expect ... well idk, but there'd
-  be way more dysfunction if those were a problem.
-
-*** Emacs
-
-Specific Errors from my undo cache (from pasting embark output into files;
-almost 100% sure)
-
-#+begin_example
-Error while executing "zstd -c -q -d < /home/dc/.emacs.doom/.local/cache/undo-tree-hist/.50bddc55cc71276fb2cee7b43852259e586e5102.~undo-tree~.zst"
-#+end_example
-
-#+begin_quote
-\10000460 (2097456, #o10000460, #x200130) point=544 of 1018 (53%) column=41
-\10000444 (2097444, #o10000444, #x200124) point=562 of 1018 (55%) column=59 Hscroll=58
-#+end_quote
-
-
-#+begin_example
-These default coding systems were tried to safely encode the following
-problematic characters in the buffer �-F� *temp*�:�-A
-  Coding System           Pos  Codepoint  Char
-  utf-8-unix            96762  #x200130   \10000460
-                       105292  #x200130   \10000460
-                       114087  #x200130   \10000460
-                       121432  #x20012F   \10000457
-                       124954  #x20012F   \10000457
-                          ...
-
-However, each of them encountered characters it couldn�-F�t encode safely:�-A
-  utf-8-unix cannot safely encode these: \10000460 \10000460 \10000460 \10000457 \10000457 \10000457 \10000444 \10000444 \10000444 \10000444 \10000444 ...
-#+end_example
-
-...
-
-#+begin_example
-             position: 148 of 148 (99%), column: 0
-            character: \10000444 (displayed as \10000444) (codepoint 2097444, #o10000444, #x200124)
-              charset: gb18030 (GB18030)
-code point in charset: 0x8431C232
-               syntax: w which means: word
-             category: L:Strong L2R, b:Arabic
-             to input: type "C-x 8 RET 200124"
-          buffer code: #xF8 #x88 #x80 #x84 #xA4
-            file code: not encodable by coding system utf-8-unix
-              display: composed to form "..." (see below)
-
-Composed by the rule:
-(TAB ?... TAB)
-The component character(s) are displayed by these fonts (glyph codes):
- ...: -- no font --
-See the variable ‘reference-point-alist’ for the meaning of the rule.
-
-Character code properties: customize what to show
-  general-category: Cn (Other, Not Assigned)
-  decomposition: (2097444) (....)
-
-There is an overlay here:
- From 148 to 149
-  face                 hl-line
-  priority             -50
-  window               nil
-
-
-There are text properties here:
-  composition          (4 1 [9 2097444 9])
-  fontified            t
-  rear-nonsticky       t
-  ws-butler-chg        chg
-
-[back]
-#+end_example
-
-#+begin_src js
-#+end_src
-
-#+RESULTS:
-
-
-** Updating =$USER/.config/guix/current=
 * Topics
 
 ** Personal Module Organization
@@ -613,6 +321,15 @@ configurations, which would likely go directly in =./modules=
 
 ** XDG Setup
 
+*** Mimeapps
+
+#+begin_src shell
+fdsa=$(locate '/home/*mimeapps.list' | tee -a >(locate '/etc*mimeapps.list'))
+
+# seems pretty empty here, but winebrowser wants pdfs so i just run ...
+echo $fdsa | while read -n p; do cat $p; done
+#+end_src
+
 *** Mime
 
 Dump a list of unique attributes and tags for mimetypes (a little hacky)
@@ -716,7 +433,6 @@ echo -n $XDG_DATA_DIRS | tr ':' '\n' \
 ├── x-content
 └── x-epoc
 #+end_example
-
 *** Data Dirs
 
 #+begin_src shell
@@ -773,7 +489,6 @@ echo -n $XDG_DATA_HOME $XDG_DATA_DIRS | tr ':' '\n' \
 | xdg-desktop-portal  |
 | xsessions           |
 | zsh                 |
-***
 
 * Issues
 
@@ -826,6 +541,17 @@ with =bin/doomclient=
   cert cache (?)
 
 ** Misc
+
+*** Console
+
+Switching vty's with =Alt + ←/→= is great...
+
++ But holy crap: push =Alt + ↑= and you get a free trip to the rescue mode
+  recovery console (everything instantly crashes).
++ It's a bit wierd. This was before any =~/.config/xkb= customizations.
++ Error's something like "Rescue Service Unable to Locate Plymouth" so I'm not
+  sure it knows what planet it's on anymore after that.
+
 
 *** Polkit
 
