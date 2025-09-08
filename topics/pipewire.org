@@ -16,8 +16,6 @@
   - includes CLI examples for alsa/pipewire/jack/pulse
 + [[https://pipewire.pages.freedesktop.org/wireplumber/daemon-logging.html][Debug Logging]]
 
-
-
 *** Lua 5.4
 + [[https://www.lua.org/manual/5.4/manual.html][Reference Manual]]
 
@@ -36,8 +34,85 @@
 - [[github:robbert-vdh/dotfiles]]
 - [[https://git.sr.ht/~scrumplex/dotfiles/tree/master/item/pipewire/.config][~scrumplex/dotfiles]]
 
+* Topics
+** Nixos
+
+*** Configuration Examples
+
+**** alyraffauf/bazznix
+
++ [[https://github.com/alyraffauf/bazznix/blob/24d345beb5de17acb6e33d906d5b482c85403f13/hwModules/lenovo/legion/go/default.nix#L42][hwModules/lenovo/legion/go]] for legion go handheld device: Adds a convolver
+  effect (for synthetic reverb,
+  - see [[https://github.com/aarron-lee/legion-go-tricks/blob/main/experimental_sound_fix/README.md?plain=1][experimental_sound_fix in aarron-lee/legion-go-tricks]] for more info (and
+    other pipewire/wireplumber configs)
+
+** Configuration
+
+*** Pipewire
+
+To dump current config, use =pw-dump=
+
+#+begin_src shell :results output code :wrap example json
+pw-dump | jq '[(length), (map(.type) | unique)]'
+#+end_src
+
+#+RESULTS:
+#+begin_example json
+[
+  97,
+  [
+    "PipeWire:Interface:Client",
+    "PipeWire:Interface:Core",
+    "PipeWire:Interface:Device",
+    "PipeWire:Interface:Factory",
+    "PipeWire:Interface:Link",
+    "PipeWire:Interface:Metadata",
+    "PipeWire:Interface:Module",
+    "PipeWire:Interface:Node",
+    "PipeWire:Interface:Port",
+    "PipeWire:Interface:Profiler",
+    "PipeWire:Interface:SecurityContext"
+  ]
+]
+#+end_example
+
+And recombine with things like this.
+
+#+begin_example jq
+map(select(.type == "PipeWire:Interface:Module") | .info.name)
+#+end_example
+
+What's a factory?
+
+#+begin_example jq
+map(select(.type == "PipeWire:Interface:Factory") | .info.props | keys)
+| flatten | unique
+#+end_example
+
+
+
 * Issues
 
+** qpwgraph
+
+See helvum or maybe [[https://codeberg.org/sonusmix/sonusmix][sonusmix/sonusmix]]
+
+** Bluetooth
+
+*** Managing Audio Graph On Connect/Disconnect
+
+See this comment in [[https://www.reddit.com/r/linuxaudio/comments/1jjxma1/comment/mjqxade/][How The Heck Are You Supposed To Use Qpwgraph?]] for a
+filter-chain config with a loopback device.
+
++ Each app can forward to this device, which is static and doesn't disappear.
++ I'm guessing that forwarding this output to the bluetooth headphones is easier
+  to config.
++ Then enable =filter-chain.service= which pipewire ships.
+
+I think I'm having issues with just =qpwgraph= or maybe "Bluetooth Authentication"
+permissions notifications that I clicked.
+
++ The Stereo outputs
 * Wireplumber
 
 ** Issues

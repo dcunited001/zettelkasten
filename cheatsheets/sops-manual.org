@@ -1,0 +1,106 @@
+#+TITLE:     SOPS: Manual
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+#+title: Sops Manual
+
+See [[file:./SOPS-Manual-20250908.pdf]] © 2023–2025 SOPS Authors
+
+#+begin_quote
+A little ridiculous to go through with it, but IDK. I need to reflect on this
+stuff. I don't have anyone spoonfeeding this to me. I've used it before ...
+barely.
+
++ Ansible made you keep it in a vault in a sops in a lockbox where only
+  the "galaxy pip" had the key.
++ I also couldn't afford another Yubikey for AGE
++ No one here seemed to reference =gpgsm=, which works with PIV as far as I know
+  now... That doesn't resolve boot though, except maybe using ssh-on-tpm
+#+end_quote
+
+One of these days, after the robots took your jobs... will you have anything
+tangible left to prove that any of this ever existed? All the 2,200 AD
+archeologists will find are some O'Reilly books... I guess bc we were we were
+fascinated with zoology? IDK, I've had that line of thinking for +15 years now:
+everything culture is now digital. What's left when/if it's gone? Hard to tell.
+
+* Anyways... Hold my beer
+
++ The site has a "print" function, but doesn't have a light theme.
++ The code blocks are terse and idk how to run Highlight on that (except maybe
+  using a literal highlighter and idk), so the Reader CSS is a no-go
++ They don't have a =man= and idk about =sed= on the completion again
++ The CSS is baked into the DOM tags, but full-text replace works alright.
+
+I copied the HTML from the tag, then did =regexp-replace= on these, which are
+mainly code block colors.
+
+|------------------+----------+---------+---------|
+|                  | original | change  | invert  |
+|------------------+----------+---------+---------|
+| background-color | #282c34  | #050505 | #FAFAFA |
+| color            | #b0c4de  | #9F6B81 | #60947E |
+| comment          | #8a93a5  | #CAC3A5 | #353C5A |
+|------------------+----------+---------+---------|
+
+Then used =emacs-lisp= that inverts colors, which apparently also works on HTML.
+
+#+begin_src emacs-lisp
+(defun invert-css-rgb (x)
+  (format "%06X" (- #xFFFFFF x)))
+
+;; convert #abc => #554433
+;; (replace-regexp "\( +--.*\):#\(.\)\(.\)\(.\);$" "\1:#\2\2\3\3\4\4")
+
+(defun invert-rgb-matches (&optional buffer)
+  "replace matches in buffer, starting from current position"
+  (interactive)
+  (let ((regex "[[:xdigit:]]\\{6\\}")
+        (acc))
+    (save-excursion
+      (with-current-buffer
+          (or buffer (current-buffer))
+        (save-restriction
+          (widen)
+          (goto-char 1)
+          (while (search-forward-regexp regex nil t 1)
+            (let* ((rgb (string-to-number (match-string 0) 16))
+                   ;; (inv-rgb (format "%x" (invert-css-rgb rgb)))
+                   (inv-rgb (invert-css-rgb rgb)))
+              (push inv-rgb acc)
+              (replace-match inv-rgb t))))))
+    (nreverse acc)))
+
+;;(setq nix-wiki-colors (matches-in-buffer "[[:xdigit:]]\\{6\\}"))
+;;(nth 1 nix-wiki-colors)
+#+end_src
+
+Then removed some DOM
+
+#+begin_src javascript
+document.querySelectorAll('.click-to-copy').forEach(el => el.remove())
+# header/footer/etc
+#+end_src
+
+And adjusted headers
+
+#+begin_src css
+h1 {
+  font-size: 1.25em;
+  margin: 0.1em;
+  color: navy;
+}
+
+h2 {
+  font-size: 1.15em;
+  margin: 0.1em;
+  color: maroon;
+}
+
+h3 {
+  font-size: 1.05em;
+  margin: 0.1em;
+  color: green;
+}
+#+end_src
