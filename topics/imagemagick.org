@@ -161,6 +161,139 @@ out=/tmp/out.png
 magick $orig -channel RGB -white-threshold 90%,90%,90% $out
 #+end_example
 
+*** Filter Colors in PDF to render printable
+
+After failures on nix, I tried this =guix shell ghostscript imagemagick texlive=
+
+I'm having issues with =imagemagick@7.1.1= where =ghostscript= seems to lack the
+=png16alpha= virtual print device.
+
+#+begin_src shell
+pkgurl=https://github.com/imagemagick/imagemagick
+guix build --keep-failed --fallback \
+    --with-version=imagemagick=7.1.2 \
+    --with-git-url=imagemagick=$pkgurl \
+    imagemagick
+#+end_src
+
++ For some reason, specifying the version in `guix shell` wouldn't build. I
+  think there's a different upstream.
++ =--fallback= builds from sources.
++ --with-git-url :: this overrides =--with-version= so this is the only parameter
+  required for =guix shell=.
+- --with-version :: When using only the git url, guix doesn't realize this is
+  =v7.1.2-4 (beta)=. Using a scheme expression would fix this.
+
+#+begin_src shell
+# guix had cached a source artifact (likely bc i specified the hash with guix
+# shell before guix build).
+pkgsrc=/gnu/store/llr5hpjsrbyy9g6863gina4nz8k6szda-imagemagick-fad6bec/
+guix gc --requisites --referrers --derivers $pkgsrc # check to see its scope in the store
+guix gc -D $pkgsrc # nothing else is there, so delete
+#+end_src
+
+Anyways...
+
+#+begin_src shell
+# ghostscript is built-in afaik, texlive was precautionary, in case of:
+# laxeteluadvipng.idk
+guix shell --with-git-url=imagemagick=$url imagemagick
+f=cheatsheet.pdf
+f2=$(dirname $f)/$(basename -s .pdf $f)2.pdf
+magick $f -density 300 -brightness-contrast 5x25 -white-threshold 85%,85%,85% $f2
+#+end_src
+
+... As it turns out, this method is cursed in many ways. I just wanted to see
+what would happen. I was hoping it wouldn't raster or that quality would be
+alright. Even so, the doc I'm trying to clean up doesn't make it simple
+
+*** Invert and threshold the =nixos-anywhere= diagrams from EmergentMind
+
+ya one laina comin right up mon
+
+#+begin_src shell
+# git clone https://github.com/EmergentMind/dotfiles
+# cd dotfiles; cd ./docs/diagrams
+for i in anatomy_*; do
+    magick $i \
+        -channel RGB -negate \
+        -white-threshold 85%,85%,85% \
+        -level 20%,100%,0.5 \
+        $i.inv.png
+done
+#+end_src
+
+Well technically it was one line.
+
++ -level $a,$b,$c :: for each =-channel=, map =x -> y=, according to intensity =a=
+  - With =+level=, this is inversed (or reversed or contraposed ... ah fuck idk)
+  - See [[https://usage.imagemagick.org/color_mods/#level][Direct Level Adjustments]] for examples
+  - for =a=0%= and =b=100%=, the entire channel domain maps to its entire range
+    - input from =a<=x<=b= and output =0<=y<=1= (i think)
+    - =f(x<=a) = 0=, =f(x>=b) = 1=
+  - for =a=0%,b=100$= the center point will be =(cx)^2= (i.e. =f(x)=0.25=), so if
+    =c=0.5=, the equation is basically a parabola. if =c=2=, it's the
+    function-inverse of a parabola.
+  - it seems it's just parametric scaling with translations, where no points are
+    ever outside the "half-unit" square translated by half a unit in both (x,y):
+    i.e. =0<=x<=1= and =0<=y<=1=
++ -level-colors :: similar, but more important to specify channels
+  - the colors do not need to be =RGB= primatives, so the domain to range mappings
+    are a bit more complicated
++ -sigmoidal-contrast $c,$b :: uses a sigmoidal contrast-based method.
+  - =c= should probably be between =2<=c<=5=
+  - This mentions the paper [[https://farid.berkeley.edu/downloads/tutorials/fip.pdf][Fundamentals of Image Processing]] which covers the
+    parametric domain mapping in depth.
+
+**** Sigmoidal Contrast Equations
+
+#+begin_src python
+# some simplifications...
+v=(1/(1+exp(β(α-u))) - 1/(1+exp(βα))
+    / (1/(1+exp(β(α-1))) - 1/(1+exp(βα))) ) #...& final paren added by me
+
+a=1/(1+exp(β(α-u)))
+b=1/(1+exp(βα))
+c=1/(1+exp(β(α-1)))
+d=1/(1+exp(βα))
+v=(a-b)/(c-d)
+
+v=((1+exp(β(α-u)))^-1 - (1+exp(βα))^-1
+    / ((1+exp(β(α-1)))^-1 - (1+exp(βα)))^-1 )
+
+# giving up now
+
+# split into two equations
+x=exp(β*(α-u));
+y=exp(β+1 result (x / y + 1) * (1 / (x + 1) - 1 / y)
+#+end_src
+
+... trying to figure out how to tanh the cosh out of these equations, but
+they're just =f(x)=(e^x)/(1 + e^x)= or =f(x')=f(x)=1/(1 + e^-x)= ... same thing
+
+i.e. the logistic function https://en.wikipedia.org/wiki/Logistic_function
+
+either way, =(e^nx/e^nx)= can be used to transform, but here it's used in a
+program, which usually means it's in the simplest possible form (if in one file;
+esp. for one-liners)
+
+but sinh/cosh/tanh? =f(x)= is a special case of =tanh(x)= after scale/translate. i
+couldn't get the =e^2x= to disappear (at least not without betas/alphas).
+
+anyways... according to this video [[https://www.youtube.com/watch?v=HnHnEnkZpJA&t=562s][Why hyperbolic functions are actually really
+nice...]]
+
+#+begin_example python
+e^ix = cos(x) + i*sin(x)
+#      real   + imag.
+e^ix = cosh(ix) + sinh(ix)
+#+end_example
+
+There's another youtube video that explains the geometric interpretation more
+fully (and connects to quaternions iirc).
+
+That's pretty mindblowing. See Relationship to [[https://en.wikipedia.org/wiki/Hyperbolic_functions][exponential function (& the next
+section)]]
 
 *** Clean up blocky downsampled text
 

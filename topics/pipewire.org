@@ -45,13 +45,19 @@
 
 **** Transient Devices
 
+#+begin_quote
+TLDR: on nix/guix, your main problem is probably the [[https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/alsa.html#node-properties][priority.session]].
+
+It needs to be set to be automatically selected, esp for the "Main Output" node.
+#+end_quote
+
 [[https://wiki.archlinux.org/title/WirePlumber#Simultaneous_output_to_transient_devices][Simultaneous Output to Transparent Devices]] (archwiki)
 
 This recommends a system startup script to create a null-audio sink along with a
 script to run on udev events. I would just use Nix's declarative specification
 of audio graph and udev rules.
 
-It's a good basic example of scripting these components ()
+It's a good basic example of scripting these components
 
 #+begin_src shell
 #!/bin/bash
@@ -98,6 +104,7 @@ See below in notes on extracting the =id= for nodes using =pw-dump=. Running the
  │      69. Starship/Matisse HD Audio Controller Analog Stereo [vol: 1.00]
  │      85. WorkTunes Connect                   [vol: 0.91]
 #+end_example
+
 
 *** Dotfiles Examples
 
@@ -258,6 +265,11 @@ Grep this output for the id. maybe add some selectors idk
 #+begin_src shell
 q='map(select(.type == "PipeWire:Interface:Node") | [.id, (.info.props."node.name")]) | map(@csv) | join("\n")'
 pw-dump | jq --raw-output "$q"
+
+# this CSV output has "a,small,\"quoting\",\"problem\""
+
+# that's better than a command-injection problem -- $q is static, whereas a
+# constructed a query to match a value will require some interpolation
 #+end_src
 
 #+RESULTS:

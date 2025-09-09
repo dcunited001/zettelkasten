@@ -337,6 +337,32 @@ upstream tooling, then it's at least well-tested and the incremental
 development/testing has been socialized (... but users do need to at least grok
 it first & that requires acclimation to the tooling/ecosystem)
 
+***** Docs
+
+Some way to get more users spending face-time or pair programming. Things like
+planned/organized meetups or team config contests or would help drive engagement
+required to share ideas and drive mindshare... maybe? Or maybe just "office
+hours" with streaming and a pair-programming VSCode server (or T-Mux/Vim)
+
+For example, I've heard a lot online about the docs being scattered or out of
+date. I've checked in from time-to-time, but never really needed them. I mainly
+looked at the source to see how things were built while trying to replicate a
+package on Guix...
+
+But now that I have the nixpkgs source on my machine, it's easy to extract, grep
+through & work with. I don't really use a lot of Vim tooling. I'm not exactly
+"good at this" ... but if I couldn't query the source code like a database, I
+would never figure much out for any language/ecosystem.
+
+What I'm trying to say is that the "archwiki" model is not really a great
+approach to providing documentation, since the source code itself is always 100%
+current. Given how many interdependencies/recipes/etc are accounted for in the
+=nixpkgs= source (and how simple the =nix= language is once you grok it) there
+shouldn't be much need to to refer to external documentation.
+
+The problem is bootstrapping new users who have been culturally programmed to
+learn that way. There may be shortcomings on tooling (or automating pulling
+sources), but getting info from the web is generally extremely slow.
 
 ** Derivations
 
@@ -968,7 +994,7 @@ Just needed =nwg-look= to set my GTK settings
 
 #+begin_src emacs-lisp
 (defun invert-css-rgb (x)
-  (format "%06X" (- #x000000 x)))
+  (format "%06X" (- #xFFFFFF x)))
 
 ;; convert #abc => #554433
 (replace-regexp "\( +--.*\):#\(.\)\(.\)\(.\);$" "\1:#\2\2\3\3\4\4")
@@ -1286,3 +1312,188 @@ Invert colors on the NixOS wiki
     --border-color-content-removed:#678FD8
   }
 #+end_src
+*** jade.fyi
+
+it's hard to read and also unprintable (no offense, i swear on my weeb honor).
+it's also very valuable information, but the reader view dissecates the syntax
+highlighting.
+
+#+begin_src shell :results output code :wrap example css
+curl -qs https://jade.fyi/main.css \
+    | sed -e 's/;/;\n/g' \
+    | sed -e 's/{/{\n/g' \
+    | sed -e 's/}/\n}\n/g' \
+    | sed -e 's/#3f0249/#D4B3D2/g' \
+    | sed -e 's/#540362/#EFE2E9/g' \
+    | sed -e 's/#2a0131/#E2C1D1/g' \
+    | sed -e 's/#f778e3/#2a0131/g' \
+    | sed -e 's/#ddd/#222/g' \
+    | sed -e 's/#919191/#333/g' \
+    | sed -e 's/#afafaf/#111/g'
+
+# | grep -E '(^[a-z-].*olor.*:|[{}]$)' # find the colors
+
+# wtf org-babel
+#    | sed -e 's/}/\n}\n/g'
+echo -n " " # org-babel: invalid search bound (wrong side of point)
+#+end_src
+
+Phew... it's just the background colors
+
++ #3f0249 :: #D4B3D2
++ #540362 :: #EFE2E9
++ #2a0131 :: #E2C1D1
++ And so forth.
+
+Enumerate the style tags and override
+
+#+begin_src javascript
+let tsc = Array.from(document.querySelectorAll('style'));
+// tscCss = tsc.map(el => el.innerText).join("\n");
+// console.log(tscCss) // nevermind... may need .join("\n"), but it works here
+let tscSet = new Set(tsc.map(el => el.innerText).join("").split("\n"))
+// console.log(tscSet);
+console.log(Array.from(tscSet).join("\n"))
+#+end_src
+
+Smaller problem: =length(tscSet)= from 288 down to 19
+
+#+name: tscCss
+#+begin_example css
+.tsc-bg { color: #CCCAC2; background-color: #242936; }
+.tsc-comment { color: #939CB1;font-style: italic;}
+.tsc-constant { color: #DFBFFF;}
+.tsc-constructor { color: #D5FF80;}
+.tsc-function { color: #FFCC77;font-weight: bold;}
+.tsc-include { color: #FFAD66;}
+.tsc-keyword { color: #FFAD66;}
+.tsc-label { color: #FFAD66;}
+.tsc-line { word-wrap: normal; white-space: pre; }
+.tsc-namespace { color: #73D0FF;}
+.tsc-operator { color: #FFAD66;}
+.tsc-punctuation { color: #CCCAC2;}
+.tsc-repeat { color: #FFAD66;}
+.tsc-string { color: #D5FF80;}
+.tsc-type { color: #73D0FF;}
+.tsc-type.builtin { color: #73D0FF;}
+.tsc-variable { color: #CCCAC2;}
+.tsc-variable.parameter { color: #FFCC77;}
+#+end_example
+
+Now run =invert-rgb-matches= on this block,
+
+#+name: tscInverted
+#+begin_src emacs-lisp :result output verbatim :var css=tscCss
+(with-temp-buffer
+  (insert css)
+  (goto-char (point-min))
+  ;; (replace-buffer-contents)
+  (invert-rgb-matches)
+  (buffer-substring-no-properties (point-min)
+                                  (point-max)))
+#+end_src
+
+#+RESULTS: tscInverted
+#+begin_example
+.tsc-bg { color: #33353D; background-color: #DBD6C9; }
+.tsc-comment { color: #6C634E;font-style: italic;}
+.tsc-constant { color: #204000;}
+.tsc-constructor { color: #2A007F;}
+.tsc-function { color: #003388;font-weight: bold;}
+.tsc-include { color: #005299;}
+.tsc-keyword { color: #005299;}
+.tsc-label { color: #005299;}
+.tsc-line { word-wrap: normal; white-space: pre; }
+.tsc-namespace { color: #8C2F00;}
+.tsc-operator { color: #005299;}
+.tsc-punctuation { color: #33353D;}
+.tsc-repeat { color: #005299;}
+.tsc-string { color: #2A007F;}
+.tsc-type { color: #8C2F00;}
+.tsc-type.builtin { color: #8C2F00;}
+.tsc-variable { color: #33353D;}
+.tsc-variable.parameter { color: #003388;}
+#+end_example
+
+Then replace =;= with =!important;=
+
+#+name: tscImportant
+#+begin_src shell :results output verbatim :var css=tscInverted
+echo -n "$css" \
+    | sed -e 's/;/ !important;/g' \
+    | sed -E 's/(.tsc-variable \{ color:) #33353D/\1 #8C2F00/g' \
+    | sed -e 's/DBD6C9/F8F6E9/g'
+#+end_src
+
+I manually appended a few other customizations
+
+#+begin_example css
+.tsc-bg { color: #33353D !important; background-color: #F8F6E9 !important; }
+.tsc-comment { color: #6C634E !important;font-style: italic !important;}
+.tsc-constant { color: #204000 !important;}
+.tsc-constructor { color: #2A007F !important;}
+.tsc-function { color: #003388 !important;font-weight: bold !important;}
+.tsc-include { color: #005299 !important;}
+.tsc-keyword { color: #005299 !important;}
+.tsc-label { color: #005299 !important;}
+.tsc-line { word-wrap: normal !important; white-space: pre !important; }
+.tsc-namespace { color: #8C2F00 !important;}
+.tsc-operator { color: #005299 !important;}
+.tsc-punctuation { color: #33353D !important;}
+.tsc-repeat { color: #005299 !important;}
+.tsc-string { color: #2A007F !important;}
+.tsc-type { color: #8C2F00 !important;}
+.tsc-type.builtin { color: #8C2F00 !important;}
+.tsc-variable { color: #8C2F00 !important;}
+.tsc-variable.parameter { color: #003388 !important;}
+
+html{ font-size:0.9rem; }
+body { line-height:1.0em; }
+blockquote { padding-left:1rem; margin-left:1.5rem; }
+h1{font-size:1.3em;}
+h2{font-size:1.3em;}
+h3{font-size:1.2em;}
+h4{font-size:1.1em;}
+p{margin:0.4rem}
+#+end_example
+
+#+RESULTS:
+
+#+begin_quote
+"There is as much rightward drift in flake.nix as in recent German and Dutch
+elections" ... this analogy is a bit forced (i'm guilty of the same thing maybe?
+idk)
+
+I really shouldn't say anything here... but I like minimal flakes (and software
+ecosystems) for many of the same reasons I like minimal government:
+
++ dependency injection at scale is hard to manage;
++ the producers of such libraries can only scale their efforts to a reasonable
+  extent;
++ what gets pushed upstream _NEVER_ gets pulled out of upstream (sound familiar?)
++ unexpected side-effects are better managed by the individual (or library
+  consumer);
+
+On the last one: it can be justified when it relieves problems resulting from
+service interactions or software as it is distributed in the world -- the
+analogy to governance/economics being a system that creates group-effects and
+group-dynamics that are either unhealthy or hostile to individuals' growth
+(maybe?)
+
+Usually what's needed in any case is elevation of consciousness & people that
+seek liberation through their own efforts (you can't wait for gov't to solve
+your problems)
+
+... though i really don't care about other people's politics -- or other
+countries. Not my problem and I probably don't even speak their language, but
+there's a pretty good chance that i've tried (per-capita).
+
+I wish other people in the software world, generally, would also respect
+people's personal beliefs. At least with software developers, it's a consequence
+of being over-informed. I haven't really had any issues, but the nix community
+has gained itself a reputation for activism that caused me to not consider
+investing time becoming part of the maintainer community. (idk if that's even
+something that would ever happen in any case)
+
+Regardless. The author is smart.
+#+end_quote
