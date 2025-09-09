@@ -27,6 +27,10 @@
 ** Wireplumber
 + [[https://wiki.archlinux.org/title/WirePlumber][Archwiki]]
 
+*** Configuration
+
+
+
 ** Articles
 + [[https://venam.nixers.net/blog/unix/2021/06/23/pipewire-under-the-hood.html][Pipewire Under The Hood]]
 
@@ -37,7 +41,65 @@
 * Topics
 ** Nixos
 
-*** Configuration Examples
+*** Config Examples
+
+**** Transient Devices
+
+[[https://wiki.archlinux.org/title/WirePlumber#Simultaneous_output_to_transient_devices][Simultaneous Output to Transparent Devices]] (archwiki)
+
+This recommends a system startup script to create a null-audio sink along with a
+script to run on udev events. I would just use Nix's declarative specification
+of audio graph and udev rules.
+
+It's a good basic example of scripting these components ()
+
+#+begin_src shell
+#!/bin/bash
+
+# Create a new sink called Simultaneous Output
+pw-cli create-node adapter '{
+  factory.name=support.null-audio-sink
+  node.name="Simultaneous Output"
+  node.description="Simultaneous Output"
+  media.class=Audio/Sink object.linger=true audio.position=[FL FR]
+}'
+
+# Connect the normal permanent sound card output to the new sink
+pw-link "Simultaneous Output:monitor_FL" alsa_output.pci-0000_05_04.0.analog-stereo:playback_FL
+pw-link "Simultaneous Output:monitor_FR" alsa_output.pci-0000_05_04.0.analog-stereo:playback_FR
+
+# Switch the default output to the new virtual sink
+wpSelectDefault=$(wpctl status \
+    | grep "\. Simultaneous Output" \
+    | egrep '^ │( )*[0-9]*' -o \
+    | cut -c6-55 \
+    | egrep -o '[0-9]*')
+wpctl set-default $wpSelectDefault
+#+end_src
+
+As long as you have control over =node.name=, you can simply do
+
+#+begin_src shell
+# ... nevermind OMFG OMF WITFH GODDAMIT... wtf kinda cli shit?
+# i have to ... cut? from a tree? to get a numeric id?
+
+# ... okay i guess it's not that hard (I thought it was specific to how
+# wireplumber was sequencing that specific set of data)
+wpctl inspect -n 'Main Output'
+#+end_src
+
+See below in notes on extracting the =id= for nodes using =pw-dump=. Running the
+=wpctl set-default $id= command will add this =*= beside that node. For some reason,
+=vlc= is still defaulting to select the direct output though.
+
+#+begin_example text
+ ├─ Sinks:
+ │  *   34. Main Output                         [vol: 1.00]
+ │      69. Starship/Matisse HD Audio Controller Analog Stereo [vol: 1.00]
+ │      85. WorkTunes Connect                   [vol: 0.91]
+#+end_example
+
+*** Dotfiles Examples
 
 **** alyraffauf/bazznix
 
@@ -46,9 +108,90 @@
   - see [[https://github.com/aarron-lee/legion-go-tricks/blob/main/experimental_sound_fix/README.md?plain=1][experimental_sound_fix in aarron-lee/legion-go-tricks]] for more info (and
     other pipewire/wireplumber configs)
 
+**** alyraffauf/nixcfg
+
+***** PS4 Touchpad As Mouse
+
+[[https://github.com/alyraffauf/nixcfg/blob/55e96305abe2522eee89620bf90ec981ba256af7/modules/nixos/profiles/gaming/default.nix#L20][modules/nixos/profiles/gaming/default.nix]] LMAO... Oh and it also has audio! ROFL
+
+It sets up the =udev= plug/unplug rules (so either can be used)
+
+It wireplumbs these ALSA devices with fairly [[https://wiki.archlinux.org/title/WirePlumber#Setting_node_priority][low priority.driver]]
+
+#+begin_example lua
+monitor.alsa.rules = [{
+    matches = [{
+        node.name = "~alsa_input.*"
+        alsa.card_name = "Wireless Controller"
+    }
+    {
+        node.name = "~alsa_output.*"
+        alsa.card_name = "Wireless Controller"
+    }]
+    actions = {
+        update-props = {
+            priority.driver        = 90
+            priority.session       = 90
+        }
+    }
+}]
+#+end_example
+
+
+***** Filter Chain
+[[https://github.com/alyraffauf/nixcfg/blob/55e96305abe2522eee89620bf90ec981ba256af7/modules/hardware/lenovo/thinkpad/X1/gen-9/equalizer.nix#L382][modules/hardware/lenovo/thinkpad/X1/gen-9/equalizer.nix]] modifies
+=services.pipewire.wireplumber.configPackages= to add =node.software-dsp.rules= for
+a filter-chain, which demonstrates how to define software-based nodes along with
+logic to link them together.
+
++ The first node in the filter chain uses psychoacoustics to create bass by
+  manipulating the audio
+
+
+#+begin_src dot :file img/nix/wireplumber-equalizer-chain.svg
+digraph G {
+  rankdir=LR;
+  bassex -> el -> fw13eq -> woofer_bp -> woofer_lim
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/wireplumber-equalizer-chain.svg]]
+
+This pulls everything together into a =wireplumber= profile (and adds the required
+packages: =lsp-plugins= and =bankstown-lv2=)
+
+#+begin_example nix
+    configPackage =
+      (pkgs.writeTextDir "share/wireplumber/wireplumber.conf.d/99-x1c.conf" ''
+        monitor.alsa.rules = [{
+          matches = [{ node.name = "${outputName}" }]
+          actions = {
+            update-props = { audio.allowed-rates = [44100, 48000, 88200, 96000, 176400, 192000] }
+          }
+        }]
+
+        node.software-dsp.rules = [{
+          matches = [{ node.name = "${outputName}" }]
+          actions = {
+              create-filter = {
+                filter-path = "${filter-chain}"
+                hide-parent = ${lib.boolToString cfg.hideRawDevice}
+              }
+          }
+        }]
+
+        wireplumber.profiles = { main = { node.software-dsp = "required" } }
+      '')
+      // { passthru.requiredLv2Packages = with pkgs; [ lsp-plugins bankstown-lv2 ]; };
+#+end_example
+**** notashelf/dotfiles
+
++ [[https://github.com/notashelf/nyx/blob/d407b4d6e5ab7f60350af61a3d73a62a5e9ac660/homes/notashelf/misc/rnnoise.nix#L11][misc/rnnoise.nix]] pipewire =context.modules= config for a "Noise cancelling
+  filter chain".
 ** Configuration
 
-*** Pipewire
+*** pw-dump
 
 To dump current config, use =pw-dump=
 
@@ -89,7 +232,281 @@ map(select(.type == "PipeWire:Interface:Factory") | .info.props | keys)
 | flatten | unique
 #+end_example
 
+**** Selecting Nodes
 
+And selecting the =id= for a node, given it's name (or maybe description)
+
+This selects out the nodes without the metadata
+
+#+begin_example jq
+map(select(.type == "PipeWire:Interface:Node") | [.id, .info.props])
+
+#+end_example
+
+This makes some things a bit more clear
+
+#+begin_example jq
+map(select(.type == "PipeWire:Interface:Node")
+  | [.id # include the .id
+    , (.info.props | keys) # just the keys
+    , (.info.props | to_entries | map(.value)) # just the values
+])
+#+end_example
+
+Grep this output for the id. maybe add some selectors idk
+
+#+begin_src shell
+q='map(select(.type == "PipeWire:Interface:Node") | [.id, (.info.props."node.name")]) | map(@csv) | join("\n")'
+pw-dump | jq --raw-output "$q"
+#+end_src
+
+#+RESULTS:
+|  31 | Dummy-Driver                                                        |
+|  32 | Freewheel-Driver                                                    |
+|  33 | Microphone-Proxy                                                    |
+|  34 | Main-Output-Proxy                                                   |
+|  59 | Midi-Bridge                                                         |
+
+*** Wireplumber
+
+**** SystemD Configuration
+
+The docs mention a [[https://pipewire.pages.freedesktop.org/wireplumber/daemon/multi_instance.html#systemd-integration][wireplumber systemd template unit]] that allows you to switch profiles
+quickly. Here's how to define a [[https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/components_and_profiles.html#config-components-and-profiles][profile]], which is
+
+#+begin_quote
+A _profile_ is a collection of _components_ that are loaded together to offer a
+certain overall experience.
+#+end_quote
+
+Here's wireplumber on my system (for now)
+
+#+name: thisWp
+#+begin_src shell :results output verbatim
+wp=$(which wireplumber)
+wp=$(readlink -f $wp)
+wp=$(dirname $wp)/..
+
+echo -n $wp
+#+end_src
+
+#+RESULTS: thisWp
+: /nix/store/qkqays5xyw27wpnh74qajfx4wbr058m1-wireplumber-0.5.10/bin/..
+
+Wireplumber builds a directory structure like this in =nix= (along with more
+contextual information I didn't quite know how to ask about yet)
+
+#+begin_src shell :results output code :wrap example text :var wp=thisWp
+tree -I 'locale' -d  $wp
+#+end_src
+
+#+RESULTS:
+#+begin_example text
+/nix/store/qkqays5xyw27wpnh74qajfx4wbr058m1-wireplumber-0.5.10/bin/..
+├── bin
+├── lib
+│   ├── girepository-1.0
+│   ├── systemd
+│   │   ├── system
+│   │   └── user -> ../../share/systemd/user
+│   └── wireplumber-0.5
+└── share
+    ├── systemd
+    │   └── user
+    ├── wireplumber
+    │   ├── scripts
+    │   │   ├── client
+    │   │   ├── default-nodes
+    │   │   ├── device
+    │   │   ├── lib
+    │   │   ├── linking
+    │   │   ├── monitors
+    │   │   │   ├── libcamera
+    │   │   │   └── v4l2
+    │   │   └── node
+    │   └── wireplumber.conf.d
+    └── zsh
+        └── site-functions
+
+25 directories
+#+end_example
+
+And here's the systemd unit
+
+#+name: wpSvc
+#+begin_src shell :var wp=thisWp :results output code :wrap example conf
+# (the build for =systemd-mode= in emacs is broken... so this doesn't work)
+# +begin_shell :var wp=thisWp :results output code :wrap example systemd
+cat $wp/share/systemd/user/wireplumber.service
+#+end_src
+
+#+RESULTS:
+#+begin_example conf
+[Unit]
+Description=Multimedia Service Session Manager
+After=pipewire.service dbus.service
+BindsTo=pipewire.service
+Conflicts=pipewire-media-session.service
+
+[Service]
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+Type=simple
+ExecStart=/nix/store/qkqays5xyw27wpnh74qajfx4wbr058m1-wireplumber-0.5.10/bin/wireplumber
+Restart=on-failure
+Slice=session.slice
+Environment=GIO_USE_VFS=local
+
+[Install]
+WantedBy=pipewire.service
+Alias=pipewire-session-manager.service
+#+end_example
+
+And the template service
+
+#+name: wpTempSvc
+#+begin_src shell :var wp=thisWp :results output code :wrap example conf
+cat $wp/share/systemd/user/wireplumber@.service
+#+end_src
+
+#+RESULTS:
+#+begin_example conf
+# Service file to run WirePlumber in split mode, i.e. run multiple
+# WirePlumber instances with different module sets.
+# The template argument is used to load a specific profile, e.g.
+# wireplumber@main.service loads the "main" profile,
+# wireplumber@policy.service loads the "policy" profile, etc.
+[Unit]
+Description=Multimedia Service Session Manager (%i)
+After=pipewire.service
+BindsTo=pipewire.service
+Conflicts=pipewire-media-session.service
+
+[Service]
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+NoNewPrivileges=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+Type=simple
+ExecStart=/nix/store/qkqays5xyw27wpnh74qajfx4wbr058m1-wireplumber-0.5.10/bin/wireplumber -p %i
+Restart=on-failure
+Slice=session.slice
+Environment=GIO_USE_VFS=local
+
+[Install]
+WantedBy=pipewire.service
+#+end_example
+
+And their differences. All it does is pass the systemd template parameter to
+=./bin/wireplumber -p %i= ... which is um exactly what the docs say this does (and
+now I know what that looks like). I've otherwise kinda struggled to identify
+_what_ a systemd template is. The high version numbers in =systemd= for docs
+improvements and self-documenting features are ummm... not great.
+
+#+begin_src shell :var wp=thisWp :results output code :wrap example diff
+# diff <(echo -e $wpS) <(echo -e $wpT)
+# echo -n
+diff $wp/share/systemd/user/wireplumber{,@}.service
+echo -n
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+0a1,5
+> # Service file to run WirePlumber in split mode, i.e. run multiple
+> # WirePlumber instances with different module sets.
+> # The template argument is used to load a specific profile, e.g.
+> # wireplumber@main.service loads the "main" profile,
+> # wireplumber@policy.service loads the "policy" profile, etc.
+2,3c7,8
+< Description=Multimedia Service Session Manager
+< After=pipewire.service dbus.service
+---
+> Description=Multimedia Service Session Manager (%i)
+> After=pipewire.service
+14c19
+< ExecStart=/nix/store/qkqays5xyw27wpnh74qajfx4wbr058m1-wireplumber-0.5.10/bin/wireplumber
+---
+> ExecStart=/nix/store/qkqays5xyw27wpnh74qajfx4wbr058m1-wireplumber-0.5.10/bin/wireplumber -p %i
+21d25
+< Alias=pipewire-session-manager.service
+#+end_example
+
+**** Introspection Interface
+
+The thing that pipewire/wireplumber need is a capacity for "introspection",
+given a starting parameter. That is:
+
++ CLI & D-Bus communication functionality to allow GUI apps to show you which
+  parts of the pipewire/wireplumber graph are responsible for showing what's on
+  your screen.
++ It wouldn't surprise me if this already exists (but it's not in the GUI). It
+  usually does, in some way or another. =pipewire= includes this via CLI that
+  produces JSON, but the workflow to figure out useful queries is a bit slow
+
+#+begin_quote
+I guess pipewire/wirepluber do include the possibility of [[GObject Introspection][GObject Introspection]],
+which IIRC needs to be built-in at compile-time.
+
+(wouldn't it be great if you could just build a replacement package or dynamic
+lib and you wouldn't need to master everything from c/make to meson to
+everything gnome in order to benefit from GTK debugging?)
+
+It still mostly requires using the debugger as a graphical interface, I think,
+which makes the workflow a bit tough to grok, given that pipewire/wireplumber
+are services.
+#+end_quote
+
+This /should/ work (1) at least for what wireplumber thinks it's configuration is
+and (2) allowing you to click on components and open =$EDITOR= at the files. I
+don't particularly like GUI apps, but they are useful for understanding the:
+
++ "Language L"
++ of "Pieces P"
++ that is responsible for generating some possibility space of "Statements S"
+
+In other words, it's difficult to imagine what can/cannot be configured if you
+can't quickly iterate through the possibilities. This is why I don't disable the
+=menu-bar-mode= in emacs: it contains hundreds of functions I don't use, which I
+otherwise may not recognize as possibilities.
+
++ Linux tools are designed to be CLI-first, which also funnels user
+  adoption/automation in terms of CLI. If the CLI functions, then usually the
+  dynamic libs & D-Bus enable similar functionality -- they expose a similar
+  interface.
++ On windows, the programs are usually GUI first and the CLI is an
+  afterthought (bolted onto applications with legacy libary interfaces which don't
+  need to think so much about "D-Bus" integration except for first-party things)
+
+However, the pipewire GUI tooling is seriously lagging (probably a result of
+users migrating towards windows).
+
++ Helvum works very well, but ... graphs are at least NP-hard so that's a lot of
+  clicks when things don't work right.
++ I can't filter on Helvum. Because of =freedesktop= wierd "no we can't fix menus
+  in wayland" stance, I also can't tell whether there is supposed to be an App
+  Menu, so I have to go to google and literally query for screenshots.
+  - Have I ever mentioned: I'm socially isolated? lol I've never seen much of
+    any software I'm using running in real-time, except for on youtube
++ qpwgraph just does everything on it's own, but it's config files don't use
+  standard formats (YAML/JSON)
+
+This is a bit sad, since there are so many unrealized possibilities. There is
+enough technical capacity in pipewire in order to control & govern streams of
+data/multimedia so your Ford don't run off the road (lol)..
+
++ it's at least used for simple media streaming (and maybe _only_ for that, IDK)
++ anything running in a car is probably running a microkernel architecture,
+  especially smartcars. this is for component-level isolation and also to permit
+  automated testing of component dropouts (or anomolous component data)
++ i.e. the product is even so polished as to
+  - permit builds on any platform (even non-Unix, non-Linux, non-BSD)
+  - survive restarts of components and adapt its running state to alternate
+    configurations
 
 * Issues
 
