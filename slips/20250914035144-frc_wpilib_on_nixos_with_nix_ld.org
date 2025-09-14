@@ -1,0 +1,772 @@
+:PROPERTIES:
+:ID:       1a277cd5-c0bc-4ffd-8511-0ec2f7e0321b
+:END:
+#+TITLE: FRC: WPILib on NixOS with nix-ld
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
++ [[id:97ae00f5-9337-4108-b85f-1edfc7f86ed7][Java]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* Resources
+
+** =nixpkgs=
+
++ [[https://github.com/NixOS/nixpkgs/blob/387dba747717a460c79cdb13221ac26fb1b79e6c/pkgs/applications/editors/vscode/extensions/default.nix#L1][pkgs/applications/editors/vscode/extensions/default.nix#L1]]
++ [[https://github.com/NixOS/nixpkgs/blob/387dba747717a460c79cdb13221ac26fb1b79e6c/nixos/modules/programs/vscode.nix#L1][nixos/modules/programs/vscode.nix#L1]]
+  + Note: =programs.vscode= is in =nixos-unstable= only, so I've basically
+    reimplemented what's important below.
+
+** [[github.com/frc4451/frc-nix][frc4451/frc-nix]]
+
+Derivations not exported as packages:
+
++ buildBinTool :: used for pathweaver, smartdashboard, shuffleboard
++ buildJavaTool :: used for sysid, wpical, roborioteamnumbersetter,
+  outlineviewer, datalogtool, glass
+
+* Overview
+** Why are you using NixOS
+
+For some background: this is significantly easier on a Linux FHS system. If it's
+because your dotfiles have stylix & color themes, then that's not a good reason.
+
+See also "NixOS Problems", etc at the end. These are difficult to explain to
+someone who's willing to deal with the challenges. You still don't know what you
+don't know. Other experts/mentors know more but have enough experience to be
+more cautious in exploring/advising on Nix.
+
++ NixOS and Guix System allow you to programmatically define service definitions,
+  service dependency trees, file systems, etc. Ansible also somewhat allows
+  this, but it's stateful and difficult.
++ You want one interface for defining everything you use.
++ You really want system portability or configuration reproducibility.
++ You want control over build-time dependencies to do things like: build
+  gobject-inspectable dynamic libraries used by pipewire/wireplumber.
+  - Nix standalone will do some of this, but NixOS & Guix System help handle the
+    integration-level testing/changes
++ You want to test D-Bus service interactions with custom XML interfaces/etc.
+
+*** Examples
+
++ [[https://github.com/randomizedcoder/nixos/tree/main/desktop/l2][randomizedcoder/nixos desktop/l2]] manages a server with 3-4 Wifi 6 access
+  points and tons of automation.
++ [[https://github.com/cleverca22/nixos-configs][cleverca22/nixos-configs]] network automation and IoT/arm image generation
++ [[https://github.com/ManoftheSea/SeaofDirac/blob/master/hosts/default.nix#L12][ManoftheSea/SeaofDiract hosts/default.nix#L12]] network service configuration
+
+** Nix LD
+
+If you don't understand some of the =FHS= and =nix-ld= caveats in here, you should
+NOT expect to use nix-OS without at least 100 hours of spare time (maybe less
+with a mentor). So, what seems promising as a "way to learn the deeper
+internals" can easily just be a time-sink -- these challenges are often good
+ways to learn, but you need to ensure you couple your processes with effective
+feedback, otherwise it's possible that your =α<=1.0= ... !!
+
+(I'm a noob btw)
+
++ another challenge is that not every "error" is a runtime error. you may
+  encounter silent build-time errors. When things "physically move" idk that
+  could be dangerous, potentially. you can use =diffoscope= or other tools to
+  recursively analyze images/blobs produced for your roboRIO.
+
++ see =rldd= tool for more background [[https://github.com/zatrazz/rldd][zatrazz/rldd]], which helps you identify what
+  may be linking to a specific library. It's like a reverse package graph for
+  dynamic libraries. by the time you understand this, you should understand
+  what's needed
+
++ If you pin your dependencies or run an old profile, you'll have =glib= version
+  mismatch issues, which will be strange (i.e. problems like "*this build* had
+  once worked on my machine")
+
+** D-Bus
+
+VSCode (and thus the WPILib extension) rely on D-Bus for some calls... I'm not
+sure which yet.
+
+** Required to Link from WPILib Installation
+
+For stability, you should have your linker find the dynamic libraries here;
+
+#+begin_src shell :results output :dir (getenv "HOME")
+tree --prune -P "*.so*" wpilib/2025/jdk/lib
+#+end_src
+
+#+RESULTS:
+#+begin_example
+wpilib/2025/jdk/lib
+├── libattach.so
+├── libawt_headless.so
+├── libawt.so
+├── libawt_xawt.so
+├── libdt_socket.so
+├── libextnet.so
+├── libfontmanager.so
+├── libinstrument.so
+├── libj2gss.so
+├── libj2pcsc.so
+├── libj2pkcs11.so
+├── libjaas.so
+├── libjavajpeg.so
+├── libjava.so
+├── libjawt.so
+├── libjdwp.so
+├── libjimage.so
+├── libjli.so
+├── libjsig.so
+├── libjsound.so
+├── libjsvml.so
+├── liblcms.so
+├── libmanagement_agent.so
+├── libmanagement_ext.so
+├── libmanagement.so
+├── libmlib_image.so
+├── libnet.so
+├── libnio.so
+├── libprefs.so
+├── librmi.so
+├── libsaproc.so
+├── libsctp.so
+├── libsplashscreen.so
+├── libsyslookup.so
+├── libverify.so
+├── libzip.so
+└── server
+    ├── libjsig.so
+    └── libjvm.so
+
+2 directories, 38 files
+#+end_example
+* Issues
+
+The logs print to =~/wpilib/2025/logs/wpilibtoollog.txt=
+
+** Environment
+
+- JAVA_HOME :: could be changed in ~/.profile or a copy of the desktop file(s)
+  - For me, changing this at the system level requires changing all of my shells
+    to run WPILib Java, which I'm just going to do for now.
+- HALSIM_EXTENSION :: needs to be set in the specific launch invocation. it's
+  project-specific. This could be a Nix devshell. If the editor wasn't VSCode,
+  you could use =direnv=, which is messy but does work.
+
+If you're in a hurry, just export these from the =./gradlew script= -- ONLY for
+testing. don't leave your environment this way. It really doesn't work for much.
+
+#+begin_src shell
+export HALSIM_EXTENSIONS="$PWD/build/jni/release/libhalsim_gui.so"  # "if not setting up build.gradle"
+export JAVA_HOME="$HOME"/wpilib/2025/jdk/
+#+end_src
+
+"if not setting up build.gradle" i.e. (I think) you should not expect to change
+a project's build scripts to address a system-specific concern.
+
+** VSCode SSH
+
+*** Clients SSH to local VSCode
+
+VS Code
+
+This is a fix to enable VSCode to successfully remote SSH on a client to a NixOS
+host, but nix-ld also fixes other linking issues, which I think are sidestepped
+by using =pkgs.vscode.fhsWithPackages=.
+
+https://wiki.nixos.org/wiki/Visual_Studio_Code
+
+#+begin_src nix
+programs.nix-ld.enable = true;
+#+end_src
+
+A remote VSCode attaching to a NixOS system will attempt to load content into a
+scripts directory. These contain binaries that link FHS paths. If
+=programs.nix-ld.enable=, it's default =.libaries= should cover what the VSCode
+scripts expect.
+
+*** WPILib: Start Tool
+
+This doesn't recognize that I have the tools installed via nix. By default it
+won't find them. I've browsed through the typescript code before, but I'm not
+100% how it's looking for tools.
+
+Use "WPILib: Start Tool" to start tools (if bundled inside the vscode FHS)
+
+
+#
+# https://github.com/wpilibsuite/vscode-wpilib/blob/0d1a35fe4ccaae42cafeb40fd28b670e4184cc6f/vscode-wpilib/src/toolapi.ts#L54
+#
+# :InstallAllTools -> :PathWeaverInstall :RobotBuilderInstall :ShuffleBoardInstall :SmartDashboardInstall
+#
+# this downloads jars & startup scripts to ~/wpilib/2025/tools/*
+
+** =nix-ld=
+
+*** initial comparison
+
+Note, these comparisons run on the kratos system using
+[[https://github.com/dcunited001/ellipsis/blob/master/nixos/modules/nixos/programs/vscode.nix][modules/nixos/programs/vscode.nix in this commit]].
+
++ These were run in an XRP-Reference project (before the vendordeps were fixed,
+  thus before a =libhalsim_gui.so= had been built, I think)
+
+**** System =ldd=
+
+| zlib-1.3.1  | zstd-1.5.7     | gcc-14.3.0 | curl-8.14.1      | openssl-3.4.2     | attr-2.5.2 | libssh-0.11.2 |
+| bzip2-1.0.8 | libxml2-2.13.8 | acl-2.3.2  | libsodium-1.0.20 | util-linux-2.41.1 | xz-5.8.1   | systemd-257.8 |
+
+The default system configuration for me, when =programs.nix-ld.enable = true=:
+
+=:print config.programs.nix-ld=
+
+#+begin_src nix
+{
+  enable = true;
+  libraries = [
+    «derivation /nix/store/svr...-zlib-1.3.1.drv»
+    «derivation /nix/store/ll7...-zstd-1.5.7.drv»
+    «derivation /nix/store/7i0...-gcc-14.3.0.drv»
+    «derivation /nix/store/30v...-curl-8.14.1.drv»
+    «derivation /nix/store/vs1...-openssl-3.4.2.drv»
+    «derivation /nix/store/frq...-attr-2.5.2.drv»
+    «derivation /nix/store/vh5...-libssh-0.11.2.drv»
+    «derivation /nix/store/bg9...-bzip2-1.0.8.drv»
+    «derivation /nix/store/phn...-libxml2-2.13.8.drv»
+    «derivation /nix/store/x6b...-acl-2.3.2.drv»
+    «derivation /nix/store/63w...-libsodium-1.0.20.drv»
+    «derivation /nix/store/s34...-util-linux-2.41.1.drv»
+    «derivation /nix/store/lzb...-xz-5.8.1.drv»
+    «derivation /nix/store/nj8...-systemd-257.8.drv»
+  ];
+  package = «derivation /nix/store/ip1...-nix-ld-2.0.4.drv»;
+}
+#+end_src
+
+**** =fhsWithExtensions=
+
+I'm unsure of whether =fhsWithPackages= falls through to the system -- i.e.
+whether it's equivalent to adding these libraries into
+=programs.nix-ld.libraries=.
+
+**** Comparing system =ldd= vs =fhsWithExtensions=
+
+#+begin_quote
+Note: this is early on
+#+end_quote
+
++ system java: =/etc/profiles/per-user/dc/bin/java=
++ vscode java: =$HOME/wpilib/2025/jdk=
+
+On the system:
+
+#+begin_src shell
+lib="$HOME/wpilib/2025/jdk/lib/libawt_xawt.so"
+ldd $lib
+#+end_src
+
+Returns
+
+#+name: lddAwtXAwtSys
+#+begin_example
+ldd: warning: you do not have execution permission for `/home/dc/wpilib/2025/jdk/lib/libawt_xawt.so'
+linux-vdso.so.1 (0x00007fb9d76e1000)
+libm.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libm.so.6 (0x00007fb9d758b000)
+libawt.so => /home/dc/wpilib/2025/jdk/lib/libawt.so (0x00007fb9d749d000)
+libXext.so.6 => not found
+libX11.so.6 => not found
+libXrender.so.1 => not found
+libdl.so.2 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libdl.so.2 (0x00007fb9d7496000)
+libXtst.so.6 => not found
+libXi.so.6 => not found
+libjava.so => /home/dc/wpilib/2025/jdk/lib/libjava.so (0x00007fb9d746c000)
+libjvm.so => not found
+libpthread.so.0 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libpthread.so.0 (0x00007fb9d7465000)
+libc.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libc.so.6 (0x00007fb9d7200000)
+/nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib64/ld-linux-x86-64.so.2 (0x00007fb9d76e3000)
+libjvm.so => not found
+libjvm.so => not found
+#+end_example
+
+From the VSCode shell (which /doesn't/ set =JAVA_HOME= yet)
+
+#+begin_src shell
+# javahome shouldn't matter here, but for clarity...
+export JAVA_HOME="$HOME/wpilib/2025/jdk"
+ldd $lib
+#+end_src
+
+Returns
+
+#+name: lddAwtXAwtVscode
+#+begin_example
+ldd: warning: you do not have execution permission for `/home/me/wpilib/2025/jdk/lib/libawt_xawt.so'
+linux-vdso.so.1 (0x00007f691e3c6000)
+libm.so.6 => /lib/libm.so.6 (0x00007f691e26d000)
+libawt.so => /home/dc/wpilib/2025/jdk/lib/libawt.so (0x00007f691e17f000)
+libXext.so.6 => not found
+libX11.so.6 => not found
+libXrender.so.1 => not found
+libdl.so.2 => /lib/libdl.so.2 (0x00007f691e178000)
+libXtst.so.6 => not found
+libXi.so.6 => not found
+libjava.so => /home/dc/wpilib/2025/jdk/lib/libjava.so (0x00007f691e14e000)
+libjvm.so => not found
+libpthread.so.0 => /lib/libpthread.so.0 (0x00007f691e147000)
+libc.so.6 => /lib/libc.so.6 (0x00007f691de00000)
+/nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib64/ld-linux-x86-64.so.2 (0x00007f691e3c8000)
+libjvm.so => not found
+libjvm.so => not found
+#+end_example
+
+This only highlights the linking differences betwee =fhsWithExtensions= and the
+objects not handled by =nix-ld=. Because of how =vscode= launches (as a wrapper to a
+nix container, IIRC), some of the =FHS= paths above actually point to different
+places!
+
+#+name: diffOutputs
+#+headers: :results output code :wrap example diff
+#+begin_src shell  :var a=lddAwtXAwtSys b=lddAwtXAwtVscode
+# system(a) -> fhsWithExtensions(b)
+diff <(echo "$a" | sed -e 's/ (0x00.*$//g') \
+    <(echo -e "$b" | sed -e 's/ (0x00.*$//g')
+echo
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1c1
+< ldd: warning: you do not have execution permission for `/home/dc/wpilib/2025/jdk/lib/libawt_xawt.so'
+---
+> ldd: warning: you do not have execution permission for `/home/me/wpilib/2025/jdk/lib/libawt_xawt.so'
+3c3
+< libm.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libm.so.6
+---
+> libm.so.6 => /lib/libm.so.6
+8c8
+< libdl.so.2 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libdl.so.2
+---
+> libdl.so.2 => /lib/libdl.so.2
+13,14c13,14
+< libpthread.so.0 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libpthread.so.0
+< libc.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libc.so.6
+---
+> libpthread.so.0 => /lib/libpthread.so.0
+> libc.so.6 => /lib/libc.so.6
+
+#+end_example
+
+*** WPILib JVM Link Targets
+
+Still running on the same kratos and FHS Vscode
+[[https://github.com/dcunited001/ellipsis/blob/master/nixos/modules/nixos/programs/vscode.nix][modules/nixos/programs/vscode.nix in this commit]]
+
+And so we can see below, there's some problems.
+
++ First off, many of the X11 =.so= files don't exist in the system JVM. The stakes
+  here are high because the WPILib JDK expects to interface with the core WPILib
+  C++ via JNI. (idk how that happens, so I'mma be cautious)
+  + libXau.so.6, libxcb.so.1, libXdmcp.so.6 :: Only WPILib JDK, not System JDK
+  + libXext.so.6 :: resolves in one target, not in the seconds. IDK how this
+    happens. It could be an indirect artifact of patchelf if one of these =ldd=
+    invocations resulted in partial execution.
++ Still, using the system Java would eliminate some of these dependencies.
+
+**** Comparison
+
+From System
+
+#+name: lddTargets
+#+begin_src shell :results output :var d=(expand-file-name "~/wpilib/2025/jdk")
+ldd $(find "$d" -name "*.so" -printf '%p ') 2>/dev/null \
+    | grep -e '^	' \
+    | sed -e 's/ (0x00.*$//g' \
+    | tr -d '	' | sort | uniq
+#+end_src
+
+#+RESULTS: lddTargets
+#+begin_example
+libasound.so.2 => not found
+libawt.so => /home/dc/wpilib/2025/jdk/lib/libawt.so
+libawt_xawt.so => /home/dc/wpilib/2025/jdk/lib/libawt_xawt.so
+libc.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libc.so.6
+libdl.so.2 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libdl.so.2
+libfreetype.so.6 => not found
+libjava.so => /home/dc/wpilib/2025/jdk/lib/libjava.so
+libjli.so => /home/dc/wpilib/2025/jdk/lib/libjli.so
+libjvm.so => not found
+libm.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libm.so.6
+libnet.so => /home/dc/wpilib/2025/jdk/lib/libnet.so
+libnio.so => /home/dc/wpilib/2025/jdk/lib/libnio.so
+libpthread.so.0 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libpthread.so.0
+librt.so.1 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/librt.so.1
+libX11.so.6 => not found
+libXext.so.6 => not found
+libXi.so.6 => not found
+libXrender.so.1 => not found
+libXtst.so.6 => not found
+linux-vdso.so.1
+/nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib64/ld-linux-x86-64.so.2
+#+end_example
+
+#+name jdkLinksSystem
+#+call: lddTargets(d="~/wpilib/2024/jdk")
+
+#+RESULTS:
+#+begin_example
+libasound.so.2 => not found
+libawt.so => /home/dc/wpilib/2025/jdk/lib/libawt.so
+libawt_xawt.so => /home/dc/wpilib/2025/jdk/lib/libawt_xawt.so
+libc.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libc.so.6
+libdl.so.2 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libdl.so.2
+libfreetype.so.6 => not found
+libjava.so => /home/dc/wpilib/2025/jdk/lib/libjava.so
+libjli.so => /home/dc/wpilib/2025/jdk/lib/libjli.so
+libjvm.so => not found
+libm.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libm.so.6
+libnet.so => /home/dc/wpilib/2025/jdk/lib/libnet.so
+libnio.so => /home/dc/wpilib/2025/jdk/lib/libnio.so
+libpthread.so.0 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libpthread.so.0
+librt.so.1 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/librt.so.1
+libX11.so.6 => not found
+libXext.so.6 => not found
+libXi.so.6 => not found
+libXrender.so.1 => not found
+libXtst.so.6 => not found
+linux-vdso.so.1
+/nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib64/ld-linux-x86-64.so.2
+#+end_example
+
+And from VSCode
+
+#+name: jdkLinksVscode
+#+begin_example
+libasound.so.2 => not found
+libawt.so => /home/dc/wpilib/2025/jdk/lib/libawt.so
+libawt_xawt.so => /home/dc/wpilib/2025/jdk/lib/libawt_xawt.so
+libc.so.6 => /lib/libc.so.6
+libdl.so.2 => /lib/libdl.so.2
+libfreetype.so.6 => not found
+libjava.so => /home/dc/wpilib/2025/jdk/lib/libjava.so
+libjli.so => /home/dc/wpilib/2025/jdk/lib/libjli.so
+libjvm.so => not found
+libm.so.6 => /lib/libm.so.6
+libnet.so => /home/dc/wpilib/2025/jdk/lib/libnet.so
+libnio.so => /home/dc/wpilib/2025/jdk/lib/libnio.so
+libpthread.so.0 => /lib/libpthread.so.0
+librt.so.1 => /lib/librt.so.1
+libX11.so.6 => /lib/libX11.so.6
+libXau.so.6 => /nix/store/sckr00p0z6qzrkimvh8ing7yyg9zagri-libXau-1.0.12/lib/libXau.so.6
+libxcb.so.1 => /nix/store/ck4f1lhzmbbrpharmzxnqzw4vfbgzkr7-libxcb-1.17.0/lib/libxcb.so.1
+libXdmcp.so.6 => /nix/store/v5npwp9c426pcmvpm20vqljbbvp6m1g8-libXdmcp-1.1.5/lib/libXdmcp.so.6
+libXext.so.6 => /nix/store/2lbv5rbgfwh2gn7n6pzb01p5y4vc683z-libXext-1.3.6/lib/libXext.so.6
+libXext.so.6 => not found
+libXi.so.6 => /lib/libXi.so.6
+libXrender.so.1 => not found
+libXtst.so.6 => not found
+linux-vdso.so.1
+/nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib64/ld-linux-x86-64.so.2
+#+end_example
+
+
+#+call: diffOutputs(a=jdkLinksSystem,b=jdkLinksVscode)
+
+#+RESULTS:
+#+begin_example diff
+4,5c4,5
+< libc.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libc.so.6
+< libdl.so.2 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libdl.so.2
+---
+> libc.so.6 => /lib/libc.so.6
+> libdl.so.2 => /lib/libdl.so.2
+10c10
+< libm.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libm.so.6
+---
+> libm.so.6 => /lib/libm.so.6
+13,15c13,19
+< libpthread.so.0 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libpthread.so.0
+< librt.so.1 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/librt.so.1
+< libX11.so.6 => not found
+---
+> libpthread.so.0 => /lib/libpthread.so.0
+> librt.so.1 => /lib/librt.so.1
+> libX11.so.6 => /lib/libX11.so.6
+> libXau.so.6 => /nix/store/sckr00p0z6qzrkimvh8ing7yyg9zagri-libXau-1.0.12/lib/libXau.so.6
+> libxcb.so.1 => /nix/store/ck4f1lhzmbbrpharmzxnqzw4vfbgzkr7-libxcb-1.17.0/lib/libxcb.so.1
+> libXdmcp.so.6 => /nix/store/v5npwp9c426pcmvpm20vqljbbvp6m1g8-libXdmcp-1.1.5/lib/libXdmcp.so.6
+> libXext.so.6 => /nix/store/2lbv5rbgfwh2gn7n6pzb01p5y4vc683z-libXext-1.3.6/lib/libXext.so.6
+17c21
+< libXi.so.6 => not found
+---
+> libXi.so.6 => /lib/libXi.so.6
+#+end_example
+
+*** WPILib JNI Link Targets
+
+I replaced the base dir with =$project= after running the commands.
+
++ The artifacts were built from within the nix =vscode.fhsWithExtensions=
+  - This gets hairy .... since you definitely need to =./gradlew clean= before
+    comparison (if your environment/vscode build changes)
++ Because of how VSCode spawns environments, you can't guarantee that it's
+  initializing its tasks with a clean(intended) environment! Of course, what's
+  great is not needing to worry about it.
++ In the Vscode build, there's some artifact that's linking libm.so.6 to two
+  different targets.
+
+From the Nixos System
+
+| /nix/store | libc.so.6      | libgcc_s.so.1 | libm.so.6 |
+| not found  | libstdc++.so.6 |               |           |
+| virtual    | vsdo           |               |           |
+
+references to libm.so
+
++ targts FHS =/lib/libm.so.6=: =libwpi{net,util}jni.so=, =libcscorejni.so=, =libwpinet.so=
++ Everything else targets =/nix/store/fdsa...-libm.so.6=
++ Ultimately, these are the same files (compared with sha256)
+
+#+call: lddTargets(d="/data/dev/frc/xrp/test/xrp-reference/xrp-ref1/build/jni/release")
+
+#+name: jniLinksSystem
+#+begin_example
+libapriltag.so => $project/build/jni/release/libapriltag.so
+libcscore.so => $project/build/jni/release/libcscore.so
+libc.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libc.so.6
+libgcc_s.so.1 => /nix/store/16hvpw4b3r05girazh4rnwbw0jgjkb4l-xgcc-14.3.0-libgcc/lib/libgcc_s.so.1
+libm.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libm.so.6
+libntcore.so => $project/build/jni/release/libntcore.so
+libopencv_aruco.so.4.10 => $project/build/jni/release/libopencv_aruco.so.4.10
+libopencv_calib3d.so.4.10 => $project/build/jni/release/libopencv_calib3d.so.4.10
+libopencv_core.so.4.10 => $project/build/jni/release/libopencv_core.so.4.10
+libopencv_dnn.so.4.10 => $project/build/jni/release/libopencv_dnn.so.4.10
+libopencv_features2d.so.4.10 => $project/build/jni/release/libopencv_features2d.so.4.10
+libopencv_flann.so.4.10 => $project/build/jni/release/libopencv_flann.so.4.10
+libopencv_imgcodecs.so.4.10 => $project/build/jni/release/libopencv_imgcodecs.so.4.10
+libopencv_imgproc.so.4.10 => $project/build/jni/release/libopencv_imgproc.so.4.10
+libopencv_ml.so.4.10 => $project/build/jni/release/libopencv_ml.so.4.10
+libopencv_objdetect.so.4.10 => $project/build/jni/release/libopencv_objdetect.so.4.10
+libopencv_photo.so.4.10 => $project/build/jni/release/libopencv_photo.so.4.10
+libopencv_videoio.so.4.10 => $project/build/jni/release/libopencv_videoio.so.4.10
+libopencv_video.so.4.10 => $project/build/jni/release/libopencv_video.so.4.10
+libstdc++.so.6 => not found
+libwpiHal.so => $project/build/jni/release/libwpiHal.so
+libwpimath.so => $project/build/jni/release/libwpimath.so
+libwpinet.so => $project/build/jni/release/libwpinet.so
+libwpiutil.so => $project/build/jni/release/libwpiutil.so
+linux-vdso.so.1
+/nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib64/ld-linux-x86-64.so.2
+#+end_example
+
+#+name: jniLinksVscode
+#+begin_example
+libapriltag.so => $project/build/jni/release/libapriltag.so
+libcscore.so => $project/build/jni/release/libcscore.so
+libc.so.6 => /lib/libc.so.6
+libgcc_s.so.1 => /lib/libgcc_s.so.1
+libm.so.6 => /lib/libm.so.6
+libm.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libm.so.6
+libntcore.so => $project/build/jni/release/libntcore.so
+libopencv_aruco.so.4.10 => $project/build/jni/release/libopencv_aruco.so.4.10
+libopencv_calib3d.so.4.10 => $project/build/jni/release/libopencv_calib3d.so.4.10
+libopencv_core.so.4.10 => $project/build/jni/release/libopencv_core.so.4.10
+libopencv_dnn.so.4.10 => $project/build/jni/release/libopencv_dnn.so.4.10
+libopencv_features2d.so.4.10 => $project/build/jni/release/libopencv_features2d.so.4.10
+libopencv_flann.so.4.10 => $project/build/jni/release/libopencv_flann.so.4.10
+libopencv_imgcodecs.so.4.10 => $project/build/jni/release/libopencv_imgcodecs.so.4.10
+libopencv_imgproc.so.4.10 => $project/build/jni/release/libopencv_imgproc.so.4.10
+libopencv_ml.so.4.10 => $project/build/jni/release/libopencv_ml.so.4.10
+libopencv_objdetect.so.4.10 => $project/build/jni/release/libopencv_objdetect.so.4.10
+libopencv_photo.so.4.10 => $project/build/jni/release/libopencv_photo.so.4.10
+libopencv_videoio.so.4.10 => $project/build/jni/release/libopencv_videoio.so.4.10
+libopencv_video.so.4.10 => $project/build/jni/release/libopencv_video.so.4.10
+libstdc++.so.6 => /lib/libstdc++.so.6
+libwpiHal.so => $project/build/jni/release/libwpiHal.so
+libwpimath.so => $project/build/jni/release/libwpimath.so
+libwpinet.so => $project/build/jni/release/libwpinet.so
+libwpiutil.so => $project/build/jni/release/libwpiutil.so
+linux-vdso.so.1
+/nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib64/ld-linux-x86-64.so.2
+#+end_example
+
+#+call: diffOutputs(a=jniLinksSystem,b=jniLinksVscode)
+
+#+RESULTS:
+#+begin_example diff
+3,4c3,5
+< libc.so.6 => /nix/store/g8zyryr9cr6540xsyg4avqkwgxpnwj2a-glibc-2.40-66/lib/libc.so.6
+< libgcc_s.so.1 => /nix/store/16hvpw4b3r05girazh4rnwbw0jgjkb4l-xgcc-14.3.0-libgcc/lib/libgcc_s.so.1
+---
+> libc.so.6 => /lib/libc.so.6
+> libgcc_s.so.1 => /lib/libgcc_s.so.1
+> libm.so.6 => /lib/libm.so.6
+20c21
+< libstdc++.so.6 => not found
+---
+> libstdc++.so.6 => /lib/libstdc++.so.6
+
+#+end_example
+
+
+** XRP
+*** Missing Deps
+
+After deleting the WPILib vendor deps, the search wouldn't list deps:
+=WPILib-New-Commands= and =XRP-VendorDep=. I pulled their JSON from another
+XRP-Reference generation via =scp=, then run the gradle build again.
+
+* Testing
+** =No available deployers=
+
+=wpilibtoollog.txt= shows the extension can't find =i18n/en-US/message.json=. It
+doesn't exist. The english message is itself the key in the =i18n= lookup.
+
+
+** With XRP
+
+and not having too much luck tracing
+the typescript. I can't seem to figure out how to get VSCode to debug those
+lines (sources missing).
+
++ After recovering the wifi details, the =XRP-1234-dcba= network wasn't
+  broadcasting. I connected back to my wifi
++ I ran =nmap -sn 17.23.0.0/24= which ran an IP scan. The XRP was the first in the
+  DHCP pool, given that =172.23.0.100:5000= was serving HTTP
++ From here, I just needed to make the XRP build aware of the connection
+  details.
+* As a =vscode.fhsWithExtensions= build
+
+Using a nix shell is somewhat different
+
+** Code
+
+*** =./overlays/default.nix=
+
+Fortunately, but using =inputs.frc-nix...= I don't need an overlay. I'm on
+=nixos-25.0.= and =frc-nix= references =nixos-unstable= ... which had been a problem.
+
++ However, because of the isolation in =./modules/programs
+
+*** =./modules/programs/vscode.nix=
+
+#+begin_example nix
+{ inputs, config, lib, pkgs, ... }:
+let
+  frcPkgs = inputs.frc-nix.packages.${pkgs.system};
+  # these fhsPkgs can be set in programs.nix-ld.libraries
+  fhsPkgs = with pkgs;
+    [ stdenv.cc.cc.lib zlib openssl.dev pkg-config jdt-language-server ] # jdk17
+    ++ [
+      # some, but not all wpilib apps should go here. particularly, those that
+      # need to link consistently into the FHS.
+      #
+      # - this avoids GLW issues (which you can usually circumvent on nix/guix
+      #   by wrapping in a shell with chromium dev dependencies).
+      #
+      # - however, these packages aren't added to the top-level environment
+      #   (and those won't have the FHS corrections).
+      #
+      # - This works for some apps, but not for those which need FHS
+      #   constraints on the dynamic library dependencies.
+      #
+      # - thus, it's safer to find a way to spawn these from within VS Code.
+
+      frcPkgs.datalogtool
+      frcPkgs.glass
+      frcPkgs.outlineviewer
+      frcPkgs.pathweaver
+      frcPkgs.roborioteamnumbersetter
+      frcPkgs.robotbuilder
+      frcPkgs.shuffleboard
+      frcPkgs.smartdashboard
+      frcPkgs.sysid
+      frcPkgs.wpilib-utility
+      frcPkgs.wpical
+    ];
+  vscFhs = pkgs.vscode.fhsWithPackages (ps: with ps; fhsPkgs);
+  vscExtensions = with pkgs.vscode-extensions;
+    [
+      bbenoist.nix
+      golang.go
+      twxs.cmake
+      ms-vscode.cpptools
+      redhat.java
+      redhat.vscode-yaml
+      ms-python.python
+      ms-python.debugpy
+      ms-python.vscode-pylance
+      ms-python.isort
+      ms-python.black-formatter
+      vscjava.vscode-java-pack
+      vscjava.vscode-gradle
+    ] ++ [ frcPkgs.vscode-wpilib ];
+
+  vscFinal = pkgs.vscode-with-extensions.override {
+    vscode = vscFhs;
+    vscodeExtensions = vscExtensions;
+  };
+in {
+  environment.systemPackages = [
+    vscFinal
+    frcPkgs.advantagescope
+    frcPkgs.choreo
+    frcPkgs.elastic-dashboard
+    frcPkgs.pathplanner
+  ];
+
+  programs.nix-ld.enable = true;
+}
+#+end_example
+
+* Other Notes
+
+Here at the end because it's not the main focus.
+
+** NixOS Problems
+
++ Network configuration management: All the methods of configuration management
+  are stateful _the second you encounter the network_. Much of what scales to one
+  or two laptops just has completely different concerns when you are defining
+  network interfaces
+  - Solution: service-oriented architecture. So you use DHCP/DNS for service
+    definitions to avoid managing IPs/etc in your codebase. Taken to the limit,
+    you'll end up reinventing Kubernetes.
++ Secrets management: this is just hard and full of traps.
+
+Impediments to enterprise adoption
+
++ Lack of SELinux:
+  - SELinux is extremely time-consuming, generally. Most SELinux deployments are
+    using stock policies. Anything else requires advanced tracing methods that
+    observe programs & service interactions to profile them.
+  - SELinux on a store is also difficult. Both NixOS and Guix are working on
+    this.
++ Multi-store environments:
+  - Again, difficult. This Allows linux permissions to manage access to
+    artifacts in the store.
++ Store management:
++ Accidental cache upload:
+
+** Why not Guix?
+
+Also, =guix > nixos= IMO: in Guix, every channel has a consistent feel to it. It's
+a pain to pin them, but scripting can handle that. The channel update is slower,
+but again: scripting can handle that.
+
+Because the environment and the ecosystem are easier to grok (they mostly have a
+common interface and are compiled AoT), then all the derivations are more
+uniform -- i.e. their derivation graph has a more confined set of "motifs". And
+thus, it's easier to reason about GC ... which you need to be simple for =guix
+time-machine=
+
+#+begin_quote
+Don't actually take this advice. The grass may be greener, but it's still very
+difficult and you need Emacs.
+#+end_quote
+
+The main reason is that =geiser= is difficult to work with. There is
+=guile-ares-rs=, which is great, but many features are still being hammered out to
+simplify channels workflow, profile management and environment setup.
+
+The other reason is that, because channels workflow compiles AoT, you benefit
+more from local infrastructure...
