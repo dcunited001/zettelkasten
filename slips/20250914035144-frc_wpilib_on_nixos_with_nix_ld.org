@@ -143,6 +143,157 @@ wpilib/2025/jdk/lib
 
 * Issues
 
+** VSCode
+
+*** WPILib Extension
+
+**** Project Creation
+
+#+begin_quote
+I thought it maybe related to the container volumes (there are none afaik)
+
+The intermediate directories are created with commands (i think) and the
+leaf-level files/directories are created by copying templates from =vscode-wpilib=
+source in =/nix/store=... It's definitely the source permissions.
+#+end_quote
+
+Fails after writing some of the files and i think merging files into the parent
+directories.
+
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/commands/ArcadeDrive.java"        |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/commands/AutonomousDistance.java" |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/commands/AutonomousTime.java"     |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/commands/DriveDistance.java"      |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/commands/DriveTime.java"          |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/commands/TurnDegrees.java"        |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/commands/TurnTime.java"           |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/subsystems/Arm.java"              |
+| -13 | "EACCES" | "open" | "/path/base/project/src/main/java/frc/robot/subsystems/Drivetrain.java"       |
+
+Content looks like
+
+#+RESULTS:
+#+begin_example
+/path/base/project/
+└── [drwxr-xr-x]  src
+    └── [drwxr-xr-x]  main
+        └── [drwxr-xr-x]  java
+            └── [drwxr-xr-x]  frc
+                └── [drwxr-xr-x]  robot
+                    ├── [dr-xr-xr-x]  commands
+                    ├── [-r--r--r--]  Constants.java
+                    ├── [-r--r--r--]  Main.java
+                    ├── [-r--r--r--]  RobotContainer.java
+                    ├── [-r--r--r--]  Robot.java
+                    └── [dr-xr-xr-x]  subsystems
+#+end_example
+
+This isn't easy to fix in the vscode-wpilib code: the configuration surface is
+designed to be as simple as possible, which makes sense. Unless the permissions
+could be reset after creation, but the source files are the only way to
+validate. I wouldn't expect this to be fixed.
+
+if you use advanced tools, you should be able to handle pretty much anything.
+There are some things you may be opinionated about, but finding workarounds
+should be simple.
+
+**** Doesn't list all tools
+
+Only installs the java tools.
+
+| name             | version    | cpp   |
+| "PathWeaver"     | "2025.3.2" | false |
+| "RobotBuilder"   | "2025.3.2" | false |
+| "ShuffleBoard"   | "2025.3.2" | false |
+| "SmartDashboard" | "2025.3.2" | false |
+
+GradleRIO:
+
++ WPIToolsPlugin
+  [[https://github.com/wpilibsuite/GradleRIO/blob/f23552f0ca66bd121f51ea529e91e878238ac2cb/src/main/java/edu/wpi/first/gradlerio/wpi/dependencies/tools/WPIToolsPlugin.java#L14][src/main/java/edu/wpi/first/gradlerio/wpi/dependencies/tools/WPIToolsPlugin.java#L14]]
++ ToolInstallTask
+  [[https://github.com/wpilibsuite/GradleRIO/blob/f23552f0ca66bd121f51ea529e91e878238ac2cb/src/main/java/edu/wpi/first/gradlerio/wpi/dependencies/tools/ToolInstallTask.java#L87][src/main/java/edu/wpi/first/gradlerio/wpi/dependencies/tools/ToolInstallTask.java#L87]]
++ WPICppTool
+  [[https://github.com/wpilibsuite/GradleRIO/blob/f23552f0ca66bd121f51ea529e91e878238ac2cb/src/main/java/edu/wpi/first/gradlerio/wpi/dependencies/tools/WPICppTool.java#L19][src/main/java/edu/wpi/first/gradlerio/wpi/dependencies/tools/WPICppTool.java#L19]]
+
+***** Tried to copy specific files from the installer
+
+These are used somewhat by the vscode-extension, but are mostly related to the
+initial install.
+
++ ~/wpilib/2025/roborio
++ ~/wpilib/2025/maven
++ ~/wpilib/2025/installUtils/upgradeConfig.json
+
+This seems messy. I considered moving executables over, but then just symlinked
+the old install.
+
+***** Symlinked =~/wpilib -> ~/wpilib.ARCH=
+
++ After copying the new =~/wpilib -> ~/wpilib.NIX=
++ After evaluating the =ldd= output of some of the cpp dependencies.
+
+=./gradlew InstallAllTools= still doesn't enumerate the newer tools, but the
+=Start Tool= vscode command does.
+
+| bin                     | nix starts        | nix good | gradle starts | gradle good |
+|-------------------------+-------------------+----------+---------------+-------------|
+| glass                   | y                 |          | y             |             |
+| roborioteamnumbersetter | mDNS...           |          | mDNS          |             |
+| sysid                   | y                 |          | y             |             |
+| robotbuilder            | y                 |          | y             |             |
+| outlineviewer           | y                 |          | y             |             |
+| datalogtool             | y                 |          |               |             |
+| wpical                  | libfortran (oof!) |          | libfortran    |             |
+| advantagescope          | y                 |          | n/a           |             |
+| pathweaver              | partial           |          | No            |             |
+| shuffleboard            | y                 |          | No            |             |
+| elastic_dashboard       | y                 |          | No            |             |
+| robotbuilder            | y                 |          | y             |             |
+| smartdashboard          | y                 |          | y             |             |
+|-------------------------+-------------------+----------+---------------+-------------|
+
++ There's no advantagescope task for gradle
++ RobotBuilder shows an error about =MyRobot.yaml=, but launches offscreen
++ The =mDNS= functionality is probably broken in all the apps (needs avaya or
+  something in the vscode FHS)
+  - This wouldn't affect how most apps use/translate mDNS names, since that's an
+    interaction between a service and libnss
+
+Generally there are manymanymany moving parts
+
++ Much simpler if you choose to not use the VSCode behavior, but still... you're
+  likely to not actually learn the internals quickly enough to make it worth it.
++ =./gradlew $tool= will run the wrapper script in =~/wpilib/2025/tools= and will
+  not fall through to the tool installed via frc-nix.
++ (probably) None of these will work from outside the VSCode container, unless
+  the deps are added to the entire system via =programs.nix-ld.libraries=
++ Running them from inside VSCode (whether gradle or vscode terminal) should in
+  theory have different results... but their =ldd= requirements are fairly limited
+  and self-contained.
+
+****** PathWeaver
+
+The nix build starts fine. Gradle no. Says it's deprecated.
+
+#+begin_quote
+WARNING: Unsupported JavaFX configuration: classes were loaded from 'unnamed module @5d642df0'
+#+end_quote
+
++ libprism_es2.so needs libXxf86vm.so.1 (nix can't find)
++ libglassgtk3.so needs libgthread-2.0.so.0
+
+** Simulator
+
+*** Dialogs
+
+When clicking save
+
+#+begin_example
+pfd: Unable to find zenity/matedialog/qarma/kdialog to open file chooser
+#+end_example
+* Linking Issues
+
 The logs print to =~/wpilib/2025/logs/wpilibtoollog.txt=
 
 ** Environment
