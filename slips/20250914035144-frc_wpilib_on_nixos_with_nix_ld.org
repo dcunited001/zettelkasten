@@ -147,6 +147,80 @@ wpilib/2025/jdk/lib
 
 *** WPILib Extension
 
+**** Java/JDK Issues
+
+Some extensions in =vscode.fhsWithExtensions= force inclusion of a JDK into the project.
+After including these, I get bindException=. These errors survived a reboot. After merging
+the following into the workspace JSON, they stopped.
+
+#+begin_example json
+{
+  "java.import.gradle.java.home": "/home/dc/wpilib/2025/jdk",
+  "java.jdt.ls.java.home": "/home/dc/wpilib/2025/jdk"
+}
+#+end_example
+
+Strangely, after removing these and restarting VSCode, I couldn't get the original Gradle
+exception to show up again. There must be a caching layer that I'm missing somewhere.
+While this was happening, I couldn't run a =./gradlew clean= and I tried most means
+of getting =code= to run this:
+
+- WPILib tasks
+- RedHat Java Extension Tasks
+- vscode terminal: =./gradlew clean=
+- alacritty: =./gradlew clean=
+
+Even when using =killall java=, since VSCode so helpfully restarts the =gradle= daemon,
+it was tough to tell what was trying to run what.
+
+No Gradle daemon could be started and some gradle daemon processes
+survived exiting =code=. Only =killall java= would end them. Lingering =gradlew= processes
+could present a =BindException=, but it picks a random port.
+
+***** Native Binding Errors
+
+While these problems were occuring, I was getting native binding errors from the JDK that
+look like this:
+
+#+begin_example log
+# A fatal error has been detected by the Java Runtime Environment:
+#
+# SIGSEGV (0xb) at pc=0x00007f8afc4e2efa, pid=900259, tid=900260
+#
+# JRE version: OpenJDK Runtime Environment (17.0.15+6) (build 17.0.15+6-nixos)
+# Java VM: OpenJDK 64-Bit Server VM (17.0.15+6-nixos, mixed mode, sharing, tiered, compressed oops, compressed class ptrs, g1 gc, linux-amd64)
+# Problematic frame:
+# C  [libhalsim_gui.so+0xe2efa]  std::_Function_handler<void (), glass::Provider<glass::detail::ProviderFunctions>::GlobalInit()::{lambda()#1}>::_M_invoke(std::_Any_data const&)+0xa
+#
+# Core dump will be written. Default location: Core dumps may be processed with "/nix/store/yzr1gd4cfzr4alafxz3xjjzblzr1wayr-systemd/lib/systemd/systemd-coredump %P %u %g %s %t %c %h %d %F" (or dumping to /data/dev/frc/xrp/test/xrp-reference/xrp-ref1/core.900259)
+#
+# If you would like to submit a bug report, please visit:
+#   https://bugreport.java.com/bugreport/crash.jsp
+# The crash happened outside the Java Virtual Machine in native code.
+# See problematic frame for where to report the bug.
+#
+
+---------------  S U M M A R Y ------------
+
+Command Line: -agentlib:jdwp=transport=dt_socket,server=n,suspend=y,address=localhost:44079 -Djava.library.path=/data/dev/frc/xrp/test/xrp-reference/xrp-ref1/build/jni/release -XX:+ShowCodeDetailsInExceptionMessages frc.robot.Main
+
+Host: AMD Ryzen 9 5950X 16-Core Processor, 32 cores, 31G,
+#+end_example
+
+Needless to say, that's a bad sign: it's what would happen if ... well idk how
+to fix that.
+
+=HALSIM_EXTENSION=/data/dev/frc/xrp/test/xrp-reference/xrp-ref1/build/jni/release/libhalsim_gui.so=
+
+Is not compatible with the JDK at =JAVA_HOME=. The WPILib installer includes the =HALSIM= sources, but these
+sources get built into a different artifact. =libhalsim_gui.so= from the =./build= directory is what contains
+the dynamic library that is responsible for launching the =Glass= instance used for =WPILib: Simulate Robot Code= task.
+
+So you can use a custom JDK, but then you're responsible for recompiling the simulator code in =~/wpilib= and ensuring that
+whatever JDK at =JAVA_HOME= knows how to link against that -- so it builds the =libhalsim_gui.so= which is compiled
+during =WPILib: Build Robot Code=. All the C++ and JNI code needs to reliably link... (TODO: i'm missing some pieces here
+in the explanation)
+
 **** Project Creation
 
 #+begin_quote
