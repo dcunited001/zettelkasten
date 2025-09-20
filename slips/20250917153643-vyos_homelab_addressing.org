@@ -1,0 +1,718 @@
+:PROPERTIES:
+:ID:       e8d2dcbf-df63-4849-91b2-fbfb5b02df02
+:END:
+#+TITLE: VyOS: Homelab Addressing
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Resources
++ [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Misc-Network.html][Emacs Networking Functionality]] very simple, but not bad. Takes some
+  intentionality to keep types as =vec= -- use =(cl-map 'vector f vec)=
+  - This is implemented in C, even the formatting
+
+** Programming
+*** ipv6
+Python
+
++ [[https://github.com/blacklanternsecurity/radixtarget][blacklanternsecurity/radixtarget]]
++ [[https://github.com/mjschultz/py-radixhttps://github.com/mjschultz/py-radix][mjschultz/py-radix]] (fork: [[https://github.com/SEKOIA-IO/py-radix][SEKOIA-IO/py-radix]])
++ [[https://github.com/jsommers/pytricia][jsommers/pytricia]]
+
+Rust
+
++ [[https://github.com/Orange-OpenSource/iptrie/blob/master/examples/simple-lctrie.pdf][Orange-OpenSource/iptrie]] the cli is unclear, but the graphviz integration is nice
+
+Go
+* Emacs
+** Babel
+
+** Networking
+*** ipv4
+
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+(defun ipv4-cidr-vec (cidr)
+  "Returns the bitmask for ipv4 `cidr'."
+  (when (or (< cidr 0) (> cidr 32))
+    (error "NaF: Not a Function"))
+  (let* ((cidr-lsb (mod cidr 8))
+         (cidr-nib (mod (ash 255 (- 8 cidr-lsb)) 256)))
+    ;; ((< cidr 9) (vector `[,cidr-nib 0 0 0])) ;; wtf
+    (cond ((< cidr 1) (vector 0 0 0 0))
+          ((< cidr 8) (vector cidr-nib 0 0 0))
+          ((< cidr 16) (vector 255 cidr-nib 0 0))
+          ((< cidr 24) (vector 255 255 cidr-nib 0))
+          ((< cidr 32) (vector 255 255 255 cidr-nib))
+          ([255 255 255 255]))))
+#+end_src
+
+And test...
+
+=(->> muh clojure ...)=
+
+#+begin_src emacs-lisp
+(string-join
+ (mapcar (apply-partially #'format "%S")
+         (mapcar #'ipv4-cidr-vec (list 0 4 7 8 23 24 28 32)))
+ "\n")
+#+end_src
+
+#+RESULTS:
+: [0 0 0 0]
+: [240 0 0 0]
+: [254 0 0 0]
+: [255 0 0 0]
+: [255 255 254 0]
+: [255 255 255 0]
+: [255 255 255 240]
+: [255 255 255 255]
+
+**** ipv4 network address
+
+Get the network address
+
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+(defun ipv4-net-vec (ipv4 cidr)
+  "Returns the network address for `ipv4' given `cidr' bits."
+  (let ((ipv4-len (length ipv4)))
+    (unless (vectorp ipv4) (error "NaV: Not a vec"))
+    (when (or (< ipv4-len 4) (> ipv4-len 5))
+      (error "Na4: Not an ipv4 vec"))
+    (let* ((cidr-mask (ipv4-cidr-vec cidr))
+           (avec (apply #'vector (number-sequence 0 3)))
+           (ipv4-net (cl-map 'vector (lambda (i) (logand (aref cidr-mask i) (aref ipv4 i))) avec)))
+      (or (and (= (length ipv4) 5) (vconcat ipv4-net (list (aref ipv4 4))))
+          ipv4-net))))
+#+end_src
+
+And actually test the function above ...
+
+#+begin_src emacs-lisp
+(let* ((cidr-bits (list 1 4 7 8 23 24 28 31))
+       (cidr-masks (mapcar #'ipv4-cidr-vec cidr-bits))
+       (a (-rotate 2 cidr-bits))
+       (b (reverse (-rotate 3 cidr-bits)))
+       (c (mapcar (apply-partially #'logxor 247) cidr-bits))
+       (d (->> (reverse c)
+               (-rotate 5)
+               (mapcar (apply-partially #'* (expt 3 3)))
+               (mapcar (lambda (i) (mod i 247)))))
+       ;; (oop-loop-args (-interleave cidr-bits cidr-masks ipv4-list d c b a))
+       (ipv4-list (-interleave d c b a)))
+  (let (ipv4-addrs ipv4-nets ipv4-cidrs ipv4-masks)
+    (while (> (length ipv4-list) 0)
+      ;; aw no cl-let...
+      (let* ((bits (pop cidr-bits)) ;; no (take out) in drive-thru without (car!)
+             (mask (pop cidr-masks))
+             (addr (take 4 ipv4-list))
+             (addr (apply #'vector addr))
+             (net (ipv4-net-vec addr bits)) ;; <-- calling function, not reimplementing --v
+             ;; (net (cl-map 'vector (lambda (i)
+             ;;                        (logand (aref mask i) (aref addr i)))
+             ;;              (number-sequence 0 3)))
+             )
+        (setq ipv4-list (nthcdr 4 ipv4-list))
+        (message (format "%s/%s , %s/%s , %s"
+                         (format-network-address addr t) bits
+                         (format-network-address net t) bits
+                         (format-network-address mask t)))
+        (push addr ipv4-addrs)
+        (push net ipv4-nets)
+        (push mask ipv4-masks)
+        ;; (push bits ipv4-cidrs)
+        (let ((hwx-uwu (logxor (ash (- (expt 2 32) 1) (- bits)) (- (expt 2 32) 1)))) (push (format "%X" hwx-uwu) ipv4-cidrs))))
+    (list ipv4-addrs ipv4-nets ipv4-cidrs ipv4-masks)))
+#+end_src
+
+#+RESULTS:
+| [31 232 24 24]    | [170 235 28 23]   | [89 239 31 8]   | [220 224 1 7]   | [139 255 4 4] | [58 240 7 1] | [216 243 8 31] | [120 246 23 28] |
+| [31 232 24 24]    | [170 235 28 16]   | [89 239 31 0]   | [220 224 0 0]   | [139 0 0 0]   | [58 0 0 0]   | [208 0 0 0]    | [0 0 0 0]       |
+| FFFFFFFE          | FFFFFFF0          | FFFFFF00        | FFFFFE00        | FF000000      | FE000000     | F0000000       | 80000000        |
+| [255 255 255 254] | [255 255 255 240] | [255 255 255 0] | [255 255 254 0] | [255 0 0 0]   | [254 0 0 0]  | [240 0 0 0]    | [128 0 0 0]     |
+
+#+begin_src  emacs-lisp
+(format "%X" (logxor (ash (- (expt 2 32) 1) -8) (- (expt 2 32) 1)))
+;; (logand  (- (expt 2 31) 1))
+
+(ash (- (expt 2 32) 1) -32)
+
+;; == 2^30 + 2^31
+;; (ash (ash (- (expt 2 32) 1) -30) 30) ;; 3221225472
+;; (+ (expt 2 30) (expt 2 31))          ;; 3221225472
+;;
+;; meh
+;; (mod (ash (expt 2 32) (- 32 bits)) (expt 2 32))
+;; (- (- (expt 2 32) 1) (- (expt 2 bits) 1))
+;;
+;; (- (- (expt 2 32) 1) (- (expt 2 31) 1)) ;; ((2^32-1) - (2^31 - 1)) == 2^31 =~ leftsh(2^32, n) ... basically
+#+end_src
+
+*** ipv6
+
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+(defun ipv6-cidr-vec (cidr)
+  "Returns the bitmask for ipv6 `cidr'."
+  (when (or (< cidr 0) (> cidr 128))
+    (error "NaF: Not a Function"))
+  (unless (integerp cidr)
+    (error "NaI: Not an Integer"))
+  (let* ((cidr-lsb (mod cidr 16))
+         (nib-max (- (expt 2 16) 1))
+         (cidr-nibs (/ cidr 16))
+         (zero-nibs (- 7 cidr-nibs))
+         (cidr-nib (mod (ash nib-max (- 16 cidr-lsb)) (expt 2 16))))
+    ;; ((< cidr 9) (vector `[,cidr-nib 0 0 0])) ;; wtf
+    (cond ((= cidr 0) (make-vector 8 0))
+          ((< cidr 16) (vconcat (make-vector 1 cidr-nib) (make-vector zero-nibs 0)))
+          ((< cidr 128) (vconcat (make-vector cidr-nibs nib-max) (make-vector 1 cidr-nib) (make-vector zero-nibs 0)))
+          ((= cidr 128) (make-vector 8 nib-max)))))
+#+end_src
+
+And test....
+
+#+begin_src emacs-lisp
+(let* ((nbits (list 0 4 7 8 23 24 28 32 35 47 48 61 64 66 73 107 127 128))
+       (ipv6-masks (mapcar #'ipv6-cidr-vec nbits))
+       (ipv6-int-masks (mapcar (apply-partially #'format "%S") ipv6-masks))
+       (ipv6-hex-masks (cl-mapcar (lambda (a) (format-network-address a t)) ipv6-masks)))
+  ;; (nlines (make-list (length nbits) "\n")) ;; g'dmmt babel
+  (print (string-join (-interleave (mapcar #'int-to-string nbits) ipv6-hex-masks ipv6-int-masks) "\n")))
+#+end_src
+
+|   0 | 0:0:0:0:0:0:0:0                         | [0 0 0 0 0 0 0 0]                                 |
+|   4 | f000:0:0:0:0:0:0:0                      | [61440 0 0 0 0 0 0 0]                             |
+|   7 | fe00:0:0:0:0:0:0:0                      | [65024 0 0 0 0 0 0 0]                             |
+|   8 | ff00:0:0:0:0:0:0:0                      | [65280 0 0 0 0 0 0 0]                             |
+|  23 | ffff:fe00:0:0:0:0:0:0                   | [65535 65024 0 0 0 0 0 0]                         |
+|  24 | ffff:ff00:0:0:0:0:0:0                   | [65535 65280 0 0 0 0 0 0]                         |
+|  28 | ffff:fff0:0:0:0:0:0:0                   | [65535 65520 0 0 0 0 0 0]                         |
+|  32 | ffff:ffff:0:0:0:0:0:0                   | [65535 65535 0 0 0 0 0 0]                         |
+|  35 | ffff:ffff:e000:0:0:0:0:0                | [65535 65535 57344 0 0 0 0 0]                     |
+|  47 | ffff:ffff:fffe:0:0:0:0:0                | [65535 65535 65534 0 0 0 0 0]                     |
+|  48 | ffff:ffff:ffff:0:0:0:0:0                | [65535 65535 65535 0 0 0 0 0]                     |
+|  61 | ffff:ffff:ffff:fff8:0:0:0:0             | [65535 65535 65535 65528 0 0 0 0]                 |
+|  64 | ffff:ffff:ffff:ffff:0:0:0:0             | [65535 65535 65535 65535 0 0 0 0]                 |
+|  66 | ffff:ffff:ffff:ffff:c000:0:0:0          | [65535 65535 65535 65535 49152 0 0 0]             |
+|  73 | ffff:ffff:ffff:ffff:ff80:0:0:0          | [65535 65535 65535 65535 65408 0 0 0]             |
+| 107 | ffff:ffff:ffff:ffff:ffff:ffff:ffe0:0    | [65535 65535 65535 65535 65535 65535 65504 0]     |
+| 127 | ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe | [65535 65535 65535 65535 65535 65535 65535 65534] |
+| 128 | ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff | [65535 65535 65535 65535 65535 65535 65535 65535] |
+
+**** ipv6 network address
+
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+(defun ipv6-net-vec (ipv6 cidr)
+  "Returns the network address for `ipv6' given `cidr' bits."
+  (let ((ipv6-len (length ipv6)))
+    (unless (vectorp ipv6) (error "NaV: Not a vec"))
+    (when (or (< ipv6-len 8) (> ipv6-len 9))
+      (error "Na6: Not an ipv6 vec"))
+    (let* ((cidr-mask (ipv6-cidr-vec cidr))
+           (avec (apply #'vector (number-sequence 0 7)))
+           (ipv6-net (cl-map 'vector (lambda (i) (logand (aref cidr-mask i) (aref ipv6 i))) avec)))
+      (or (and (= (length ipv6) 9) (vconcat ipv6-net (list (aref ipv6 8))))
+          ipv6-net))))
+#+end_src
+
+And test
+
+
+#+begin_src emacs-lisp
+(let* ((cidr-bits (list 1 4 7 8 23 24 28 32 35 47 48 61 64 66 73 107 123 127))
+       (cidr-masks (mapcar #'ipv6-cidr-vec cidr-bits))
+       (a (-rotate 2 cidr-bits))
+       (b (reverse (-rotate 3 cidr-bits)))
+       (c (->> cidr-bits
+               (mapcar (lambda (b) (expt b 2)))
+               (mapcar (apply-partially #'logxor (* 197 331)))))
+       (d (->> (reverse c)
+               (-rotate 5)
+               (mapcar (apply-partially #'* (expt 3 3)))
+               (mapcar (lambda (i) (mod i (* 199 317))))))
+       (n-addr (number-sequence 0 17))
+       (copr (list 3 7 5 11 17 13 23 19 37 31 43 41 53 47 61 59 71 67))
+       (rcopr (reverse copr))
+       (fermat 65537)
+       (ad (mapcar (lambda (i) (logior (nth i a) (nth i d))) n-addr))
+       ;; b | (2^popcount(d)-1) < (2^16 - 1)
+       (db (mapcar (lambda (i) (logior (- (expt 2 (logcount (nth i d))) 1) (nth i b))) n-addr))
+       ;; it is what it is
+       (ac (mapcar (lambda (i) (logxor (* (nth i a) (nth i copr)) (nth i c))) n-addr))
+       ;; all coprimes of relatively similar size before squared (except for one: 9^2)
+       ;; then mod 65537 and subtract 4, just in case
+       (dc (mapcar (lambda (i) (- (mod (expt (* (nth i (-rotate 1 copr)) (nth i (reverse copr))) 2) fermat) 4)) n-addr))
+       (bc (mapcar (lambda (i) (logxor (nth i dc) (expt (nth i b) 2) (nth i c))) n-addr))
+       (ipv6-list (-interleave d c b a ad db ac bc)))
+
+  (let (ipv6-addrs ipv6-nets ipv6-cidrs ipv6-masks ipv6-addrs-f ipv6-nets-f ipv6-masks-f)
+    (while (> (length ipv6-list) 0)
+      ;; aw no cl-let...
+      (let* ((bits (pop cidr-bits)) ;; no (take out) in drive-thru without (car!)
+             (mask (pop cidr-masks))
+             (addr (take 8 ipv6-list))
+             (addr (apply #'vector addr))
+             (net (ipv6-net-vec addr bits)) ;; <-- calling function, not reimplementing --v
+             ;; (net (cl-map 'vector (lambda (i)
+             ;;                        (logand (aref mask i) (aref addr i)))
+             ;;              (number-sequence 0 3)))
+             )
+        (setq ipv6-list (nthcdr 8 ipv6-list))
+        (message (format "%s/%s , %s/%s , %s"
+                         (format-network-address addr t) bits
+                         (format-network-address net t) bits
+                         (format-network-address mask t)))
+        (push addr ipv6-addrs)
+        (push (format-network-address addr t) ipv6-addrs-f)
+        (push net ipv6-nets)
+        (push (format-network-address net t) ipv6-nets-f)
+        (push mask ipv6-masks)
+        (push (format-network-address mask t) ipv6-masks-f)
+        (push bits ipv6-cidrs)
+        ;; (let ((hwx-uwu (logxor (ash (- (expt 2 32) 1) (- bits)) (- (expt 2 32) 1)))) (push (format "%X" hwx-uwu) ipv6-cidrs))
+        ))
+    (list ipv6-addrs-f ipv6-nets-f ipv6-masks-f ipv6-cidrs ipv6-addrs ipv6-nets
+    ipv6-masks)))
+#+end_src
+
+| b0c4:c1b6:6b:6b:b0ef:7f:ddb7:5c3a                 | c354:c5ae:7b:49:c35d:7f:d191:64f4                 | 7404:d20e:7f:42:7446:7f:dd38:8653             | 6e01:ea66:1:40:6e41:3f:e526:fe76          |
+| b0c4:c1b6:6b:6b:b0ef:7f:ddb7:5c3a                 | c354:c5ae:7b:49:c35d:7f:d191:64e0                 | 7404:d20e:7f:42:7446:7f:dd20:0                | 6e01:ea66:1:40:6e00:0:0:0                 |
+| ffff:ffff:ffff:ffff:ffff:ffff:ffff:fffe           | ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffe0           | ffff:ffff:ffff:ffff:ffff:ffff:ffe0:0          | ffff:ffff:ffff:ffff:ff80:0:0:0            |
+| 127                                               | 123                                               | 107                                           | 73                                        |
+| [45252 49590 107 107 45295 127 56759 23610]       | [50004 50606 123 73 50013 127 53649 25844]        | [29700 53774 127 66 29766 127 56632 34387]    | [28161 60006 1 64 28225 63 58662 65142]   |
+| [45252 49590 107 107 45295 127 56759 23610]       | [50004 50606 123 73 50013 127 53649 25824]        | [29700 53774 127 66 29766 127 56608 0]        | [28161 60006 1 64 28160 0 0 0]            |
+| [65535 65535 65535 65535 65535 65535 65535 65534] | [65535 65535 65535 65535 65535 65535 65535 65504] | [65535 65535 65535 65535 65535 65535 65504 0] | [65535 65535 65535 65535 65408 0 0 0]     |
+|---------------------------------------------------+---------------------------------------------------+-----------------------------------------------+-------------------------------------------|
+| ed74:efb3:4:3d:ed7d:3ff:e480:8caa                 | 2304:eeb7:7:30:2334:f:e747:bb37                   | 4fac:f03e:8:2f:4faf:1ff:f7b9:1cc9             | 266f:f7b7:17:23:266f:1ff:f256:be86        |
+| ed74:efb3:4:3d:c000:0:0:0                         | 2304:eeb7:7:30:0:0:0:0                            | 4fac:f03e:8:28:0:0:0:0                        | 266f:f7b7:17:0:0:0:0:0                    |
+| ffff:ffff:ffff:ffff:c000:0:0:0                    | ffff:ffff:ffff:ffff:0:0:0:0                       | ffff:ffff:ffff:fff8:0:0:0:0                   | ffff:ffff:ffff:0:0:0:0:0                  |
+| 66                                                | 64                                                | 61                                            | 48                                        |
+| [60788 61363 4 61 60797 1023 58496 36010]         | [8964 61111 7 48 9012 15 59207 47927]             | [20396 61502 8 47 20399 511 63417 7369]       | [9839 63415 23 35 9839 511 62038 48774]   |
+| [60788 61363 4 61 49152 0 0 0]                    | [8964 61111 7 48 0 0 0 0]                         | [20396 61502 8 40 0 0 0 0]                    | [9839 63415 23 0 0 0 0 0]                 |
+| [65535 65535 65535 65535 49152 0 0 0]             | [65535 65535 65535 65535 0 0 0 0]                 | [65535 65535 65535 65528 0 0 0 0]             | [65535 65535 65535 0 0 0 0 0]             |
+|---------------------------------------------------+---------------------------------------------------+-----------------------------------------------+-------------------------------------------|
+| 4103:f616:18:20:4123:1f:f5f6:6c87                 | a84f:fa7e:1c:1c:a85f:ff:fe72:b24e                 | 3dd:fab7:20:18:3dd:ff:fb7f:1200               | a293:fda7:23:17:a297:7f:ffb6:acdf         |
+| 4103:f616:18:0:0:0:0:0                            | a84f:fa7e:0:0:0:0:0:0                             | 3dd:fab7:0:0:0:0:0:0                          | a293:fda0:0:0:0:0:0:0                     |
+| ffff:ffff:fffe:0:0:0:0:0                          | ffff:ffff:e000:0:0:0:0:0                          | ffff:ffff:0:0:0:0:0:0                         | ffff:fff0:0:0:0:0:0:0                     |
+| 47                                                | 35                                                | 32                                            | 28                                        |
+| [16643 62998 24 32 16675 31 62966 27783]          | [43087 64126 28 28 43103 255 65138 45646]         | [989 64183 32 24 989 255 64383 4608]          | [41619 64935 35 23 41623 127 65462 44255] |
+| [16643 62998 24 0 0 0 0 0]                        | [43087 64126 0 0 0 0 0 0]                         | [989 64183 0 0 0 0 0 0]                       | [41619 64928 0 0 0 0 0 0]                 |
+| [65535 65535 65534 0 0 0 0 0]                     | [65535 65535 57344 0 0 0 0 0]                     | [65535 65535 0 0 0 0 0 0]                     | [65535 65520 0 0 0 0 0 0]                 |
+|---------------------------------------------------+---------------------------------------------------+-----------------------------------------------+-------------------------------------------|
+| 376b:fcf7:2f:8:376b:3ff:fc9f:975f                 | dfe9:fca6:30:7:dfef:fff:fcd1:e1b7                 | de54:fef7:3d:4:de54:1ff:fedb:9b22             | dad9:fe86:40:1:dad9:3ff:fe83:74c5         |
+| 376b:fc00:0:0:0:0:0:0                             | dfe9:fc00:0:0:0:0:0:0                             | de00:0:0:0:0:0:0:0                            | da00:0:0:0:0:0:0:0                        |
+| ffff:ff00:0:0:0:0:0:0                             | ffff:fe00:0:0:0:0:0:0                             | ff00:0:0:0:0:0:0:0                            | fe00:0:0:0:0:0:0:0                        |
+| 24                                                | 23                                                | 8                                             | 7                                         |
+| [14187 64759 47 8 14187 1023 64671 38751]         | [57321 64678 48 7 57327 4095 64721 57783]         | [56916 65271 61 4 56916 511 65243 39714]      | [56025 65158 64 1 56025 1023 65155 29893] |
+| [14187 64512 0 0 0 0 0 0]                         | [57321 64512 0 0 0 0 0 0]                         | [56832 0 0 0 0 0 0 0]                         | [55808 0 0 0 0 0 0 0]                     |
+| [65535 65280 0 0 0 0 0 0]                         | [65535 65024 0 0 0 0 0 0]                         | [65280 0 0 0 0 0 0 0]                         | [65024 0 0 0 0 0 0 0]                     |
+|---------------------------------------------------+---------------------------------------------------+-----------------------------------------------+-------------------------------------------|
+| e6c4:fea7:42:7f:e6ff:ff:fdde:5e96                 | a839:feb6:49:7b:a87b:7f:ffc7:907d                 |                                               |                                           |
+| e000:0:0:0:0:0:0:0                                | 8000:0:0:0:0:0:0:0                                |                                               |                                           |
+| f000:0:0:0:0:0:0:0                                | 8000:0:0:0:0:0:0:0                                |                                               |                                           |
+| 4                                                 | 1                                                 |                                               |                                           |
+| [59076 65191 66 127 59135 255 64990 24214]        | [43065 65206 73 123 43131 127 65479 36989]        |                                               |                                           |
+| [57344 0 0 0 0 0 0 0]                             | [32768 0 0 0 0 0 0 0]                             |                                               |                                           |
+| [61440 0 0 0 0 0 0 0]                             | [32768 0 0 0 0 0 0 0]                             |                                               |                                           |
+
+
+**** It already formats addresses
+
+#+begin_src emacs-lisp
+(defun ipv6-vec-hexify (ipv6-vec)
+  (cl-map 'vector (lambda (nib) (format "%0x" nib)) ipv6-vec))
+#+end_src
+
+#+begin_src emacs-lisp
+(list (ipv6-vec-hexify [65535 65535 65535 65535 65535 65535 65535 65535])
+      (string-join (hexify-ipv6-vec [65535 65535 65535 65535 65535 65535 65535 65535]) ":"))
+#+end_src
+
+#+RESULTS:
+| [ffff ffff ffff ffff ffff ffff ffff ffff] | ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff |
+
+... oh ... =format-network-address=
+
+
+#+begin_src emacs-lisp
+(format-network-address [65535 65535 65535 65535 65535 65535 65535 65535 0] t)
+#+end_src
+
+#+RESULTS:
+: ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+
+#+begin_src emacs-lisp :results output :eval never
+(network-interface-list nil 'ipv6) ;; => list of cons
+(network-interface-list t) ;; => alist
+
+;; ("lo"
+;;  [0 0 0 0 0 0 0 1 0]
+;;  [0 0 0 0 0 0 0 1 0]
+;;  [65535 65535 65535 65535 65535 65535 65535 65535 0])
+#+end_src
+
+#+RESULTS:
+| lo     | [0 0 0 0 0 0 0 1 0] | [0 0 0 0 0 0 0 1 0] | [65535 65535 65535 65535 65535 65535 65535 65535 0] |
+| enp4s0 | [10 123 45 67 0]    | [10 123 45 255 0]   | [255 255 255 0 0]                                   |
+| lo     | [127 0 0 1 0]       | [127 255 255 255 0] | [255 0 0 0 0]                                       |
+
+* Addressing
+:PROPERTIES:
+:header-args:python+: :dir
+:PROPERTIES:
+
+#+begin_src emacs-lisp
+
+(or (bound-and-true-p -pyroot-root-dir-) (expand-file-name "dcim/nautobot" (getenv "_ECTO")))
+#+end_src
+
+Write to a temporary directory
+
+** ipv4 outline
+
+| ! | ifx    | vlan | subnet | subnetHex | subnetBin |
+| # | wan    |      |      4 | 04        |  .....1.. |
+| # | dns    |      |      5 | 05        |  .....1.1 |
+| # | lan    |   10 |     10 | 0A        |  ....1.1. |
+| # | dev    |  110 |    148 | 94        |  1..1.1.. |
+| # | svc    |      |    164 | A4        |  1.1..1.. |
+| # | lab    |      |    168 | A8        |  1.1.1... |
+| # | util   |      |    180 | B4        |  1.11.1.. |
+| # | mgmt   |      |    192 | C0        |  11...... |
+| # | admin  |      |    200 | C8        |  11..1... |
+| # | mgmtgw |      |    224 | E0        |  111..... |
+
+
+
+** ipv4+ipv6
+
+This is a very wide table that doesn't fit in the usual 80-char limit
+
+#+begin_src emacs-lisp
+;; variables used in table formulas (preferable to org-sbe macros)
+(setq-local dnsSite "homelab"
+            dnsDomain "dns.com")
+
+(defun hexnib (i) (string-to-number i 16))
+#+end_src
+
++ These are the lower level routing domains
+  - max cidr bits (smallest scopes)
+  - without summerization/aggregation boundaries
+
+*** Issues
+
+**** Design
+***** TODO Umm... =ULA= to =GUA= mapping
+
+Applications need to be encouraged to transmit =ipv6= to/from addresses.
+
++ If a process/service/container attaches to an interface, the application has
+  lower level code that constructs packets. Usually, you specify the recipient
+  (it's impractical to change so many codebases)
++ To send from =site1.ula= to =site2.ula=, you need to have routes in between. ipv4
+  transmits packets in a "send and forget" fashion where both sender/receiver
+  trust (1) the networks in between to deliver enough packets and (2) various
+  layer 2,3,4,5,7 protocols to handle issues: mostly 4, somewhat 3, shouldn't
+  make it to 7.
++ I haven't really heard of this issue, so maybe the lower level client
+  implementations do some magic based on how IANA designates IP address usage
+  with the first =16b=... but it's definitely an issue at one level or another.
+  - If it is... how hard does it need to be?
+
+Anyways, my best guess:
+
+#+begin_quote
+with containers/namespaces, you can depend on network setup/teardown to
+handle: default gateway, altered routes, fw logic, interface, vlan... but
+you don't want to.
+
+at the network layer, you can handle some of this at:
+
+- the receiving layer2 interface (ff2x, ff3x, etc are multicast only
+  though) ... but that's a lot of interfaces
+- the WAN interfaces ... but 3-10 WAN interfaces (< 1,000's) is too many
+- a 6to4, 4to6, 6to6 tunnel broker ... but that's a lot of state. also, your
+  tunnel brokers are going to need tunnel broker brokers -- probably just
+  one layer, but now you have /distributed state/, which is the root of all
+  evil.
+- the transmitting interface (through system admin). this would involve some
+  =ethtool= maybe... at least on physical interfaces, maybe. or some tricks to
+  force clients to prefer specific protocols/params for specific routes
+  - in terms of spatial complexity, this is definitely *definitely* the worst.
+    you can't store a naive hashmap with 2^128 addresses in memory (and the
+    data changes)
+- the transmitting interface ... given its assumptions about the ipv6
+  addressing scheme. This would basically mean 95% of your problems go away.
+  still, some analysis/logging/tweaks are needed.
+  - for every =10b= =ULA= site prefix, you need to distribute routes & default
+    gateway config (mostly routes)
+  - the application must select ipv6 or its sessions/streams start
+    flapping/jittering
+  - if it sends to an =F[CD]xx:xxxx:xxxx::/48= site-internal address, some set of
+    routes guides it towards the dest. For =GUA= addresses: same thing, more hops,
+    less control.
+
+In other contexts, there's often a similar way to relieve tons of complexity:
+push it into the "protocol" (or the rules/factors that people/things believe to
+be "universal"). Most examples seem trivial or contrived.
+
+It's really weird how it's a non-issue if it's really a non-issue ... bc trying
+to resolve that /in any other way/ just doesn't work. afaik. it's interesting to
+think about, but probably completely "not even wrong".
+
+- ipv4 only has a tiny bit of structure in the addressing scheme. ipv6 maybe has
+  less by total size. ipv4 doesn't really act on it, which is maybe why NAT was
+  natural to implement (without peculiar routing issues). the number of bits in
+  the addressing scheme are the basis for routing decisions along the way. if
+  you route hits hairpin-NAT with ipv6 (or the eq. 4-6, 6-4, 6-6, etc), i'm
+  guessing that route loops or inefficient traffic or interface saturation are
+  possible.
+#+end_quote
+
+**** Babel
+=#+TBLFM= Can break down
+*** Underlay
+
+Site Params
+
+#+name: siteParams
+|   | dnsSite | dnsDomain |
+| ! | dnsSite | dnsDomain |
+| # | homelab | dns.com   |
+
+Addressing
+
+#+name: underlay
+|   | addr6                      | addr6net                  |         addr4 |     addr4net | ifx          | vrf     | vlan | dnsName | dnsParent  | ipv4prefix | ipv4site | ipv4subnet | ipv4host | ipv4cidr | pqdn             | fqdn                             | ipv6prefix | ipv6org | ipv6site | ipv6subnet | ipv6host | ipv6cidr | ifxUuid | nautoUuid |
+| ! | addr6                      | addr6net                  |         addr4 |     addr4net | ifx          | vrf     | vlan | dnsName | dnsParent  | ipv4prefix | ipv4site | ipv4subnet | ipv4host | ipv4cidr | pqdn             | fqdn                             | ipv6prefix | ipv6org | ipv6site | ipv6subnet | ipv6host | ipv6cidr | ifxUuid | nautoUuid |
+|---+----------------------------+---------------------------+---------------+--------------+--------------+---------+------+---------+------------+------------+----------+------------+----------+----------+------------------+----------------------------------+------------+---------+----------+------------+----------+----------+---------+-----------|
+| # | fd01:2345:6789:4:0:0:0:65  | fd01:2345:6789:4:0:0:0:0  |  10.123.4.101 | 10.123.4.100 | en0          |         |      | wan     | vy1.via    |         10 |      123 |          4 |      101 |       30 | wan.vy1.via      | wan.vy1.via.homelab.dns.com      | fd01       |    2345 |     6789 | 4          | 65       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:5:0:0:0:b   | fd01:2345:6789:5:0:0:0:0  |   10.123.5.11 |   10.123.5.0 |              |         |    5 | dns     | vy1.via    |         10 |      123 |          5 |       11 |       24 | dns.vy1.via      | dns.vy1.via.homelab.dns.com      | fd01       |    2345 |     6789 | 5          | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a:0:0:0:b   | fd01:2345:6789:a:0:0:0:0  |  10.123.10.11 |  10.123.10.0 | eth0         |         |   10 | lan     | vy1.via    |         10 |      123 |         10 |       11 |       24 | lan.vy1.via      | lan.vy1.via.homelab.dns.com      | fd01       |    2345 |     6789 | a          | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:94:0:0:0:b  | fd01:2345:6789:94:0:0:0:0 | 10.123.148.11 | 10.123.148.0 | eth1         |         |  110 | dev     | vy1.via    |         10 |      123 |        148 |       11 |       24 | dev.vy1.via      | dev.vy1.via.homelab.dns.com      | fd01       |    2345 |     6789 | 94         | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a4:0:0:0:b  | fd01:2345:6789:a4:0:0:0:0 | 10.123.164.11 | 10.123.164.0 | eth1         |         |  210 | svc     | vy1.via    |         10 |      123 |        164 |       11 |       24 | svc.vy1.via      | svc.vy1.via.homelab.dns.com      | fd01       |    2345 |     6789 | a4         | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a8:0:0:0:b  | fd01:2345:6789:a8:0:0:0:0 | 10.123.168.11 | 10.123.168.0 | eth2         |         |  220 | lab     | vy1.via    |         10 |      123 |        168 |       11 |       24 | lab.vy1.via      | lab.vy1.via.homelab.dns.com      | fd01       |    2345 |     6789 | a8         | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:b4:0:0:0:b  | fd01:2345:6789:b4:0:0:0:0 | 10.123.180.11 | 10.123.180.0 |              |         |      | util    | vy1.via    |         10 |      123 |        180 |       11 |       24 | util.vy1.via     | util.vy1.via.homelab.dns.com     | fd01       |    2345 |     6789 | b4         | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:b  | fd01:2345:6789:c0:0:0:0:0 | 10.123.192.11 | 10.123.192.0 | eth3         |         |  410 | mgmt    | vy1.via    |         10 |      123 |        192 |       11 |       24 | mgmt.vy1.via     | mgmt.vy1.via.homelab.dns.com     | fd01       |    2345 |     6789 | c0         | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c8:0:0:0:b  | fd01:2345:6789:c8:0:0:0:0 | 10.123.200.11 | 10.123.200.0 | eth3         |         |  420 | admin   | vy1.via    |         10 |      123 |        200 |       11 |       24 | admin.vy1.via    | admin.vy1.via.homelab.dns.com    | fd01       |    2345 |     6789 | c8         | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:e0:0:0:0:1  | fd01:2345:6789:e0:0:0:0:0 |  10.123.224.1 | 10.123.224.0 | veth4mgmtif1 | mgmtgw1 |      | mgmtif  | vy1.via    |         10 |      123 |        224 |        1 |       28 | mgmtif.vy1.via   | mgmtif.vy1.via.homelab.dns.com   | fd01       |    2345 |     6789 | e0         | 1        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:e0:0:0:0:b  | fd01:2345:6789:e0:0:0:0:0 | 10.123.224.11 | 10.123.224.0 | veth4mgmtgw1 | mgmtgw1 |      | mgmtgw  | vy1.via    |         10 |      123 |        224 |       11 |       28 | mgmtgw.vy1.via   | mgmtgw.vy1.via.homelab.dns.com   | fd01       |    2345 |     6789 | e0         | b        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:4:0:0:0:66  | fd01:2345:6789:4:0:0:0:0  |  10.123.4.102 | 10.123.4.100 | en0          |         |      | wan     | vy2.via    |         10 |      123 |          4 |      102 |       30 | wan.vy2.via      | wan.vy2.via.homelab.dns.com      | fd01       |    2345 |     6789 | 4          | 66       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:5:0:0:0:c   | fd01:2345:6789:5:0:0:0:0  |   10.123.5.12 |   10.123.5.0 |              |         |    5 | dns     | vy2.via    |         10 |      123 |          5 |       12 |       24 | dns.vy2.via      | dns.vy2.via.homelab.dns.com      | fd01       |    2345 |     6789 | 5          | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a:0:0:0:c   | fd01:2345:6789:a:0:0:0:0  |  10.123.10.12 |  10.123.10.0 | eth0         |         |   10 | lan     | vy2.via    |         10 |      123 |         10 |       12 |       24 | lan.vy2.via      | lan.vy2.via.homelab.dns.com      | fd01       |    2345 |     6789 | a          | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:94:0:0:0:c  | fd01:2345:6789:94:0:0:0:0 | 10.123.148.12 | 10.123.148.0 | eth1         |         |  110 | dev     | vy2.via    |         10 |      123 |        148 |       12 |       24 | dev.vy2.via      | dev.vy2.via.homelab.dns.com      | fd01       |    2345 |     6789 | 94         | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a4:0:0:0:c  | fd01:2345:6789:a4:0:0:0:0 | 10.123.164.12 | 10.123.164.0 | eth1         |         |  210 | svc     | vy2.via    |         10 |      123 |        164 |       12 |       24 | svc.vy2.via      | svc.vy2.via.homelab.dns.com      | fd01       |    2345 |     6789 | a4         | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a8:0:0:0:c  | fd01:2345:6789:a8:0:0:0:0 | 10.123.168.12 | 10.123.168.0 | eth2         |         |  220 | lab     | vy2.via    |         10 |      123 |        168 |       12 |       24 | lab.vy2.via      | lab.vy2.via.homelab.dns.com      | fd01       |    2345 |     6789 | a8         | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:b4:0:0:0:c  | fd01:2345:6789:b4:0:0:0:0 | 10.123.180.12 | 10.123.180.0 |              |         |      | util    | vy2.via    |         10 |      123 |        180 |       12 |       24 | util.vy2.via     | util.vy2.via.homelab.dns.com     | fd01       |    2345 |     6789 | b4         | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:c  | fd01:2345:6789:c0:0:0:0:0 | 10.123.192.12 | 10.123.192.0 | eth3         |         |  410 | mgmt    | vy2.via    |         10 |      123 |        192 |       12 |       24 | mgmt.vy2.via     | mgmt.vy2.via.homelab.dns.com     | fd01       |    2345 |     6789 | c0         | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c8:0:0:0:c  | fd01:2345:6789:c8:0:0:0:0 | 10.123.200.12 | 10.123.200.0 | eth3         |         |  420 | admin   | vy2.via    |         10 |      123 |        200 |       12 |       24 | admin.vy2.via    | admin.vy2.via.homelab.dns.com    | fd01       |    2345 |     6789 | c8         | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:e0:0:0:0:2  | fd01:2345:6789:e0:0:0:0:0 |  10.123.224.2 | 10.123.224.0 | veth4mgmtif2 | mgmtgw2 |      | mgmtif  | vy2.via    |         10 |      123 |        224 |        2 |       28 | mgmtif.vy2.via   | mgmtif.vy2.via.homelab.dns.com   | fd01       |    2345 |     6789 | e0         | 2        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:e0:0:0:0:c  | fd01:2345:6789:e0:0:0:0:0 | 10.123.224.12 | 10.123.224.0 | veth4mgmtgw2 | mgmtgw2 |      | mgmtgw  | vy2.via    |         10 |      123 |        224 |       12 |       28 | mgmtgw.vy2.via   | mgmtgw.vy2.via.homelab.dns.com   | fd01       |    2345 |     6789 | e0         | c        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a4:0:0:0:15 | fd01:2345:6789:a4:0:0:0:0 | 10.123.164.21 | 10.123.164.0 |              |         |  210 | svc     | svc1.via   |         10 |      123 |        164 |       21 |       24 | svc.svc1.via     | svc.svc1.via.homelab.dns.com     | fd01       |    2345 |     6789 | a4         | 15       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a4:0:0:0:16 | fd01:2345:6789:a4:0:0:0:0 | 10.123.164.22 | 10.123.164.0 |              |         |  210 | svc     | svc2.via   |         10 |      123 |        164 |       22 |       24 | svc.svc2.via     | svc.svc2.via.homelab.dns.com     | fd01       |    2345 |     6789 | a4         | 16       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a8:0:0:0:15 | fd01:2345:6789:a8:0:0:0:0 | 10.123.168.21 | 10.123.168.0 |              |         |  220 | lab     | svc1.via   |         10 |      123 |        168 |       21 |       24 | lab.svc1.via     | lab.svc1.via.homelab.dns.com     | fd01       |    2345 |     6789 | a8         | 15       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:a8:0:0:0:16 | fd01:2345:6789:a8:0:0:0:0 | 10.123.168.22 | 10.123.168.0 |              |         |  220 | lab     | svc2.via   |         10 |      123 |        168 |       22 |       24 | lab.svc2.via     | lab.svc2.via.homelab.dns.com     | fd01       |    2345 |     6789 | a8         | 16       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:1f | fd01:2345:6789:c0:0:0:0:0 | 10.123.192.31 | 10.123.192.0 |              |         |  410 | mgmt    | svc1.via   |         10 |      123 |        192 |       31 |       24 | mgmt.svc1.via    | mgmt.svc1.via.homelab.dns.com    | fd01       |    2345 |     6789 | c0         | 1f       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:20 | fd01:2345:6789:c0:0:0:0:0 | 10.123.192.32 | 10.123.192.0 |              |         |  410 | mgmt    | svc2.via   |         10 |      123 |        192 |       32 |       24 | mgmt.svc2.via    | mgmt.svc2.via.homelab.dns.com    | fd01       |    2345 |     6789 | c0         | 20       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:1  | fd01:2345:6789:c0:0:0:0:0 |  10.123.192.1 | 10.123.192.0 |              |         |      | mgmt    | sw1.via    |         10 |      123 |        192 |        1 |       24 | mgmt.sw1.via     | mgmt.sw1.via.homelab.dns.com     | fd01       |    2345 |     6789 | c0         | 1        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:2  | fd01:2345:6789:c0:0:0:0:0 |  10.123.192.2 | 10.123.192.0 |              |         |      | mgmt    | sw2.via    |         10 |      123 |        192 |        2 |       24 | mgmt.sw2.via     | mgmt.sw2.via.homelab.dns.com     | fd01       |    2345 |     6789 | c0         | 2        |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:15 | fd01:2345:6789:c0:0:0:0:0 | 10.123.192.21 | 10.123.192.0 |              |         |  410 | mgmt    | mgmt1.via  |         10 |      123 |        192 |       21 |       24 | mgmt.mgmt1.via   | mgmt.mgmt1.via.homelab.dns.com   | fd01       |    2345 |     6789 | c0         | 15       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c8:0:0:0:1f | fd01:2345:6789:c8:0:0:0:0 | 10.123.200.31 | 10.123.200.0 |              |         |  420 | admin   | mgmt1.via  |         10 |      123 |        200 |       31 |       24 | admin.mgmt1.via  | admin.mgmt1.via.homelab.dns.com  | fd01       |    2345 |     6789 | c8         | 1f       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c0:0:0:0:16 | fd01:2345:6789:c0:0:0:0:0 | 10.123.192.22 | 10.123.192.0 |              |         |  410 | mgmt    | mgmt2.via  |         10 |      123 |        192 |       22 |       24 | mgmt.mgmt2.via   | mgmt.mgmt2.via.homelab.dns.com   | fd01       |    2345 |     6789 | c0         | 16       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c8:0:0:0:20 | fd01:2345:6789:c8:0:0:0:0 | 10.123.200.32 | 10.123.200.0 |              |         |  420 | admin   | mgmt2.via  |         10 |      123 |        200 |       32 |       24 | admin.mgmt2.via  | admin.mgmt2.via.homelab.dns.com  | fd01       |    2345 |     6789 | c8         | 20       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c8:0:0:0:15 | fd01:2345:6789:c8:0:0:0:0 | 10.123.200.21 | 10.123.200.0 |              |         |  420 | admin   | admin1.via |         10 |      123 |        200 |       21 |       24 | admin.admin1.via | admin.admin1.via.homelab.dns.com | fd01       |    2345 |     6789 | c8         | 15       |       64 | #ERROR  |           |
+| # | fd01:2345:6789:c8:0:0:0:16 | fd01:2345:6789:c8:0:0:0:0 | 10.123.200.22 | 10.123.200.0 |              |         |  420 | admin   | admin1.via |         10 |      123 |        200 |       22 |       24 | admin.admin1.via | admin.admin1.via.homelab.dns.com | fd01       |    2345 |     6789 | c8         | 16       |       64 | #ERROR  |           |
+#+TBLFM: $16='(string-join (list $dnsName $dnsParent) ".");
+#+TBLFM: $17='(string-join (list $pqdn dnsSite dnsDomain) ".");
+#+TBLFM: $4='(format-network-address (vector $ipv4prefix $ipv4site $ipv4subnet $ipv4host));N
+#+TBLFM: $5='(format-network-address (ipv4-net-vec (vector $ipv4prefix $ipv4site $ipv4subnet $ipv4host) $ipv4cidr));N
+#+TBLFM: $21='(format "%x" $ipv4subnet);N
+#+TBLFM: $22='(format "%x" $ipv4host);N
+#+TBLFM: $2='(format-network-address (cl-map 'vector #'hexnib (list $ipv6prefix $ipv6org $ipv6site $ipv6subnet "0" "0" "0" $ipv6host)));
+#+TBLFM: $3='(format-network-address (ipv6-net-vec (cl-map 'vector #'hexnib (list $ipv6prefix $ipv6org $ipv6site $ipv6subnet "0" "0" "0" $ipv6host)) (string-to-number $ipv6cidr)));
+*** Python Setup
+
+#+name: startPython
+#+begin_src emacs-lisp
+"guix shell -L /home/dc/.dotfiles/ellipsis python python-pytricia -- python3"
+#+end_src
+
+#+name: setupPytriciaSession
+#+headers: :results output
+#+begin_src python :session *py-session* :python (org-sbe startPython)
+import pytricia as pyt
+p6 = pyt.PyTricia(128)
+#+end_src
+
+#+RESULTS: setupPytriciaSession
+
+pyt instance methods
+
+| get_key | has_key | insert | delete | children | parent | thaw | freeze |
+
+
+pyt.PyTricia methods
+
+| get | mro | keys | insert | delete | children | parent | thaw | freeze |
+
+#+name: pyMethods
+#+begin_src python :session *py-session*
+def addrs_parse(lines):
+    addrs = []
+    for line in lines.rstrip().split("\n"):
+        a,c = line.split(",")
+        addrs.append(f'{c}/{a}')
+    return addrs
+
+def trie_insert(trie, addresses):
+    for a in addresses:
+        trie[a] = 1
+    return trie
+
+def trie_dump_keys(trie, ks):
+    if len(ks) == 0: return []
+    else map
+#+end_src
+
+#+RESULTS: pyMethods
+: None
+
+*** ipv4 trie
+
+#+begin_src python :session *py-session* :var nets=trieNets4 addrs=trieAddrs4 parents=trieParents4
+p4 = pyt.PyTricia(32)
+parents = addrs_parse(parents)
+trie_insert(p4,parents)
+nets = addrs_parse(nets)
+trie_insert(p4,nets)
+addrs = addrs_parse(addrs)
+trie_insert(p4,addrs)
+#+end_src
+
+#+RESULTS:
+: <pytricia.PyTricia object at 0x7ff38d2e3af0>
+
+#+name: trieParents4
+#+begin_example
+8,10.0.0.0
+16,10.8.0.0
+17,10.8.0.0
+17,10.8.128.0
+18,10.8.128.0
+19,10.8.160.0
+18,10.8.192.0
+21,10.8.200.0
+20,10.8.0.0
+21,10.8.0.0
+#+end_example
+
+**** Extract subnets
+
+#+name: trieNets4
+#+begin_example
+24,10.123.10.0
+24,10.123.148.0
+24,10.123.164.0
+24,10.123.168.0
+24,10.123.180.0
+24,10.123.192.0
+24,10.123.200.0
+28,10.123.224.0
+30,10.123.4.100
+24,10.123.5.0
+#+end_example
+
+**** Extract addresses
+
+#+name: trieAddrs4
+#+begin_example text
+30,10.123.4.101
+24,10.123.5.11
+24,10.123.10.11
+24,10.123.148.11
+24,10.123.164.11
+24,10.123.168.11
+24,10.123.180.11
+24,10.123.192.11
+24,10.123.200.11
+28,10.123.224.1
+28,10.123.224.11
+30,10.123.4.102
+24,10.123.5.12
+24,10.123.10.12
+24,10.123.148.12
+24,10.123.164.12
+24,10.123.168.12
+24,10.123.180.12
+24,10.123.192.12
+24,10.123.200.12
+28,10.123.224.2
+28,10.123.224.12
+24,10.123.164.21
+24,10.123.164.22
+24,10.123.168.21
+24,10.123.168.22
+24,10.123.192.31
+24,10.123.192.32
+24,10.123.192.1
+24,10.123.192.2
+24,10.123.192.21
+24,10.123.200.31
+24,10.123.192.22
+24,10.123.200.32
+24,10.123.200.21
+24,10.123.200.22
+30,10.123.4.100
+#+end_example
+
+*** ipv6 trie
+
+#+name: ipv6nets
+#+begin_example text
+fd01:2345:6789:4:0:0:0:0
+fd01:2345:6789:5:0:0:0:0
+fd01:2345:6789:a:0:0:0:0
+fd01:2345:6789:94:0:0:0:0
+fd01:2345:6789:a4:0:0:0:0
+fd01:2345:6789:a8:0:0:0:0
+fd01:2345:6789:b4:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c8:0:0:0:0
+fd01:2345:6789:e0:0:0:0:0
+fd01:2345:6789:e0:0:0:0:0
+fd01:2345:6789:4:0:0:0:0
+fd01:2345:6789:5:0:0:0:0
+fd01:2345:6789:a:0:0:0:0
+fd01:2345:6789:94:0:0:0:0
+fd01:2345:6789:a4:0:0:0:0
+fd01:2345:6789:a8:0:0:0:0
+fd01:2345:6789:b4:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c8:0:0:0:0
+fd01:2345:6789:e0:0:0:0:0
+fd01:2345:6789:e0:0:0:0:0
+fd01:2345:6789:a4:0:0:0:0
+fd01:2345:6789:a4:0:0:0:0
+fd01:2345:6789:a8:0:0:0:0
+fd01:2345:6789:a8:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c8:0:0:0:0
+fd01:2345:6789:c0:0:0:0:0
+fd01:2345:6789:c8:0:0:0:0
+fd01:2345:6789:c8:0:0:0:0
+fd01:2345:6789:c8:0:0:0:0
+#+end_example
+
+fdsa
+
+#+begin_src shell :var netlist=ipv6nets
+echo $netlist  | tree --fromfile . -d
+#+end_src

@@ -1,0 +1,107 @@
+:PROPERTIES:
+:ID:       abbe757e-b119-4ade-b7b5-f350191f736c
+:END:
+#+TITLE: Python: Org-Babel Session Setup
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
+
+* Docs
+** Babel
++ [[https://orgmode.org/worg/org-contrib/babel/languages/ob-doc-python.html][worg: org-contrib/babel/languages/ob-doc-python.html]]
++ [[https://github.com/dfeich/org-babel-examples/blob/795050a54d2c14ac3bd3cc3a9e02b93560d57c7d/python3/python3-babel.org?plain=1#L22][dfeich/org-babel-examples python3/python3-babel.org?plain=1#L22]]
++ [[https://github.com/dfeich/org-babel-examples/blob/795050a54d2c14ac3bd3cc3a9e02b93560d57c7d/python/pythonbabel.org?plain=1#L1][dfeich/org-babel-examples python/pythonbabel.org?plain=1#L1]]
+
+* Resources
+
+* Pytricia
+
+This lib is wierd. There's no top-level python code. Just C and python tests. I
+built it with a few tweaks on =guix import pypi pytricia=
+
+It doesn't use the typical =CFFI= afaik. It only generates a single =*.so= in the
+egg/wheel thing that it gets python to link to. That contains about 18 symbols
+that correspond to the header file:
+
+| PyInit_pytricia  | patricia_lookup       | local_inet_pton |
+| Clear_Patricia   | patricia_process      | my_inet_pton    |
+| Destroy_Patricia | patricia_remove       | prefix_toa      |
+| New_Patricia     | patricia_search_best  | prefix_toa2     |
+| New_Prefix       | patricia_search_best2 | prefix_toa2x    |
+| comp_with_mask   | patricia_search_exact | prefix_tochar   |
+
+This is declared as ~ext_modules=[Extension("pytricia",
+["pytricia.c","patricia.c"])~ in the =setup.py=. I guess this is an [[https://setuptools.pypa.io/en/latest/userguide/ext_modules.html][Extension
+Module]]
+
+* Notes
+
+** Startup
+
+#+name: startPython
+#+begin_src emacs-lisp
+"guix shell -L /home/dc/.dotfiles/ellipsis python python-pytricia -- python3"
+#+end_src
+
++ =(org-sbe startPython)= in the block headers is unnecessary, but helpful
+  elsewhere -- e.g. =ob-jq=, =ob-restclient=, etc also occcasionally need parameters
+  set with results. it's mostly used for tables
+  - =org-sbe= does not work with =M-x org-babel-switch-to-session= (even w/ =C-u=)
++ Can also set much of this in the top-level org document propreties
+
+#+begin_quote
+Warning (python): Python shell prompts cannot be detected.
+If your emacs session hangs when starting python shells
+recover with ‘keyboard-quit’ and then try fixing the
+interactive flag for your interpreter by adjusting the
+‘python-shell-interpreter-interactive-arg’ or add regexps
+matching shell prompts in the directory-local friendly vars:
+  + =python-shell-prompt-regexp=
+  + =python-shell-prompt-block-regexp=
+  + =python-shell-prompt-output-regexp=
+  Or alternatively in:
+  + =python-shell-prompt-input-regexps=
+  + =python-shell-prompt-output-regexps=
+#+end_quote
+
+*** Start a long-running session
+
+Can also:
+
++ =M-x org-babel-initiate-session=
++ C-c C-v C-z :: =org-babel-switch-to-session= pops a session buffer (with a repl)
++ C-c C-v l :: =org-babel-load-in-session= to load a block
+
++begin_src python :session *py-session* :python "guix shell -L /home/dc/.dotfiles/ellipsis python python-pytricia -- python3"
+
+#+name: setupPytriciaSession
+#+headers: :results output
+#+begin_src python :session *py-session* :python (org-sbe startPython)
+import pytricia
+
+#+end_src
+
+** Test Stdin
+
+#+name: pySetup
+#+begin_src python :results output :python (org-sbe startPython) :colnames=no :eval never
+import sys
+data = sys.stdin.read()
+print(f"Python received: {data.strip()}")
+#+end_src
+
+
+
+#+name: pyTestTables
+#+headers: :results output :python (org-sbe startPython) :colnames=no
+#+begin_src python :var tbl=underlayAddr
+import pytricia
+pyt = pytricia.PyTricia(32)
+
+#+end_src
+
+#+RESULTS: pyTestTables
