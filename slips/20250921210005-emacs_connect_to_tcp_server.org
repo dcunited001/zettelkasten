@@ -1,0 +1,117 @@
+:PROPERTIES:
+:ID:       38416050-d9cc-4dd7-b89e-2aa1c607791a
+:END:
+#+TITLE: Emacs: Connect to TCP Server
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
+* Docs
+
+* Resources
+
+* Misc
+** Local Only?
+
+I had tried this once and I guess I didn't get the pieces straight.
+
+Gemini seemed to think it was possible. It conflated emacsclient using tramp &
+also minced the =-T $trampPrefix= arg ... which I'm just now learning about
+
+* Overview
+
+** Requirements
++ It requires a server that doesn't need to terminate its clients: if you
+  started the server with =emacs --fg-daemon=$sock=, the clients will close when
+  you run =(server-start)= for the second time
++ You'll probably need to open a random port on your firewall... (don't do
+  that). Instead, IRL, you'll use an SSH tunnel and only allow connections from
+  local TCP sockets (maybe even a bit more locked down)
++ Server file: each time you get a new key. You can't change the connection
+  details: the listen address/port feeds into the key generation (i think?). If
+  you
+
+
+*** Limitations
+
+I can't quite get the server's frame to pop up locally
+
++ emacsclient -e $elisp :: runs command locally
++ emacsclient -c  :: creates a GUI frame, locally
++ emacsclient -nw $file :: creates a GUI Frame in a shell (locally) ... etc
+
+I think this is because emacsclient maps memory with the assumption that it
+syncs client/server state using a custom Unix socket protocol. So the =emacs=
+server state can't be shared with the memory space of a remote process over
+TCP... at least not on your usual systems
+
++ idek how/whether that would be possible: it would require many constraints on
+  server platform, remote client platform & emacsclient implementation
+
+** Run-through
+
+*** Host Server
+
+#+begin_src shell
+emacs # just use GUI and hit `f1-e` to keep *messages* open
+export emacsPort=28765
+export emacsAddr=172.16.71.52
+export emacsclientAddr=172.16.71.25
+#+end_src
+
+Host Server =emacs-lisp=
+
+#+begin_src emacs-lisp
+(require 'server)
+
+;; set at least this
+(setq server-use-tcp t)
+(setq server-host (getenv "emacsAddr"))
+(setq server-port (getenv "emacsPort"))
+
+;; enable emacs' d-bus notifications integration
+(require 'notifications)
+(server-start)
+#+end_src
+
+After running, the server accepts connections provided that clients use the file
+at =~/.emacs.d/serversn/server= (can be customized via =server-*= or may depend on
+your =$EMACSDIR=)
+
+#+begin_src shell
+# you should really bind this locally
+chain=nixos-fw
+action=nixos-fw-accept
+line=42
+rule="-p tcp -s $emacsclientAddr --dport $emacsPort  -j $action"
+
+sudo iptables -L --line-numbers
+sudo iptables -I $chain $line $rule
+sudo iptables -L --line-numbers # check
+#+end_src
+
+*** Remote Client
+
+From the remote run:
+
+#+begin_src shell
+emacsHost=metafoo
+esdir=$(mktemp -d)
+esfile=$esdir/server/server
+
+# preserve attrs. copy dir to prevent listing (i guess it's in temp)
+# ideally this would be encrypted. (just use tramp)
+scp -p -r metafoo:/home/uuu/.emacs.d/server $esdir
+
+emacsclient -f $esfile -e '(notifications-notify :title "remote notification" :body "the hosting server has d-bus access")'
+emacsclient -f $esfile -c $somefile
+#+end_src
+
+*** Why?
+
+If you could control the Emacs Client GUI from the remote...
+
++ it would be a much better way of handling some niche features of emacs (like
+  Gnus), matrix chat, irc, etc.
++ It looks like you have to drive it remotely, so maybe this is a
