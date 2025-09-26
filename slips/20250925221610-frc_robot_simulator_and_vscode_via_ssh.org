@@ -1,0 +1,195 @@
+:PROPERTIES:
+:ID:       ede69aea-f8fa-43d7-9b57-cfb12fbd5e41
+:END:
+#+TITLE: FRC: Robot Simulator and VSCode via SSH
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
++ [[id:4630e006-124c-4b66-97ad-b35e9b29ae0b][Robotics]]
++ [[id:18d07822-9dda-4430-85a1-f7eb39f40429][VSCode]]
+
+* Resources
++ Robot Simulator
+  - [[https://docs.wpilib.org/en/stable/docs/software/wpilib-tools/robot-simulation/simulation-gui.html#using-the-gui][Using the GUI]]
+
+* FRC Networking
+
+
+
+* VS Code
+
+** Environment
+
+*** Local VS Code, referred to as =core=
+
++ Running at =10.123.8.64=
++ This is running the Robot Simulator on Arch Linux to ensure a consistent
+  environment
+
+*** Remote VS Code, referred to as =eroc=
+
++ Running from the Nix VSCode environment constructed on =nix-ld=, where I have
+  the =ms-vscode-remote.remote-ssh= extension installed.
++ At =10.123.8.192=, same subnet. I ssh to =core= using the extension.
+
+
+** Quick Tests and Issues
+
+Seems to be pretty similar to Tramp.
+
+#+begin_quote
+Note: this is actually connecting to the wrong VSCode on =core=. i.e. it's
+Actually starting a VSCode Server via =$HOME/.vscode-server/cli=, so the server
+instance is where extensions & environment details need to be configured.
+
+You need to configure =remote.SSH.serverInstallPath= (for the =eroc= workspace, I
+think) and ensure the server that's instantiated has the extensions/environment
+it needs.
+#+end_quote
+
+
+*** Commands run on Remote Environment?
+
+Basically, how close to =tramp.el= is this? Tramp will try to run commands in the
+remote environment. This is what I need.
+
++ Mixed results: it's not entirely clear at the start
++ =C-`= definitely gets me a shell over there
+
+*** Configuration
+
+An extra panel shows up in =Settings= for the remote host. This would configure
+settings your remote server instance. (idk how long these settings persist when
+edited here)
+
+*** Debugging FRC Code?
+
++ Can't be started on =eroc= (no debug support for WPILib)
++ This is likely a result of implementation details (maybe DAP)
+
+* Robot Simulator
+
+** Configuration
+
+** Input
+
+These mappings can be saved to json
+
+*** Keyboards
+
+|-----+---------+----------+---------------------------------|
+| dev | support | function | desc                            |
+| k0  |    full | pov      | numpad around the clock         |
+|     |       3 | axes     | ~wads+er~                         |
+|     |       4 | buttons  | ~zxcv~                            |
+| k1  |       2 | axes     | ~ijkl~ shifted, but ~ik~ flipped    |
+|     |       4 | buttons  | ~m,./~ along the bottom right     |
+| k3  |       2 | axes     | arrow keys, up/down flipped     |
+|     |       6 | buttons  | ~Ins~, ~del~, (cursor control keys) |
+|-----+---------+----------+---------------------------------|
+Complete Mappings (defaults)
+
+|---------+----+----+----+----+----+--------|
+|         | k0 | k0 | k1 | k1 | k2 | k2     |
+|---------+----+----+----+----+----+--------|
+| axis0   | a  |  d | j  | l  | ←  | →      |
+| axis1   | w  |  s | i  | k  | ↑  | ↓      |
+| axis2   | e  |  r |    |    |    |        |
+|---------+----+----+----+----+----+--------|
+| b1      |    |  z |    | m  |    | Ins    |
+| b2      |    |  x |    | ,  |    | Home   |
+| b3      |    |  c |    | .  |    | PgUp   |
+| b4      |    |  v |    | /  |    | Delete |
+| b5      |    |    |    |    |    | End    |
+| b6      |    |    |    |    |    | PgDn   |
+|---------+----+----+----+----+----+--------|
+| pov 0   |    |  8 |    |    |    |        |
+| pov 45  |    |  9 |    |    |    |        |
+| pov 90  |    |  6 |    |    |    |        |
+| pov 135 |    |  3 |    |    |    |        |
+| pov 180 |    |  2 |    |    |    |        |
+| pov 225 |    |  1 |    |    |    |        |
+| pov 270 |    |  4 |    |    |    |        |
+| pov 315 |    |  7 |    |    |    |        |
+|---------+----+----+----+----+----+--------|
+*** Mods
+
+Our controls require axes: 0,1 and 4. I flipped the axes so =wads= will match the
+viewpoint.
+
+|-------+----+----|
+|       | k0 | k0 |
+|-------+----+----|
+| axis0 | d  | a  |
+| axis1 | s  | w  |
+|       | r  | e  |
+|       |    |    |
+| axis4 | l  | j  |
+|       | k  | i  |
+|-------+----+----|
+*** XBox button mappings
+
+|---+---+---+---+------------+-------------+------+-------+-----------+------------|
+| A | B | X | Y | LeftBumper | RightBumper | Back | Start | LeftStick | RightStick |
+|---+---+---+---+------------+-------------+------+-------+-----------+------------|
+| 1 | 2 | 3 | 4 |          5 |           6 |    7 |     8 |         9 | 10         |
+|---+---+---+---+------------+-------------+------+-------+-----------+------------|
+
+* Advantage Scope
+
+** Connecting to Remote Simulator
+
+Advantage Scope allows you to configure an IP to connect to the Robot, but only
+searches for =127.0.0.1= when connecting to the simulator. It's possible to use an
+ssh tunnel for this.
+
+#+begin_quote
+DO NOT USE THIS TO CONNECT A DASHBOARD TO CONTROL THE ROBOT!
+DO NOT USE THIS TO CONNECT A DASHBOARD TO CONTROL THE ROBOT!
+DO NOT USE THIS TO CONNECT A DASHBOARD...
+#+end_quote
+
+From =core=:
+
+#+begin_src shell
+nt_port=5810
+eroc_port=54123
+ssh -N eroc -R "127.0.0.1:${nt_port}:127.0.0.1:${nt_port}"
+#+end_src
+
++ -R $bind:$eroc_port:$core:$core_port :: both ports are the same here
+  - the first address: where to start listening (on $eroc)
+  - the second address: where to forward traffic to (to $core)
++ -N :: keeps the connection open; use -vvvv to debug
+
+Confusingly, both addresses are 127.0.0.1. this is because these are different
+perspectives on the network. The forward tunnels are a bit easier to grok, but
+the reverse tunnels are more useful.
+
++ This method also assumes that the return path on the dynamic port selected for
+  the return path can connect no problem.
++ I'm assuming these return path packets also go through the tunnel, but idk for
+  sure. If not, that's a problem.
+
+Running =ss -4t= on =$core= should show something like this, without all the
+established =https= & etc TCP connections. You can see that =ssh= is doing quite a
+bit of magic here. I replaced the hostnames for clarity.
+
+| State | Recv-Q | Send-Q | Local Address:Port | Peer Address:Port |
+|-------+--------+--------+--------------------+-------------------|
+| ESTAB |      0 |      0 |    127.0.0.1:59906 |   127.0.0.1:35919 |
+| ESTAB |      0 |    317 |     *127.0.0.1:5810* |   *127.0.0.1:35542* |
+| ESTAB |      0 |     60 |         *core:48552* |          *eroc:ssh* |
+| ESTAB |      0 |      0 |           core:ssh |        eroc:43808 |
+| ESTAB |      0 |      0 |    127.0.0.1:35919 |   127.0.0.1:59906 |
+| ESTAB |      0 |      0 |     127.0.0.1:5810 |   127.0.0.1:35550 |
+| ESTAB |      0 |      0 |    127.0.0.1:35530 |    127.0.0.1:5810 |
+| ESTAB |      0 |      0 |    *127.0.0.1:35542* |    *127.0.0.1:5810* |
+| ESTAB |      0 |      0 |    127.0.0.1:35550 |    127.0.0.1:5810 |
+| ESTAB |      0 |      0 |    127.0.0.1:40572 |   127.0.0.1:42481 |
+| ESTAB |      0 |      0 |     127.0.0.1:5810 |   127.0.0.1:35530 |
+| ESTAB |      0 |      0 |    127.0.0.1:36578 |   127.0.0.1:39719 |
+| ESTAB |      0 |     44 |           core:ssh |        eroc:41342 |
+
