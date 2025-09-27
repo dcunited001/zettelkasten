@@ -1,0 +1,200 @@
+:PROPERTIES:
+:ID:       b4ed155f-4f10-4754-95aa-946e4bb2738a
+:END:
+#+TITLE: Arch: Migrate from Garuda to Omarchy
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:d8216961-cd6a-47cd-b82a-8cd67fe7190f][BTRFS]]
+
+* Docs
+
+* Resources
+
+* Data
+** Garuda FS
+
+*** Boot & LUKS
+I hadn't gotten around to setting up =/etc/cryptab=, =/etc/fstab=, etc for LUKS
+because I never decided on how to handle the dracut image scripts for
+systemd-boot
+
++ Need to copy the partitions to an external disk so that their size & ordering
+  are preserved
+
+*** Nix/Guix partition
+
++ These had been created in a separate BTRFS partition using [[https://github.com/dcunited001/ellipsis/blob/master/nixos/hosts/kharis/kharis.chroot#L28][this script]]
++ They can be safely removed from the partition table
+
+*** Backups
+
+I ended up installing omarchy on the fresh disk.
+
+**** Originally, I used an image-based backup
+
+Need the UUIDs in tact
+
+#+begin_src shell
+sfdisk -d /dev/nvme0n1 > $(hostname).sfdisk
+#+end_src
+
+There's partitions =/dev/nvme0n1p{1,2,4}=. I deleted =p3=, but the swap is way out
+there. It's just swap ... so I _should_ be able to edit the =sfdisk= dump to make =p4=
+contiguous with the same UUID, then move it over to follow the Garuda
+installation. If that works, then I should just be able to install Omarchy
+alongside Garuda.
+
+#+begin_quote
+The installation will wipe the selected drive and use full-disk encryption, so
+be sure to take a backup before using an existing drive!
+#+end_quote
+
+... okay nevermind then. That won't work.
+
+***** Consolidated anyways
+
+Notes in [[id:e1f0e2af-c208-4fed-8717-3b6c5b49b804][File Systems: Being overly cautious with sfdisk and duplicate uuids]].
+Easier to handle the partition images with UUIDs and Partition UUIDs in tact.
+
+** Extant Configuration
+
+There's little work on the laptop recently and I've contained everything inside
+=$HOME= ... so that's pretty easy.
+
++ XDG_CONFIG_HOME :: was held together with popsicle sticks & symlinks
+  - I have an =~/.emacs.d -> ~/.dotfiles/.emacs.hop= symlink for a barebones emacs
+    config and a few things like that
++ XDG_DATA_HOME :: a few things:
+  - OrcaSlicer configuration
+  - Wine/Bottle configuration for Carbide Create (with a =C:\= filesystem
+    somewhere idk)
+
+* Migration
+
+** Overview
+
++ Going to run commands via =ssh= so taking notes is a bit easier.
++ After pruning/draining files that can't easily be sync'd:
+  - make sure it boots up again
+  - shutdown, boot an ISO and copy the partition to an extra NVMe
++ Install omarchy
+  - look around
+  - check brtfs subvolumes, add subvolumes for =/nix= and =/gnu= that don't inherit
+    from the main =subvolid=5=, potentially adding a separate partition for this
+  - Maybe install again. depends on how/whether LUKS is setup within LVM or not
+    - if not, then I need a second LUKS drive (hence the reinstall using the
+      [[https://learn.omacom.io/2/the-omarchy-manual/96/manual-installation][Manual Installation method]]).
+    - The main difference is whether you want to move partitions later as
+      singular images. If not, then top-level btrfs subvolumes are way simpler.
++ Configure some basic dotfiles
+  - setup =~/.emacs.hop=
+  - make =.profile= consistent
+  - re-shim the laptop's hyprland configs
+
+** Escape Hatch
+
+Kinda the most important part. I want to drain some of the scattered files from
+the disk, but not too many so that the installation + =$HOME= dotfiles don't work.
+
+** Omarchy
+
+*** FS & Boot
++ LUKS+BTRFS :: I'm guessing the requirement is enforced through package
+  updates in their custom mirror
++ Limine :: Boots via limine from EFI.
+  - It's probably okay to assume this can live with the grub EFI image, but to
+    be safe, I'm just backing up the image to a smaller disk.
+
+I think dropping the LVM & Partitions approach & moving towards 95% btrfs would
+be very beneficial
+
+**** Partitions
+I'm trying to get a feel for the subvolumes
+
+*** Dotfiles
+
+I just don't know that I want to manage two sets of scripts or hyprland configs.
+
++ One method for addressing this is to move some custom functionality into
+  nix/guix packages, which I'm already doing.
+  - e.g. the =hjinspect.jq= bin script that helps dump window titles
+  - /Some of these packages/ can be installed into the main =~/.nix-profile= where
+    the bin scripts & maybe some configs would be available in the environment.
+    This would already be preferable to how I'm handling this shared
+    functionality now (again... popsickle stick & symlinks).
++ Another method is to just start a separate set of dotfiles and figure it out
+  from there.
+
+**** SSH & GnuPG
+
+It's a pain if it's not setup quickly
+
+**** XKB
+
+The custom bindings for =ISO_LEVEL_5= should still work
+
+*** Profile
+
+This is always a pain to manage across distros, but should be easier in Omarchy.
+
++ It's intended for developers. I haven't fully evaluated it (and I won't know).
+  The installation scripts for isolated programming environments: a good sign
+  that there's a more solid =.profile= foundation to build on.
+*** Desktop
+**** Notifications
+
+Uses =mako= whereas I would prefer =swaync=, but idk =mako= seems to have good
+support. I haven't used it yet though.
+
++ =swaync= is simple enough for me to decouple, since I don't have a heavy
+  =home-manager= config.
+
+**** Waybar
+
+This looks simple enough to extend/customize. One thing that's missing is the
+=yubikey-touch-detector=
+
+**** SystemD & D-Bus
+
++ I had planned to explore adding custom d-bus specifications
++ I believe both these and system-d units can be installed through nix-profile,
+  though the latter could maybe get messy.
+
+**** Walker
+
+I was about to shift towards =rofi=, but =walker= covers that functionality. The
+=walker= author popped into a chat recently and the project piqued my interest.
+
++ It's a mix of =go= and =rust= with an underlying component =elephant=
++ =walker= has a creative design providing a service-managed backend index, along
+  with a socket interface to provide fast access to results.
++ A bit of =golang= and a socket-based API are all helpful to learn anyways.
+
+***** Rofi/Dmenu
+
+With custom scripts or random dots, my concern here was cargo culting the wrong
+scripts/patterns. A lot of what's done with =dmenu=-style interfaces should
+actually be provided over d-bus.
+
++ I do a lot of this through Emacs' consult/vertigo anyways
++ I have a large collection of PDFs/cheatsheets that I need access to
+*** Hyprland
+
+The Omarchy hyprland is simple enough for me to shim what I need on top. omarchy
+has some defaults, where you kinda want to choose which main configs to include
+and how to shim the rest of what you need.
+
++ If you want their keybindings/modkeys, they're =const= in (e.g. SHIFT, ALT).
++ This is fine, as the point here is to gain functionality from what they
+  provide (e.g. =walker=, =./bin= scripts). modkeys are easy enough to adjust to
+  and I was already considering it.
++ Adapting to the standard hotkeys/etc and having a consistent interface from
+  machine to machine is far preferable.
+
+hyprland launch: they're using UWSM, which should be simple enough for me wrap
+or both laptop/desktop.

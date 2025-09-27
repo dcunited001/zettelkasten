@@ -1,0 +1,202 @@
+:PROPERTIES:
+:ID:       e1f0e2af-c208-4fed-8717-3b6c5b49b804
+:END:
+#+TITLE: File Systems: Being overly cautious with sfdisk and duplicate uuids
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ See [[id:b4ed155f-4f10-4754-95aa-946e4bb2738a][Arch: Migrate from Garuda to Omarchy]] for notes on the original problem
+
+* Notes
+
+I really think i'm overthinking this. I've done image-level backups before, but
+I've only run into the "LVM missing UUID" issue...
+
+#+begin_quote
+Whoa! I just noticed that =sfdisk -d $disk= contains a =device: /dev/sdX= parameter
+... I'm assuming this has no effect on the the partition restore, but still.
+#+end_quote
+
+** Risky Partition Backups
+
+... But probably good material for interview questions.
+
+*** Consolidated =sfdisk= partitions
+
+Need to make the swap partition contiguous
+
+#+begin_src shell
+sfdisk -d $disk > /tmp/before.sfdisk
+cp /tmp/before.sfdisk /tmp/after.sfdisk
+vim !$
+#+end_src
+
++ change /dev/nvme0n1p4 to /dev/nvme0n1p3
++ reference the delta between p1 and p2 (2048 sectors)
++ change /dev/nvme0n1p3 start= to be:
++ (+ 8390656 306184192 2048) ;; 314576896
+
+Reboot from ISO into original Garuda installation. I didn't run =mkswap= in that
+new partition, so dracut fails to load the swap. Note the UUID. Reboot into
+=nixos= ISO
+
++ Edit grub params (add =noquiet=). See UUID it complains about. Check =blkid= and
+  =lsblk=, not there. Check =/mnt/etc/fstab=, it's there. Check =/dev/disk/by-uuid=,
+  not there.
++ Check =/dev/disk/by-partuuid=. The UUID match =/etc/fstab=, but the disk
+  =/dev/nvme0n1p3= is missing
++ EDIT: this is confusing as hell. =/etc/fstab= should reference the FS UUID, not
+  the Partition UUID.
+
+#+begin_src shell
+# This grabs UUID=$the_uuid and sources as variable... risky
+source <(cat /mnt/etc/fstab | grep '0d8abc' | cut -f1 -d' ')
+sudo mkswap -U $UUID /dev/nvme0n1p3
+#+end_src
+
++ I can't recall whether these disks are stored in the initramfs. They shouldn't
+  be (it provides a temp root fs in memory until the real one gets set in
+  place). Only the root UUIDs are in the Grub params. Otherwise, regen initramfs
+  could be required.
++ No need to change anything in =/mnt/etc/fstab= since the UUIDs match up.
+
+And Garuda boots again. Just need to port the =sfdisk= partition layout to the
+other disk.
+
+*** Backup
+
+#+begin_quote
+This is just not practical without better tooling. You really don't want to
+unintentionally cause a system to write to either the FS/Part UUID.
+#+end_quote
+
+The next problem, which is only now obvious: restoring an =sfdisk= backup can't
+persist the same PartUUIDs when copying the images while the disks are connected
+on the same system (duplicate PartUUIDs)
+
+To handle this
+
++ Get a fresh =sfdisk= dump of the source disk to =source.sfdisk=
++ Copy it to =target.sfdisk= and another to =source.backup.sfdisk=
++ Decrement the UUIDs in =source.sfdisk=
++ Apply the modified =source.sfdisk= back to =$sourceDisk=
++ Plug the new disk in. Apply =target.sfdisk= to that
++ Then =dd= each partion from =source= to =target=
++ _do not mount_ the disks from source or target... until after a reboot. There's
+  a possibility of an FS UUID collision (if something is cached on disk or in
+  kernel)
+
+That's messy. I definitely wouldn't recommend that.
+
++ Just use =btrfs= ... and avoid all the UUID problems with LVM and =sfdisk=
++ Partition-based backups are convenient (fast, quicker to pull the trigger)
+  - Ultimately, you just push your problems back further. You'll need tools like
+    =czkawka= or =autopsy= to dedupe files.
+  - Merging file trees is really not that different than merging dictionaries.
+
+#+begin_quote
+Are cross-device image-based backups something that =iscsi= can help with? This is
+harsh.
+#+end_quote
+
+*** Copy data before =sfdisk= restore
+
+=dd= uses =MB=(1000*1000)= and =M=(1024*1024)= ... which is confusing. Here =MB= is just
+proper =base-2= bytes. To avoid that, use =bs=1M= as the param and otherwise work
+only in bytes/sectors...
+
+#+begin_quote
+Who TF ever. omfg what is base-10?
+#+end_quote
+
+Looking at =cfdisk $sourceDisk= and using =org-mode='s =TBLFM= to validate fat-fingers:
+
+|     start |       end |   sectors | size   | type  | end - start + 1 |     part MB |    end MB |
+|-----------+-----------+-----------+--------+-------+-----------------+-------------+-----------|
+|      2048 |   8390655 |   8388608 | 4G     | EFI   |         8388608 |      16384. | 4096.9995 |
+|   8390656 | 314574847 | 306184192 | 146G   | Linux |       306184192 |     598016. | 153601.00 |
+| 314574848 | 314576895 |      2048 | 1M     | Free  |            2048 |          4. | 153602.00 |
+| 314576896 | 347344895 |  32768000 | 15.6GB | Swap  |               1 | 1.953125e-3 | 169602.00 |
+#+TBLFM: $6=$2-$1+1;
+#+TBLFM: $7=$6/2048.0;
+#+TBLFM: $8=($2)/2048.0;
+
++ 2048 is =2**11= sectors
++ 512 is =2*9= bytes ...
++ that's just =2**20= or =1MB=
+
+I should be able to copy in =1MB= blocks:
+
++ bs :: set to ~mb=$((1024*1024))~. this overrides =ibs= and =obs=
++ count :: 170000 (in =MB=)
++ ibs/obs :: set from =bs=, but effectively 1MB
++ seek :: 1 (in =ibs=-sized blocks)
++ skip :: 1 (in =obs=-sized blocks, to avoid copying the 2048S header)
++ status :: progress
+
+Copying in =1MB= should be okay here... It's a fairly straightforward to work with
+and =512B= blocks will take forever!
+
++ GPT partition tables store backups elsewhere on the disk, so you do need to
+  use =sfdisk $dev < $sfdump= to restore that partition table... otherwise your
+  disk has no backups
+
+After this, the =$target= device will have the sectors it needs so that
+=$sfdiskModified= with an adjusted =last-lba= will restore the partition table.
+
+|           |     source |    target |
+| first-lba |       2048 |      2048 |
+| last-lba  | 1953525134 | 500188158 |
+| grain?    |            |           |
+
+#+begin_quote
+WTF is grain? SMH
+#+end_quote
+
+After this, I may need to potentially adjust the =garuda= GRUB root device UUID
+(if distinct from FS UUID & Part UUID, which should be the same)
+
+#+begin_src shell
+mb=$((1024*1024))
+nblocks=170000
+source=/dev/nvme0n1
+target=/dev/sdb
+
+# soooo
+dd of="$target" if="$source" \
+    bs="$mb" count="$nblocks" \
+    skip=1 seek=1 \
+    status=progress
+sync
+eject $target
+#+end_src
+
+Before running this, it's probably a good idea to use =cfdisk $target= to create a
+dummy GPT partition table with one blank partition on it. When =dd= is done,
+connect the NVMe to another computer and then use =sfdisk < $sfdiskModified= to
+restore the corrected partition table
+
+=fdisk -l $targetOnDesktop= comes up like this (with the dummy partition)
+
+#+begin_example
+Disk /dev/sde: 238.47 GiB, 256060514304 bytes, 500118192 sectors
+Disk model:
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 8388608 bytes
+I/O size (minimum/optimal): 8388608 bytes / 8388608 bytes
+Alignment offset: 6832128 bytes
+Disklabel type: gpt
+Disk identifier: F2EA73FF-6A28-46C1-AB4A-80219D0CD9E1
+
+Device     Start   End Sectors Size Type
+/dev/sde1  13344 46111   32768  16M EFI System
+#+end_example
+
+It seems to be okay, except for some =sfdisk= warnings about each partition not
+starting on a physical sector boundary ...
+
+Going to test boot by changing out the NVMe disks from my laptop.... aaaannndd
+it boots. (phew). Just need to force a =mkinitcpio= or whatever with =yay -Syu= just
+in case.
