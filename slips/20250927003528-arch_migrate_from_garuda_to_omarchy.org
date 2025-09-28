@@ -14,6 +14,118 @@
 * Docs
 
 * Resources
++ Omarchy [[https://learn.omacom.io/2/the-omarchy-manual/96/manual-installation][Manual Installation method]]
+
+* Setup
+** Installation
+
++ Fed it the entire disk & used a generic password to change LUKS encryption and
+  user password later.
+  - I'll already reload and edit the btrfs layout. I'll re-encrypt with a new
+    password before then
+    - The luks master key for the volume generation is, by default, distinct from
+      the passphrases used to unlock the master key
+  - I'm paranoid about having LUKS equivalent to user password and about btrfs
+    snapshots (overkill but idk, one pass shouldn't get you the other there)
++ I didn't switch =vty= to setup network before the installation
+  - Probably should have.
++ After install, the system bootloops once at UEFI.
+  - Reboot into omarchy. Clicked wifi notification. Initial sudo prompt shows
+    up, but for the initial btrfs snapshot.
+  - Restarted before initial snapshot. Tests robustness of init scripts, which
+    is one possible channel for early issues.
+    - this turns out to be triggered by the =omarchy-update-branch= script FIXME)
+
+*** Change LUKS
+
+Reboot into the custom =nixos-anywhere= ISO to reencrypt. The command below wasn't
+working, with or without various luks parameters. I just used [[https://github.com/basecamp/omarchy/blob/2df8c5f7e0a2aafb8c9aacb322408d2ed7682ea5/bin/omarchy-drive-set-password#L3][the command from
+omarchy's script to re/set it]]
+
+#+begin_src shell
+cryptsetup luksChangeKey $disk <(read -sp 'LUKS Passphrase: ' lukspass; echo $lukspass)
+#+end_src
+
+The partition layout by default doesn't use LVM, so the [[https://learn.omacom.io/2/the-omarchy-manual/96/manual-installation][Manual Installation
+method]] is required for that. I don't have time.
+
++ Except for the laptop's recent Garuda, I haven't tried a mono-partition
+  installation. It's probably more of a feature anyways.
++ LVM is a pita and partition boundaries end up wasting a lot of space.
+  - Aannnd I don't have =btrfs= CLI on this ISO?
+
+
+*** Re-run =omarchy-cmd-first-run=
+
+Reboot into omarchy, but the initial snapshot setup script didn't run.
+
+[[https://github.com/basecamp/omarchy/blob/2df8c5f7e0a2aafb8c9aacb322408d2ed7682ea5/bin/omarchy-cmd-first-run#L5][omarchy-cmd-first-run]] will run if the the =FIRST_RUN_MODE= marker is still in
+tact, which gets set by [[https://github.com/basecamp/omarchy/blob/2df8c5f7e0a2aafb8c9aacb322408d2ed7682ea5/install/preflight/first-run-mode.sh#L4][./install/preflight/first-run-mode.sh]]
+
++ hyprland runs this with =exec-once= this
++ =touch ~/.local/state/omarchy/first-run.mode=
+  - neither relogin nor reboot seem to rerun it
+  - just touch this file and run =$OMARCHY_PATH/bin/omarchy-cmd-first-run=
+
+It turns out the welcome notifications did display and the command had run. I
+got the initial =sudo= prompt & 'Create system snapshot" dialog from:
+
+** Configuration
+*** Misc
+
++ set root password, set user password, relogin
+  - changing password requires reboot for sudo: uwsm doesn't necessarily end
+    the user session?
++ also, how to configure a display manager? or enforce login?
+
+
+* Response
+
+** Initial usage
+
++ ~/.local/share/omarchy :: the distribution's logic in one place as a git repo.
+  perfect. There's also logic in =omarchy-update-branch= to handle git stash,
+  which is great.
++ s-M SPC :: Omarchy Menu
+  - =Learn= quickly into a =walker= menu that lists human-readable default
+    shortcuts. Very nice.
+
+** Pros/Cons
+Some notes from elsewhere not summarized here
+
+*** Good
+
++ following through the =first-run= scripts was helpful
+  + The omarchy scripts are easy to understand and it uses its own "API" there
+    -- it expresses the functionality to setup using the same terminology you'd
+    use to automate things
+  + e.g. =omarchy-launch-floating-terminal-with-presentation omarchy-update= runs
+    if you click on that =mako= notification
++ easy to automate & manage customizations
++ nice screensavers
+
+many more.
+
+*** IDK
+
++ Doesn't include =nmtui= by default ... doesn't have Network Manager?
+  - Okay. Uses =systemd-networkd= by default. hmmm editing the =.network= units
+    seems simple enough.
+
+
+** System
+
+*** FS
+
+**** Mounts
+
+#+begin_src shell
+mount | cut -f3,5 -d' ' \
+    | sort | uniq \
+    | sed -e 's/^/root/g' \
+    | sed -E 's/ (.*)$/ (\1)/g'\
+    | tree --fromfile .
+#+end_src
 
 * Data
 ** Garuda FS
@@ -34,29 +146,6 @@ systemd-boot
 *** Backups
 
 I ended up installing omarchy on the fresh disk.
-
-**** Originally, I used an image-based backup
-
-Need the UUIDs in tact
-
-#+begin_src shell
-sfdisk -d /dev/nvme0n1 > $(hostname).sfdisk
-#+end_src
-
-There's partitions =/dev/nvme0n1p{1,2,4}=. I deleted =p3=, but the swap is way out
-there. It's just swap ... so I _should_ be able to edit the =sfdisk= dump to make =p4=
-contiguous with the same UUID, then move it over to follow the Garuda
-installation. If that works, then I should just be able to install Omarchy
-alongside Garuda.
-
-#+begin_quote
-The installation will wipe the selected drive and use full-disk encryption, so
-be sure to take a backup before using an existing drive!
-#+end_quote
-
-... okay nevermind then. That won't work.
-
-***** Consolidated anyways
 
 Notes in [[id:e1f0e2af-c208-4fed-8717-3b6c5b49b804][File Systems: Being overly cautious with sfdisk and duplicate uuids]].
 Easier to handle the partition images with UUIDs and Partition UUIDs in tact.
