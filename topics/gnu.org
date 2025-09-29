@@ -277,9 +277,10 @@ manhtml() {
 
 Then add the following rules to the inline CSS:
 
+
+
 #+name: manhtmlcss
 #+begin_example css
-
 body { font-size: small; }
 h2 { font-size: 1.0em; }
 h1 { font-size: 1.2em; }
@@ -292,32 +293,127 @@ p { font-size: 0.9em; line-height: 1.1em; }
 
 Edit the DOM a bit and print
 
-***** Containers.conf
+***** manstyle
 
-#+begin_src shell :results output verbatim :var css=manhtmlcss
-# doesn't include manhtml() in scope ... or a mandb apparently
-# ... org-babel also cleans tmp files it creates
+#+name: tmpdir
+#+begin_src emacs-lisp :results value silent
+(or (and (bound-and-true-p -babel-tmp-docs-)) ;; manvsdocs
+    (setq-local -babel-tmp-docs- (make-temp-file "babel-tmp-docs-" t )))
+#+end_src
 
-d="$(mktemp -d)"
-# d=/tmp/tmp.yK7uS7yF2N
-regen=1
+#+name: awkConcatBody
+#+begin_example awk
+BEGIN { outOfBody=0; }
+($0 ~/<\/body>/) { outOfBody=1; }
+(!outOfBody) { print $0; }
+($0 ~/<body>/) { outOfBody=0; }
+#+end_example
 
-# for mp in bluetoothctl{,-advertise,-endpoint,-hci,-monitor,-scan,-admin,-assistant,-gatt,-mgmt,-player,-transport}; do
-for mp in containers{.conf,-storage.conf,-registries.conf,-policy.json}; do
-  [[ 1 -eq "$regen" ]] && manhtml $mp > $d/$mp.html
-  # these should be dt (mostly)
-  sed -i -E 's/<p style="margin-left:9%; "><b>/<p class="mandt"><b>/g' $d/$mp.html
-  # these should be dl (but may lack dt)
-  sed -i -E 's/<p style="margin-left:9%; ">/<p class="mandl">/g' $d/$mp.html
-  # inject the styles ... ¯\_(ツ)_/¯ lol
-  sed -i -E 's/ +<\/body>//g' $d/$mp.html
-  sed -i -E 's/ +<\/html>//g' $d/$mp.html
-  echo "<style type=\"text/css\">
+#+name: containerDocs
+#+begin_src shell
+echo networkctl systemd-networkd systemd.{link,netdev,network}
+# echo containers{.conf,-storage.conf,-registries.conf,-policy.json};
+# echo bluetoothctl{,-advertise,-endpoint,-hci,-monitor,-scan,-admin,-assistant,-gatt,-mgmt,-player,-transport}
+# these are mostly c-based
+# echo wofi{,api,config,keys,map,utils,widget-builder}
+#+end_src
+
+#+name: manDocs
+#+headers: :var css=manhtmlcss onedoc=1 regen=1 awkbody=awkConcatBody t=tmpdir manpages=containerDocs
+#+begin_src shell :results output verbatim
+manhtml() {
+    [[ -z "$1" ]] && echo "Requires man page name" && return 1
+    man -Thtml "$1" \
+        | sed -e 's/margin-top: 1em//g' \
+        | sed -E 's/(<br>|<hr>)//g' \
+        | sed -E 's/<a href="#.*>//g'
+}
+
+# definitely don't work too good
+# foo() { echo $1; }
+# bar() { tee -a | cat <(echo $2); }
+
+manstyle() {
+    # quote inputW
+    local out=$1
+    local css=$2
+
+    # [[ 1 -eq "$regen" ]] && manhtml $mp > $out
+    # these should be dt (mostly)
+    sed -i -E 's/<p style="margin-left:9%; ?"><b>/<p class="mandt"><b>/g' $out
+    # these should be dl (but may lack dt)
+    sed -i -E 's/<p style="margin-left:18%; ?">/<p class="mandl">/g' $out
+    # 9% and 18% vary
+    # inject the styles ... ¯\_(ツ)_/¯ lol
+    awk -i inplace "$awkbody" $out
+    echo "<style type=\"text/css\">
 $css
 p.mandt { margin: 0.2em 0.5em }
 p.mandl { margin: 0.0em 2.0em; text-indent: 1.5em; }
-</style>" >> $d/$mp.html
-  echo "\n</body>\n</html>" >> $d/$mp.html
+</style>" >> $out
+    echo -e "\n</body>\n</html>" >> $out
+}
+
+# idk how to reduce with manhtml(), but if the args could be specified i could
+# repeatedly tee -a
+
+# if $regen, reset state
+out=$t/man.out.html;
+if [ 1 -eq "$regen" ]; then
+    rm -f $out;
+    for mp in ${manpages[@]}; do rm -f "$t/$mp.html"; done
+fi
+
+# just write all the files
+# - unless $onedoc, inject the styles
+# - if $onedoc, inject the styles later
+
+# manpages=${manpages// /\n}                   # this doesn't escape right
+# manpages=$(echo $manpages | tr ' ' '\n')     # this works for the for loop (IFS)
+# out="$t/${manpages[1]}.html"                 # ... but this isn't an array
+# IFS="dammit"                                 # I just don't feel like it
+# while ...                                    # really?
+# for mp in ${manpages[@]}; do
+
+echo $manpages | tr ' ' '\n' | while read mp; do
+    [[ 1 -ne "$onedoc" ]] && out=$t/$mp.html;
+    manhtml $mp >> $out
+
+    # for $onedoc could probably rerun manstyle on append >> $out
+    # probably a fixpoint... but brittle
+    [[ 1 -ne "$onedoc" ]] && manstyle $out "$css"
+
+done
+
+echo $out
+[[ 1 -eq "$onedoc" ]] && manstyle $out "$css"
+
+# ls $t
+#+end_src
+
+#+RESULTS: manDocs
+: /tmp/babel-tmp-docs-RjrtoR/man.out.html
+
+#+begin_src shell :results output verbatim :var css=manhtmlcss onedoc=1 t=tmpdir manpages=containerDocs
+
+# regen=1
+for mp in containers{.conf,-storage.conf,-registries.conf,-policy.json}; do
+    [[ -z "$onedoc" ]] || out=$t/$mp.html
+
+    # [[ 1 -eq "$regen" ]] && manhtml $mp > $out
+    # these should be dt (mostly)
+    sed -i -E 's/<p style="margin-left:9%; "><b>/<p class="mandt"><b>/g' $out
+    # these should be dl (but may lack dt)
+    sed -i -E 's/<p style="margin-left:9%; ">/<p class="mandl">/g' $out
+    # inject the styles ... ¯\_(ツ)_/¯ lol
+    sed -i -E 's/ +<\/body>//g' $out
+    sed -i -E 's/ +<\/html>//g' $out
+    echo "<style type=\"text/css\">
+$css
+p.mandt { margin: 0.2em 0.5em }
+p.mandl { margin: 0.0em 2.0em; text-indent: 1.5em; }
+</style>" >> $out
+    echo -e "\n</body>\n</html>" >> $out
 done
 
 ls $d/*.html
@@ -328,6 +424,15 @@ ls $d/*.html
 : -rw-r--r-- 1 dc dc 202 Jul 30 22:41 /tmp/tmp.yK7uS7yF2N/containers-policy.conf.html
 : -rw-r--r-- 1 dc dc 202 Jul 30 22:41 /tmp/tmp.yK7uS7yF2N/containers-registry.conf.html
 : -rw-r--r-- 1 dc dc 202 Jul 30 22:41 /tmp/tmp.yK7uS7yF2N/containers-storage.conf.html
+
+***** systemd-networkd tweaks
+
+#+begin_src js
+let addedVersions = Array.from(document.querySelectorAll('p'))
+                         .filter(p => p.innerText.match(/Added in version/));
+// console.log(addedVersions.map(p => p.innerText).join('\n'))
+addedVersions.forEach(p => p.remove());
+#+end_src
 
 * Projects
 

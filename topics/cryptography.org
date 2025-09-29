@@ -254,6 +254,50 @@ alias pkcs-add='ssh-add -s $PKCS_LIB'
 alias pkcs-ssh='ssh -I $PKCS_LIB'
 #+end_src
 
+*** Known Hosts
+
+**** Unsalt
+
+You need the input string
+
+#+begin_src shell :results output verbatim :var host="github.com"
+sshHostsUngunk() {
+    local host=$1
+    shift 1
+    ssh-keygen -F "$host" | grep -ve '^#' | cut -b4- | tr '|' ' '
+}
+
+b64salt=$(sshHostsUngunk $host | cut -f1 -d' ')
+b64hash=$(sshHostsUngunk $host | cut -f2 -d' ')
+echo $b64salt | base64 -d | wc -c
+echo $b64salt
+echo $b64hash | base64 -d | wc -c
+echo $b64hash
+
+cat <(echo -n $host) \
+    <(sshHostsUngunk $host | cut -f1 -d' ' | base64 --decode) \
+    | sha1sum | base64
+#+end_src
+
+#+RESULTS:
+: 20
+: g3ZQWNcEZ59VxfTbHEqzVuGkhWE=
+: 20
+: 5wKE/5xfM4emalPrNG8kcEedwbA=
+: ZWY0MjZhNWMxOTU0Yzg0YzlkZjc0ODljNDhmZWJjY2NmZjczN2VmNiAgLQo=
+
+#+begin_quote
+hmmmm... it eats a salt and some bytes? or some bytes and then the salt? manpage
+doesn't explain... although I guess I'm missing the HMAC key, but =sha1= lacks
+that. is it padding or encoding or dropped bytes?
+#+end_quote
+
+**** Reset
+
+To reset known hosts
+
++ =ssh-keygen -F $hostOrIp= to find it
++ =ssh-keygen -R $hostOrIp= to remove it
 *** SSH =JumpProxy= and =ProxyCommand=
 
 Okay wow this is a thing now. Nice to know.

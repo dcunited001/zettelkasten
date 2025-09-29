@@ -1,0 +1,144 @@
+:PROPERTIES:
+:ID:       7743597e-9887-41f2-8d5f-f486255c8a1e
+:END:
+#+TITLE: NIST: 800-53
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:133c1418-9705-4528-8856-ccaea4a3d0ff][Security]]
++ [[id:29d8222b-618f-454e-8a76-6fa38f8ff1f6][Blue Team]]
+
+* Resources
+** NIST
+[[https://csrc.nist.gov/publications][CSRC Comp. Security Resource Center]]
+
+* NIST 800-53
+
+Graph
+
+#+name: nist53fullGraph
+#+begin_src jq :in-file /tmp/tmp.DG3CQgQ5qy
+.controls | map(. | {key: .id, value: .links}) | from_entries
+#+end_src
+
+Number of keys
+
+#+name: nist53numKeys
+#+begin_src jq :stdin nist53fullGraph
+keys | length
+#+end_src
+
+#+RESULTS: nist53numKeys
+: 424
+
+** Queries
+
+Edges by type
+
+#+name: nist53edgesByType
+#+begin_src jq :stdin nist53fullGraph :var relType="related" :cmd-line "-r"
+to_entries
+  | map(.value |= (map(select(.rel == $relType) | "\"\(.href[1:])\"") | join(",")))
+  | map(select(.value != ""))
+  | from_entries
+#+end_src
+
+Edges to =dot=
+
+#+name: nist53edgesToDot
+#+begin_src jq :stdin nist53edgesByType(relType="related") :cmd-line "-r"
+to_entries
+  | map("\"\(.key)\" -> { \(.value) }")
+  | join("\n")
+#+end_src
+
+*** Nodes
+
+Nodes to =dot=
+
+#+name: nist53nodesToDot
+#+begin_src jq :stdin nist53fullGraph :cmd-line "-r"
+keys | map("\"\(.)\"") | join("\n")
+#+end_src
+
+Nodes with Related
+
+#+name: nist53nodesWithRelated
+#+call: nist53nodesToDot() :stdin nist53edgesRelated
+
+Nodes with Required
+
+#+name: nist53nodesWithRequired
+#+call: nist53nodesToDot() :stdin nist53edgesRequired
+
+Nodes with References
+
+*** Edges
+
+Related
+
+#+name: nist53edgesRelated
+#+call: nist53edgesByType(relType="related")
+
+Required
+
+#+name: nist53edgesRequired
+#+call: nist53edgesByType(relType="required")
+
+Reference
+
+#+name: nist53edgesRequired
+#+call: nist53edgesByType(relType="reference")
+
+** To Dot
+
+Related (using =:noweb= and =#+call:=)
+
+#+name: nist53relatedToDot
+#+call: nist53edgesToDot() :stdin nist53edgesRelated
+
+#+name: nist53requiredToDot
+#+call: nist53edgesToDot() :stdin nist53edgesRequired
+
+*** Related
+
+Using =ob-dot= takes about 30 minutes for some reason
+
+#+begin_src shell :results output file :file img/security/nist-800-53-graph-related.dot :noweb yes
+echo 'digraph G {
+    <<nist53nodesWithRelated()>>
+    <<nist53relatedToDot()>>
+}'
+#+end_src
+
+#+RESULTS:
+[[file:img/security/nist-800-53-graph-related.dot]]
+
++ circo :: fast, best results, still unusable
++ s/fdp :: fast, but useless (idk whether tuning would do anything)
++ neato :: useless
+
+It really just needs filters for categories
+
+#+begin_src shell :results output file :file img/security/nist-800-53-graph-related.svg
+# neato, sfdp, circo
+dot -Tsvg -Kcirco img/security/nist-800-53-graph-related.dot
+#+end_src
+
+#+RESULTS:
+[[file:img/security/nist-800-53-graph-related.svg]]
+
+*** Required
+
+These basically just require the parent keys =ab -> { ab.1, ab.2, ... }=
+
+#+begin_src dot :file img/security/nist-800-53-graph-required.svg :noweb yes :cmdline "-Tsvg -Kcirco"
+digraph G {
+    <<nist53nodesWithRequired()>>
+    <<nist53requiredToDot()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/security/nist-800-53-graph-required.svg]]
