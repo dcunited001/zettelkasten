@@ -110,24 +110,6 @@ got the initial =sudo= prompt & 'Create system snapshot" dialog from:
 
 *** GnuPG and SSH
 
-Mount old FS and copy over. Then restart
-
-#+begin_src shell
-# The garuda BTRFS disk (gh: garudahome)
-gh=/run/media/$USER/$d/@home/$USER
-
-# backup, in case.
-# you may have created known_hosts, authorized_keys, etc
-mv ~/.gnupg ~/.gnupg.oma
-mv ~/.ssh ~/.ssh.oma
-
-cp -R $gh/.gnupg $gh/.ssh $HOME
-gpg-connect-agent /reloadagent /bye
-#+end_src
-
-Now things like =ssh -T git@github= succeed, but occasionally I go through this in
-more detail. It requires more setup/checks on =nix= & =guix=.
-
 **** Setup yubikey
 
 For me, after the config, i just need the packages
@@ -153,6 +135,62 @@ Still not sure what omarchy is using for package installation.
 From here, I can do mostly everything remotely until I adjust to the environment
 (and configure hyprland, etc)
  
+**** Setup config for SSH and GPG
+Mount old FS and copy over. Then restart
+
+#+begin_src shell
+# The garuda BTRFS disk (gh: garudahome)
+gh=/run/media/$USER/$d/@home/$USER
+
+# backup, in case.
+# you may have created known_hosts, authorized_keys, etc
+mv ~/.gnupg ~/.gnupg.oma
+mv ~/.ssh ~/.ssh.oma
+
+cp -R $gh/.gnupg $gh/.ssh $HOME
+gpg-connect-agent /reloadagent /bye
+#+end_src
+
++Now things like =ssh -T git@github.com= succeed+ ... (it fails).
+
+occasionally I go through this in more detail. It requires more setup/checks on
+=nix= & =guix=.
+
+**** Fix =gpg-agent= and =pcscd=
+
+***** Setup =pcscd=
+
+I think =pcscd= ships with omarchy.
+
+I needed to run =sudo systemctl start pcscd=, but it should get activated when an
+application needs to hit the =pcscd.socket=.
+
+***** Restub the private keys in =$GNUPGHOME=
+
+To restub the keys:
+
+#+begin_src shell
+gpg-connect-agent "scd seriano" "learn --force" /bye
+#+end_src
+
+After pcscd is running, this will succeed. still no =ssh -T git@github.com=. It's
+failing on =libcrypto=, but having =pcscd= online definitely allowed this to succeed.
+
+***** Setup pinentry
+
+The problem was the pinentry. Running =/usr/bin/pinentry-qt5= throws an error
+about =libKFSWaylandClient.so.5= .... okay =/usr/bin/pinentry-qt= is definitely the
+newer one (wtf this is always so hard to answer lol)
+
+***** Ensure =ssh= uses the right socket
+
+Ensure this runs in =.profile= setup
+
+#+begin_src shell
+unset SSH_AGENT_PID
+export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+#+end_src
+
 ** Tools
 
 #+begin_src shell
@@ -162,6 +200,9 @@ pkgs+=(pcsclite yubikey-manager
   yubikey-personalization yubikey-personalization-gui
   yubikey-piv-tool yubico-touch-detector)
 
+# btrfs
+pkgs+=(compsize)
+
 # misc
 pkgs+=(tree jc yq)
 
@@ -169,16 +210,46 @@ yay -Syu ${pkgs[@]} # i think this is equivalent
 #+end_src
 
 
-
 ** Programming
 
-*** 
+*** Repo
+
+
+
+*** Emacs
+
+#+begin_quote
+I still need to setup guix/nix, but getting guix to install the way I want (with
+the =/var/guix= in =/gnu/var/guix=) requires it to be built on my machine.
+
+Can't do much without emacs.
+#+end_quote
+
+I just set up the =emacshop= profile here, with those desktop files.
+
++ I had to ensure that =custom.el= didn't load initially. I moved it to
+  =custom.el.bak=, since running emacs without =custom.el= created will probably
+  create a =custom.el= file.
+  - Emacs will fail to load until the packages are installed if it runs with the
+    =init.el=). Just look at the list in =custom.el.back=, select them, install to
+    =~/.emacs.d/= and ensure that no other emacs profile uses those
+    =~/.emacs.d/{elpa,eln-cache}= directories.
++ I ran with =--debug-init= to step through the config file after installing the
+  packages manually. After that, shut down emacs, then move the =custom.el.bak=
+  file into place.
++ From here, =mkdir -p ~/.local/share/systemd/{system,user}=
+  - I checked =systemd-path= and these are there, though the directories are not.
+  - I copied =~/.dotfiles/.emacs.hop/emacshop.service= into place
+  - Then copied =~/.dotfiles/.emacs.hop/emacshopclient.desktop= into place
+*** Doom Emacs
+
+
+
 *** FRC
 
 **** Setup =wpilib= and its =vscode=
 
 Installed everything through the package manager.
-
 
 * Response
 
@@ -224,6 +295,8 @@ many more.
   - =systemd-networkd= This leads into configuring linux on the server
 
 *** Could be better
++ =.bash_profile= shouldn't source =.bashrc=. not sure whether the =.profile= would
+  need the interactive content in =~/.local/share/omarchy/default/bash/rc=
 
 **** LUKS block size
 
