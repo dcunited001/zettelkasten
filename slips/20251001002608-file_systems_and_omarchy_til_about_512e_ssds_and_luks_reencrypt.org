@@ -1,0 +1,171 @@
+:PROPERTIES:
+:ID:       c08270ed-9062-4fb4-b4ec-3cd2bfe39e52
+:END:
+#+TITLE: File Systems and Omarchy: TIL about 512e SSDs and LUKS reencrypt
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:80ccbcbb-a244-418f-be86-47e8969928a5][LUKS]]
++ [[id:d8216961-cd6a-47cd-b82a-8cd67fe7190f][BTRFS]]
++ [[id:b4ed155f-4f10-4754-95aa-946e4bb2738a][Arch: Migrate from Garuda to Omarchy]]
+
+
+* Wrong about LUKS lol
+
+Google says:
+
+#+begin_quote
+Non-atomic writes: Most modern drives are Advanced Format (AF) drives, which
+physically write data in 4096-byte sectors. To maintain compatibility with older
+software, many of these drives report a logical sector size of 512 bytes, known
+as a 512e drive. When you force the LUKS sector size to 4096 on a 512e drive, a
+power loss can cause data corruption. A single 4K logical write from LUKS maps
+to a single physical write on the disk. A power failure during this operation
+can leave the physical sector in an inconsistent, partially updated state,
+leading to data loss.
+#+end_quote
+
+So it's probably a =512e= drive. While it will probably work, whether the
+=cryptsetup reencrypt= process completes isn't the only concern. Since =cryptsetup=
+likely selected the optimum =512B= parameter, we should just keep this... lol
+
+* LUKS block size
+
+The default LUKS encryption should default to matching the 4096 sector size of
+modern disks (i just found out about this). A mismatch, depending on usage,
+would create inefficiency or unnecessary writes. For btrfs
+
++ See [[https://unix.stackexchange.com/questions/579480/how-do-i-determine-the-block-size-for-ext4-and-btrfs-filesystems][How do i determine the block size for ext4 and btrfs file systems]]
+
+This is hard to get correct for everyone, esp if supporting older hardware. It's
+also pretty risky to fix. 
+
+For BTRFS
+
+#+begin_src shell
+sudo btrfs inspect-internal dump-super -f /dev/mapper/root | grep "^sectorsize"
+# sectorsize		4096
+#+end_src
+
+And again (simpler)
+
+#+begin_src shell
+sudo stat -f /
+#   File: "/"
+#     ID: a32b5770fcca2b6f Namelen: 255     Type: btrfs
+# Block size: 4096       Fundamental block size: 4096
+# Blocks: Total: 243661568  Free: 238694382  Available: 238332986
+# Inodes: Total: 0       Free: 0
+#+end_src
+
+LUKS
+
+#+begin_src shell
+sudo cryptsetup luksDump
+# Data segments:
+#   0: crypt
+# 	offset: 16777216 [bytes]
+# 	length: (whole device)
+# 	cipher: aes-xts-plain64
+# 	sector: 512 [bytes]
+#+end_src
+
+** Performance
+
+In pseudodetail... This means every block read/written on BTRFS:
+
+- needs to eat eight LUKS blocks (IO)
+- needs to run at least 8 LUKS block encrypt & checksum ops.
+  - these are usually run on the =aes= instruction set, but for AMD Zen4 and Zen5
+    will utilize the AVX-512 instruction set
+- consume it into RAM (idk whether it can finish on CPU cache)
+- it needs to complete without being interrupted
+- decide how to manage the content in "LUKS discard" (I usually use =nodiscard=)
+- lay the content onto the block device
+
+It would only do this when BTRFS goes to write to the underlying block device,
+but since BTRFS uses multiple disk areas to manage writes (and since it's
+unclear where the compression operations are)
+
+** Fix
+
+I thought I'd do it on a larger drive a larger drive with disk images, (maybe
+after shrinking the BTRFS filesystem offline ... ehhh probably not, actually:
+time is cheap, lost data is not & i need to reinflate the partition)
+
+But since the disk usage is still so minimal...
+
++ as long as you're using about 35-40% disk
++ preferably less than 20% (i.e. before installing nix/guix)
+
+An easy-ish way to fix this is to:
+
++ shrink the BTRFS file system
++ then shrink the LUKS partition
++ then shrink the GPT partition,
++ create a new slightly larger GPT partition
++ create a new LUKS container with update block size params
++ map the luks devices with =cryptsetup=
++ move the BTRFS block device
++ udpate UUIDs to boot from the new disk. test that
++ delete the old GPT partition, grow the new GPT partition
++ grow the LUKS partition
++ grow the new BTRFS file system
+
+A slightly risky way to fix this:
+
+#+begin_src shell
+# it warns you about potential data loss & etc in `man cryptsetup-reencrypt`!
+sudo cryptsetup reencrypt \
+    --type luks2
+    --resilience journal \
+    --progress-frequency 20 \
+    --sector-size 4096 \
+    --hotzone-size 64M \
+    $blockDevice
+
+# --force-offline-reencrypt 
+#+end_src
+
+
++ this should be done completely offline
++ --reslience journal :: gives the reencryption process better "accounting" over
+  what's been done, thus more certainty (and "relatively" better recovery ...
+  though i'd probably never get that fixed)
++ --resume-only :: would ensure you resume a previously halted encryption
+  - i would assume that the data is not secure at rest if you used =--resilience
+    journal= until you ensure that data is cleared.
++ --force-offline-reencrypt :: i imagine it's going to ask you for a password
+  and this is all probably safer if it's just offline
++ --hotzone-size 64MB :: a reasonable hotzone size is likely a large-ish size
+  which is a base-2 number that can also be divided by the original & final
+  sector sizes. that's just a guess though
+  - =64M= would probably work.
+
+ummm.. nevermind. it's NOT safer to reencrypt offline
+
+#+begin_quote
+WARNING: Increasing the encryption sector size may break the hosted filesystem.
+Do _not_ run reencryption with *--force-offline-reencrypt* if unsure what block size
+the filesystem was formatted with.
+#+end_quote
+
+I would still do it from an ISO to guarantee there's no concurrent usage of the
+LUKS container though.
+
+** AVX-512
+ 
+After checking, i unfortunately don't have the latter on my desktop either (it's
+barely Zen3, Ryzen 6XXX is Zen4 I think),
+which doesn't matter since _literally no one_ optimizes their software (esp for
+bitcrunching).
+
++ The main places you /may/ see this for a consumer would be is in crypto/openssl
+  implementations or other software operating on large blobs of blocks/binary.
++ That may be considered risky for that it may be risky. In order to reach
+  consumers, they'd need to compile in the extra subroutines then select
+  subroutines based on CPU Arch/Features at runtime. So it's possible it affects
+  more people than I'd assume.
+  
