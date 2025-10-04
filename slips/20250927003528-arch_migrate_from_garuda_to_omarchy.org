@@ -134,7 +134,7 @@ Still not sure what omarchy is using for package installation.
 
 From here, I can do mostly everything remotely until I adjust to the environment
 (and configure hyprland, etc)
- 
+
 **** Setup config for SSH and GPG
 Mount old FS and copy over. Then restart
 
@@ -165,6 +165,10 @@ I think =pcscd= ships with omarchy.
 I needed to run =sudo systemctl start pcscd=, but it should get activated when an
 application needs to hit the =pcscd.socket=.
 
+#+begin_quote
+NOTE: i'll need to =enable= the =pcscd.service=. socket activation isn't working.
+#+end_quote
+
 ***** Restub the private keys in =$GNUPGHOME=
 
 To restub the keys:
@@ -194,17 +198,23 @@ export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
 ** Tools
 
 #+begin_src shell
-pkgs=()
+pkgs=(vi vim tree)
 
 pkgs+=(pcsclite yubikey-manager
   yubikey-personalization yubikey-personalization-gui
   yubikey-piv-tool yubico-touch-detector)
 
 # btrfs
-pkgs+=(compsize)
+pkgs+=(compsize btrfs-list)
+
+# wayland
+pkgs+=(wev)
+
+# development
+pkgs+=(repo-git)
 
 # misc
-pkgs+=(tree jc yq)
+pkgs+=(jc yq)
 
 yay -Syu ${pkgs[@]} # i think this is equivalent
 #+end_src
@@ -237,10 +247,19 @@ I just set up the =emacshop= profile here, with those desktop files.
 + I ran with =--debug-init= to step through the config file after installing the
   packages manually. After that, shut down emacs, then move the =custom.el.bak=
   file into place.
-+ From here, =mkdir -p ~/.local/share/systemd/{system,user}=
-  - I checked =systemd-path= and these are there, though the directories are not.
-  - I copied =~/.dotfiles/.emacs.hop/emacshop.service= into place
-  - Then copied =~/.dotfiles/.emacs.hop/emacshopclient.desktop= into place
+
+#+begin_quote
+Note: i think these are intended to go in =$XDG_CONFIG_DIR/systemd/user=. Enabling
+the =emacshop.service= links it under
+=$XDG_CONFIG_DIR/systemd/user/graphical-session.target.wants=. IDK that I want it
+persistently enabled if it encumbers hyprland launch though.
+#+end_quote
+
+From here, =mkdir -p ~/.local/share/systemd/{system,user}=
+
++ I checked =systemd-path= and these are there, though the directories are not.
++ I copied =~/.dotfiles/.emacs.hop/emacshop.service= into place
++ Then copied =~/.dotfiles/.emacs.hop/emacshopclient.desktop= into place
 *** Doom Emacs
 
 
@@ -308,7 +327,7 @@ and LUKS reencrypt]]
 *** FS
 **** BTRFS
 
-By default, there are four mounted subvolumes under =subvolid=5=. 
+By default, there are four mounted subvolumes under =subvolid=5=.
 
 #+begin_src shell :results output verbatim
 echo '/@/ subvolid=256,compress=zstd:3,ssd,space_cache=v2
@@ -382,15 +401,18 @@ mkdir -p /mnt/foo
 cryptsetup open $disk oma
 mount $dmap $mr
 btrfs subvolume list $mr
+
+# nix/guix
 btrfs subvolume create $mr/@nix
 btrfs subvolume create $mr/@gnu
+
 umount $mr
 #+end_src
 
 Don't create the directories yet. Remount first. Check =/etc/fstab= to make sure
 the mount options match
 
-#+begin_src 
+#+begin_src shell
 bops=defaults,noatime
 mount $dmap -o rw,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@ $mr
 mkdir $mr/{nix,gnu}
@@ -405,57 +427,75 @@ grep -E '(nix|gnu)' /etc/fstab
 #+end_src
 
 #+RESULTS:
-: UUID=$uuid	/nix  	btrfs     	rw,defaults,noatime,subvol=/@nix	0 0
-: UUID=$uuid	/gnu  	btrfs     	rw,defaults,noatime,subvol=/@gnu	0 0
+: UUID=$uuid	/nix    btrfs           rw,defaults,noatime,subvol=/@nix	0 0
+: UUID=$uuid	/gnu    btrfs           rw,defaults,noatime,subvol=/@gnu	0 0
 
-****** Misc Notes (probably wrong)
+***** Docker/Podman
 
-Usually these things revolve around whether the following are "linear
-operators", figuratively speaking:
+(i'm kinda poor, so i don't want these in snapshots)
 
-+ disk content (maybe files)
-+ compressed content
-+ disk deltas
-+ compressed disk deltas
+Create the subvolumes with =subvolid=5=
 
-By =delta=, I literally mean the differential operator. Other properties may be
-useful as well: composition of the above, commutivity/associativity (preferably
-both ... but nope), idempotance (not relavent here), isomorphisms (natural
-transformation)
+#+begin_src shell
+mr=/mnt/foo
+disk=/dev/nvme0n1p2
+dmap=/dev/mapper/oma
+mkdir -p /mnt/foo
+cryptsetup open $disk oma
+mount $dmap $mr
+btrfs subvolume list $mr
 
-How your data backend makes design decisions changes which sets of these
-properties you get and, thus, which operations are fast or slow (or possible).
+# containers/docker
+btrfs subvolume create $mr/@containers
+btrfs subvolume create $mr/@docker
 
-There's a design choice of forward or backwards (similar to how databases for
-large [[https://dataengineeracademy.com/module/best-practices-for-managing-schema-evolution-in-data-pipelines/][data pipelines allow forward/reverse schema migration]]), where the data
-actually lives, how the file-like objects are produced.
-****** In terms of Rails Migrations
+# user containers/docker
+btrfs subvolume create $mr/@dccontainers
+btrfs subvolume create $mr/@dcdocker
 
-The Rails migrations have some of these properties for forwards and reverse
-morphisms (changes to the total DB schema object) that can be guaranteed when
-applied in sequence.
+umount $mr
+#+end_src
 
-+ Each migration captures a schema delta and must be wrapped in a migration
-  (where the changes to the DB schema can be guaranteed to complete while
-  locking out other changes to relevant SQL tables, etc.)
-+ There is an assumption made in the starting point for a database which is
-  similar to the =./db/schema.rb= which captures the endpoint for the database
-  after all migrations have been applied.
-+ The migrations could sometimes be applied out-of-order or when changes are
-  made outside the system of =db/migrations=, but doing so is silly and
-  complicated.
+Create the mountpoints
 
-For BTRFS, does a snapshot capture the change or the content or a mixture
-(probably a mixture).
+#+begin_src shell
+bops=defaults,noatime
+me=dc
+mount $dmap -o rw,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@ $mr
 
-+ What I do know is that the migrations add up to a lot of storage of you don't
-  remove them.
-+ The other thing i know is that accidentally snapshotting the =/nix= and =/guix=
-  subvolumes (or directories) is a huge problem for storage, IO and unnecessary
-  wear on an SSD. BTRFS is a good choice for these, but a terrible choice if
-  they are snapshotted.
-+ They do provide access to file-like objects directly (if you accidentally
-  mount the =@.snapshots= directory, you'll discover that)
+# system setup # -----------------------
+
+mv /var/lib/{docker,docker2} # i already had content here
+
+# make mount points
+mkdir -p $mr/var/lib/{docker,containers/storage}
+mount $dmap -o rw,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@docker $mr/var/lib/docker
+
+mv /mnt/var/lib/docker2/{buildkit,containers,engine-id,image,network,overlay2,plugins,runtimes,swarm,tmp,volumes}
+ls -al /mnt/var/lib/docker2 # remove later
+
+umount $mr/var/lib/docker
+
+# user setup # -----------------------
+
+mount $dmap -o rw,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@home $mr/home
+mkdir -p $mr/home/$me/.local/share/{docker,containers/storage}
+
+chown -R 1000:1000 $mr/home/$me/.local/share/{docker,containers/storage}
+umount $mr/home
+umount $mr
+#+end_src
+
+Then add to =/etc/fstab=
+
+#+begin_example
+UUID=20b6e938-5951-4131-839d-be48a59b6b5e	/var/lib/docker         btrfs           rw,defaults,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@docker	0 0
+UUID=20b6e938-5951-4131-839d-be48a59b6b5e	/var/lib/containers/storage     btrfs           rw,defaults,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@containers	0 0
+UUID=20b6e938-5951-4131-839d-be48a59b6b5e	/home/dc/.local/share/docker    btrfs           rw,defaults,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@dcdocker	0 0
+UUID=20b6e938-5951-4131-839d-be48a59b6b5e	/home/dc/.local/share/containers/storage        btrfs           rw,defaults,relatime,compress=zstd:3,ssd,space_cache=v2,subvol=/@dccontainers	0 0
+#+end_example
+
+
 **** Mounts
 
 These are the default mounts. This is running on the remote system:
@@ -694,6 +734,15 @@ or both laptop/desktop.
 
 ** Binds
 
+*** Using =rollinglog=
+
+Closest I think I can get to =C-h k= from emacs.
+
+#+begin_src shell
+hyprctl rollinglog -f | grep 'Keybind triggered'
+#+end_src
+
+*** Using JQ
 #+name: jqBindsSort
 #+begin_example jq
 sort_by("\(.key),\(.keycode),\(.modmask)")
@@ -733,10 +782,159 @@ map([(.key // .keycode), .modmask]   | join("	")) | join("\n")
 #+headers: :var qs=jqBindsSort qf=jqBindsFormat
 #+begin_src shell :results output verbatim
 hypr_instance="71a1216abcc7031776630a6d88f105605c4dc1c9_1759038644_2145885464"
-hyprctl binds -j | jq -r "$qs | $qf"
+hyprctl binds -j | jq -r "$qs | $qf | map(join(\"	\")) | join(\"\n\")"
 #+end_src
 
-*** Diff
+#+RESULTS:
+#+begin_example
+73	$osObsKey	0	.......	movetoworkspace	name:obs
+73	$wsDocksKey	0	.......	movetoworkspace	special:docs
+32		10	.......	workspace	11
+33		10	.......	movetoworkspacesilent	11
+64		10	.......	workspace	1
+65		10	.......	movetoworkspacesilent	1
+32		11	.......	workspace	12
+33		11	.......	movetoworkspacesilent	12
+64		11	.......	workspace	2
+65		11	.......	movetoworkspacesilent	2
+32		12	.......	workspace	13
+33		12	.......	movetoworkspacesilent	13
+64		12	.......	workspace	3
+65		12	.......	movetoworkspacesilent	3
+0		121	..e....	exec	wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+32		121	.......	togglespecialworkspace	audio
+33		121	.......	movetoworkspace	special:audio
+0		122	..e....	exec	wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-
+0		123	..e....	exec	wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+
+32		123	.......	togglespecialworkspace	music
+33		123	.......	movetoworkspace	special:music
+64		13	.......	workspace	4
+65		13	.......	movetoworkspacesilent	4
+64		14	.......	workspace	5
+65		14	.......	movetoworkspacesilent	5
+64		15	.......	workspace	6
+65		15	.......	movetoworkspacesilent	6
+64		16	.......	workspace	7
+65		16	.......	movetoworkspacesilent	7
+64		17	.......	workspace	8
+65		17	.......	movetoworkspacesilent	8
+0		171	.......	exec	playerctl next
+0		172	.......	exec	playerctl play-pause
+0		173	.......	exec	playerctl previous
+64		18	.......	workspace	9
+65		18	.......	movetoworkspacesilent	9
+64		19	.......	workspace	10
+65		19	.......	movetoworkspacesilent	10
+0		256	..e....	exec	wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle
+0		36	.......	submap	reset
+72		74	.......	workspace	108
+73		74	.......	movetoworkspacesilent	108
+72		75	.......	workspace	109
+73		75	.......	movetoworkspacesilent	109
+32		87	.......	workspace	11
+33		87	.......	movetoworkspacesilent	11
+32		88	.......	workspace	12
+33		88	.......	movetoworkspacesilent	12
+32		89	.......	workspace	13
+33		89	.......	movetoworkspacesilent	13
+0	1	0	.......	exec	hyprctl notify -1 10000 "rgb(CCCC00)" "$(hyprctl activewindow -j | hjinspect.jq)"
+0	A	0	.......	movewindow	l
+1	A	0	.......	movefocus	l
+0	D	0	.......	movewindow	r
+1	D	0	.......	movefocus	r
+64	D	0	.......	exec	wofi --show run
+72	Delete	0	.......	togglespecialworkspace	discord
+73	Delete	0	.......	movetoworkspace	special:discord
+64	E	0	.......	exec	thunar
+64	F	0	.......	fullscreen	1
+69	F	0	.......	fullscreen	0
+0	F1	0	.......	exec	hyprctl activewindow -j | hjinspect.jq | wl-copy
+72	F1	0	.......	submap	HJINSPECT
+32	F10	0	.......	exec	swaync-client -a 3
+32	F11	0	.......	exec	swaync-client -a 2
+32	F12	0	.......	exec	swaync-client -a 1
+72	F9	0	.......	workspace	name:irc
+73	F9	0	.......	movetoworkspace	name:irc
+0	H	0	.......	movewindow	l
+1	H	0	.......	movefocus	l
+72	H	0	.......	movefocus	l
+0	J	0	.......	movewindow	u
+1	J	0	.......	movefocus	u
+72	J	0	.......	movefocus	u
+0	K	0	.......	movewindow	d
+1	K	0	.......	movefocus	d
+72	K	0	.......	movefocus	d
+0	L	0	.......	movewindow	r
+1	L	0	.......	movefocus	r
+72	L	0	.......	movefocus	r
+64	PRINT	0	....d..	exec	pkill hyprpicker || hyprpicker -a	Color picker
+32	Prior	0	.......	togglespecialworkspace	tuitray
+33	Prior	0	.......	movetoworkspace	special:tuitray
+65	R	0	.......	exec	hyprctl reload
+0	S	0	.......	movewindow	d
+1	S	0	.......	movefocus	d
+72	S	0	.......	togglespecialworkspace	scratch
+73	S	0	.......	movetoworkspace	special:scratch
+0	W	0	.......	movewindow	u
+1	W	0	.......	movefocus	u
+0	XF86MonBrightnessDown	0	..e....	exec	brightnessctl s 5%-
+0	XF86MonBrightnessUp	0	..e....	exec	brightnessctl s 5%+
+64	Z	0	.......	exec	$appMenu --normal-window --show drun --allow-images
+65	Z	0	.......	exec	nwg-drawer -mb 10 -mr 10 -ml 10 -mt 10
+100	backslash	0	.......	exec	swaync-client -op
+32	backslash	0	.......	togglespecialworkspace	roam
+33	backslash	0	.......	movetoworkspace	special:roam
+100	backspace	0	.......	exec	swaync-client -cp
+32	backspace	0	.......	togglespecialworkspace	dotfilesEmacs
+33	backspace	0	.......	movetoworkspace	special:dotfilesEmacs
+72	d	0	.......	togglespecialworkspace	docs
+100	delete	0	.......	exec	swaync-client -d
+64	down	0	.......	movefocus	d
+65	down	0	.......	movewindow	d
+32	equal	0	.......	togglespecialworkspace	dotfilesHypr
+33	equal	0	.......	movetoworkspace	special:dotfilesHypr
+0	escape	0	.......	submap	reset
+0	escape	0	.......	submap	reset
+72	escape	0	.......	exec	swaync-client -op
+32	home	0	.......	togglespecialworkspace	agenda
+33	home	0	.......	movetoworkspace	special:agenda
+64	left	0	.......	movefocus	l
+65	left	0	.......	movewindow	l
+72	m	0	.......	togglespecialworkspace	man
+73	m	0	.......	movetoworkspace	special:man
+64	mouse:272	0	m......	mouse	movewindow
+64	mouse:273	0	m......	mouse	resizewindow
+0	mouse:277	0	.......	tagwindow	testopacity active
+64	mouse:277	0	.......	setprop	active xray on
+0	mouse:280	0	m......	mouse	movewindow
+64	mouse:280	0	.......	resizewindowpixel	exact 1920 1080, activewindow,
+65	mouse:280	0	.......	resizewindowpixel	exact 1280 720, activewindow,
+68	mouse:280	0	.......	resizewindowpixel	exact 960 960, activewindow,
+69	mouse:280	0	.......	resizewindowpixel	exact 1120 1050, activewindow,
+64	mouse_down	0	.......	workspace	e+1
+64	mouse_up	0	.......	workspace	e-1
+72	p	0	.......	togglespecialworkspace	pass
+73	p	0	.......	movetoworkspace	special:pass
+72	pause	0	.......	workspace	name:obs
+100	return	0	.......	exec	swaync-client -R; swaync-client -rs
+32	return	0	.......	togglespecialworkspace	dotfilesNixos
+33	return	0	.......	movetoworkspace	special:dotfilesNixos
+64	right	0	.......	movefocus	r
+65	right	0	.......	movewindow	r
+0	space	0	.......	submap	reset
+100	space	0	.......	exec	swaync-client --close-latest
+65	space	0	.......	togglefloating
+72	space	0	.......	submap	movewin
+100	tab	0	.......	exec	swaync-client --hide-latest
+64	tab	0	.......	layoutmsg	swapwithmaster
+65	tab	0	.......	layoutmsg	rollnext
+72	tab	0	.......	layoutmsg	rollnext
+73	tab	0	.......	layoutmsg	rollnext
+64	up	0	.......	movefocus	u
+65	up	0	.......	movewindow	u
+#+end_example
+
+**** Diff
 
 Here are the modmap binds to codes
 

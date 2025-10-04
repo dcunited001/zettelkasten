@@ -60,6 +60,56 @@ See [[https://man.archlinux.org/man/xattr.7][xattr.7]]
 + [[https://linuxhint.com/resize_a_btrfs_filesystem/][Resizing BTRFS]]
 
 ** Topics
+*** Misc
+**** Misc Notes (probably wrong)
+
+Usually these things revolve around whether the following are "linear
+operators", figuratively speaking:
+
++ disk content (maybe files)
++ compressed content
++ disk deltas
++ compressed disk deltas
+
+By =delta=, I literally mean the differential operator. Other properties may be
+useful as well: composition of the above, commutivity/associativity (preferably
+both ... but nope), idempotance (not relavent here), isomorphisms (natural
+transformation)
+
+How your data backend makes design decisions changes which sets of these
+properties you get and, thus, which operations are fast or slow (or possible).
+
+There's a design choice of forward or backwards (similar to how databases for
+large [[https://dataengineeracademy.com/module/best-practices-for-managing-schema-evolution-in-data-pipelines/][data pipelines allow forward/reverse schema migration]]), where the data
+actually lives, how the file-like objects are produced.
+
+***** In terms of Rails Migrations
+
+The Rails migrations have some of these properties for forwards and reverse
+morphisms (changes to the total DB schema object) that can be guaranteed when
+applied in sequence.
+
++ Each migration captures a schema delta and must be wrapped in a migration
+  (where the changes to the DB schema can be guaranteed to complete while
+  locking out other changes to relevant SQL tables, etc.)
++ There is an assumption made in the starting point for a database which is
+  similar to the =./db/schema.rb= which captures the endpoint for the database
+  after all migrations have been applied.
++ The migrations could sometimes be applied out-of-order or when changes are
+  made outside the system of =db/migrations=, but doing so is silly and
+  complicated.
+
+For BTRFS, does a snapshot capture the change or the content or a mixture
+(probably a mixture).
+
++ What I do know is that the migrations add up to a lot of storage of you don't
+  remove them.
++ The other thing i know is that accidentally snapshotting the =/nix= and =/guix=
+  subvolumes (or directories) is a huge problem for storage, IO and unnecessary
+  wear on an SSD. BTRFS is a good choice for these, but a terrible choice if
+  they are snapshotted.
++ They do provide access to file-like objects directly (if you accidentally
+  mount the =@.snapshots= directory, you'll discover that)
 *** Snapshots
 *** Defrag
 This relates to compression and CoW, so it is relevant to SSD's
