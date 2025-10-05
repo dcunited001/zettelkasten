@@ -89,238 +89,6 @@ tact, which gets set by [[https://github.com/basecamp/omarchy/blob/2df8c5f7e0a2a
 It turns out the welcome notifications did display and the command had run. I
 got the initial =sudo= prompt & 'Create system snapshot" dialog from:
 
-** Configuration
-
-*** Desktop
-
-+ setup xkb in hypr, linked =~/.config/xkb=
-
-*** Misc System
-
-+ set root password, set user password, relogin
-  - changing password requires reboot for sudo: uwsm doesn't necessarily end
-    the user session?
-+ restricted algorithms/etc in to =sshd_config.d=
-  - trying to determine the best way to deploy misc changes like this
-
-
-**** Remaining
-
-+ how to configure a display manager? or enforce login?
-
-*** GnuPG and SSH
-
-**** Setup yubikey
-
-For me, after the config, i just need the packages
-
-+ pcsclite
-+ yubikey-manager
-+ yubikey-personalization
-+ yubikey-personalization-gui
-+ yubikey-piv-tool
-+ yubico-touch-detector :: this creates a notification when yubikey is prompted
-  for PIN
-
-Still not sure what omarchy is using for package installation.
-
-+ Run =cat `which omarchy-pkg-install`=, this contains the fzf menu
-  - omarchy-pkg-install :: with =pacman=
-  - omarchy-pkg-aur-install :: with =yay=
-+ And =less /var/log/pacman.log= to grab the package names again
-+ I didn't want to use =yay= until i was sure.
-
-**** Tramp, =ssh= and =scp=
-
-From here, I can do mostly everything remotely until I adjust to the environment
-(and configure hyprland, etc)
-
-**** Setup config for SSH and GPG
-Mount old FS and copy over. Then restart
-
-#+begin_src shell
-# The garuda BTRFS disk (gh: garudahome)
-gh=/run/media/$USER/$d/@home/$USER
-
-# backup, in case.
-# you may have created known_hosts, authorized_keys, etc
-mv ~/.gnupg ~/.gnupg.oma
-mv ~/.ssh ~/.ssh.oma
-
-cp -R $gh/.gnupg $gh/.ssh $HOME
-gpg-connect-agent /reloadagent /bye
-#+end_src
-
-+Now things like =ssh -T git@github.com= succeed+ ... (it fails).
-
-occasionally I go through this in more detail. It requires more setup/checks on
-=nix= & =guix=.
-
-**** Fix =gpg-agent= and =pcscd=
-
-***** Setup =pcscd=
-
-I think =pcscd= ships with omarchy.
-
-I needed to run =sudo systemctl start pcscd=, but it should get activated when an
-application needs to hit the =pcscd.socket=.
-
-#+begin_quote
-NOTE: i'll need to =enable= the =pcscd.service=. socket activation isn't working.
-#+end_quote
-
-***** Restub the private keys in =$GNUPGHOME=
-
-To restub the keys:
-
-#+begin_src shell
-gpg-connect-agent "scd seriano" "learn --force" /bye
-#+end_src
-
-After pcscd is running, this will succeed. still no =ssh -T git@github.com=. It's
-failing on =libcrypto=, but having =pcscd= online definitely allowed this to succeed.
-
-***** Setup pinentry
-
-The problem was the pinentry. Running =/usr/bin/pinentry-qt5= throws an error
-about =libKFSWaylandClient.so.5= .... okay =/usr/bin/pinentry-qt= is definitely the
-newer one (wtf this is always so hard to answer lol)
-
-***** Ensure =ssh= uses the right socket
-
-Ensure this runs in =.profile= setup
-
-#+begin_src shell
-unset SSH_AGENT_PID
-export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
-#+end_src
-
-** Tools
-
-#+begin_src shell
-pkgs=(vi vim tree)
-
-pkgs+=(pcsclite yubikey-manager
-  yubikey-personalization yubikey-personalization-gui
-  yubikey-piv-tool yubico-touch-detector)
-
-# btrfs
-pkgs+=(compsize btrfs-list)
-
-# wayland
-pkgs+=(wev)
-
-# development
-pkgs+=(repo-git)
-
-# misc
-pkgs+=(jc yq)
-
-yay -Syu ${pkgs[@]} # i think this is equivalent
-#+end_src
-
-
-** Programming
-
-*** Repo
-
-
-
-*** Emacs
-
-#+begin_quote
-I still need to setup guix/nix, but getting guix to install the way I want (with
-the =/var/guix= in =/gnu/var/guix=) requires it to be built on my machine.
-
-Can't do much without emacs.
-#+end_quote
-
-I just set up the =emacshop= profile here, with those desktop files.
-
-+ I had to ensure that =custom.el= didn't load initially. I moved it to
-  =custom.el.bak=, since running emacs without =custom.el= created will probably
-  create a =custom.el= file.
-  - Emacs will fail to load until the packages are installed if it runs with the
-    =init.el=). Just look at the list in =custom.el.back=, select them, install to
-    =~/.emacs.d/= and ensure that no other emacs profile uses those
-    =~/.emacs.d/{elpa,eln-cache}= directories.
-+ I ran with =--debug-init= to step through the config file after installing the
-  packages manually. After that, shut down emacs, then move the =custom.el.bak=
-  file into place.
-
-#+begin_quote
-Note: i think these are intended to go in =$XDG_CONFIG_DIR/systemd/user=. Enabling
-the =emacshop.service= links it under
-=$XDG_CONFIG_DIR/systemd/user/graphical-session.target.wants=. IDK that I want it
-persistently enabled if it encumbers hyprland launch though.
-#+end_quote
-
-From here, =mkdir -p ~/.local/share/systemd/{system,user}=
-
-+ I checked =systemd-path= and these are there, though the directories are not.
-+ I copied =~/.dotfiles/.emacs.hop/emacshop.service= into place
-+ Then copied =~/.dotfiles/.emacs.hop/emacshopclient.desktop= into place
-*** Doom Emacs
-
-
-
-*** FRC
-
-**** Setup =wpilib= and its =vscode=
-
-Installed everything through the package manager.
-
-* Response
-
-** Initial usage
-
-+ ~/.local/share/omarchy :: the distribution's logic in one place as a git repo.
-  perfect. There's also logic in =omarchy-update-branch= to handle git stash,
-  which is great.
-+ s-M SPC :: Omarchy Menu
-  - =Learn= quickly into a =walker= menu that lists human-readable default
-    shortcuts. Very nice.
-
-** Pros/Cons
-Some notes from elsewhere not summarized here
-
-*** Great
-+ ships a tiling window manager by default
-+ balances /emptiness/ with /fullness/:
-  - the profile is pretty extensible (starship/etc aren't overbearing)
-  - there's a lot of polish but i don't see anything i'd want to remove.
-+ for a developer, kinda exactly what you want.
-  - simple things are simple, as they should be
-  - lazyvim, lazydocker just seem to work. as an emacs user, pretty awesome.
-
-*** Good
-
-+ following through the =first-run= scripts was helpful
-  + The omarchy scripts are easy to understand and it uses its own "API" there
-    -- it expresses the functionality to setup using the same terminology you'd
-    use to automate things
-  + e.g. =omarchy-launch-floating-terminal-with-presentation omarchy-update= runs
-    if you click on that =mako= notification
-+ easy to automate & manage customizations
-+ nice screensavers
-
-many more.
-
-*** IDK
-
-+ Doesn't include =nmtui= by default ... doesn't have Network Manager?
-  - Okay. Uses =systemd-networkd= by default. hmmm editing the =.network= units
-    seems simple enough.
-  - =systemd-networkd= This leads into configuring linux on the server
-
-*** Could be better
-+ =.bash_profile= shouldn't source =.bashrc=. not sure whether the =.profile= would
-  need the interactive content in =~/.local/share/omarchy/default/bash/rc=
-
-**** LUKS block size
-
-Wrong about this. It's fine. See [[id:c08270ed-9062-4fb4-b4ec-3cd2bfe39e52][File Systems and Omarchy: TIL about 512e SSDs
-and LUKS reencrypt]]
 
 ** System
 
@@ -569,6 +337,340 @@ mount | cut -f3,5 -d' ' \
 
 21 directories, 32 files
 #+end_example
+
+** Configuration
+
+*** Desktop
+
++ setup xkb in hypr, linked =~/.config/xkb=
+
+*** Misc System
+
++ set root password, set user password, relogin
+  - changing password requires reboot for sudo: uwsm doesn't necessarily end
+    the user session?
++ restricted algorithms/etc in to =sshd_config.d=
+  - trying to determine the best way to deploy misc changes like this
+
+
+**** Remaining
+
++ how to configure a display manager? or enforce login?
+
+*** GnuPG and SSH
+
+**** Setup yubikey
+
+For me, after the config, i just need the packages
+
++ pcsclite
++ yubikey-manager
++ yubikey-personalization
++ yubikey-personalization-gui
++ yubikey-piv-tool
++ yubico-touch-detector :: this creates a notification when yubikey is prompted
+  for PIN
+
+Still not sure what omarchy is using for package installation.
+
++ Run =cat `which omarchy-pkg-install`=, this contains the fzf menu
+  - omarchy-pkg-install :: with =pacman=
+  - omarchy-pkg-aur-install :: with =yay=
++ And =less /var/log/pacman.log= to grab the package names again
++ I didn't want to use =yay= until i was sure.
+
+**** Tramp, =ssh= and =scp=
+
+From here, I can do mostly everything remotely until I adjust to the environment
+(and configure hyprland, etc)
+
+**** Setup config for SSH and GPG
+Mount old FS and copy over. Then restart
+
+#+begin_src shell
+# The garuda BTRFS disk (gh: garudahome)
+gh=/run/media/$USER/$d/@home/$USER
+
+# backup, in case.
+# you may have created known_hosts, authorized_keys, etc
+mv ~/.gnupg ~/.gnupg.oma
+mv ~/.ssh ~/.ssh.oma
+
+cp -R $gh/.gnupg $gh/.ssh $HOME
+gpg-connect-agent /reloadagent /bye
+#+end_src
+
++Now things like =ssh -T git@github.com= succeed+ ... (it fails).
+
+occasionally I go through this in more detail. It requires more setup/checks on
+=nix= & =guix=.
+
+**** Fix =gpg-agent= and =pcscd=
+
+***** Setup =pcscd=
+
+I think =pcscd= ships with omarchy.
+
+I needed to run =sudo systemctl start pcscd=, but it should get activated when an
+application needs to hit the =pcscd.socket=.
+
+#+begin_quote
+NOTE: i'll need to =enable= the =pcscd.service=. socket activation isn't working.
+#+end_quote
+
+***** Restub the private keys in =$GNUPGHOME=
+
+To restub the keys:
+
+#+begin_src shell
+gpg-connect-agent "scd seriano" "learn --force" /bye
+#+end_src
+
+After pcscd is running, this will succeed. still no =ssh -T git@github.com=. It's
+failing on =libcrypto=, but having =pcscd= online definitely allowed this to succeed.
+
+***** Setup pinentry
+
+The problem was the pinentry. Running =/usr/bin/pinentry-qt5= throws an error
+about =libKFSWaylandClient.so.5= .... okay =/usr/bin/pinentry-qt= is definitely the
+newer one (wtf this is always so hard to answer lol)
+
+***** Ensure =ssh= uses the right socket
+
+Ensure this runs in =.profile= setup
+
+#+begin_src shell
+unset SSH_AGENT_PID
+export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
+#+end_src
+
+*** Guix
+
+I ended up running =make= on the =nixos= machine
+
+#+begin_src shell
+chkout=src/guix
+state=/gnu/var
+store=/gnu/store
+socket=$state/guix/daemon-socket/socket
+
+git clone git@codeberg.org:guix/guix $chkout && cd $chkout
+./bootstrap
+./configure --localstatedir=$state
+
+make
+#+end_src
+
+Install and configure
+
+#+begin_src shell
+make install # will setup guix-daemon.{service,socket}
+
+# see https://guix.gnu.org/manual/devel/en/guix.html#Build-Environment-Setup
+groupadd --system guix-daemon
+useradd -g guix-daemon -G guix-daemon                \
+          -d /var/empty -s $(which nologin)          \
+          -c "Guix daemon privilege separation user" \
+          --system guix-daemon
+
+# copy ACLs into /etc/guix/acl
+#+end_src
+
+**** Arch Native
+
+Install dependencies
+
+#+begin_src shell
+# already installed: automake autoconf gettext
+archpkgs=(graphviz texlive help2man slirp4netns util-linux po4a)
+aurpkgs=(guile-gnutls guile-lib-git guile-json guile-gcrypt guile-ssh guile-zlib guile-lzlib guile-semver)
+omarchy-pkg-add ${archpkgs[@]}
+
+# from AUR
+# yay -Syu ${aurpkgs[@]}
+#+end_src
+
++ libgcrypt-config :: reported by =./configure= as missing
++ po4a :: need to relogin: =/usr/bin/vendor_perl= isn't in PATH
++ guile-semver :: AUR: 0.1.1 (on guix: 0.2.0), imported into =(guix import nuget)=
++ misc errors:
+  - =atf= and =kyua= :: failed to autoload by =(guix packages check)=
+
+Build guix
+
+#+begin_src shell
+chkout=src/guix
+state=/gnu/var
+store=/gnu/store
+socket=$state/guix/daemon-socket/socket
+
+git clone git@codeberg.org:guix/guix $chkout
+cd $chkout
+./bootstrap
+./configure --localstatedir=$state
+make
+make -j8 check
+#+end_src
+
+To make checks go faster: [[https://unix.stackexchange.com/questions/294299/how-to-renice-all-threads-and-children-of-one-process-on-linux#:~:text=Finding%20all%20PIDs%20to%20renice,to/findchildren.sh%201234)][how to recursively renice process tree]]
+
+#+begin_src shell
+current_guile=$(pgrep -f '.scm')
+current_make=$(pgrep -f 'make')
+current_test_env=$(pgrep -f 'test-env')
+
+renice -15 -p ${current_guile[@]} # ...not sure what's going on here
+
+# the renice didn't really work
+#+end_src
+
+
+*** Nix
+
+#+begin_src shell
+d=$(mktemp -d); cd $d
+curl --proto '=https' --tlsv1.2 -sSf \
+    -L https://install.determinate.systems/nix \
+    -o nix-install.sh
+
+less ./nix-install.sh
+sh ./nix-install.sh --determinate
+#+end_src
+
+** Tools
+
+#+begin_src shell
+pkgs=(vi vim tree)
+
+pkgs+=(pcsclite yubikey-manager
+  yubikey-personalization yubikey-personalization-gui
+  yubikey-piv-tool yubico-touch-detector)
+
+# arch
+pkgs+=(pacman-contrib util-linux)
+
+# arch
+# bind gets you dig, nslookup, host
+pkgs+=(bind)
+
+# btrfs
+pkgs+=(compsize btrfs-list)
+
+# wayland
+pkgs+=(wev)
+
+# development
+pkgs+=(repo-git)
+
+# misc
+pkgs+=(jc yq)
+
+yay -Syu ${pkgs[@]} # i think this is equivalent
+#+end_src
+
+
+** Programming
+
+*** Repo
+
+
+
+*** Emacs
+
+#+begin_quote
+I still need to setup guix/nix, but getting guix to install the way I want (with
+the =/var/guix= in =/gnu/var/guix=) requires it to be built on my machine.
+
+Can't do much without emacs.
+#+end_quote
+
+I just set up the =emacshop= profile here, with those desktop files.
+
++ I had to ensure that =custom.el= didn't load initially. I moved it to
+  =custom.el.bak=, since running emacs without =custom.el= created will probably
+  create a =custom.el= file.
+  - Emacs will fail to load until the packages are installed if it runs with the
+    =init.el=). Just look at the list in =custom.el.back=, select them, install to
+    =~/.emacs.d/= and ensure that no other emacs profile uses those
+    =~/.emacs.d/{elpa,eln-cache}= directories.
++ I ran with =--debug-init= to step through the config file after installing the
+  packages manually. After that, shut down emacs, then move the =custom.el.bak=
+  file into place.
+
+#+begin_quote
+Note: i think these are intended to go in =$XDG_CONFIG_DIR/systemd/user=. Enabling
+the =emacshop.service= links it under
+=$XDG_CONFIG_DIR/systemd/user/graphical-session.target.wants=. IDK that I want it
+persistently enabled if it encumbers hyprland launch though.
+#+end_quote
+
+From here, =mkdir -p ~/.local/share/systemd/{system,user}=
+
++ I checked =systemd-path= and these are there, though the directories are not.
++ I copied =~/.dotfiles/.emacs.hop/emacshop.service= into place
++ Then copied =~/.dotfiles/.emacs.hop/emacshopclient.desktop= into place
+*** Doom Emacs
+
+
+
+*** FRC
+
+**** Setup =wpilib= and its =vscode=
+
+Installed everything through the package manager.
+
+* Response
+
+** Initial usage
+
++ ~/.local/share/omarchy :: the distribution's logic in one place as a git repo.
+  perfect. There's also logic in =omarchy-update-branch= to handle git stash,
+  which is great.
++ s-M SPC :: Omarchy Menu
+  - =Learn= quickly into a =walker= menu that lists human-readable default
+    shortcuts. Very nice.
+
+** Pros/Cons
+Some notes from elsewhere not summarized here
+
+*** Great
++ ships a tiling window manager by default
++ balances /emptiness/ with /fullness/:
+  - the profile is pretty extensible (starship/etc aren't overbearing)
+  - there's a lot of polish but i don't see anything i'd want to remove.
++ for a developer, kinda exactly what you want.
+  - simple things are simple, as they should be
+  - lazyvim, lazydocker just seem to work. as an emacs user, pretty awesome.
+
+*** Good
+
++ following through the =first-run= scripts was helpful
+  + The omarchy scripts are easy to understand and it uses its own "API" there
+    -- it expresses the functionality to setup using the same terminology you'd
+    use to automate things
+  + e.g. =omarchy-launch-floating-terminal-with-presentation omarchy-update= runs
+    if you click on that =mako= notification
++ easy to automate & manage customizations
++ nice screensavers
+
+many more.
+
+*** IDK
+
++ Doesn't include =nmtui= by default ... doesn't have Network Manager?
+  - Okay. Uses =systemd-networkd= by default. hmmm editing the =.network= units
+    seems simple enough.
+  - =systemd-networkd= This leads into configuring linux on the server
+
+*** Could be better
++ =.bash_profile= shouldn't source =.bashrc=. not sure whether the =.profile= would
+  need the interactive content in =~/.local/share/omarchy/default/bash/rc=
+
+**** LUKS block size
+
+Wrong about this. It's fine. See [[id:c08270ed-9062-4fb4-b4ec-3cd2bfe39e52][File Systems and Omarchy: TIL about 512e SSDs
+and LUKS reencrypt]]
+
 * Data
 ** Garuda FS
 

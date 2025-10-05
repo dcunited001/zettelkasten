@@ -132,7 +132,7 @@ index 0000000..e94ee8e
 #+end_example
 
 * Notes
-
+** Integrating
 Fairly simple. Most users don't take this approach to building content with nix
 derivations, but it's very simple.
 
@@ -142,7 +142,7 @@ derivations, but it's very simple.
 + Obviously, doing too much of this would be taxing, esp. if you don't plan for
   upstream changes or analyze script dependencies.
 
-** Nix Profile Path
+*** Nix Profile Path
 
 #+begin_quote
 NOTE: this depends on:
@@ -180,3 +180,557 @@ a foreign distribution.
 + So if that profile doesn't have a need to prepend to =XDG_DATA_DIRS=, it won't
   - if it needs to modify =systemd-search-user-unit=, then you may need to relogin
     for =daemon-reload= to include things
+
+** Maintaining
+:PROPERTIES:
+:header-args+: :var chkout=(expand-file-name "omarchy" (or (bound-and-true-p ob@arch_omarchy_bin_scripts) (setq ob@arch_omarchy_bin_scripts (make-temp-file "roam-" t))))
+:header-args+: :dir (identity ob@arch_omarchy_bin_scripts)
+:END:
+
+Basically, which content do you choose to import?
+
+*** Script dependencies
+
+Most scripts seem to be listed by =omarchy-menu= so I've filtered all edges or
+nodes that contain =omarchy-menu=.
+
+#+begin_src dot :file img/omarchy-scripts.svg :cmdline "-Tsvg -Kdot" :dir (f-dirname (buffer-file-name (current-buffer))) :noweb yes
+digraph G {
+    graph[rankdir="LR"]
+    <<omarchyScriptsEdges()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/omarchy-scripts.svg]]
+
+All scripts that don't run =omarchy-*= scripts
+
+| omarchy-battery-monitor    | omarchy-cmd-apple-display-brightness | omarchy-cmd-audio-switch                | omarchy-cmd-close-all-windows | omarchy-cmd-first-run     | omarchy-cmd-missing        |
+| omarchy-cmd-missing        | omarchy-cmd-screenrecord             | omarchy-cmd-screenshot                  | omarchy-cmd-terminal-cwd      | omarchy-dev-add-migration | omarchy-font-current       |
+| omarchy-font-current       | omarchy-font-list                    | omarchy-install-chromium-google-account | omarchy-install-docker-dbs    | omarchy-install-steam     | omarchy-launch-about       |
+| omarchy-launch-about       | omarchy-launch-browser               | omarchy-launch-editor                   | omarchy-launch-wifi           | omarchy-lock-screen       | omarchy-menu-keybindings   |
+| omarchy-menu-keybindings   | omarchy-pkg-drop                     | omarchy-pkg-missing                     | omarchy-pkg-pinned            | omarchy-pkg-present       | omarchy-powerprofiles-list |
+| omarchy-powerprofiles-list | omarchy-refresh-applications         | omarchy-refresh-pacman-mirrorlist       | omarchy-refresh-plymouth      | omarchy-reset-sudo        | omarchy-restart-bluetooth  |
+| omarchy-restart-bluetooth  | omarchy-restart-pipewire             | omarchy-restart-wifi                    | omarchy-setup-dns             | omarchy-setup-fido2       | omarchy-setup-fingerprint  |
+| omarchy-setup-fingerprint  | omarchy-show-logo                    | omarchy-theme-current                   | omarchy-theme-list            | omarchy-theme-update      | omarchy-toggle-idle        |
+| omarchy-toggle-idle        | omarchy-toggle-screensaver           | omarchy-toggle-waybar                   | omarchy-tui-remove            | omarchy-update-available  | omarchy-version-branch     |
+| omarchy-version-branch     |                                      |                                         |                               |                           |                            |
+
+**** Nodes
+
+#+name: omarchyScriptsNodes
+#+begin_src shell :results output verbatim
+ls omarchy/bin | sort \
+    | sed -E 's/^(.*)/"\1"/g' \
+    | sort | uniq | grep -v '"omarchy-menu"'
+#+end_src
+
+#+RESULTS: omarchyScriptsNodes
+#+begin_example
+"omarchy-battery-monitor"
+"omarchy-cmd-apple-display-brightness"
+"omarchy-cmd-audio-switch"
+"omarchy-cmd-close-all-windows"
+"omarchy-cmd-first-run"
+"omarchy-cmd-missing"
+"omarchy-cmd-present"
+"omarchy-cmd-screenrecord"
+"omarchy-cmd-screensaver"
+"omarchy-cmd-screenshot"
+"omarchy-cmd-share"
+"omarchy-cmd-terminal-cwd"
+"omarchy-cmd-tzupdate"
+"omarchy-dev-add-migration"
+"omarchy-drive-info"
+"omarchy-drive-select"
+"omarchy-drive-set-password"
+"omarchy-font-current"
+"omarchy-font-list"
+"omarchy-font-set"
+"omarchy-install-chromium-google-account"
+"omarchy-install-dev-env"
+"omarchy-install-docker-dbs"
+"omarchy-install-dropbox"
+"omarchy-install-steam"
+"omarchy-install-tailscale"
+"omarchy-install-terminal"
+"omarchy-launch-about"
+"omarchy-launch-browser"
+"omarchy-launch-editor"
+"omarchy-launch-floating-terminal-with-presentation"
+"omarchy-launch-or-focus"
+"omarchy-launch-or-focus-webapp"
+"omarchy-launch-screensaver"
+"omarchy-launch-webapp"
+"omarchy-launch-wifi"
+"omarchy-lock-screen"
+"omarchy-menu-keybindings"
+"omarchy-migrate"
+"omarchy-notification-dismiss"
+"omarchy-pkg-add"
+"omarchy-pkg-aur-accessible"
+"omarchy-pkg-aur-install"
+"omarchy-pkg-drop"
+"omarchy-pkg-ignored"
+"omarchy-pkg-install"
+"omarchy-pkg-missing"
+"omarchy-pkg-pinned"
+"omarchy-pkg-present"
+"omarchy-pkg-remove"
+"omarchy-powerprofiles-list"
+"omarchy-refresh-applications"
+"omarchy-refresh-config"
+"omarchy-refresh-fastfetch"
+"omarchy-refresh-hypridle"
+"omarchy-refresh-hyprland"
+"omarchy-refresh-hyprlock"
+"omarchy-refresh-hyprsunset"
+"omarchy-refresh-pacman-mirrorlist"
+"omarchy-refresh-plymouth"
+"omarchy-refresh-swayosd"
+"omarchy-refresh-walker"
+"omarchy-refresh-waybar"
+"omarchy-reset-sudo"
+"omarchy-restart-app"
+"omarchy-restart-bluetooth"
+"omarchy-restart-hypridle"
+"omarchy-restart-hyprsunset"
+"omarchy-restart-pipewire"
+"omarchy-restart-swayosd"
+"omarchy-restart-walker"
+"omarchy-restart-waybar"
+"omarchy-restart-wifi"
+"omarchy-restart-xcompose"
+"omarchy-setup-dns"
+"omarchy-setup-fido2"
+"omarchy-setup-fingerprint"
+"omarchy-show-done"
+"omarchy-show-logo"
+"omarchy-snapshot"
+"omarchy-state"
+"omarchy-theme-bg-next"
+"omarchy-theme-current"
+"omarchy-theme-install"
+"omarchy-theme-list"
+"omarchy-theme-next"
+"omarchy-theme-remove"
+"omarchy-theme-set"
+"omarchy-theme-set-browser"
+"omarchy-theme-set-eza"
+"omarchy-theme-set-gnome"
+"omarchy-theme-set-terminal"
+"omarchy-theme-set-vscode"
+"omarchy-theme-update"
+"omarchy-toggle-idle"
+"omarchy-toggle-nightlight"
+"omarchy-toggle-screensaver"
+"omarchy-toggle-waybar"
+"omarchy-tui-install"
+"omarchy-tui-remove"
+"omarchy-update"
+"omarchy-update-available"
+"omarchy-update-available-reset"
+"omarchy-update-branch"
+"omarchy-update-git"
+"omarchy-update-perform"
+"omarchy-update-restart"
+"omarchy-update-system-pkgs"
+"omarchy-upload-log"
+"omarchy-version"
+"omarchy-version-branch"
+"omarchy-webapp-handler-zoom"
+"omarchy-webapp-install"
+"omarchy-webapp-remove"
+#+end_example
+
+**** Edges
+
+***** Nodes Without Edges
+
+All nodes with edges
+
+#+name: omarchyNodesWithEdges
+#+begin_src shell :results output verbatim :var edges=omarchyScriptsEdges
+# echo $edges | sed -E 's/"omarchy-/\nomarchy/g'
+echo $edges \
+    | sed -E 's/" -> "/"\n"/g' | sed -E 's/" "/"\n"/g'\
+    | sort | uniq
+#+end_src
+
+#+RESULTS: omarchyNodesWithEdges
+#+begin_example
+"omarchy-cmd-present"
+"omarchy-cmd-screensaver"
+"omarchy-cmd-share"
+"omarchy-cmd-tzupdate"
+"omarchy-drive-info"
+"omarchy-drive-select"
+"omarchy-drive-set-password"
+"omarchy-font-set"
+"omarchy-install"
+"omarchy-install-dev-env"
+"omarchy-install-dropbox"
+"omarchy-install-tailscale"
+"omarchy-install-terminal"
+"omarchy-launch-floating-terminal-with-presentation"
+"omarchy-launch-or-focus"
+"omarchy-launch-or-focus-webapp"
+"omarchy-launch-screensaver"
+"omarchy-launch-webapp"
+"omarchy-manual"
+"omarchy-migrate"
+"omarchy-notification-dismiss"
+"omarchy-pkg-add"
+"omarchy-pkg-aur-accessible"
+"omarchy-pkg-aur-install"
+"omarchy-pkg-ignored"
+"omarchy-pkg-install"
+"omarchy-pkg-remove"
+"omarchy-refresh-config"
+"omarchy-refresh-fastfetch"
+"omarchy-refresh-hypridle"
+"omarchy-refresh-hyprland"
+"omarchy-refresh-hyprlock"
+"omarchy-refresh-hyprsunset"
+"omarchy-refresh-swayosd"
+"omarchy-refresh-walker"
+"omarchy-refresh-waybar"
+"omarchy-restart-"
+"omarchy-restart-app"
+"omarchy-restart-hypridle"
+"omarchy-restart-hyprsunset"
+"omarchy-restart-swayosd"
+"omarchy-restart-walker"
+"omarchy-restart-waybar"
+"omarchy-restart-xcompose"
+"omarchy-show-done"
+"omarchy-snapshot"
+"omarchy-state"
+"omarchy-theme-bg-next"
+"omarchy-theme-install"
+"omarchy-theme-next"
+"omarchy-theme-remove"
+"omarchy-theme-set"
+"omarchy-theme-set-browser"
+"omarchy-theme-set-eza"
+"omarchy-theme-set-gnome"
+"omarchy-theme-set-terminal"
+"omarchy-theme-set-vscode"
+"omarchy-toggle-nightlight"
+"omarchy-tui-install"
+"omarchy-update"
+"omarchy-update-available-reset"
+"omarchy-update-branch"
+"omarchy-update-git"
+"omarchy-update-perform"
+"omarchy-update-restart"
+"omarchy-update-system-pkgs"
+"omarchy-upload-log"
+"omarchy-verion-branch-set"
+"omarchy-version"
+"omarchy-webapp-handler-zoom"
+"omarchy-webapp-install"
+"omarchy-webapp-remove"
+#+end_example
+
+=echo '<< omarchyNodesWithEdges() >>'= $#@!
+
+#+name: awkRollup
+#+begin_src awk
+BEGIN { count=0 }
+# { print $0; next }
+(count % 6 == 5) { print $0; count++; }
+(count % 6 != 5) { printf "%s ", $1; count++; }
+#+end_src
+
+All non-communicating nodes
+
+#+begin_src shell :results output verbatim :var edges=omarchyScriptsEdges a=awkRollup :noweb yes
+comm -2 -3 <(echo $edges \
+    | sed -E 's/" -> "/"\n"/g' | sed -E 's/" "/"\n"/g'\
+    | sort | uniq) \
+    <(ls omarchy/bin | sort \
+    | sed -E 's/^(.*)/"\1"/g' \
+    | sort | uniq | grep -v '"omarchy-menu"') \
+    | awk "$a"
+# still empty?? for diff, the last echo is important
+#+end_src
+
+***** All Edges
+
+All the script names are =omarchy-([a-z]+-)*([a-z]+)=
+
+#+name: omarchyScriptsEdges
+#+begin_src shell :results output verbatim
+cd omarchy
+find bin -name 'omarchy*' -type f -exec grep -E '(omarchy-[a-z-]+)' \{\} + \
+    | sed -E 's/:.*(omarchy-[a-z-]+).*$/ -> \1/g' \
+    | sed -E 's/^bin\///g' \
+    | sed -E 's/^(.*) -> /"\1" -> /g' \
+    | sed -E 's/ -> (.*)$/ -> "\1"/g' \
+    | sort | uniq | grep -v '"omarchy-menu" -> '
+#+end_src
+
+#+RESULTS: omarchyScriptsEdges
+#+begin_example
+"omarchy-cmd-share" -> "omarchy-cmd-share"
+"omarchy-cmd-tzupdate" -> "omarchy-restart-waybar"
+"omarchy-drive-info" -> "omarchy-drive-info"
+"omarchy-drive-select" -> "omarchy-drive-info"
+"omarchy-drive-set-password" -> "omarchy-drive-select"
+"omarchy-font-set" -> "omarchy-font-set"
+"omarchy-font-set" -> "omarchy-restart-swayosd"
+"omarchy-font-set" -> "omarchy-restart-walker"
+"omarchy-font-set" -> "omarchy-restart-waybar"
+"omarchy-install-dev-env" -> "omarchy-install-dev-env"
+"omarchy-install-dev-env" -> "omarchy-pkg-add"
+"omarchy-install-dropbox" -> "omarchy-pkg-add"
+"omarchy-install-tailscale" -> "omarchy-tui-install"
+"omarchy-install-tailscale" -> "omarchy-webapp-install"
+"omarchy-install-terminal" -> "omarchy-install-terminal"
+"omarchy-install-terminal" -> "omarchy-pkg-add"
+"omarchy-launch-floating-terminal-with-presentation" -> "omarchy-show-done"
+"omarchy-launch-or-focus" -> "omarchy-launch-or-focus"
+"omarchy-launch-or-focus-webapp" -> "omarchy-launch-or-focus-webapp"
+"omarchy-launch-or-focus-webapp" -> "omarchy-launch-webapp"
+"omarchy-launch-screensaver" -> "omarchy-cmd-screensaver"
+"omarchy-notification-dismiss" -> "omarchy-notification-dismiss"
+"omarchy-pkg-aur-accessible" -> "omarchy-update"
+"omarchy-pkg-aur-install" -> "omarchy-show-done"
+"omarchy-pkg-install" -> "omarchy-show-done"
+"omarchy-pkg-remove" -> "omarchy-show-done"
+"omarchy-refresh-fastfetch" -> "omarchy-refresh-config"
+"omarchy-refresh-hypridle" -> "omarchy-refresh-config"
+"omarchy-refresh-hypridle" -> "omarchy-restart-hypridle"
+"omarchy-refresh-hyprland" -> "omarchy-refresh-config"
+"omarchy-refresh-hyprlock" -> "omarchy-refresh-config"
+"omarchy-refresh-hyprsunset" -> "omarchy-refresh-config"
+"omarchy-refresh-hyprsunset" -> "omarchy-restart-hyprsunset"
+"omarchy-refresh-swayosd" -> "omarchy-refresh-config"
+"omarchy-refresh-swayosd" -> "omarchy-restart-swayosd"
+"omarchy-refresh-walker" -> "omarchy-refresh-config"
+"omarchy-refresh-walker" -> "omarchy-restart-walker"
+"omarchy-refresh-waybar" -> "omarchy-refresh-config"
+"omarchy-refresh-waybar" -> "omarchy-restart-waybar"
+"omarchy-restart-hypridle" -> "omarchy-restart-app"
+"omarchy-restart-hyprsunset" -> "omarchy-restart-app"
+"omarchy-restart-swayosd" -> "omarchy-restart-app"
+"omarchy-restart-waybar" -> "omarchy-restart-app"
+"omarchy-restart-xcompose" -> "omarchy-restart-app"
+"omarchy-snapshot" -> "omarchy-snapshot"
+"omarchy-snapshot" -> "omarchy-update"
+"omarchy-snapshot" -> "omarchy-version"
+"omarchy-state" -> "omarchy-state"
+"omarchy-theme-install" -> "omarchy-manual"
+"omarchy-theme-install" -> "omarchy-theme-install"
+"omarchy-theme-install" -> "omarchy-theme-set"
+"omarchy-theme-next" -> "omarchy-theme-set"
+"omarchy-theme-remove" -> "omarchy-theme-next"
+"omarchy-theme-remove" -> "omarchy-theme-remove"
+"omarchy-theme-set-browser" -> "omarchy-cmd-present"
+"omarchy-theme-set" -> "omarchy-restart-swayosd"
+"omarchy-theme-set" -> "omarchy-restart-waybar"
+"omarchy-theme-set" -> "omarchy-theme-bg-next"
+"omarchy-theme-set" -> "omarchy-theme-set"
+"omarchy-theme-set" -> "omarchy-theme-set-browser"
+"omarchy-theme-set" -> "omarchy-theme-set-eza"
+"omarchy-theme-set" -> "omarchy-theme-set-gnome"
+"omarchy-theme-set" -> "omarchy-theme-set-terminal"
+"omarchy-theme-set" -> "omarchy-theme-set-vscode"
+"omarchy-theme-set-vscode" -> "omarchy-cmd-present"
+"omarchy-toggle-nightlight" -> "omarchy-restart-waybar"
+"omarchy-update-branch" -> "omarchy-snapshot"
+"omarchy-update-branch" -> "omarchy-update-perform"
+"omarchy-update-branch" -> "omarchy-verion-branch-set"
+"omarchy-update" -> "omarchy-snapshot"
+"omarchy-update" -> "omarchy-update-git"
+"omarchy-update" -> "omarchy-update-perform"
+"omarchy-update-perform" -> "omarchy-migrate"
+"omarchy-update-perform" -> "omarchy-update-available-reset"
+"omarchy-update-perform" -> "omarchy-update-restart"
+"omarchy-update-perform" -> "omarchy-update-system-pkgs"
+"omarchy-update-restart" -> "omarchy-restart-"
+"omarchy-update-restart" -> "omarchy-state"
+"omarchy-update-system-pkgs" -> "omarchy-pkg-aur-accessible"
+"omarchy-update-system-pkgs" -> "omarchy-pkg-ignored"
+"omarchy-upload-log" -> "omarchy-install"
+"omarchy-webapp-handler-zoom" -> "omarchy-launch-webapp"
+"omarchy-webapp-install" -> "omarchy-launch-webapp"
+"omarchy-webapp-remove" -> "omarchy-launch-webapp"
+#+end_example
+
+*** The full list
+
+Here =-= in each string is replaced by =/= except the first. It's bit confusing, but
+useful at a first glance (=omarchy-menu= and =omarchy-menu-keybindings= are both
+commands)
+
+#+begin_src shell :results output code :wrap example text :eval never
+ls $chkout/bin | tr '-' '/' | sed -e 's/omarchy\//omarchy-/g' | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example text
+.
+├── omarchy-battery          
+│   └── monitor
+├── omarchy-cmd
+│   ├── apple
+│   │   └── display
+│   │       └── brightness
+│   ├── audio
+│   │   └── switch
+│   ├── close
+│   │   └── all
+│   │       └── windows
+│   ├── first
+│   │   └── run
+│   ├── missing
+│   ├── present
+│   ├── screenrecord
+│   ├── screensaver
+│   ├── screenshot
+│   ├── share
+│   ├── terminal
+│   │   └── cwd
+│   └── tzupdate
+├── omarchy-dev
+│   └── add
+│       └── migration
+├── omarchy-drive
+│   ├── info
+│   ├── select
+│   └── set
+│       └── password
+├── omarchy-font
+│   ├── current
+│   ├── list
+│   └── set
+├── omarchy-install
+│   ├── chromium
+│   │   └── google
+│   │       └── account
+│   ├── dev
+│   │   └── env
+│   ├── docker
+│   │   └── dbs
+│   ├── dropbox
+│   ├── steam
+│   ├── tailscale
+│   └── terminal
+├── omarchy-launch
+│   ├── about
+│   ├── browser
+│   ├── editor
+│   ├── floating
+│   │   └── terminal
+│   │       └── with
+│   │           └── presentation
+│   ├── or
+│   │   └── focus
+│   │       └── webapp
+│   ├── screensaver
+│   ├── webapp
+│   └── wifi
+├── omarchy-lock
+│   └── screen
+├── omarchy-menu
+│   └── keybindings
+├── omarchy-migrate
+├── omarchy-notification
+│   └── dismiss
+├── omarchy-pkg
+│   ├── add
+│   ├── aur
+│   │   ├── accessible
+│   │   └── install
+│   ├── drop
+│   ├── ignored
+│   ├── install
+│   ├── missing
+│   ├── pinned
+│   ├── present
+│   └── remove
+├── omarchy-powerprofiles
+│   └── list
+├── omarchy-refresh
+│   ├── applications
+│   ├── config
+│   ├── fastfetch
+│   ├── hypridle
+│   ├── hyprland
+│   ├── hyprlock
+│   ├── hyprsunset
+│   ├── pacman
+│   │   └── mirrorlist
+│   ├── plymouth
+│   ├── swayosd
+│   ├── walker
+│   └── waybar
+├── omarchy-reset
+│   └── sudo
+├── omarchy-restart
+│   ├── app
+│   ├── bluetooth
+│   ├── hypridle
+│   ├── hyprsunset
+│   ├── pipewire
+│   ├── swayosd
+│   ├── walker
+│   ├── waybar
+│   ├── wifi
+│   └── xcompose
+├── omarchy-setup
+│   ├── dns
+│   ├── fido2
+│   └── fingerprint
+├── omarchy-show
+│   ├── done
+│   └── logo
+├── omarchy-snapshot
+├── omarchy-state
+├── omarchy-theme
+│   ├── bg
+│   │   └── next
+│   ├── current
+│   ├── install
+│   ├── list
+│   ├── next
+│   ├── remove
+│   ├── set
+│   │   ├── browser
+│   │   ├── eza
+│   │   ├── gnome
+│   │   ├── terminal
+│   │   └── vscode
+│   └── update
+├── omarchy-toggle
+│   ├── idle
+│   ├── nightlight
+│   ├── screensaver
+│   └── waybar
+├── omarchy-tui
+│   ├── install
+│   └── remove
+├── omarchy-update
+│   ├── available
+│   │   └── reset
+│   ├── branch
+│   ├── git
+│   ├── perform
+│   ├── restart
+│   └── system
+│       └── pkgs
+├── omarchy-upload
+│   └── log
+├── omarchy-version
+│   └── branch
+└── omarchy-webapp
+    ├── handler
+    │   └── zoom
+    ├── install
+    └── remove
+
+50 directories, 109 files
+#+end_example
