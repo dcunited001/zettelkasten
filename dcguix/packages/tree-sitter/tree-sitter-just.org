@@ -1,0 +1,87 @@
+:PROPERTIES:
+:ID:       81a26cc3-22f3-4332-96c2-123407d5149d
+:END:
+#+title: DC Guix: tree-sitter-just
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:aef34489-3943-4c2f-bf88-828f5ea39e16][Tree-sitter]]
++ [[id:b4e1fa85-53ca-467e-aac2-9a4e37b80144][TCL]]
+
+* Resources
++ https://github.com/IndianBoy42/tree-sitter-just
+  
+* Notes
+
+** In Guix Checkout
+
+When I tested this as a patch in my guix checkout:
+
+#+begin_example
+syntax highlighting:
+    ✓ injections-global-pwsh.just (0 assertions)
+    ✓ injections-global-py.just (0 assertions)
+    ✓ injections.just (15 assertions)
+    ✓ invalid-syntax.just (12 assertions)
+    ✓ multiline.just (3 assertions)
+    ✓ recipes.just (54 assertions)
+    ✗ statements.just
+      Failure - row: 52, column: 0, expected highlight 'string', actual highlights: none.
+error: in phase 'check': uncaught exception:
+%exception #<&invoke-error program: "tree-sitter" arguments: ("test") exit-status: 1 term-signal: #f stop-signal: #f>
+phase `check' failed after 0.3 seconds
+command "tree-sitter" "test" failed with status 1
+build process 18 exited with status 256
+builder for `/gnu/store/l1b0c78bn7szmrxb5992drs1c329y04x-tree-sitter-just-0.1.0-0.bb0c898.drv' failed with exit code 1
+build of /gnu/store/l1b0c78bn7szmrxb5992drs1c329y04x-tree-sitter-just-0.1.0-0.bb0c898.drv failed
+Could not find build log for '/gnu/store/l1b0c78bn7szmrxb5992drs1c329y04x-tree-sitter-just-0.1.0-0.bb0c898.drv'.
+guix build: error: build of `/gnu/store/l1b0c78bn7szmrxb5992drs1c329y04x-tree-sitter-just-0.1.0-0.bb0c898.drv' failed
+#+end_example
+
+* Package
+#+begin_quote
+I haven't tested evaluating this. I'm just trying to find somewhere to put a
+bookmark to maybe return later.
+#+end_quote
+
+Package
+
+#+begin_src scheme :tangle tree-sitter-just.scm
+(use-module (ellipsis packages tree-sitter)
+            ((guix licenses) #:prefix license:)
+            (gnu packages)
+            (gnu packages base)
+            (gnu packages crates-graphics)
+            (gnu packages crates-io)
+            (gnu packages node)
+            (gnu packages tree-sitter)
+            (guix build-system cargo)
+            (guix build-system gnu)
+            (guix build-system tree-sitter)
+            (guix gexp)
+            (guix git-download)
+            (guix hg-download)
+            (guix packages)
+            (guix utils)
+            (srfi srfi-1))
+
+(define-public tree-sitter-just
+  (let ((commit "bb0c898a80644de438e6efe5d88d30bf092935cd")
+        (version "0.1.0")
+        (revision "0"))
+    (@@ (gnu packages tree-sitter-grammar)
+        "just" "Just"
+        "15bx2v03a4d9f7dzhc5y2pkzlfsibrim8np1n9iqxvwizlgjw08p"
+        (git-version version revision commit)
+        #:repository-url "https://github.com/IndianBoy42/tree-sitter-just"
+        #:commit commit
+        #:license license:asl2.0)))
+#+end_src
+
+#+begin_example shell
+# these are /not/ supposed to work at the same time IIRC
+guix build -L $HOME/.dotfiles/ellipsis \
+  -e '(@@ (ellipsis packages tree-sitter) tree-sitter-just)'
+guix build -L $HOME/.dotfiles/ellipsis \
+  -e '(@  (ellipsis packages tree-sitter) tree-sitter-just)'
+#+end_example

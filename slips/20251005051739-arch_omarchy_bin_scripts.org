@@ -1,0 +1,182 @@
+:PROPERTIES:
+:ID:       906f0085-c2ca-4037-a096-fc2a164fcf27
+:END:
+#+TITLE: Arch: Omarchy Bin Scripts
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:b3f26f1f-1527-4707-9e5f-baac3ac7b865][NixOS: mixing packages and profiles with home-manager]]
+
+* Resources
+
+This is basically the same approach as described in this article: [[https://zaynetro.com/post/2024-you-dont-need-home-manager-nix][You may not
+need a Home Manager]]
+
+** Dotfiles
++ [[https://github.com/dcunited001/ellipsis/blob/master/nixos/pkgs/common/omarchy-scripts/package.nix#L16][nixos/pkgs/common/omarchy-scripts/package.nix#L16]]
++ a commit with the changes: [[https://github.com/dcunited001/ellipsis/commit/5dd114142480dba95e1c5173f686dcbe0129f376][dcunited001/ellipsis]]
+
+** Nix
++ android-udev-rules: [[https://github.com/NixOS/nixpkgs/blob/3a4e23f7835a8f561b4c83686a8069ecfa9707eb/pkgs/by-name/an/android-udev-rules/package.nix#L18][pkgs/by-name/an/android-udev-rules/package.nix#L18]]
+  - A package guaranteed to install one static file & one static file only
+
+* Nix Pkg
+
+nixos/pkgs/common/omarchy-scripts/package.nix:
+
+#+begin_src nix
+{ stdenv, lib, fetchFromGitHub }:
+
+stdenv.mkDerivation rec {
+  name = "omarchy-scripts-${version}";
+  srcVersion = "3.0.2";
+  version = "3.0.2-revision0"; # increment revision number when package changes
+
+  src = fetchFromGitHub {
+    owner = "basecamp";
+    repo = "omarchy";
+    rev = "v${srcVersion}";
+    sha256 = "sha256-1QJBoMe6MzaD/dcOcqC8QpRxG0Z2c1p+WYqtNFlsTOA=";
+  };
+
+  # from android-udev-rules
+  installPhase = ''
+    runHook preInstall
+    install -D bin/omarchy-cmd-terminal-cwd $out/bin/omarchy-cmd-terminal-cwd
+    runHook postInstall
+  '';
+
+  doInstallCheck = true;
+
+  meta = {
+    description =
+      "A collection of scripts from DHH's opinionated arch/hyprland setup.";
+    homepage = "https://github.com/basecamp/omarchy";
+
+    license = lib.licenses.mit;
+    platforms = lib.platforms.linux;
+  };
+}
+#+end_src
+
+
+** Fairly simple
+
+Diff to integrate
+
+#+begin_example diff
+diff --git a/nixos/modules/users/dc.nix b/nixos/modules/users/dc.nix
+index 51242a9..2d7f879 100644
+--- a/nixos/modules/users/dc.nix
++++ b/nixos/modules/users/dc.nix
+@@ -2,6 +2,8 @@
+ let
+   hyprdc = (pkgs.callPackage
+     (lib.custom.relativeToRoot "pkgs/common/hyprdc/package.nix") { });
++  omarchy-scripts = (pkgs.callPackage
++    (lib.custom.relativeToRoot "pkgs/common/omarchy-scripts/package.nix") { });
+ in {
+ 
+   users.groups = {
+@@ -46,6 +48,7 @@ in {
+     packages = with pkgs; [
+       # CUSTOM
+       hyprdc
++      omarchy-scripts
+ 
+       # CLI
+       tree
+diff --git a/nixos/pkgs/common/omarchy-scripts/package.nix b/nixos/pkgs/common/omarchy-scripts/package.nix
+new file mode 100644
+index 0000000..e94ee8e
+--- /dev/null
++++ b/nixos/pkgs/common/omarchy-scripts/package.nix
+@@ -0,0 +1,32 @@
++{ stdenv, lib, fetchFromGitHub }:
++
++stdenv.mkDerivation rec {
++  name = "omarchy-scripts-${version}";
++  srcVersion = "3.0.2";
++  version = "3.0.2-revision0"; # increment revision number when package changes
++
++  src = fetchFromGitHub {
++    owner = "basecamp";
++    repo = "omarchy";
++    rev = "v${srcVersion}";
++    sha256 = "sha256-1QJBoMe6MzaD/dcOcqC8QpRxG0Z2c1p+WYqtNFlsTOA=";
++  };
++
++  # from android-udev-rules
++  installPhase = ''
++    runHook preInstall
++    install -D bin/omarchy-cmd-terminal-cwd $out/bin/omarchy-cmd-terminal-cwd
++    runHook postInstall
++  '';
++
++  doInstallCheck = true;
++
++  meta = {
++    description =
++      "A collection of scripts from DHH's opinionated arch/hyprland setup.";
++    homepage = "https://github.com/basecamp/omarchy";
++
++    license = lib.licenses.mit;
++    platforms = lib.platforms.linux;
++  };
++}
+#+end_example
+
+* Notes
+
+Fairly simple. Most users don't take this approach to building content with nix
+derivations, but it's very simple.
+
++ Depending on the runtime dependencies of this script (and whether it changes
+  upstream), you can integrate some static files.
+
++ Obviously, doing too much of this would be taxing, esp. if you don't plan for
+  upstream changes or analyze script dependencies.
+
+** Nix Profile Path
+
+#+begin_quote
+NOTE: this depends on:
+
++ whether you use =home-manager=
++ whether it's standalone 
++ how you set up the =.nix-profile= integration for it
+#+end_quote
+
+If you add this =omarchy-scripts= to =users.users.myuser.packages=, it ends up in
+the =PATH=. For some types of files, you may need to ensure other search path
+variables are updated. Some of these may require relogin, if it affects the
+content of =PATH=. If your path includes a symlink to =~/.nix-profile=, it doesn't.
+
+Other changes may require restarting.
+
++ The WM if its PATH doesn't include whatever
++ Or the dbus session, if you've added new dbus specifications without a
+  mechanism to have that process learn about them (I don't recall needed to
+  worry about this)
++ ... or systemd: usually the need to "reactivate" systemd seems to be
+  detected by nixos-rebuild. Sometimes it won't, like if the systemd path
+  includes packages not in the =systemd-path systemd-search-user-unit= by
+  symlink
+
+It's possible that this would work with just a standalone =.nix-profile= setup on
+a foreign distribution.
+
++ It depends on whether your =.nix-profile= already exports
+  variables for a specific type of search path before adding something that does
+  require it.
++ There are some package definitions which don't indicate that to the
+  derivation (e.g. they don't result in exporting =GUILE_LOAD_PATH= or
+  =QT_PLUGIN_PATH= or whatever)
++ So if that profile doesn't have a need to prepend to =XDG_DATA_DIRS=, it won't
+  - if it needs to modify =systemd-search-user-unit=, then you may need to relogin
+    for =daemon-reload= to include things
