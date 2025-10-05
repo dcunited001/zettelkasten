@@ -1,0 +1,137 @@
+:PROPERTIES:
+:ID:       f318689b-908c-4d97-8091-886695db6b58
+:END:
+#+TITLE: Arch: Build The Guix Distributable Archive on NixOS for Omarchy
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:b4ed155f-4f10-4754-95aa-946e4bb2738a][Arch: Migrate from Garuda to Omarchy]]
+
+* Notes
+
+#+begin_quote
+Don't change =localstatedir=.
+#+end_quote
+
+These notes are just wrong.
+
+#+begin_src shell
+./guix-install.sh
+#+end_src
+
+On foreign distros this is all you need, until you mess with some of the
+defaults configuration. the installation /is/ 12-factor, but it's just a big
+steppe up in difficulty.
+
+Also, Arch did install the [[Migrating to the Unprivileged Daemon][rootless guix-daemon services]], but I didn't realize
+I needed to =sed= through =./guix-install.sh=, so it installed to =/var=... Later, it
+kept installing with the old rootful services.
+
+
+** With a =guix container= on NixOS
+
+I ended up running =make= on the =nixos= machine, which already had =guix= installed.
+
++ This should really run within =guix -CPD=, otherwise it doesn't setup the build
+  properly (it isn't a pure environment).
++ I was missing the file =./build-aux/missing=, causing issues with =make=  
+
+#+begin_src shell
+chkout=src/guix
+
+# state=/gnu/var
+# store=/gnu/store
+state=/var
+store=/gnu/store
+
+git clone git@codeberg.org:guix/guix $chkout && cd $chkout
+guix shell -CPD  # this sets up a guix container
+./bootstrap
+./configure --localstatedir=$state
+
+make
+make check
+exit # the guix container
+
+build_host_store=/gnu/store
+socket=$state/guix/daemon-socket/socket
+guix shell -CPW --share=$build_host_store --share=$socket
+
+system=x86_64-linux # run `guix pack --list-systems` within the guix container
+make guix-binary.$system.tar.xz
+#+end_src
+
+From here.
+
+#+begin_src shell
+wget https://guix.gnu.org/guix-install.sh
+chmod +x guix-install.sh
+export GUIX_BINARY_FILE_NAME=guix-binary.x86_64-linux.tar.xz
+sudo --preserve-env=GUIX_BINARY_FILE_NAME ./guix-install.sh
+#+end_src
+
+Then set up =/etc/guix/acl= and run =systemctl restart guix-daemon=
+
+The install script:
+
++ sets up the guix-daemon [[https://guix.gnu.org/manual/devel/en/guix.html#Daemon-Running-Without-Privileges][to run without root privileges]]
++ should set up the basic substitutes and offers to discover local substitute
+  servers on the network
++ adds =/etc/profile.d/zzz-guix.sh= to set up your profile
+  
+** Arch Native
+
+#+begin_quote
+This doesn't work
+#+end_quote
+
+Install dependencies
+
+#+begin_src shell
+# already installed: automake autoconf gettext
+archpkgs=(graphviz texlive help2man slirp4netns util-linux po4a)
+aurpkgs=(guile-gnutls guile-lib-git guile-json guile-gcrypt guile-ssh guile-zlib guile-lzlib guile-semver)
+omarchy-pkg-add ${archpkgs[@]}
+
+# from AUR
+# yay -Syu ${aurpkgs[@]}
+#+end_src
+
++ libgcrypt-config :: reported by =./configure= as missing
++ po4a :: need to relogin: =/usr/bin/vendor_perl= isn't in PATH
++ guile-semver :: AUR: 0.1.1 (on guix: 0.2.0), imported into =(guix import nuget)=
++ misc errors:
+  - =atf= and =kyua= :: failed to autoload by =(guix packages check)=
+
+Build guix
+
+#+begin_src shell
+chkout=src/guix
+state=/gnu/var
+store=/gnu/store
+socket=$state/guix/daemon-socket/socket
+
+git clone git@codeberg.org:guix/guix $chkout
+cd $chkout
+./bootstrap
+./configure --localstatedir=$state
+make
+make -j8 check
+#+end_src
+
+To make checks go faster: [[https://unix.stackexchange.com/questions/294299/how-to-renice-all-threads-and-children-of-one-process-on-linux#:~:text=Finding%20all%20PIDs%20to%20renice,to/findchildren.sh%201234)][how to recursively renice process tree]]
+
+#+begin_src shell
+current_guile=$(pgrep -f '.scm')
+current_make=$(pgrep -f 'make')
+current_test_env=$(pgrep -f 'test-env')
+
+renice -15 -p ${current_guile[@]} # ...not sure what's going on here
+
+# the renice didn't really work
+#+end_src
+
+

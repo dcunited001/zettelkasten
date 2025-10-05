@@ -446,85 +446,28 @@ export SSH_AUTH_SOCK="$(gpgconf --list-dirs agent-ssh-socket)"
 
 *** Guix
 
-I ended up running =make= on the =nixos= machine
+See [[id:f318689b-908c-4d97-8091-886695db6b58][Arch: Build The Guix Distributable Archive on NixOS for Omarchy]] to build the
+archive.
+
+You could also apparently run this to get the same result, but without the
+=$state= dir getting set to =/gnu/var=
 
 #+begin_src shell
-chkout=src/guix
-state=/gnu/var
-store=/gnu/store
-socket=$state/guix/daemon-socket/socket
-
-git clone git@codeberg.org:guix/guix $chkout && cd $chkout
-./bootstrap
-./configure --localstatedir=$state
-
-make
+wget https://guix.gnu.org/guix-install.sh
+chmod +x guix-install.sh
+sudo ./guix-install.sh
 #+end_src
 
-Install and configure
+Or if you built the archive
 
 #+begin_src shell
-make install # will setup guix-daemon.{service,socket}
-
-# see https://guix.gnu.org/manual/devel/en/guix.html#Build-Environment-Setup
-groupadd --system guix-daemon
-useradd -g guix-daemon -G guix-daemon                \
-          -d /var/empty -s $(which nologin)          \
-          -c "Guix daemon privilege separation user" \
-          --system guix-daemon
-
-# copy ACLs into /etc/guix/acl
+export GUIX_BINARY_FILE_NAME=guix-binary.x86_64-linux.tar.xz
+sudo --preserve-env=GUIX_BINARY_FILE_NAME ./guix-install.sh
 #+end_src
 
-**** Arch Native
+This install script sets up the guix-daemon [[https://guix.gnu.org/manual/devel/en/guix.html#Daemon-Running-Without-Privileges][to run without root privileges]]
 
-Install dependencies
-
-#+begin_src shell
-# already installed: automake autoconf gettext
-archpkgs=(graphviz texlive help2man slirp4netns util-linux po4a)
-aurpkgs=(guile-gnutls guile-lib-git guile-json guile-gcrypt guile-ssh guile-zlib guile-lzlib guile-semver)
-omarchy-pkg-add ${archpkgs[@]}
-
-# from AUR
-# yay -Syu ${aurpkgs[@]}
-#+end_src
-
-+ libgcrypt-config :: reported by =./configure= as missing
-+ po4a :: need to relogin: =/usr/bin/vendor_perl= isn't in PATH
-+ guile-semver :: AUR: 0.1.1 (on guix: 0.2.0), imported into =(guix import nuget)=
-+ misc errors:
-  - =atf= and =kyua= :: failed to autoload by =(guix packages check)=
-
-Build guix
-
-#+begin_src shell
-chkout=src/guix
-state=/gnu/var
-store=/gnu/store
-socket=$state/guix/daemon-socket/socket
-
-git clone git@codeberg.org:guix/guix $chkout
-cd $chkout
-./bootstrap
-./configure --localstatedir=$state
-make
-make -j8 check
-#+end_src
-
-To make checks go faster: [[https://unix.stackexchange.com/questions/294299/how-to-renice-all-threads-and-children-of-one-process-on-linux#:~:text=Finding%20all%20PIDs%20to%20renice,to/findchildren.sh%201234)][how to recursively renice process tree]]
-
-#+begin_src shell
-current_guile=$(pgrep -f '.scm')
-current_make=$(pgrep -f 'make')
-current_test_env=$(pgrep -f 'test-env')
-
-renice -15 -p ${current_guile[@]} # ...not sure what's going on here
-
-# the renice didn't really work
-#+end_src
-
-
+Then set up =/etc/guix/acl= and run =systemctl restart guix-daemon=
 *** Nix
 
 #+begin_src shell
@@ -552,6 +495,9 @@ pkgs+=(pacman-contrib util-linux)
 # arch
 # bind gets you dig, nslookup, host
 pkgs+=(bind)
+
+# file systems
+pkgs+=(ntfs-3g)
 
 # btrfs
 pkgs+=(compsize btrfs-list)

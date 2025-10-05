@@ -19,6 +19,203 @@ See [[id:dc0857c8-0fd2-431b-bda4-49dc3913054e][Guix on NixOS: Updating Guix]]
 
 * Topics
 
+** Removing =services.guix= from NixOS and reinstalling
+
+*** Don't change =localstatedir=
+
++ Changing the localstatedir makes installation more difficult. It's not that
+  bad, but you can't use =guix-install.sh= to install. It's not a build target.
+
+I was trying to get my arch & nixos system in sync with the same configuration.
+That's the main goal. I ran into issues using the =guix-install.sh= script on
+nixos, since it wants to write to =/etc/systemd/system= and other directories, but
+can't own them. There are a few options there:
+
++ Use links from =/nix/store= out to the file system.
+  - not pure, which it's never not a great idea to lose purity if you can help
+    it. here, since it's system-specific and each deploy becomes stateful, it's
+    a problem.
++ Rewrite or clear out the =services.guix= code from =nixpkgs= and write one to use
+  =/usr/bin/env=.
+  - This could load static systemd units (problematic and probably incomplete
+    for behavior, esp. if upstream(s) change)
+  - Still makes assumptions about the file system it gets deployed on which must
+    be in place otherwise a build/deploy fails.
+  - Probably just the guix functionality though. tldr: pick one, nixos or guix
+    system, and if both are installed (which is pretty dumb anyways) do not try
+    to integrate them (i wasn't planning on that)
++ Shim =guix-install.sh= to place services in =/usr/share/systemd/system= instead of
+  =/etc/systemd/system=, the binary guix in =/usr/bin/guix= and hope that's all.
+  Problems:
+  - Append to NixOS =systemd.paths=, maybe =systemd.user.paths= so services load.
+  - Not isomorphic (not reversible or readily composable with the rest of the
+    NixOS functionality)
+  - Requires restart which may be problematic if guix is half-installed ... e.g.
+    if attempting to source some profile contents fails before login (shouldn't,
+    but may)
+  - Can make redistributable =guix-binary.x86_64-linux.tar.xz= for deploys to
+    other machines without rebuild (not a biggie)
++ Maybe reorder =/etc/fstab= file system mounts so that =/etc/systemd/system= and
+  other necessary paths have files/links they need
+  - without interfering with NixOS impermanence too much.
+  - if this worked, basically you'd install the =guix-install.sh= on a separate
+    system (loaded from ISO or whatever), then that btrfs subvolume would just
+    have what Guix needs.
+  - probably won't work. the order of bind mounts is significant and there are
+    possible collisions.
+
+*** Migrate the =/gnu/store= to a rootless =guix-daemon=
+
+Without worrying about =guix gc=
+
+These notes are wrong. There are a few dead ends I'd need to tunnel out of on
+NixOS ... not that difficult, but also i'm not sure there are good answers to
+these.
+
+Also, for some reason =guix pull= is succeeding with the Nixos =services.guix=
+installed. I'm pretty sure it's a trick though (since i'm running an old =guix=
+from a profile still in =/gnu/store= that wasn't GC'd).
+
+#+begin_quote
+You'd probably want to do this all in one step. Otherwise, invalid state and
+garbage processes could start piling up pretty quickly, leaving a borked system.
+If you rebooted on NixOS, there's a chance you wouldn't be able to log into any
+user, depending on how =~/.guix-profile= is set up in each bash profile.
+
+I can still login to VTYs after removing =services.guix= from the nixos system.
+
+I don't have too many guix profiles on my system ATM and the store content is
+mostly derivative from other =/gnu/var/guix/profiles/per-user-dc= profiles that I
+installed on top of the un-updatable guix binary from nix.
+#+end_quote
+
+When you remove the =services.guix.enable=, nix will remove:
+
++ The first =guix= that it installed from =/gnu/store=.
++ The =guix-build-user= users it created as well as the =guix-daemon= group & user
+
+It leaves the =/gnu/var= directory in tact.
+
+It's set up the =guix-daemon= to run rootfully, which means the store artifacts
+are all tough & namespacey (very difficult to remove... formerly i guess).
+
++ [[https://guix.gnu.org/manual/devel/en/guix.html#Migrating-to-the-Unprivileged-Daemon][Migrate to the Unpriviliged Daemon]] describes how to move to the new rootless
+  =guix-daemon= which relies on Linux user namespaces.
++ The =./nix-install.sh= script from DetSys should have an equivalent example for
+  removing them.
+
+There's a read-only bind-mount though
+
+#+begin_src shell :results output verbatim
+mount | grep guix | tr '()' '\n\n'
+#+end_src
+
+#+RESULTS:
+: /dev/mapper/vgcrypt-root on /gnu type btrfs
+: rw,noatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvolid=267,subvol=/@guix
+:
+: /dev/mapper/vgcrypt-root on /gnu/store type btrfs
+: ro,noatime,compress=zstd:3,ssd,discard=async,space_cache=v2,subvolid=267,subvol=/@guix
+:
+
+As root
+
+#+begin_src shell
+groupadd --system guix-daemon
+useradd -g guix-daemon -G guix-daemon,kvm               \
+        -d /var/empty -s $(which nologin)               \
+        -c "Guix daemon privilege separation user"      \
+        --system guix-daemon
+
+mount -o remount,rw /gnu/store
+
+chown -R guix-daemon:guix-daemon                        \
+  /gnu                                                  \
+  /var/log/guix                                         \
+  /etc/guix                                             \
+  /gnu/var/guix/{gc.lock,daemon-socket,db,discover}     \
+  /gnu/var/guix/{gcroots,offload,substitute,temproots}
+
+# i needed to change these last two
+# /var/guix/{gc.lock,daemon-socket,db,discover}
+# /var/guix/{gcroots,offload,substitute,temproots}
+#+end_src
+
+At this point, the =./guix-install.sh= script should work.......... but i see that
+it has hard-coded values for =/var= whereas I need it to install into =/gnu/var=.
+
++ I can't run =guix= right now because the socket file at
+  =/gnu/var/guix/guix-daemon/socket= is dead
++ I also can't =guix shell -CPD= and finish the install
++ I could probably run the =guix-daemon= that I just built, but idk.
+
+#+begin_src shell
+# ... i.e. this does not work
+wget https://guix.gnu.org/guix-install.sh
+chmod +x guix-install.sh
+export GUIX_BINARY_FILE_NAME=guix-binary.x86_64-linux.tar.xz
+export GUIX_ALLOW_OVERWRITE=1
+sudo --preserve-env=GUIX_BINARY_FILE_NAME ./guix-install.sh
+#+end_src
+
+So after:
+
++ Checking =find -name 'guix*.service' -exec grep var \{\} +=
++ Running through the script, it looks like it could install with either a
+  symlink from =/var/guix -> /gnu/var/guix= ... or by =regexp-replace=. So I went
+  with the latter
+
+The next problem: =/etc/systemd/system= is in a read-only file-system.
+
+#+begin_quote
+This is fairly simple... i just don't feel like doing it. I at least feel like
+I'm learning about what one might imagine they'd would learn about if they "did
+things the hard way" ... which is actually nice.
+
+seriously, it helped me learn a bit about systemd.
+#+end_quote
+
+
+*** Save =guix gc --list-roots=
+
+Collect =guix gc --list-roots=
+
+#+begin_src shell
+/var/guix/profiles/per-user/dc/profiles/t3zor6v3kcbaaqxmfydpxuyewwwtbz4jrboajxjlsskhqs34yp2q
+/var/guix/profiles/per-user/dc/current-guix-1-link
+/var/guix/profiles/per-user/dc/current-guix-1-link
+/var/guix/profiles/per-user/dc/guix-profile-3-link
+/var/guix/profiles/per-user/dc/guix-profile-3-link
+/home/dc/.dotfiles/.doom.d/.guix-profile-9-link
+/var/guix/profiles/per-user/dc/profiles/t3zor6v3kcbaaqxmfydpxuyewwwtbz4jrboajxjlsskhqs34yp2q
+/home/dc/.cache/guix/profiles/jotcckzzh7ocvy5f7jqbob6v2c7x5ydfihqzqp7pskudvwdn6pca
+/var/guix/profiles/per-user/dc/current-guix-1-link
+/home/dc/.cache/guix/profiles/ckvkijku3ev4welzsbbbkmtcai2hioczezxx3vgw7m7pf4iw5gsa
+/home/dc/.dotfiles/.doom.d/.guix-profile-8-link
+#+end_src
+
+Stop the services
+
+#+begin_src shell
+systemctl stop guix-daemon.service
+systemctl stop guix-daemon.socket
+#+end_src
+
++ change nixos system to remove =services.guix.enable=
++ =services.guix.gc.enable= won't work without it
++ run =nixos-rebuild=
++ change nixos system to remove the =/gnu= btrfs subvolume
++ run =nixos-rebuild=
++ ensure the btrfs subvolume has been unmounted
+
+#+begin_src shell
+# ... hmmm this all may not be necessary
+
+# .... it wasn't (I've learned that overthinking things is problematic and just
+# being okay with doing the caveman thing is ok maybe)
+#+end_src
+
+
 ** Personal Module Organization
 
 *** First reorg
@@ -997,7 +1194,7 @@ Setting up a guix profile with a GC root for a project
 
 #+begin_src shell
 guix package  -L ~/.dotfiles/ellipsis -L ~/.dotfiles/dc \
-	 -p .guix-profile -m manifest.scm
+         -p .guix-profile -m manifest.scm
 #+end_src
 
 I assumed more guile setup, since =GUILE_LOAD_PATH= wasn't in my env, but

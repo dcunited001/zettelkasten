@@ -3,7 +3,7 @@
 :END:
 #+TITLE: Arch: Omarchy Bin Scripts
 #+CATEGORY: slips
-#+TAGS:  
+#+TAGS:
 
 * Roam
 + [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
@@ -81,14 +81,14 @@ index 51242a9..2d7f879 100644
 +  omarchy-scripts = (pkgs.callPackage
 +    (lib.custom.relativeToRoot "pkgs/common/omarchy-scripts/package.nix") { });
  in {
- 
+
    users.groups = {
 @@ -46,6 +48,7 @@ in {
      packages = with pkgs; [
        # CUSTOM
        hyprdc
 +      omarchy-scripts
- 
+
        # CLI
        tree
 diff --git a/nixos/pkgs/common/omarchy-scripts/package.nix b/nixos/pkgs/common/omarchy-scripts/package.nix
@@ -148,7 +148,7 @@ derivations, but it's very simple.
 NOTE: this depends on:
 
 + whether you use =home-manager=
-+ whether it's standalone 
++ whether it's standalone
 + how you set up the =.nix-profile= integration for it
 #+end_quote
 
@@ -217,7 +217,103 @@ All scripts that don't run =omarchy-*= scripts
 | omarchy-toggle-idle        | omarchy-toggle-screensaver           | omarchy-toggle-waybar                   | omarchy-tui-remove            | omarchy-update-available  | omarchy-version-branch     |
 | omarchy-version-branch     |                                      |                                         |                               |                           |                            |
 
-**** Nodes
+Tree of non-communicating nodes
+
+#+begin_src shell :results output verbatim :var edges=omarchyScriptsEdges
+comm -1 -3 <(echo $edges \
+    | sed -E 's/" -> "/"\n"/g' | sed -E 's/" "/"\n"/g' \
+    | sort | uniq) \
+    <(ls omarchy/bin | sort \
+    | sed -E 's/^(.*)/"\1"/g' \
+    | sort | uniq | grep -v '"omarchy-menu"') \
+    | tr -d '"' | tr '-' '/' | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── omarchy
+    ├── battery
+    │   └── monitor
+    ├── cmd
+    │   ├── apple
+    │   │   └── display
+    │   │       └── brightness
+    │   ├── audio
+    │   │   └── switch
+    │   ├── close
+    │   │   └── all
+    │   │       └── windows
+    │   ├── first
+    │   │   └── run
+    │   ├── missing
+    │   ├── screenrecord
+    │   ├── screenshot
+    │   └── terminal
+    │       └── cwd
+    ├── dev
+    │   └── add
+    │       └── migration
+    ├── font
+    │   ├── current
+    │   └── list
+    ├── install
+    │   ├── chromium
+    │   │   └── google
+    │   │       └── account
+    │   ├── docker
+    │   │   └── dbs
+    │   └── steam
+    ├── launch
+    │   ├── about
+    │   ├── browser
+    │   ├── editor
+    │   └── wifi
+    ├── lock
+    │   └── screen
+    ├── menu
+    │   └── keybindings
+    ├── pkg
+    │   ├── drop
+    │   ├── missing
+    │   ├── pinned
+    │   └── present
+    ├── powerprofiles
+    │   └── list
+    ├── refresh
+    │   ├── applications
+    │   ├── pacman
+    │   │   └── mirrorlist
+    │   └── plymouth
+    ├── reset
+    │   └── sudo
+    ├── restart
+    │   ├── bluetooth
+    │   ├── pipewire
+    │   └── wifi
+    ├── setup
+    │   ├── dns
+    │   ├── fido2
+    │   └── fingerprint
+    ├── show
+    │   └── logo
+    ├── theme
+    │   ├── current
+    │   ├── list
+    │   └── update
+    ├── toggle
+    │   ├── idle
+    │   ├── screensaver
+    │   └── waybar
+    ├── tui
+    │   └── remove
+    ├── update
+    │   └── available
+    └── version
+        └── branch
+#+end_example
+
+*** Nodes
 
 #+name: omarchyScriptsNodes
 #+begin_src shell :results output verbatim
@@ -573,7 +669,7 @@ ls $chkout/bin | tr '-' '/' | sed -e 's/omarchy\//omarchy-/g' | tree --fromfile 
 #+RESULTS:
 #+begin_example text
 .
-├── omarchy-battery          
+├── omarchy-battery
 │   └── monitor
 ├── omarchy-cmd
 │   ├── apple
@@ -734,3 +830,50 @@ ls $chkout/bin | tr '-' '/' | sed -e 's/omarchy\//omarchy-/g' | tree --fromfile 
 
 50 directories, 109 files
 #+end_example
+
+* Export
+
+Export as subtree =C-c C-e C-s h o=
+
+** Scripts
+
+=bin/omarchy-*= scripts that don't run =bin/omarchy-*= scripts
+
+#+begin_export html
+<pre>
+.                                   .                                  .
+└── omarchy                         └── omarchy                        └── omarchy
+    ├── battery                         ├── install                        ├── reset
+    │   └── monitor                     │   ├── chromium                   │   └── sudo
+    ├── cmd                             │   │   └── google                 ├── restart
+    │   ├── apple                       │   │       └── account            │   ├── bluetooth
+    │   │   └── display                 │   ├── docker                     │   ├── pipewire
+    │   │       └── brightness          │   │   └── dbs                    │   └── wifi
+    │   ├── audio                       │   └── steam                      ├── setup
+    │   │   └── switch                  ├── launch                         │   ├── dns
+    │   ├── close                       │   ├── about                      │   ├── fido2
+    │   │   └── all                     │   ├── browser                    │   └── fingerprint
+    │   │       └── windows             │   ├── editor                     ├── show
+    │   ├── first                       │   └── wifi                       │   └── logo
+    │   │   └── run                     ├── lock                           ├── theme
+    │   ├── missing                     │   └── screen                     │   ├── current
+    │   ├── screenrecord                ├── menu                           │   ├── list
+    │   ├── screenshot                  │   └── keybindings                │   └── update
+    │   └── terminal                    ├── pkg                            ├── toggle
+    │       └── cwd                     │   ├── drop                       │   ├── idle
+    ├── dev                             │   ├── missing                    │   ├── screensaver
+    │   └── add                         │   ├── pinned                     │   └── waybar
+    │       └── migration               │   └── present                    ├── tui
+    ├── font                            ├── powerprofiles                  │   └── remove
+        ├── current                     │   └── list                       ├── update
+        └── list                        ├── refresh                        │   └── available
+                                            ├── applications               └── version
+                                            ├── pacman                         └── branch
+                                            │   └── mirrorlist
+                                            └── plymouth
+</pre>
+#+end_export
+
+=bin/omarchy-*= scripts that depend on =bin/omarchy-*= scripts by name
+
+[[file:img/omarchy-scripts.svg]]
