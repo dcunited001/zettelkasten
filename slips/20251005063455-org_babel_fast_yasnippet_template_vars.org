@@ -1,0 +1,168 @@
+:PROPERTIES:
+:ID:       a8dbbd4f-b7fe-4347-8cb9-ef0aa7a5d54e
+:END:
+#+TITLE: Org Babel: Fast Yasnippet Template Vars
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
+
+* Notes
+
+I need to do this constantly.
+
+#+begin_example org
+# ** Some headline
+
+:PROPERTIES:
+:header-args+: :var chkout=(expand-file-name "omarchy" (or (bound-and-true-p ob@arch_omarchy_bin_scripts) (setq ob@arch_omarchy_bin_scripts (make-temp-file "roam-" t))))
+:header-args+: :dir (identity ob@arch_omarchy_bin_scripts)
+:END:
+
+Basically, which content do you choose to import?
+
+#+name: omarchyCheckout
+#+begin_src emacs-lisp
+chkout
+#+end_src
+
+#+begin_src shell
+echo $chkout
+echo $(pwd)
+#+end_src
+
+#+RESULTS:
+| /tmp/tmp.rgcmqtkWEC/omarchy |
+| /tmp/tmp.rgcmqtkWEC         |
+#+end_example
+
+So i came up with some snippets, which are further below. Still needs some work
+though.
+
+Expanding the snippet ends up running =(dc/org-roam-get-slug)= which is basically
+just wrapping =(org-roam-node-slug)= for the current =org-mode= buffer.
+
++ yasnippet maintains the =(current-buffer)= as the execution context for its
+  expanded =emacs-lisp= values, so that function returns the correct value
++ since the snippets all turn to text, we can guarantee their evaluation is
+  complete.
+
+I've tried this previously, but it's hard to predict the scoping for the
+=org-babel= blocks if the retrieval of values happens too close to runtime.
+
++ each babel block usually has its own scope (closure)
++ s to names specified by =:var= need =(identity emacs-lisp-var)= and
+  can otherwise only include =#+name: valueByName=
++ the results of each function is the interface through which results are
+  normally passed
++ results can be cached and evaluation can be suppressed/silenced.
++ if you import functions from other org files via Library of Babel, then these
+  usually execute in another context
+
+I kept experimenting with different ways of handling this, so I didn't want to
+streamline it and preclude the ability to quickly =grep= or =regexp-replace= it in
+the future.
+
+The =ob@= prefix for global variable names is rarely used.
+
+** Snippets
+
+Expand the =:var= reference.
+
++ I'll have to do this first to ensure =(current-buffer)= works as expected
+  - =M-x org-set-property RET header-args+ RET some value=
++ Then type =<obptvf= and =TAB=... which has some interaction with =corfu= completion
+  ... so I can't complete while that popup is open (again, eval. context)
+
+#+begin_example snippet
+# -*- mode: snippet -*-
+# name: obptmpvarfile
+# uuid: obptmpvarfile
+# key: <obptvf
+# condition: t
+# --
+:var $1=(expand-file-name "$2" (or (bound-and-true-p ${3:$$(yas-choose-value (list "" (dc/org-roam-get-slug)))}) (setq ob@${3:$(identity yas-text)} (make-temp-file "roam-" t))))
+#+end_example
+
+and a snippet for =:dir=
+
+#+begin_example snippet
+# -*- mode: snippet -*-
+# name: obptmpdir
+# uuid: 
+# key: <obptdir
+# condition: t
+# --
+:dir (identity ${1:$$(yas-choose-value (list "" (dc/org-roam-get-slug)))})
+#+end_example
+
+
+* Alternative Approaches
+
+#+begin_quote
+original posted on =#orgmode=
+#+end_quote
+
+I'm trying to find a good way to set the =:dir= or =:tangle-dir= for org-babel
+blocks to a temp directory or specific directory where...
+
+1) the logic is mostly self-contained to the org document (so that i can revisit
+   org files months/years later to re-evaluate the stuff and i don't have to
+   worry about minor corrections to defuns in my emacs config)
+2) it ideally doesn't depend on specific content in the emacs config
+3) it doesn't do too much with the file-local-variables that can occur at the
+   end of an org document (which is an option)
+4) the scope of side-effects for evaluation are mostly buffer-local
+5) it's pretty easy to ensure how the variable in org-babel headers would be
+   interpreted if evaluated in the org document or in an org-babel evaluation
+   context ... a bit wierd
+6) using =:header-args:lang+:= in the org property drawers. this works fairly
+   well, but still needs to source a value for a temporary directory or
+   something
+7) passing the output value between named blocks is my go to method. it kinda
+   breaks down for large output/files and i get a bit fatigued discarding hunks
+   using with =M-x magit-status=
+8) using a =:session *my-lang-session*= based workflow. The state defining the
+   output could be defined in the session or the process's environment. That's
+   specific to org-babel language though. Using a session kinda "hard forks" how
+   you would want to design the flows of data in the org document.
+9) using library-of-babel. this increases cognitive load a bit (while reducing
+   it elsewhere). it also requires awareness/planning for how code would shared
+   across a body of documents. that's simple for things like what's bundled in
+   with worg's library-of-babel helpers. it's practical if the body of documents
+   is limited to a project/context
+10) persisting buffer-local state for an org-roam document (like temporary
+    directory paths) by storing it variables whose symbols are generated by the
+    Org Roam slugs
+    
+i've tried:
+
+1) using =#+name: forAnEmacsLispBlock=, but then I need to ensure that it's
+   evaluated (and only once) or contains a string value... things like that
+2) defining and evaluating a block somewhere with a =setq-local=... it still gets
+   a bit messy to reopen old files, remember there are a few setup blocks to
+   run, then run/tangle the main content
+3) org setup blocks are a possiblity, but then it's hard to track where they're
+   referenced (and ideally, i can just open an old file, do one or two things &
+   re-run the procedures to generate files)
+4) using :file, but not all org-babel libraries handle this the same way. i use
+   this one the most (and sometimes sending to a file from shell block). the
+   main issues here
+   a) absolute paths are hard to anticipate working across various systems
+   b) if i use :file "img/somecontext/someartifact.yaml" this works, but
+      cleaning up unwanted content in the repo is tedious
+5) define a procedure that does =(or (bound-and-true tempOutputRoot) (setq
+   tempOutputRoot (make-temp "temp-output-root")))= the last one works alright,
+   but it's really difficult to make:
+  a) consistent across org-babel languages/tools (i'm mostly using emacs-lisp,
+     shell, jq, restclient, python) 
+  b) and short enough to type quickly
+
+i've looked through a lot of repositories like =dfiech/org-babel-examples= and
+sometimes some pretty good ideas, but the requirements #1-5 above are a bit at
+odds with each other -- e.g. invariance to a Linux systems' FHS paths/mounts;
+reproducible effects (e.g. produce a VyOS configuration); lack of external
+dependencies; self-contained (for rapid experiementation and reduced cognitive
+load) woops ... nested e.g.'s there (lulz)
