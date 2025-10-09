@@ -1,0 +1,438 @@
+:PROPERTIES:
+:ID:       68329455-a107-477f-aca8-9e2c238968ce
+:END:
+#+TITLE: Orange Pi: rkdeveloptool without sudo
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:35cdd063-b646-4141-83ea-fcac8b337875][Orange Pi]]
++ [[id:708d6f59-64ad-473a-bfbb-58d663bde4f0][IoT]]
+
+
+* Docs
+
+* Resources
+
+
+* Terms
+
++ TFA :: Trusted Firmware
++ U-boot :: The 2nd stage bootloader for IoT devices
++ SPL Loader :: A program to "flash" to a board in MaskROM mode via
+  =rkdeveloptool= which permits some device interactivity
+  - this can be built from source, but you still need an =idbloader= and =uboot= to
+    flash to SPI
+  - there's a miniloader from the orangepi downloads under the official tools.
+    see the wiki for more information
+
+* Round Two
+:PROPERTIES:
+:header-args+: :var obtmp=(or (bound-and-true-p ob@orange_pi_firmware_u_boot_rkdevtool_and_spi_flash) (setq ob@orange_pi_firmware_u_boot_rkdevtool_and_spi_flash (make-temp-file "roam-" t)))
+:END:
+
+** Rationale
+
+Still want to see what blobs are going on here. These are nice devices, but...
+
++ There's a lot of native chinese docs/guides without translation
+  - Most guides/projects just accept upstream linux blobs and recycle the same
+    binaries from OPi/Rockchip. It's unclear how to get on a device and clarify
+    the extant hardware functionality for a given Linux image/firmware
+  - Determining whether the necessary firmware support is an issue would be nice
+    to do quickly.
++ I need to be able to determine whether/how the NPU stuff is working
++ I'm just curioius.
+
+*** Reset SPI to newer U-Boot image
+
+The newer photonvision build removes firmware from the image. That definitely
+needs to at least be in the U-Boot image in SPI Flash.
+
++ Download [[https://www.armbian.com/orange-pi-5-plus/][Armbian Server for OrangePi 5 Plus]]
++ use =nix shell nixpkgs#usbimager= to get [[https://gitlab.com/bztsrc/usbimager][bztsrc/usbimager]]
++ Follow [[https://docs.armbian.com/User-Guide_Getting-Started/#how-to-prepare-a-sd-card][these directions from Armbian]] to burn the image onto a flash card.
+
+** SPL Loader
+
+*** Loading the Loader
+
+**** Overview
+
+If it's already built, use =nix shell nixpkgs#rkdeveloptool=
+
++ get =binwalk= from Guix: v3 wasn't so great
+  - Guix has =v2.3.3=, Nix has the "rust rewrite" =v3.1.0=
+
+#+begin_src shell
+img=rkbin/rk3588_spl_loader_v1.19.113.bin
+rkdevelop ld # ensure device in MaskROM and accessible
+rkdevelop db $img # download the SPL Loader to the device
+#+end_src
+
+**** Setting up =udev= rules to avoid =root=
+
+see [[https://github.com/dcunited001/ellipsis/blob/9562939d05c834c4f0b4d206e3e1bfa98705e076/nixos/modules/nixos/hardware/rkdeveloptool.nix][nixos/modules/nixos/hardware/rkdeveloptool.nix]]
+
+#+begin_src nix
+{ config, lib, pkgs, ... }:
+let
+  # rockchip's udev rules haven't been updated since 2021
+  #
+  # - they don't include model 350b for the rk3588 (orangepi 5)
+  # - they set everything to 666 and writable by users
+  #
+  # this is based on the scdaemon service
+
+  rkdeveloptoolRev = "304f073752fd25c854e1bcf05d8e7f925b1f4e14";
+
+  rockchipRules = pkgs.fetchurl {
+    url =
+      "https://raw.githubusercontent.com/rockchip-linux/rkdeveloptool/${rkdeveloptoolRev}/99-rk-rockusb.rules";
+    sha256 = "0x1nkvfzidzjx0dis9xkw2yw09bv81zqkby12sbhlmgs607a68lf";
+  };
+
+  destination = "99-rk-rockusb.rules";
+
+  # ran `udevadm verify --resolve-names=never --no-style 99-rk-rockusb.rules.test`
+  rockchipUdevRulesPkg = pkgs.runCommand "rockchip-udev-rules" { } ''
+    loc="$out/lib/udev/rules.d/"
+    mkdir -p "''${loc}"
+    sed 's/LABEL="end_rules"/# RK3588 \nATTRS{idVendor}=="2207", ATTRS{idProduct}=="350b", MODE="0660", GROUP="plugdev"\n\nLABEL="end_rules"/g' "${rockchipRules}" > "rkrules.1"
+    sed 's/ MODE="0666", GROUP="users"/ MODE="0660", GROUP="plugdev"/g' "rkrules.1" > "rkrules.2"
+    cp "rkrules.2" "''${loc}/${destination}"
+  '';
+
+  # too many derivations using sed ... but whatever. nicer facilities would
+  # require the full stdenv.mkDerivation
+  cfg = config.hardware.rkdeveloptool;
+in {
+  options.hardware.rkdeveloptool = {
+    enable = lib.mkEnableOption "udev rules for rkdeveloptool and Rockchip";
+    # don't install this by default
+    # package = lib.mkDefault pkgs.rkdeveloptool;
+  };
+
+  config = lib.mkIf cfg.enable {
+    services.udev.packages = [ rockchipUdevRulesPkg ];
+    users.groups.plugdev = { };
+  };
+}
+#+end_src
+
+Then add the module, enable it and build the image, but before =nixos-rebuild
+switch=, validate the udev rules by finding the result and running:
+
+#+begin_src shell
+udevadm verify --resolve-names=never \
+    /nix/store/$systemDerivation/etc/udev/rules.d/99-rk-rockusb.rules
+#+end_src
+***** Problem
+
+Getting this failure on =strace -e all rkdeveloptool dl $img= where it tries to
+write and fails.
+
+#+begin_example
+lseek(8, 0, SEEK_SET) = 0
+read(8,              "LDR f\0\v\1\0\0\0\0\0\1\351\7\n\t\10/\"8853\2f\0\0\09\1"..., 491520) = 491520
+read(8,              "\265\360\342\301P\306$\236\22\367X\216@\271\267\276\213\372%\335t\327oYF~\23A\356\375\365\221"..., 4096) = 448
+close(8) = 0
+openat(AT_FDCWD,     "/dev/bus/usb/005/008", O_RDWR|O_CLOEXEC) = -1 EACCES (Permission denied)
+munmap(0x7f3f55291000, 495616) = 0
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(0x88, 0x9), ...}) = 0
+write(1,             "\33[30;41mCreating Comm Object fai"..., 42) = 42
+exit_group(-255)                        = ?
+#+end_example
+
+Checked =sudo dmesg= and found =vendor=2207= =product=350b=
+
+#+begin_example text
+usb 5-4: new high-speed USB device number 8 using xhci_hcd
+usb 5-4: New USB device found, idVendor=2207, idProduct=350b, bcdDevice= 1.00
+usb 5-4: New USB device strings: Mfr=0, Product=0, SerialNumber=0
+#+end_example
+
+***** Check =udev=
+
+#+begin_src shell
+thisdev=/dev/bus/usb/005/008
+udevadm info $thisdev # this dumps everything
+
+# to grab for a script (still requires knowing the device name/path)
+vendor=$(udevadm info -q property --property="ID_VENDOR" --value $thisdev)
+model=$(udevadm info -q property --property="ID_MODEL" --value $thisdev)
+#+end_src
+
+Searched within =./nixos/modules= in =nixos/nixpkgs= for =plugdev=
+
++ found =rtl-sdr=, loaded via =nix shell nixpkgs#rtl-sdr=
++ the package for that modules runs some replacements on the =udev= rules to add
+  the =plugdev= group
++ used =env | grep rtl-sdr= to find a =$nixBinPath= to check
++ then ran =cat $nixBinPath/../etc/rules.d/rtl-sdr.rules=
+
+**** Backup existing loader
+*** rockchip-linux/rkbin =74213af1=
+
+This builds the SPL Loader, which programs the RK3588 to be booted by a host
+computer, according to gemini.
+
+**** Building the loader
+
+We're supposed to run the blob =./tools/boot_merger=
+
++ After clone, run =./tools/boot_merger RKBOOT/RK3588MINIALL.ini=
++ This creates =rk3588_spl_loader_v1.19.113.bin=, which is specified by the =ini=
+
+This shows that quite a bit differs.
+
+#+begin_src shell :eval never
+rkbin=rkbin/rk3588_spl_loader_v1.19.113.bin
+radxa=radxa/RADXA_rk3588_spl_loader_v1.15.113.bin
+diffoscope $rkbin $radxa
+#+end_src
+
+The file isn't ELF. Instead it begins with =LDR=, which i think is a "boot stream"
+... so i guess i was correct in thinking the =MaskROM= pauses the boot. The loader
+file then contains something the CPU can interpret at that stage.
+
+#+begin_src shell
+head -c3 rkbin/rk3588_spl_loader_v1.19.113.bin
+#+end_src
+
+#+RESULTS:
+: LDR
+
+
+**** Base RK35888
+
+#+begin_src shell :results output verbatim code :wrap example conf
+cat $obtmp/rkbin/RKBOOT/RK3588MINIALL.ini
+#+end_src
+
+#+RESULTS:
+#+begin_example conf
+[CHIP_NAME]
+NAME=RK3588
+[VERSION]
+MAJOR=1
+MINOR=11
+[CODE471_OPTION]
+NUM=1
+Path1=bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.19.bin
+Sleep=1
+[CODE472_OPTION]
+NUM=1
+Path1=bin/rk35/rk3588_usbplug_v1.11.bin
+[LOADER_OPTION]
+NUM=2
+LOADER1=FlashData
+LOADER2=FlashBoot
+FlashData=bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.19.bin
+FlashBoot=bin/rk35/rk3588_spl_v1.13.bin
+[OUTPUT]
+PATH=rk3588_spl_loader_v1.19.113.bin
+[SYSTEM]
+NEWIDB=true
+[FLAG]
+471_RC4_OFF=true
+RC4_OFF=true
+[BOOT1_PARAM]
+WORD_0=0x0
+WORD_1=0x0
+WORD_2=0x0
+WORD_3=0x0
+WORD_4=0x0
+WORD_5=0x0
+WORD_6=0x0
+WORD_7=0x0
+#+end_example
+
+***** IPC
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff $obtmp/rkbin/RKBOOT/RK3588MINIALL{,_IPC}.ini
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+20c20,21
+< PATH=rk3588_spl_loader_v1.19.113.bin
+---
+> PATH=rk3588_download_v1.19.113.bin
+> IDB_PATH=rk3588_idblock_v1.19.113.img
+25a27
+> CREATE_IDB=true
+#+end_example
+
+***** PCIE_EP
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff $obtmp/rkbin/RKBOOT/RK3588MINIALL{,_PCIE_EP}.ini
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+17,18c17,18
+< FlashData=bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.19.bin
+< FlashBoot=bin/rk35/rk3588_spl_v1.13.bin
+---
+> FlashData=bin/rk35/rk3588_pcie_v2.20.bin
+> FlashBoot=bin/rk35/rk3588_pcie_v2.20.bin
+20c20
+< PATH=rk3588_spl_loader_v1.19.113.bin
+---
+> PATH=rk3588_pcie_loader_v2.20.bin
+26,34c26
+< [BOOT1_PARAM]
+< WORD_0=0x0
+< WORD_1=0x0
+< WORD_2=0x0
+< WORD_3=0x0
+< WORD_4=0x0
+< WORD_5=0x0
+< WORD_6=0x0
+< WORD_7=0x0
+---
+> CREATE_IDB=true
+#+end_example
+
+***** RAMBOOT
+
+Nics.... =null{0,1}.bin=
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff $obtmp/rkbin/RKBOOT/RK3588MINIALL{,_RAMBOOT}.ini
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+5c5
+< MINOR=11
+---
+> MINOR=6
+12c12
+< Path1=bin/rk35/rk3588_usbplug_v1.11.bin
+---
+> Path1=bin/rk35/rk3588_ramboot_v1.06.bin
+17,18c17,18
+< FlashData=bin/rk35/rk3588_ddr_lp4_2112MHz_lp5_2400MHz_v1.19.bin
+< FlashBoot=bin/rk35/rk3588_spl_v1.13.bin
+---
+> FlashData=bin/rk35/rk3588_ramboot_null0.bin
+> FlashBoot=bin/rk35/rk3588_ramboot_null1.bin
+20c20
+< PATH=rk3588_spl_loader_v1.19.113.bin
+---
+> PATH=rk3588_ramboot_loader_v1.19.106.bin
+26,34d25
+< [BOOT1_PARAM]
+< WORD_0=0x0
+< WORD_1=0x0
+< WORD_2=0x0
+< WORD_3=0x0
+< WORD_4=0x0
+< WORD_5=0x0
+< WORD_6=0x0
+< WORD_7=0x0
+#+end_example
+
+
+* Learns
+
+** udev+strace
+
+monitor events. You can specify vendor/model, but i think the device is being
+dropped/readded, where the =rkdeveloptool= gets confused.
+
+#+begin_src shell
+rkbin=rkbin/rk3588_spl_loader_v1.19.113.bin
+udevout=rkbin/udev2.monitor
+straceout=rkbin/udev2.strace
+
+udevadm monitor -p all -k -u > $udevout
+
+# another shell
+strace -e all -o $straceout rkdeveloptool db $rkbin
+#+end_src
+
+Actually, I would expect this the drop/add to occur (i think?)
+
++ I'm not sure bc the =.bin= should really only induce the minimal changes
++ the =LDR= code is telling the =OPi= CPU how to init hardware for MaskROM mode.
+  necessary in the CPU state
++ That's definitely what's happening in the =rk= output, in =udev= and in =strace=
++ When it didn't have permissions, it was getting =EACCES=, but i think there's a
+  race condition because the file straight up doesn't exist.
+
+#+begin_example strace
+fstat(7, {st_mode=S_IFREG|0644, st_size=491968, ...}) = 0
+lseek(7, 0, SEEK_SET)                   = 0
+read(7, "LDR f\0\v\1\0\0\0\0\0\1\351\7\n\t\10/\"8853\2f\0\0\09\1"..., 491520) = 491520
+read(7, "\265\360\342\301P\306$\236\22\367X\216@\271\267\276\213\372%\335t\327oYF~\23A\356\375\365\221"..., 4096) = 448
+close(7)                                = 0
+openat(AT_FDCWD, "/dev/bus/usb/005/026", O_RDWR|O_CLOEXEC) = -1 ENODEV (No such device)
+munmap(0x7fbe19587000, 495616)          = 0
+fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(0x4, 0x4), ...}) = 0
+ioctl(1, TCGETS, {c_iflag=BRKINT|ICRNL|IXON|IMAXBEL|IUTF8, c_oflag=NL0|CR0|TAB0|BS0|VT0|FF0|OPOST|ONLCR, c_cflag=B38400|CS8|CREAD|HUPCL, c_lflag=ISIG|ICANON|ECHO|ECHOE|ECHOK|IEXTEN|ECHOCTL|ECHOKE, ...}) = 0
+write(1, "\33[30;41mCreating Comm Object fai"..., 42) = 42
+exit_group(-255)                        = ?
+#+end_example
+
+When it can't find the device, it tries to refresh it... but i'm not seeing that
+in the strace, only the =udevadm monitor=
+
+
+*** Randomness
+
+In the strace, it constantly shows =getrandom(...)=, though it specifies
+=GNRD_INSECURE=. idk why it needs so much randomness if it's not worried about
+entropy.
+
+*** USB Device Enumeration
+
+According to the strace, it definitely enumerates the USB devices on your
+system. However, I think this is because I ran =rkdeveloptool ld= to list devices.
+
+
+**** PCIe Subsystem
+
+It can be missing, apparently. That, or =rkdeveloptool= doesn't know where it is
+
+#+begin_src shell
+find /sys/devices/pci0000\:00/ -name 'subsystem' | tree --fromfile .
+#+end_src
+
+Maybe it's good that I didn't grant this tool ... um sudo? for system stability
+reason? to be fair, i did build their =rkbin= SDL loader image (kinda dumb)
+
+The USB devices should be at =PCI= bus addresses like these... specifically
+somewhere in =usb5=
+
+#+begin_src shell :results output verbatim code :wrap verse 
+find /sys/devices/pci0000\:00/0000:00:08.1 -type d -name 'usb*' | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_verse
+.
+└── sys
+    └── devices
+        └── pci0000:00
+            └── 0000:00:08.1
+                └── 0000:0d:00.3
+                    ├── usb5
+                    │   └── 5-0:1.0
+                    │       ├── usb5-port1
+                    │       ├── usb5-port2
+                    │       ├── usb5-port3
+                    │       └── usb5-port4
+                    └── usb6
+                        └── 6-0:1.0
+                            ├── usb6-port1
+                            ├── usb6-port2
+                            ├── usb6-port3
+                            └── usb6-port4
+
+10 directories, 8 files
+#+end_verse
