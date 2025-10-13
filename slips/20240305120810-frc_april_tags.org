@@ -4,6 +4,7 @@
 #+TITLE: FRC: April Tags
 #+CATEGORY: slips
 #+TAGS:  
+#+OPTIONS: html-style: nil
 
 Notes from [[https://docs.wpilib.org/en/stable/docs/software/vision-processing/wpilibpi/walkthrough-video.html][FRC Vision with Raspberry Pi & Robot Simulation with WPILib]]
 
@@ -19,6 +20,12 @@ Notes from [[https://docs.wpilib.org/en/stable/docs/software/vision-processing/w
 **** [[https://github.com/wpilibsuite/allwpilib/blob/main/ntcore/doc/networktables4.adoc][Version 4.1 Spec]]
 
 + [[https://github.com/wpilibsuite/allwpilib/blob/main/ntcore/doc/networktables4.adoc#server-published-meta-topics][Server-published Meta Topics]]
+** April Tags
+
++ [[https://github.com/shueja/apriltag-svgs/tree/main?tab=readme-ov-file][shueja/apriltag-svgs]]
+  - the svg path goes from top-left to bottom right and paints the white pixels,
+    then does the same for the black pixels.
+  - this only includes 41 tags
 
 ** Raspberry PI
 + [[https://azeria-labs.com/emulate-raspberry-pi-with-qemu/][RPi on QEMU]] an older guide for emulating Raspberry Pi hardware
@@ -113,6 +120,182 @@ IDK if it matters.
 ** Potential Problems
 
 Ensuring the Device UUIDs are always the same.
+
+* Topics
+
+** Initial Setup
+
+*** OV9782
+
+** Tag Families
+
+*** FRC uses =36h11=
+
+Conversion from =Tag36h11= in its =TagFamily= constructor
+
++ one to one correspondence b/w the classic family and the =36= bits of signal
+  space in a =2D= area. The Java longs referenced in the constructor convert into
+  pixels
++ the coding system enforces a minimum distance of =11b= hamming distance between
+  all codes.
+
+#+begin_src java
+public TagFamily(int area, int minimumHammingDistance, long codes[]) {
+    this(LayoutUtil.getClassicLayout((int) Math.sqrt(area) + 4),
+         minimumHammingDistance,
+         upgradeCodes(codes, (int) Math.sqrt(area)));
+}
+#+end_src
+
+Using python (just wondering)
+
+#+begin_src python :results output verbatim
+import sys
+
+apr = [
+    0xd5d628584,0xd97f18b49,0xdd280910e,0xe479e9c98,0xebcbca822,0xf31dab3ac,
+    0x056a5d085,0x10652e1d4,0x22b1dfead,0x265ad0472,0x34fe91b86,0x3ff962cd5,
+    0x43a25329a,0x474b4385f,0x4e9d243e9,0x5246149ae,0x5997f5538,0x683bb6c4c,
+    0x6be4a7211,0x7e3158eea,0x81da494af,0x858339a74,0x8cd51a5fe,0x9f21cc2d7,
+    0xa2cabc89c,0xadc58d9eb,0xb16e7dfb0,0xb8c05eb3a,0xd25ef139d,0xd607e1962,
+    0xe4aba3076,0x2dde6a3da,0x43d40c678,0x5620be351,0x64c47fa65,0x686d7002a]
+
+m = sys.maxsize
+print(f'{m:63b}')
+print(f'{apr[0]:63b}')
+print(f'{apr[1]:63b}')
+print(f'{(apr[0]^apr[1]):63b}')
+
+print(f'{apr[2]:63b}')
+print(f'{apr[3]:63b}')
+
+print(f'{apr[4]:63b}')
+print(f'{apr[5]:63b}')
+print(f'{(apr[2]^apr[3]):63b}')
+print(f'{(apr[4]^apr[5]):63b}')
+
+x=(apr[0]^apr[1])
+y=(apr[2]^apr[3])
+z=(apr[4]^apr[5])
+#+end_src
+
+
+#+RESULTS:
+#+begin_example
+111111111111111111111111111111111111111111111111111111111111111
+                           110101011101011000101000010110000100
+                           110110010111111100011000101101001001
+                               11001010100100110000111011001101
+                           110111010010100000001001000100001110
+                           111001000111100111101001110010011000
+                           111010111100101111001010100000100010
+                           111100110001110110101011001110101100
+                             1110010101000111100000110110010110
+                              110001101011001100001101110001110
+#+end_example
+** Dimensions
+
+*** References To Constant Size
+
+photonvision/photonvision
+
+#+begin_example grep
+photon-core/src/main/java/org/photonvision/vision/target/TargetModel.java:141:    // 2024 AprilTag, with 6.5 inch marker width (inner black square).
+photon-core/src/main/java/org/photonvision/vision/target/TargetModel.java:146:                    new Point3(-Units.inchesToMeters(6.5 / 2.0), Units.inchesToMeters(6.5 / 2.0), 0),
+photon-core/src/main/java/org/photonvision/vision/target/TargetModel.java:147:                    new Point3(Units.inchesToMeters(6.5 / 2.0), Units.inchesToMeters(6.5 / 2.0), 0),
+photon-core/src/main/java/org/photonvision/vision/target/TargetModel.java:148:                    new Point3(Units.inchesToMeters(6.5 / 2.0), -Units.inchesToMeters(6.5 / 2.0), 0),
+photon-core/src/main/java/org/photonvision/vision/target/TargetModel.java:149:                    new Point3(-Units.inchesToMeters(6.5 / 2.0), -Units.inchesToMeters(6.5 / 2.0), 0)),
+photon-core/src/main/java/org/photonvision/vision/target/TargetModel.java:150:            Units.inchesToMeters(6.5));
+photon-lib/py/photonlibpy/estimation/targetModel.py:179:        return cls.createPlanar(width=6.5 * 0.0254, height=6.5 * 0.0254)
+photon-targeting/src/main/java/org/photonvision/estimation/TargetModel.java:43:            new TargetModel(Units.inchesToMeters(6.5), Units.inchesToMeters(6.5));
+photon-client/src/components/dashboard/tabs/AprilTagTab.vue:28:      :items="['AprilTag 36h11 (6.5in)', 'AprilTag 16h5 (6in)']"
+photon-client/src/components/dashboard/tabs/PnPTab.vue:28:        { name: '2024 AprilTag 6.5in (36h11)', value: TargetModel.AprilTag6p5in_36h11 },
+photon-core/src/main/java/org/photonvision/vision/pipeline/AprilTagPipeline.java:80:            // 2024 tag, 6.5in
+photon-core/src/main/java/org/photonvision/vision/pipeline/AprilTagPipeline.java:81:            tagWidth = Units.inchesToMeters(6.5);
+photon-core/src/main/java/org/photonvision/vision/pipeline/ArucoPipeline.java:92:                        // 2024 tag, 6.5in
+photon-core/src/main/java/org/photonvision/vision/pipeline/ArucoPipeline.java:93:                        tagWidth = Units.inchesToMeters(6.5);
+photon-core/src/main/java/org/photonvision/vision/pipeline/ArucoPipeline.java:98:                        // 2024 tag, 6.5in
+photon-targeting/src/main/native/include/photon/estimation/TargetModel.h:114:static const TargetModel kAprilTag36h11{6.5_in, 6.5_in};
+#+end_example
+
++ ./photon-targeting/src/main/java/org/photonvision/estimation/TargetModel.java
++ ./photon-client/src/components/dashboard/tabs/AprilTagTab.vue
++ ./photon-client/src/components/dashboard/tabs/PnPTab.vue
+
+*** Printable
+
+#+begin_src emacs-lisp
+;; doesn't work in subtree :PROPERTIES: or the document #+OPTIONS: if
+;; exporting a subtree
+(setq-local org-html-head-include-default-style nil
+            org-html-preamble nil
+            org-html-postamble nil)
+#+end_src
+
++ Generate =April Tags= subtree with =C-c C-e C-s h H=.
++ Copy CSS into page using devtools
++ Print with zero margins.
++ cut within =0.125"= inside of the border
+  
+**** April Tags
+
+#+begin_export html
+<div class="april">00<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00000.svg"></div>
+<div class="april">01<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00001.svg"></div>
+<div class="april">02<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00002.svg"></div>
+<div class="april">03<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00003.svg"></div>
+<div class="april">04<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00004.svg"></div>
+<div class="april">05<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00005.svg"></div>
+<div class="april">06<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00006.svg"></div>
+<div class="april">07<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00007.svg"></div>
+<div class="april">08<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00008.svg"></div>
+<div class="april">09<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00009.svg"></div>
+<div class="april">10<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00010.svg"></div>
+<div class="april">11<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00011.svg"></div>
+<div class="april">12<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00012.svg"></div>
+<div class="april">13<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00013.svg"></div>
+<div class="april">14<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00014.svg"></div>
+<div class="april">15<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00015.svg"></div>
+<div class="april">16<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00016.svg"></div>
+<div class="april">17<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00017.svg"></div>
+<div class="april">18<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00018.svg"></div>
+<div class="april">19<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00019.svg"></div>
+<div class="april">20<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00020.svg"></div>
+<div class="april">21<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00021.svg"></div>
+<div class="april">22<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00022.svg"></div>
+<div class="april">23<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00023.svg"></div>
+<div class="april">24<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00024.svg"></div>
+<div class="april">25<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00025.svg"></div>
+<div class="april">26<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00026.svg"></div>
+<div class="april">27<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00027.svg"></div>
+<div class="april">28<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00028.svg"></div>
+<div class="april">29<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00029.svg"></div>
+<div class="april">30<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00030.svg"></div>
+<div class="april">31<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00031.svg"></div>
+<div class="april">32<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00032.svg"></div>
+<div class="april">33<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00033.svg"></div>
+<div class="april">34<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00034.svg"></div>
+<!-- <div class="april">35<img src="https://raw.githubusercontent.com/shueja/apriltag-svgs/refs/heads/main/tag36h11/tag36_11_00035.svg"> -->
+#+end_export
+
+
+**** Not working
+
+At least not in this way. See [[https://orgmode.org/manual/CSS-support.html][CSS Support]]
+
+=noweb= defintely does not work with =#+export_html=
+
+#+begin_example org
+#+attr_html: :style visibility: hidden
+#+begin_example css :noweb-ref htmlstyle
+html { width: 100%; height: 100%; margin: 0; padding: 0; }
+body { width: 8.5in; height: 11.0in; margin: 0.0125in; padding: 0; }
+img { width: 1.0in; height: 1.0in; padding: 0.125in; border: 0.025in black solid }
+#content { margin: 0; padding: 0; } 
+h1 { visibility: hidden; width: 0; height: 0; }
+.april { display: inline-block; }
+#+end_example
+#+end_example
 
 * Roam
 + [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]

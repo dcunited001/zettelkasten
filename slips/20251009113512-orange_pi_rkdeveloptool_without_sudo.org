@@ -5,6 +5,8 @@
 #+CATEGORY: slips
 #+TAGS:  
 
+Spoiler: it ends in =sudo=
+
 * Roam
 + [[id:35cdd063-b646-4141-83ea-fcac8b337875][Orange Pi]]
 + [[id:708d6f59-64ad-473a-bfbb-58d663bde4f0][IoT]]
@@ -340,6 +342,14 @@ diff $obtmp/rkbin/RKBOOT/RK3588MINIALL{,_RAMBOOT}.ini
 
 * Learns
 
+** Maybe its the...
+
++ USB port? found one with nothing else on bus. checked: they're all USB3 Gen2
+  - didn't work
++ Different USB cable? no luck
+
+Last time, I really just had to fail over to running it on arch... but that was on guix
+
 ** udev+strace
 
 monitor events. You can specify vendor/model, but i think the device is being
@@ -358,7 +368,8 @@ strace -e all -o $straceout rkdeveloptool db $rkbin
 
 Actually, I would expect this the drop/add to occur (i think?)
 
-+ I'm not sure bc the =.bin= should really only induce the minimal changes
++ I'm not sure bc the =.bin= should really only induce the minimal changes. I'm
+  hesitent bc maybe it readds the device under another vendor/model
 + the =LDR= code is telling the =OPi= CPU how to init hardware for MaskROM mode.
   necessary in the CPU state
 + That's definitely what's happening in the =rk= output, in =udev= and in =strace=
@@ -382,6 +393,9 @@ exit_group(-255)                        = ?
 When it can't find the device, it tries to refresh it... but i'm not seeing that
 in the strace, only the =udevadm monitor=
 
++ jumping between vty's while using =uwsm= may be causing problems (the =udevadm
+  monitor= keeps showing headphones and other devices jumping on/off)
++ a restart may fix it, since I changed =udev=
 
 *** Randomness
 
@@ -436,3 +450,109 @@ find /sys/devices/pci0000\:00/0000:00:08.1 -type d -name 'usb*' | tree --fromfil
 
 10 directories, 8 files
 #+end_verse
+
+** Removing custom rules
+
+*** Comparison with =sudo=
+
+Really weird
+
++ =sudo strace -e all -o spi/rkbin/udev5.sudo.strace rkdeveloptool db $loader=
+  - udev rules are active (device can't be found)
++ =strace -e all -o spi/rkbin/udev6.sudo.strace rkdeveloptool db $loader=
+  - after removing udev rules (device apparently shows up in time)
+
+#+begin_src shell
+diff --color=always \
+    <(tail -n30 spi/rkbin/udev5.sudo.strace) \
+    <(tail -n30 spi/rkbin/udev6.strace)
+#+end_src
+
+#+begin_example diff
+1,16c1,16
+< close(7)                                = 0
+< getrandom("\x57\xcd\x43\xa1\x98\x62\x7a\x9d\x2f\x66\xb5\x8e\x6d\x37\x3f\x87", 16, GRND_INSECURE) = 16
+< getrandom("\x59\x5f\x13\x8b\x7f\xb2\xec\xfd\x10\x65\xf1\x3a\x27\xff\xe2\x33", 16, GRND_INSECURE) = 16
+< openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/busnum", O_RDONLY|O_CLOEXEC) = 7
+< read(7, "6\n", 19)                      = 2
+< close(7)                                = 0
+< openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/devnum", O_RDONLY|O_CLOEXEC) = 7
+< read(7, "1\n", 19)                      = 2
+< close(7)                                = 0
+< openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/speed", O_RDONLY|O_CLOEXEC) = 7
+< read(7, "10000\n", 19)                  = 6
+< close(7)                                = 0
+< openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/descriptors", O_RDONLY|O_CLOEXEC) = 7
+< read(7, "\22\1\20\3\t\0\3\tk\35\3\0\26\6\3\2\1\1\t\2\37\0\1\1\0\340\0\t\4\0\0\1"..., 256) = 49
+< close(7)                                = 0
+< recvfrom(5, NULL, 0, MSG_PEEK|MSG_TRUNC, NULL, NULL) = -1 EAGAIN (Resource temporarily unavailable)
+---
+> close(8)                                = 0
+> getrandom("\x40\x55\xce\xed\xf5\x78\xd7\x5e\xf4\x94\xb4\x52\x3b\x5a\xaf\x9e", 16, GRND_INSECURE) = 16
+> getrandom("\x13\x41\x5d\xd6\x8a\xbf\x12\x1d\x14\xcc\xbe\x18\x64\xa7\xa5\x16", 16, GRND_INSECURE) = 16
+> openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/busnum", O_RDONLY|O_CLOEXEC) = 8
+> read(8, "6\n", 19)                      = 2
+> close(8)                                = 0
+> openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/devnum", O_RDONLY|O_CLOEXEC) = 8
+> read(8, "1\n", 19)                      = 2
+> close(8)                                = 0
+> openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/speed", O_RDONLY|O_CLOEXEC) = 8
+> read(8, "10000\n", 19)                  = 6
+> close(8)                                = 0
+> openat(AT_FDCWD, "/sys/bus/usb/devices/usb6/descriptors", O_RDONLY|O_CLOEXEC) = 8
+> read(8, "\22\1\20\3\t\0\3\tk\35\3\0\26\6\3\2\1\1\t\2\37\0\1\1\0\340\0\t\4\0\0\1"..., 256) = 49
+> close(8)                                = 0
+> recvfrom(6, NULL, 0, MSG_PEEK|MSG_TRUNC, NULL, NULL) = -1 EAGAIN (Resource temporarily unavailable)
+18,27c18,27
+< openat(AT_FDCWD, "spi/rkbin/rk3588_spl_loader_v1.19.113.bin", O_RDONLY) = 7
+< mmap(NULL, 495616, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f5b7c29e000
+< fstat(7, {st_mode=S_IFREG|0644, st_size=491968, ...}) = 0
+< lseek(7, 0, SEEK_SET)                   = 0
+< read(7, "LDR f\0\v\1\0\0\0\0\0\1\351\7\n\t\10/\"8853\2f\0\0\09\1"..., 491520) = 491520
+< read(7, "\265\360\342\301P\306$\236\22\367X\216@\271\267\276\213\372%\335t\327oYF~\23A\356\375\365\221"..., 4096) = 448
+< close(7)                                = 0
+< openat(AT_FDCWD, "/dev/bus/usb/001/020", O_RDWR|O_CLOEXEC) = -1 ENODEV (No such device)
+< munmap(0x7f5b7c29e000, 495616)          = 0
+< fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(0x88, 0x3), ...}) = 0
+---
+> openat(AT_FDCWD, "spi/rkbin/rk3588_spl_loader_v1.19.113.bin", O_RDONLY) = 8
+> mmap(NULL, 495616, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f8b3f32a000
+> fstat(8, {st_mode=S_IFREG|0644, st_size=491968, ...}) = 0
+> lseek(8, 0, SEEK_SET)                   = 0
+> read(8, "LDR f\0\v\1\0\0\0\0\0\1\351\7\n\t\10/\"8853\2f\0\0\09\1"..., 491520) = 491520
+> read(8, "\265\360\342\301P\306$\236\22\367X\216@\271\267\276\213\372%\335t\327oYF~\23A\356\375\365\221"..., 4096) = 448
+> close(8)                                = 0
+> openat(AT_FDCWD, "/dev/bus/usb/001/025", O_RDWR|O_CLOEXEC) = -1 EACCES (Permission denied)
+> munmap(0x7f8b3f32a000, 495616)          = 0
+> fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(0x88, 0), ...}) = 0
+#+end_example
+
+
+And with sudo again, same thing
+
+#+begin_src shell
+diff --color=always \
+    <(tail -n30 spi/rkbin/udev5.sudo.strace) \
+    <(tail -n30 spi/rkbin/udev7.sudo.strace)
+#+end_src
+
+#+begin_example diff
+2,3c2,3
+< getrandom("\x57\xcd\x43\xa1\x98\x62\x7a\x9d\x2f\x66\xb5\x8e\x6d\x37\x3f\x87", 16, GRND_INSECURE) = 16
+< getrandom("\x59\x5f\x13\x8b\x7f\xb2\xec\xfd\x10\x65\xf1\x3a\x27\xff\xe2\x33", 16, GRND_INSECURE) = 16
+---
+> getrandom("\x5e\x8a\xc3\x19\x7f\x37\x2b\xf6\x5f\xbe\xc6\x4f\x33\x83\xd5\x02", 16, GRND_INSECURE) = 16
+> getrandom("\x04\x88\x40\x1f\x34\x6e\xaa\xaf\xf9\x57\xba\xea\x85\x42\xe9\xeb", 16, GRND_INSECURE) = 16
+19c19
+< mmap(NULL, 495616, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f5b7c29e000
+---
+> mmap(NULL, 495616, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f64e092a000
+25,27c25,27
+< openat(AT_FDCWD, "/dev/bus/usb/001/020", O_RDWR|O_CLOEXEC) = -1 ENODEV (No such device)
+< munmap(0x7f5b7c29e000, 495616)          = 0
+< fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(0x88, 0x3), ...}) = 0
+---
+> openat(AT_FDCWD, "/dev/bus/usb/001/026", O_RDWR|O_CLOEXEC) = -1 ENODEV (No such device)
+> munmap(0x7f64e092a000, 495616)          = 0
+> fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(0x88, 0x4), ...}) = 0
+#+end_example
