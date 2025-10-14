@@ -3,7 +3,7 @@
 :END:
 #+TITLE: TimelineJS: Create a simple timeline
 #+CATEGORY: slips
-#+TAGS:  
+#+TAGS:
 * Roam
 
 * Docs
@@ -14,7 +14,8 @@
 + [[https://workspace.google.com/marketplace/app/hash_calculator/250473016562?flow_type=2][Hash Calculator]]
 
 * Notes
-Why?
+
+** Why?
 
 I'm tired of this "psychotherapy-mulligan" my family keeps pulling. Introducing
 myself is extremely stressful when I don't know what I'm walking in to. I do _NOT_
@@ -22,14 +23,126 @@ want to be forcibly medicated on drugs which are known to destroy the cognition
 of people who do not need to be on them. They are lying, ignorant and abusive
 and shopping around for therapists who will be their "nurse ratchet on a stick"
 
+* Topics
+** TimelineJS
+
+Pretty simple. Gives you a public URL and is embeddable.
+
+*** Requirements
++ You can't edit the columns (or it warns you if you do)
+
+**** Entries
+
+**** Columns
+
++ =Media= requires a URL
++ =Media Caption= accepts HTML
+
+**** Types
+***** =era= vs =title=
+
++ An =era= shows up as a colored region
+  - Eras can be nested
++ A =title= is an event on the timeline
+  - a =title= requires an image (I'm using gravatars as placeholders)
+  - the images/media _must_ be unique AFAIK.
+
++ For eras that overlap, the latter ones will 00will appear above
+
+
+
+** App Scripts
+*** Keyboard
+
+| S-<space> | Select row        |
+| F2        | Edit Cell Formula |
+
+
+*** Gravatar source
+
+The correct approach
+
+#+begin_src javascript
+function SHA256(input) {
+  var hashBytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, input, Utilities.Charset.UTF_8);
+  var hexHash = "";
+  for (var i = 0; i < hashBytes.length; i++) {
+    var byteValue = hashBytes[i];
+    if (byteValue < 0) {
+      byteValue += 256; // Handle negative byte values
+    }
+    var hex = byteValue.toString(16);
+    if (hex.length === 1) {
+      hex = "0" + hex; // Pad with leading zero if necessary
+    }
+    hexHash += hex;
+  }
+
+  return hexHash;
+}
+
+function gravatarUrl(input) {
+  var hash = SHA256(input);
+  const gravatarPrefix = "https://gravatar.com/avatar"
+  return `${gravatarPrefix}/${hash}?d=robohash&f=y`
+}
+
+function GRAVATAR(input) {
+  return gravatarUrl(input);
+}
+
+function testGravatarUrl() {
+  Logger.log(GRAVATAR(22));
+  return GRAVATAR(22);
+}
+#+end_src
+
+The dumb approach
+
+#+begin_src javascript
+function pad(n, width, z) {
+  z = z || '0';
+  n = n + '';
+  return n.length >= width ? n : new Array(width - n.length + 1).join(z) + n;
+}
+function testPad() {
+  Logger.log(pad(32,64,'0'));
+  return pad(32,64,'0');
+}
+
+/**
+ ,* Calculate a gravatar URL
+ ,*
+ ,* @param {num} input A number to convert to hex and insert in gravatar URL.
+ ,* @return The gravatar URL
+ ,* @customfunction
+ ,*/
+function dumbGravatarUrl(num) {
+  let hex = num.toString(16);
+  // let hash = Utilities.formatString('%64s', hex);
+  const gravatarPrefix = "https://gravatar.com/avatar";
+  Logger.log(`${gravatarPrefix}/${pad(hex,64,'0')}`);
+  return `${gravatarPrefix}/${pad(hex,64,'0')}?d=robohash&f=y`;
+}
+function testDumbGravatarFunction() {
+  dumbGravatarUrl(123)
+}
+#+end_src
+
 * Issues
 
-** App SCripts
+** App scripts
 *** TimelineJS Evaluation Context and App Scripts
 
-These are a bit wonky. The Knights Lab host doesn't always have access to the
-context which would otherwise load your spreadsheet's app scripts. I also didn't
-want to install a Google Workspace extension to calculate a hash.
+These are a bit wonky. I didn't want to install a Google Workspace extension to
+calculate a hash.
+
++ The Knights Lab host doesn't always have access to the context which would
+  otherwise load your spreadsheet's app scripts.
++ It now seems that the appscript functionality does work, but induces some
+  delay until the images are available.
+  - I was using =gravatarUrl(ROW())=, but I'm not sure if that works.
+  - update: =gravatarUrl(ROW())= does work (eventually)
 
 *** Testing and Debugging
 
