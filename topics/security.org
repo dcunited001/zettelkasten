@@ -1,0 +1,212 @@
+:PROPERTIES:
+:ID:       133c1418-9705-4528-8856-ccaea4a3d0ff
+:END:
+#+TITLE: Security
+#+DESCRIPTION: General Security
+#+TAGS:
+
+* Roam
+
+* Docs
+
+* Resources
+
+* KeepassXC
+
+** Resources
+
+*** [[https://github.com/keepassxreboot/keepassxc-browser][keepassxc-browser]]
+
+browser extension with libsodium transport (included by default)
+
++ [[https://github.com/keepassxreboot/keepassxc-browser/wiki/HowTo:-Special-situations-and-debugging][Special Situations and Debugging]]
+** Topics
+*** Integration
+
+This requires a lot of screenspace and state to troubleshoot
+
++ it would be a good idea to run the same
+
+**** KeepassXC Browser Integration on NixOS with Chromium
++ Running the =org.keepassxc.KeePassXC= from flatpak will get you =Error 5=
+  - this doesn't yield a useful =keepassClient= to run functions on in the
+    debugger.
++ Running =keepassxc= from nix
+  - these should be installed in the same profile.
+
+
+
+* Topics
+** Password Managers
+
+*** Organization
+
+Some universal truths of technology usage:
+
++ It's always easier to plan things out (or at least sketch things out) beforehand.
++ Correct mistakes early or be responsible for the technical debt.
++ It's useful to have a few options/ideas for transitions to new systems in the
+  future, but not everything needs to be decided in detail.
++ Ontologies, standards, conventions and protocols are the easiest ways to
+  reduce the complexity burden -- or in more "academic" terms, the "cognitive
+  load." It's not simple/easy to deal with and we can either be lazy individuals
+  or we can learn to live with standards/ontologies. (sorry not sory)
+
+#+begin_quote
+1Password makes these ontological decisions for you (which is nice)
+
++ tags over groups (but only if you're going to consistently tag)
++ groups help for bulk management, but you tend to lose a lot of the metadata
++ if you're testing migrating to a new password manager, then just add some
+  passwords one at time if you use them. then later, worry about the export.
+  you'll probably lose the metadata anyways unless you write this integration in
+  using their CLI tools.
+#+end_quote
+
+**** Categories
+I'm using a system based on the Apple App Store categories, simply because:
+
++ There is a social consensus as to what these categories are. It covers the
+  space sufficiently without much need to reorganize/shoehorn in the future.
++ It's old (and at least as well-tested as apple is successful). Also, the apps
+  that market themselves each must answer the question "What kind of app am I?"
+  Therefore, I don't really need to make that decision ... at least not usually.
+
+Reusing this ontology across multiple apps makes organization efficient/simple.
+
+Subcategories may be distinct.
+
+***** Automatic enumeration
+
+Using this command prints the filetree that corresponds to a list of files
+
+#+begin_src sh
+find . -maxdepth 3 -type d -wholename "*terraform*" ! -name ".git" -print | tree --fromfile .
+#+end_src
+
+So all I need to do is get the categories to look like paths and =tree= will draw
+it in CLI or in JSON/XML. The =pwsafe-cli= and =loxodo.py= scripts don't enumerate
+groups without exporting or outputting passwords, so I just manually listed the
+categories with some edits.
+
+It's already fairly close to the apple categories, but needs a lot of edits.
+Ultimately, I'll partition these passwords into two sets for the main identity
+(with a few extra details) and then one for each additional identity. When
+planning this, it really helps to just see the shapes of data in plain text.
+
+#+begin_src sh :results output verbatim :var catfile=(read)
+cat $catfile | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+├── academic
+├── art
+├── btc
+├── cmd
+├── Comms
+├── design
+├── dev
+│   ├── apache
+│   ├── appistack
+│   ├── guix
+│   ├── keychains
+│   ├── keys
+│   ├── misc
+│   ├── open-source
+│   ├── ops
+│   ├── star-tek
+│   └── zig
+├── DG
+├── dj
+├── edu
+├── fin
+├── forum
+├── forums
+├── games
+├── govt
+├── gpg
+├── inet
+├── irc
+├── job
+│   ├── facebook
+│   └── walmart
+├── med
+├── misc
+├── net
+│   ├── keys
+│   └── wifi
+├── oscilio
+├── proverse (aeronautical)
+├── retail
+├── ro
+│   └── xel
+│       └── io
+├── skateplay
+├── social
+└── Support
+
+6 directories, 41 files
+#+end_example
+
+
+**** Guidelines
+
+Need hard & fast rules for:
+
++ deciding where something is
++ where new entries should go
+
+Should be based on:
+
++ Feature utilization (automation/urls)
++ Consistent categories
+
+The identity is the primary distinguishing factor:
+
++ This should always be treated as a hard partition on the organization of
+  secrets. Why? Simply because it's a fact of how these authentication systems
+  operate. Therefore, be aware of multiple identities you have and decide on how
+  you want to shape the development/usage of identity /beforehand/.
+
+Needs to be multi-client!
+
++ Compartmentalization always makes things more complicated
+  + An email's accounts should be created to be associated with that online
+    identity (from now and into the foreseeable future). Designating this a
+    priori makes the complexity much easier to manage.
+  + Corporate accounts MUST be handled in this way. You should be well-aware of
+    any limited means of redundancy that you have established. i.e. it's
+    reasonable to put some of your passwords in two places, but you need to make
+    these decisions /beforehand/
+
+Factors determining how to handle organizing passwords into two apps or how to
+handle multiple safe configuration:
+
++ which passwords are you comfortable having exposed via video recording of PIN &
+  Password Entry? These can be easily rotated frequently, but ensure you do
+  that.
++ how will each platform need to handle the passwords/tokens? what automation is
+  possible and what metadata is required for it?
+
+*** Migration
+
++ [[https://infosec.press/ktneely/migrating-passwordsafe-to-keepassxc][Migrating Password Safe to KeepassXC]]
+
+*** Comparison
+
+From [[https://www.allthingssecured.com/reviews/password-managers/best-password-manager/][AllThingsSecured]]
+
+|                   | 1Password  | ProtonPass | Dashlane            | NordPass      | RoboForm  | Bitwarden   |
+|-------------------+------------+------------+---------------------+---------------+-----------+-------------|
+| Open Source       | ❌         | ✅         | Partially           | ❌            | ❌        | ✅          |
+| Launch Year       | June 2006  | June 2023  | May 2012            | November 2019 | 2000      | August 2016 |
+| Self Host?        | ❌         | ❌         | ❌                  | ❌            | ❌        | ✅          |
+| 2FA Authenticator | Paid Plans | Paid Plans | Yes (limited to 25) | Business only | Yes       | Paid Plans  |
+| Easy Import       | ✅         | ✅         | ✅                  | ✅            | ✅        | ✅          |
+| Mobile App        | ✅         | ✅         | ✅                  | ✅            | ✅        | ✅          |
+| Setup             | Easy       | Easy       | Easy                | Easy          | Easy      | Easy        |
+| Pricing           | $36        | $48        | $40                 | $25           | $24       | $10         |
+| [[https://www.allthingssecured.com/try/1password][1Password]]         | [[https://www.allthingssecured.com/yt/proton-unlimited][ProtonPass]] | [[https://www.allthingssecured.com/try/dashlane-ytbest][Dashlane]]   | [[https://www.allthingssecured.com/try/nordpass-best][NordPass]]            | [[https://www.allthingssecured.com/try/roboform][RoboForm]]      | [[https://www.bitwarden.com][Bitwarden]] |             |
+* Issues
