@@ -291,8 +291,158 @@ Emacs pairing based on [[https://en.wikipedia.org/wiki/Conflict-free_replicated_
 ** Topics
 
 *** Ensemble Programming
-
 *** Code Retreats
 + [[https://www.coderetreat.org/facilitators/gameoflife/][Game of Life]]
 *** Problems
 + [[https://www.cs.cornell.edu/courses/cs1380/2018sp/textbook/chapters/08/3/monty-hall-problem.html][Monty Hall Problem]]
+
+* Bison Parser Generator
+
+* Antlr Parser Generator
+** Docs
++ [[https://github.com/antlr/antlr4][antlr/antlr4]]
++ [[https://github.com/antlr/grammars-v4][antlr/grammars-v4]] and [[https://github.com/antlr/grammars-v4/wiki][wiki]] for example grammars
+** Resources
++ [[https://github.com/teverett/antlr4-cpp-example][teverett/antlr4-cpp-example]] but this is for modelica...
++ [[https://tomassetti.me/getting-started-antlr-cpp/#][Getting started with Antlr Cpp]] this covers generating cpp code
+
+** Topics
+
+*** Python
+
+**** Where?
+
+=java-antlr4-runtime-python= is used in:
+
++ [[https://cps.pages.gitlab.lrz.de/commonroad-route-planner/][CommonRoad's Route Planner]] for OmegaConf
++ [[https://github.com/notofonts/nototools][Nototools]] for Google's Noto font (for [[https://github.com/adobe-type-tools/afdko][Adobe's font devkit]])
+
+[[file:img/antlr4-revdeps.svg]]
+
+***** OmegaConf
+
+#+begin_quote
+OmegaConf is a hierarchical configuration system, with support for merging
+configurations from multiple sources (YAML config files, dataclasses/objects
+and CLI arguments) providing a consistent API regardless of how the
+configuration was created.
+#+end_quote
+
+Well that answers a really big question I've had (I think)... I just never
+thought there was actually a practical answer.
+
+#+begin_src python
+import sys
+import OmegaConf
+# sys.argv = ["script.py", "srv.port=82"]
+conf = OmegaConf.from_cli()
+# conf == { srv: { port: 82 } } # basically
+#+end_src
+
+Variable interpolation: this lets you automagically use Python dataclasses
+(instead of Ruby) to merge objects together, all in the pursuit of
+re-implementing =&yml_std_features=. So far, anyways (see [[https://docs.google.com/presentation/d/e/2PACX-1vT_UIV7hCnquIbLUm4NnkUpXvPEh33IKiUEvPRF850WKA8opOlZOszjKdZ3tPmf8u7hGNP6HpqS-NT5/pub?start=false&loop=false&delayms=3000&slide=id.g84632f636b_5_135][2.2 slides]]). Those don't
+really scope beyond a single file though. Also:
+
++ string interpolation
++ custom resolvers: specification of functions in yaml
++ =env.VARS= resolver
+
+It basically allows your python code to hint the order of evaluation when
+merging configs
+
++ You can choose =DictConfig= or types
++ You can =freeze= objects before (or after?) merging them into a =StructuredConfig=
++ You can lazily evaluate environment or process-specific details
+
+***** Antlr4 in OmegaConf
+
+The grammar has already generated code in the project, which uses =antlr= to
+ensure completeness of expressions contained in YAML.
+
++ [[https://github.com/omry/omegaconf/blob/fa8461729021558f19a538bcac789105c173637e/omegaconf/grammar_parser.py][./omegaconf/grammar_parser.py]]
++ [[https://github.com/omry/omegaconf/blob/fa8461729021558f19a538bcac789105c173637e/omegaconf/grammar_visitor.py][./omegaconf/grammar_visitor.py]]
+
+**** Testing Enumeration of C++ headers
+
+From [[https://github.com/antlr/grammars-v4/tree/master/cpp/Python3][antlr/grammars-v4 ./cpp/Python3]]
+
+#+begin_src shell
+git clone https://github.com/antlr4/grammars-v4
+cd cpp
+
+# the second one gives you the antlr4 python import
+guix shell antlr4 java-antlr4-runtime-python python
+
+lexer=CPP14Lexxer.g4
+parser=CPP14Parser.g4
+
+python3 transformGrammar.py
+#+end_src
+
+That ... does something:
+
+#+begin_example diff
+diff --git a/cpp/CPP14Parser.g4 b/cpp/CPP14Parser.g4
+index d89a8a83..39c5e667 100644
+--- a/cpp/CPP14Parser.g4
++++ b/cpp/CPP14Parser.g4
+@@ -817,8 +817,8 @@ memberDeclaratorList
+ memberDeclarator
+     : declarator (
+         virtualSpecifierSeq
+-        | { this.IsPureSpecifierAllowed() }? pureSpecifier
+-        | { this.IsPureSpecifierAllowed() }? virtualSpecifierSeq pureSpecifier
++        | { self.IsPureSpecifierAllowed() }? pureSpecifier
++        | { self.IsPureSpecifierAllowed() }? virtualSpecifierSeq pureSpecifier
+         | braceOrEqualInitializer
+     )
+     | declarator
+#+end_example
+
+Then =python= to start a repl
+
+#+begin_src python
+# import Python3.CPP14ParserBase
+
+# or from ./cpp/Python3 (but this requires __init__.py, I think)
+# import .CPP14ParserBase
+
+from antlr4 import * # this may be needed beforehand
+from Python3 import CPP14ParserBase
+
+help(CPP14LexerBase) # for help
+help(CPP14ParserBase)
+
+f="../../chromium/src/apps/switches.h"
+
+# from Gemini
+with open(f, 'r') as file:
+  data = file.read()
+
+# this sets up a pipeline, but not sure where the start button is
+input_stream = InputStream(data)
+lexer = CPP14ParserBase.Lexer(input_stream)
+token_stream = CommonTokenStream(lexer)
+parser = CPP14ParserBase.Parser(input_stream)
+
+# (parser.state == -1)
+# ... i'm pretty sure that's bad
+
+parser.getNumberOfSyntaxErrors() # ... hmmm. good?
+parser.getCurrentToken() # 47! 47 is very good.
+
+# .... yeh it expects java-style iterators (need to build out the Visitor or it
+# doesn't do anything)
+#+end_src
+
+Just use =grep=. Parser doesn't =.parse()=. I just need to reflect across the parse
+results. I don't really have time. For as many languages as there are examples,
+IDK where to go to figure out how =antlr4= expects its generated grammars in each
+langauge to behave -- there are about 10 languages per language.
+
++ [[https://github.com/antlr/grammars-v4/blob/master/_scripts/templates/Python3/st.Test.py][_scripts/templates/Python3/st.Test.py]] this may help.
++ OmegaConf is like built like a machine ... I can't bounce around 50+ python
+  files for =antlr= on a whim without some context clues.
+
+** Issues

@@ -24,10 +24,20 @@ Per-Feature
 
 *** Tab Group
 
-Source References:
+Combines nicely with =Name Window...= which i just found out about =(¬､¬)= which is
+better than never.
+
+**** Source References:
 
 + ./src/components/saved_tab_groups (saved as protobufs)
 + ./src/components/tab_groups
+
+
+**** Possible?
++ lock tab groups, so they don't change or can be re-instantiated later. would
+  require similar UI/UX constraints as pinned tabs
+
+
 *** DevTools
 **** Mocking
 Tools to help mock requests/data, design changes and modify content
@@ -46,7 +56,311 @@ Tools to help mock requests/data, design changes and modify content
   - see Chrome Exp. telnet client below
   - [[https://github.com/WICG/isolated-web-apps][WICG/isolated-web-apps]] the propoal
 
-*** PWAs:
+*** PWAs
+
+*** Management & Policy
+
+See [[chrome://management][chrome://management]] and [[chrome://policy][chrome://policy]]
+
+*** Building
+
+**** Checkout for build
+
+See [[https://source.chromium.org/chromium/chromium/src/+/main:docs/linux/build_instructions.md][build_instructions.md]]. For nix, instead [[https://chromium.googlesource.com/chromium/src/tools][clone code in nix shell]] using [[https://chromium.googlesource.com/chromium/src/tools/+/refs/heads/main/nix][the
+nix shell in the src/tools repository]]
+
+#+begin_src shell
+tools=https://chromium.googlesource.com/chromium/src/tools.git
+depot=https://chromium.googlesource.com/chromium/tools/depot_tools.git
+chkout=/some/path/cr/checkout/chromium
+mkdir -p $chkout
+cd $(dirname $chkout)/..
+git clone "$depot" depot_tools
+git clone "$tools" tools
+
+cd chromium && nix-shell ../tools/nix/shell.nix
+export "PATH=$(dirname $chkout)/depot_tools:$PATH"
+fetch --nohooks --no-history chromium
+#+end_src
+
+This should fetch the source into =$chkout=
+
+This is nice. It's actually what I /thought/ that LSP was like from idk
+2019-2022ish? Nope.
+
+#+begin_example shell
+# To set up clangd with remote indexing support, run the command below,
+# then copy the path into your editor config:
+NIX_SHELL_RUN='readlink /usr/bin/clangd' nix-shell tools/nix/shell.nix
+#+end_example
+
++ find -type d -name .git -print | tree --fromfile . :: this would visually
+  depict all the git repos
+
+#+begin_src shell :results output verbatim
+# this shows just the pieces i'm focused on for now (getting the --switches)
+find -type d -name .git -print | grep -v third_party | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── .
+    └── src
+        ├── chrome
+        │   └── test
+        │       └── data
+        │           ├── perf
+        │           │   ├── canvas_bench
+        │           │   └── frame_rate
+        │           │       └── content
+        │           └── xr
+        │               └── webvr_info
+        ├── docs
+        │   └── website
+        ├── media
+        │   └── cdm
+        │       └── api
+        ├── testing
+        │   └── libfuzzer
+        │       └── fuzzers
+        │           └── wasm_corpus
+        └── v8
+
+22 directories, 0 files
+#+end_example
+
+***** AI Prompts
+
+There are varying degrees in these prompts' usage of the imperative.
+
+Also ... =ctags= really not a bad idea
+
+#+begin_quote
+## Symbol Lookup
+
+- The user informed me that I can use the bash command 'readtags <symbol>' to
+  quickly look up files for a single symbol.
+- When looking up symbols, I should use the `readtags` tool first, and only use
+  full text search if that fails.
+#+end_quote
+
+**** Switches
+
+bingo
+
+#+begin_example shell
+grep --include='*.h' -re switch src/chrome/ | grep app
+# src/chrome/browser/ui/startup/web_app_startup_utils.h
+#+end_example
+
+mainly handled in startup. many namespaces have a "=name::switches= namepace
+
+The main ones would be in in the =src/chrome= project though
+
+#+begin_src shell :results output verbatim
+find src/chrome -name '*switches.h' -print | tree --fromfile .
+#+end_src
+
+#+begin_example
+.
+└── src
+    └── chrome
+        ├── browser
+        │   ├── actor
+        │   │   └── actor_switches.h
+        │   ├── ash
+        │   │   ├── android_sms
+        │   │   │   └── android_sms_switches.h
+        │   │   └── borealis
+        │   │       └── borealis_switches.h
+        │   ├── enterprise
+        │   │   └── connectors
+        │   │       └── device_trust
+        │   │           └── attestation
+        │   │               └── browser
+        │   │                   └── attestation_switches.h
+        │   ├── extensions
+        │   │   └── updater
+        │   │       └── extension_updater_switches.h
+        │   ├── google
+        │   │   └── switches.h
+        │   ├── headless
+        │   │   └── headless_mode_switches.h
+        │   ├── ip_protection
+        │   │   └── ip_protection_switches.h
+        │   ├── nearby_sharing
+        │   │   └── common
+        │   │       └── nearby_share_switches.h
+        │   ├── new_tab_page
+        │   │   └── modules
+        │   │       └── modules_switches.h
+        │   ├── predictors
+        │   │   └── predictors_switches.h
+        │   ├── signin
+        │   │   └── bound_session_credentials
+        │   │       └── bound_session_switches.h
+        │   └── webauthn
+        │       └── webauthn_switches.h
+        ├── common
+        │   └── chrome_switches.h
+        ├── test
+        │   └── base
+        │       ├── chromeos
+        │       │   └── crosier
+        │       │       └── helper
+        │       │           └── switches.h
+        │       └── test_switches.h
+        └── windows_services
+            └── service_program
+                └── switches.h
+#+end_example
+
+
+*** Repo
+
+**** Chromium Checkout
+
+***** Minilayout repos
+
+The checkout used by AUR is pretty large and needs submodules. For chromiumos,
+the instructions are in [[https://www.chromium.org/chromium-os/developer-library/guides/development/work-on-branch/#check-out-the-whole-tree-with-repo][ChromiumOS Guide to Working on Branches]] but it mentions
+a =minilayout= group. This includes =depot_tools= which sounds familiar... but it's
+definitely just =chromiumos=
+
+:PROPERTIES:
+:header-args+: :dir /tmp/tmp.gCH5ekm9XQ
+:END:
+
+After git =clone https://chromium.googlesource.com/chromiumos/manifest.git=
+
+Without =repo init=, these are the gruops. it doesn't require the full sync
+
+#+begin_src shell :results output table
+grep -re groups= manifest/full.xml | sed -E 's/ +groups="(.*)".*/\1/g' | tr ',' '\n' | sort | uniq #| tr '\n' ','
+#+end_src
+
+#+RESULTS:
+| bazel                |
+| bluetooth            |
+| buildtools           |
+| chromeos-admin       |
+| config               |
+| crostini             |
+| crosvm               |
+| devserver            |
+| firmware             |
+| fwsdk                |
+| kcam                 |
+| labtools             |
+| minilayout           |
+| moblab               |
+| notdefault           |
+| partner-config       |
+| paygen               |
+| satlab               |
+| sysmon               |
+| ti50                 |
+| touch-firmware-tests |
+| xolabs               |
+| zephyr               |
+
+#+name: jqProjByGroup
+#+begin_example jq
+.manifest.project[]
+| select((."@groups" // "")
+  | test($group))
+
+# | map({.project: .})
+#+end_example
+
+it's PITA to rewrap .project with manifest. =xq= doesn't jive with =DTD= anyways.
+
+#+name: crProjByGroup
+#+begin_src shell :results output code :wrap example xml :var q=jqProjByGroup group="minilayout"
+echo '<manifest>'
+xq -x --xml-root=project --arg 'group' "$group" "$q" manifest/full.xml \
+  | tidy -iq --tidy-mark no -w 0 --show-body-only auto --doctype omit -xml
+# meh, it's in the notes. same output.
+echo '</manifest>'
+#+end_src
+
+#+RESULTS:
+#+begin_example xml
+<manifest>
+<project path="src/repohooks" name="chromiumos/repohooks" groups="minilayout,paygen,firmware,buildtools,labtools,crosvm,fwsdk,ti50"></project>
+<project path="chromite" name="chromiumos/chromite" groups="minilayout,paygen,firmware,buildtools,chromeos-admin,labtools,sysmon,devserver,crosvm,fwsdk,ti50">
+  <copyfile src="AUTHORS" dest="AUTHORS"></copyfile>
+  <copyfile src="LICENSE" dest="LICENSE"></copyfile>
+</project>
+<project path="src/overlays" name="chromiumos/overlays/board-overlays" groups="minilayout,paygen,firmware"></project>
+<project path="src/platform/empty-project" name="chromiumos/infra/build/empty-project" revision="d2d95e8af89939f893b1443135497c1f5572aebc" groups="minilayout,paygen,firmware">
+  <annotation name="branch-mode" value="pin"></annotation>
+</project>
+<project path="src/scripts" name="chromiumos/platform/crosutils" groups="minilayout,paygen,firmware,buildtools,labtools,ti50"></project>
+<project path="src/third_party/pyelftools" name="chromiumos/third_party/pyelftools" revision="refs/heads/chromeos-0.22" groups="minilayout,paygen,firmware,buildtools"></project>
+<project path="bazel_deps/bazel-central-registry" name="external/github.com/bazelbuild/bazel-central-registry" revision="refs/heads/upstream/main" groups="minilayout,bazel,fwsdk,firmware,ti50"></project>
+<project path="bazel_deps/rules_cc" name="chromiumos/third_party/rules_cc" groups="minilayout,bazel,fwsdk,firmware,ti50"></project>
+<project path="bazel_deps/rules_pkg" name="chromiumos/third_party/rules_pkg" groups="minilayout,bazel,fwsdk,firmware,ti50"></project>
+<project path="bazel_deps/rules_rust" name="chromiumos/third_party/rules_rust" groups="minilayout,bazel,fwsdk,firmware,ti50"></project>
+<project path="src/bazel" name="chromiumos/bazel" groups="minilayout,bazel,fwsdk,firmware,ti50">
+  <linkfile src="workspace_root/general/WORKSPACE" dest="src/WORKSPACE"></linkfile>
+</project>
+<project path="src/platform2" name="chromiumos/platform2" groups="minilayout,paygen,crosvm,config,partner-config"></project>
+<project path="src/platform/crostestutils" name="chromiumos/platform/crostestutils" groups="minilayout,paygen,firmware,buildtools"></project>
+<project path="src/platform/dev" name="chromiumos/platform/dev-util" groups="minilayout,paygen,firmware,buildtools,devserver"></project>
+<project path="src/platform/tast" name="chromiumos/platform/tast" groups="minilayout,paygen,ti50"></project>
+<project path="src/platform/tast-tests" name="chromiumos/platform/tast-tests" groups="minilayout,paygen,ti50"></project>
+<project path="src/third_party/chromiumos-overlay" name="chromiumos/overlays/chromiumos-overlay" groups="minilayout,paygen,firmware,labtools,ti50" sync-c="true"></project>
+<project path="src/third_party/eclass-overlay" name="chromiumos/overlays/eclass-overlay" groups="minilayout,paygen,firmware,labtools"></project>
+<project path="src/third_party/gtest-parallel" name="external/github.com/google/gtest-parallel" revision="cd488bdedc1d2cffb98201a17afc1b298b0b90f1" groups="minilayout"></project>
+<project path="src/third_party/portage-stable" name="chromiumos/overlays/portage-stable" groups="minilayout,paygen,firmware,labtools"></project>
+<project path="src/third_party/toolchain-utils" name="chromiumos/third_party/toolchain-utils" groups="minilayout,paygen,firmware"></project>
+<project path="src/third_party/toolchains-overlay" name="chromiumos/overlays/toolchains" groups="minilayout,paygen,firmware,labtools"></project>
+<project path="src/chromium/depot_tools" remote="chromium" name="chromium/tools/depot_tools" revision="9e30d926fd13430266b3c0141b45790874e2fab3" groups="minilayout,paygen,firmware,buildtools,labtools,ti50"></project>
+</manifest>
+#+end_example
+
+
+****** config layout
+
+#+call: crProjByGroup(jqProjByGroup, "config")
+
+#+RESULTS:
+#+begin_example xml
+<manifest>
+<project path="src/config" name="chromiumos/config" groups="paygen,config,partner-config"></project>
+<project path="src/project_public" name="chromiumos/project" groups="partner-config"></project>
+<project path="src/platform2" name="chromiumos/platform2" groups="minilayout,paygen,crosvm,config,partner-config"></project>
+</manifest>
+#+end_example
+
+****** buildtools layout
+
+#+call: crProjByGroup(jqProjByGroup, "buildtools")
+
+#+RESULTS:
+#+begin_example xml
+<manifest>
+<project path="src/repohooks" name="chromiumos/repohooks" groups="minilayout,paygen,firmware,buildtools,labtools,crosvm,fwsdk,ti50"></project>
+<project path="chromite" name="chromiumos/chromite" groups="minilayout,paygen,firmware,buildtools,chromeos-admin,labtools,sysmon,devserver,crosvm,fwsdk,ti50">
+  <copyfile src="AUTHORS" dest="AUTHORS"></copyfile>
+  <copyfile src="LICENSE" dest="LICENSE"></copyfile>
+</project>
+<project path="src/scripts" name="chromiumos/platform/crosutils" groups="minilayout,paygen,firmware,buildtools,labtools,ti50"></project>
+<project path="src/third_party/pyelftools" name="chromiumos/third_party/pyelftools" revision="refs/heads/chromeos-0.22" groups="minilayout,paygen,firmware,buildtools"></project>
+<project path="src/platform/crostestutils" name="chromiumos/platform/crostestutils" groups="minilayout,paygen,firmware,buildtools"></project>
+<project path="src/platform/dev" name="chromiumos/platform/dev-util" groups="minilayout,paygen,firmware,buildtools,devserver"></project>
+<project path="src/platform/fw-testing-configs" name="chromiumos/platform/fw-testing-configs" groups="paygen,buildtools,labtools,devserver,firmware"></project>
+<project path="src/platform/vboot_reference" name="chromiumos/platform/vboot_reference" groups="paygen,firmware,buildtools,fwsdk"></project>
+<project path="src/third_party/autotest/files" name="chromiumos/third_party/autotest" groups="buildtools,labtools,devserver"></project>
+<project path="src/chromium/depot_tools" remote="chromium" name="chromium/tools/depot_tools" revision="9e30d926fd13430266b3c0141b45790874e2fab3" groups="minilayout,paygen,firmware,buildtools,labtools,ti50"></project>
+<project path="infra/chromite-HEAD" name="chromiumos/chromite" groups="buildtools,paygen">
+  <annotation name="branch-mode" value="tot"></annotation>
+</project>
+<project path="infra_virtualenv" name="chromiumos/infra_virtualenv" groups="buildtools,chromeos-admin,labtools,sysmon,devserver"></project>
+</manifest>
+#+end_example
 ** Issues
 
 * Electron

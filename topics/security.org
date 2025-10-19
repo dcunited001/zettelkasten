@@ -20,6 +20,10 @@
 browser extension with libsodium transport (included by default)
 
 + [[https://github.com/keepassxreboot/keepassxc-browser/wiki/HowTo:-Special-situations-and-debugging][Special Situations and Debugging]]
+*** Libsecret
+
++ [[https://github.com/keepassxreboot/keepassxc/pull/12252][Configure Freedesktop Secret Service Aliases]]
+
 ** Topics
 *** Browser Integration
 
@@ -32,13 +36,24 @@ Settings to change
 + always ask where to save
 + maybe set as default password manager
 
+**** Keepass Proxy
+
+A good way to test that at least the system-side component is running: this
+should show up in =pgrep -fa keepass= or =pgrep -fa chrom=
+
+=$nixStore-keepassxc-2.7.10/bin/keepassxc-proxy chrome-extension://$extensionId/=
+
+The =libsodium= integration for keepass needs chromium to communicate through
+that proxy process.
+
 **** KeepassXC Browser Integration on NixOS with Chromium
 
 ***** =Error 5: TIMEOUT_OR_NOT_CONNECTED=
 
-+ Running the =org.keepassxc.KeePassXC= from flatpak will get you 
-  - this doesn't yield a useful =keepassClient= to run functions on in the
-    debugger.
++ Running the =org.keepassxc.KeePassXC= from flatpak will get you this error
+  - doesn't yield a useful =keepassClient= to run functions on in the debugger
+  - happens because keepass doesn't really expect to need to jump through the
+    flatpak portal.
 
 #+begin_src javascript
 keepass.getDatabaseHash = async function(tab, args = []) {
@@ -60,6 +75,41 @@ I thought i had uninstalled keepass from flatpak, but had not. After that, I
 needed to reload the =keepassxc= browser extension page, but also trigger the
 initial database load from the extensions button in the browser bar next to the
 URL input.
+
+*** Automation
+
+**** Diffing
+
+Basically, as long as your directories don't change then =nix shell keepass-diff=
+should give you a decent over view
+
++ Changing directory structure WILL absolutely change the timestamps! So if you
+  care about that, then backup before major revisions (i kinda do, for clarity
+  and a separate means)
+
+*** Linux Desktop Integration
+
+Each keepassxc =.kdbx= file has a root and one/more subdirectories under it
+
++ For the browser, I can grant access to the entire safe, but it's configured to
+  prompt anyways.
++ For the Secret Service integration, I can grant access to subdirectories (the
+  one subdirectory in "one/more" mentioned above)
+  - this is a per-safe setting, so it's unclear how =keepassxc= manages
+
+**** Browser Integraton
+
++ The controlling =keepassxc= app can be configured to approve access to specific
+  credentials, which adds a bit of overhead. I split my passwords into two safes
+  anyways
+  - I may migrate the browser-safe credentials to something else, but for now
+    that's what I'm using
+
+have multiple collections! (and they can be individually locked!)
+
+**** Secret Service
+
+See [[id:feb4d288-6906-4661-a7eb-14f0fd358411][Security: Linux, Keepass and Secret Service Integration]] for more info
 
 * Topics
 ** Password Managers
