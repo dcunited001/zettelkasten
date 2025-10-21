@@ -7,12 +7,204 @@
 #+DESCRIPTION: notes
 
 
+* Roam                                                             :noexport:
++ [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
+
+* Overview
+
++ [[https://magit.vc/manual/forge.html#Initial-Setup][Initial Setup]]
+
+* Commands
+
+Some interesting ones
+
++ forge-remove-topic-locally :: remove marked topics from the local database. if
+  forge bumps the again during update, it will retrieve what's configured.
+  Useful when working with large repos for short periods of time.
+
+* Customization
+
+** Git
+
++ [[https://magit.vc/manual/forge.html#index-forge_002eremote][forge.remote]] :: Specifies the remote from which forge will pull
+
+** Emacs
+
++ forge-alist :: List of Git forges.
+  - Need to add forges like =invent.kde.org= or =gitlab.freedesktop.org=
+  - [[https://magit.vc/manual/forge.html#Supported-Forges-and-Hosts][Supported Forges and Hosts]]
++ forge-add-pullreq-refspect :: Whether the pull-request refspec is added when
+  setting up a repository. See [[https://magit.vc/manual/forge.html#index-forge_002dadd_002dpullreq_002drefspec][M-x forge-add-pullreq-refspec]] or the doc for the
+  homonymously named variable.
+
+** Accounts
+
++ forge-owned-accounts :: accounts owned by you. Should include your username as
+  well as any organization that you own.
+  - Used by =forge-list-owned-issues=, =forge-list-owned-pullreqs= and =forge-fork=.
+  - Form is =(ACCOUNT . PLIST)= where the =remote-name= property is the "default
+    name suggested by =forge-fork= for a fork created within this account"
++ forge-owned-ignored :: ignore these repos when listing your accounts' repos.
+
+** Repo List Columns
+
+Defaults below. This supports adding columes with arbitrary predicates (like =T=
+and =S=). Emacs pulls from =sqlite= and runs predicates with the =common-lisp= style
+=closql=.
+
+| Name     | Value                       | Width | Sort | Worktree |
+|----------+-----------------------------+-------+------+----------|
+| Owner    | owner                       |    20 | t    | nil      |
+| Name     | name                        |    20 | t    | nil      |
+| T        | forge-format-repo-condition |     1 | t    | nil      |
+| S        | forge-format-repo-selective |     1 | t    | nil      |
+| Worktree | worktree                    |    99 | t    | nil      |
+
+** Status Buffer
+
+Default Topic Filters
+
+| Object    | menu   | topic     | Limit list based on topic type.                                          |
+| Active    | toggle | on        | Limit list to active topics.                                             |
+| State     | menu   | open      | Limit list based on topic (public) state.                                |
+| Status    | menu   | all       | Limit list based on topic (private) status.                              |
+| Category  | menu   | all       | Limit list to discussions of given category.                             |
+| Milestone | menu   | all       | Limit list to issues and pull-requests assigned to given milestone.      |
+| Labels    | list   |           | Limit list to topics with at least one of the given labels.              |
+| Marks     | list   |           | Limit list to topics with at least one of the given marks.               |
+| Saved     | toggle | off       | Limit list to saved topics.                                              |
+| Author    | menu   | no filter | Limit list to topics created by given user.                              |
+| Assignee  | menu   | no filter | Limit list to topics assigned to given user.                             |
+| Reviewer  | menu   | no filter | Limit list to topics for which a review by the given user was requested. |
+| Order     | menu   | newest    | Order in which topics are listed.                                        |
+| Limit     | menu   | 200       | Number of topics to list at most.                                        |
+| Grouped   | toggle | off       | Whether to group topics by repository.                                   |
+
+* Schema
+
+This was generated using [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][Screwtapello/sqlite-schema-diagram]], using a similar
+process as [[id:c13684bd-77e7-46c6-98c6-a6486c2232d8][Firefox SQLite Schemas]], but I've since lost any notes used to do so.
+
+[[file:img/emacs-magit-forge-schema.svg]]
+
+* Data
+
+Setup
+
+#+begin_src emacs-lisp :results vector value :output silent :exports none
+(use-package! forge
+  :defer t
+  :after (:all magit graphql ghub)
+  :config
+  (setq forge-bug-reference-remote-files nil)
+  (add-to-list 'forge-owned-accounts '("dcunited001" "aionfork"))
+  (add-to-list 'forge-alist
+               '("invent.kde.org"
+                 "invent.kde.org/api/v4"
+                 "invent.kde.org"
+                 forge-gitlab-repository))
+  (add-to-list 'forge-alist
+               '("gitlab.freedestkop.org"
+                 "gitlab.freedesktop.org/api/v4"
+                 "gitlab.freedesktop.org"
+                 forge-gitlab-repository)))
+
+(after! forge
+  (map! :map forge-topic-mode-map
+        "c" #'forge-create-post
+        (:prefix ("e" . "FORGE-EDIT")
+                 "a" #'forge-edit-topic-assignees
+                 "d" #'forge-edit-topic-draft
+                 "k" #'forge-delete-comment
+                 "l" #'forge-edit-topic-labels
+                 "m" #'forge-edit-topic-marks
+                 ;; "M" #'forge-merge
+                 "n" #'forge-edit-topic-note
+                 "p" #'forge-edit-post
+                 "r" #'forge-edit-topic-review-requests
+                 "s" #'forge-edit-topic-state
+                 "t" #'forge-edit-topic-title)))
+#+end_src
+
+Creating
+
+#+begin_src emacs-lisp :results vector value :output silent :exports none
+(forge-create-mark "test2" 'modus-themes-mark-alt "modus-themes-mark-alt")
+#+end_src
+
+| "uuid1" | "testmark" | modus-themes-nuanced-cyan | "modus-themes-nuanced-cyan" |
+| "uuid2" | "test2"    | modus-themes-mark-alt     | "modus-themes-mark-alt"     |
+
+Deleting
+
+#+begin_src shell
+sqlite3 $forgedb 'delete * from mark;'
+#+end_src
+
+Exploring
+
+#+begin_src shell
+sqlite3 $forgedb '.schema mark'
+sqlite3 $forgedb '.schema'
+#+end_src
+
+Getting data
+
+#+begin_src emacs-lisp :results vector value :output silent :exports none
+(defun dc/forge-all-marks ()
+  "Gets generic marks from the `forge-database'."
+  (let ((arg nil))
+    (forge-sql-cdr
+     `[:select * :from mark
+       ,@(and arg '(:where (in name $v1)))
+       :order-by [(asc name)]]
+     (vconcat arg))))
+#+end_src
+
+=forge-sql-cdr= drops the first column from =:select= so =(->> (mapcar #'car) marks)=
+returns a list of id's there. in =forge-edit-mark'= the =(interactive ...)= lists
+the the marks, displays the =name= via =(->> (mapcar #'car) marks)= more or less...
+which doesn't drop =id= there. idk why.
+
+after selection, =(interactive ...)= result acts like a =(let ...)= environment
+binding and morphs the function args into what gets passed to the body
+
+then forge sql updates one mark by keying on the UUID in =id=
+
+#+begin_src emacs-lisp :results vector value :output silent :exports none
+(defvar dc/forge-nuanced-marks
+  ;; nothing to key on unless the UUIDs are external
+  '(("f8524701-93d9-4aad-a894-44de11fbf20c" "STRT" modus-themes-nuanced-blue "modus-themes-nuanced-blue")
+    ("7c1c2f6a-b5aa-4ba1-84d5-026510f849f5" "ASK" modus-themes-nuanced-cyan "modus-themes-nuanced-cyan")
+    ("cbac5d21-f162-430c-8b55-197482a54d9f" "LEARN" modus-themes-nuanced-green "modus-themes-nuanced-green")
+    ("99cd5d9a-e135-4eac-8e95-cadbbe73a301" "CHECK" modus-themes-nuanced-magenta "modus-themes-nuanced-magenta")
+    ("b75c358b-56fa-4f4d-9a1e-a925d3000716" "TODO" modus-themes-nuanced-red "modus-themes-nuanced-red")
+    ("d5b688a6-4d35-4535-b426-24828cc54db6" "WAIT" modus-themes-nuanced-yellow "modus-themes-nuanced-yellow")))
+
+;; can't re-init with UUIDs in tact
+(defun dc/forge-create-nuanced-marks ()
+  ;; (all-marks (dc/forge-all-marks)) ; no need 2 accumulate non-extant marks
+  (mapc (lambda (m) (apply #'forge-create-mark m)) dc/forge-nuanced-marks))
+
+;; (dc/forge-create-nuanced-marks)
+
+(defun dc/forge-edit-nuanced-marks (&optional marks)
+  (let ((new-marks (or marks dc/forge-nuanced-marks)))
+    (mapc (lambda (m) (apply #'forge-edit-mark m)) new-marks)))
+
+;; (dc/forge-edit-nuanced-marks dc/forge-nuanced-marks)
+#+end_src
+
+
+* Old Notes
+
 #+begin_quote
 I'll likely remove this from this note, since it's not really concise reference
 info.
 #+end_quote
 
-* Workflow
+** Workflow
 
 From the =forge-get-repository= docstring:
 
@@ -29,7 +221,7 @@ to track it, it may nevertheless add limited information about it to the
 database.  Such a repository is `:known' but it is not `:tracked'.
 #+end_quote
 
-** Per-Project
+*** Per-Project
 
 + You may be able to use =forge-get-repository= to add entries to the
   =forge-database-file=, a SQLite repository. AFAIK, the library doesn't intend
@@ -51,7 +243,7 @@ database.  Such a repository is `:known' but it is not `:tracked'.
   of work to completion. Unless it's a high-priority project for you, there's no
   need to =restack=
 
-** Project Tracking
+*** Project Tracking
 
 + It is trivial to get Emacs to hook into =libnotify=. It's a matter of finding
   the =forge= code to hook into.
@@ -66,9 +258,9 @@ database.  Such a repository is `:known' but it is not `:tracked'.
 I have ideas... but i can't seem to remember how to pull a key-value from an
 a-list while juggling all these lisps. I should just really do PMP.
 
-* Setup
+** Setup
 
-** =pass=
+*** =pass=
 
 This can be a bit confusing, so...
 
@@ -98,7 +290,7 @@ Now open the files and insert classic tokens with these scopes:
 These are the defaults, you can customize tokens as needed, since auth is in
 github's hands.
 
-** =auth-source-pass.el=
+*** =auth-source-pass.el=
 
 Maybe later, this part is actually fairly simple. Getting the layout for =pass=,
 so it works transparently with =auto-sources= is a bit difficult. You may have to
@@ -109,13 +301,3 @@ personal tokens, but is otherwise a bit restrictive. =pass= permits arbitrary
 metadata which should work with most things, but =auth-sources= doesn't use it to
 query (IIRC). It's simple to sync to other linux systems, but not to phone/etc.
 
-* Schema
-
-This was generated using [[https://gitlab.com/Screwtapello/sqlite-schema-diagram][Screwtapello/sqlite-schema-diagram]], using a similar
-process as [[id:c13684bd-77e7-46c6-98c6-a6486c2232d8][Firefox SQLite Schemas]], but I've since lost any notes used to do so.
-
-[[file:img/emacs-magit-forge-schema.svg]]
-
-* Roam                                                             :noexport:
-+ [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]
-+ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
