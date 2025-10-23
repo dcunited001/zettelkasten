@@ -1,0 +1,391 @@
+:PROPERTIES:
+:ID:       a76b66a6-808b-4078-a1af-cac7e4d380c3
+:END:
+#+TITLE: Chromium: Crash Dumps
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
++ [[id:38638b3e-e023-460e-9670-84776e61468e][Browser]]
++ [[id:a6c90236-e3a9-4223-8afa-d02da892c676][Debug]]
+  
+* Docs
+
+** Chromium
++ [[https://chromium.googlesource.com/chromium/src/+/refs/heads/main/docs/linux/build_instructions.md#install-depot_tools][Linux Build Instructions]]
++ [[https://www.chromium.org/developers/how-tos/install-depot-tools/][Depot Tools]]
++ [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/ui/learn/glossary.md][Glossary]]
++ [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/security/][Security]] (see [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/security/rules.md][Rules]])
+  - [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/security/rule-of-2.md][Rule of Two]]
+  - [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/security/research/graphics/gpu_command_buffer.md][GPU Command Buffer]]
+  - [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/security/research/graphics/webgpu_technical_report.md][WebGPU Technical Report]]
++ [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/design][Design]]
+  - [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/design/sandbox.md][Sandbox]]
+  - [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/design/startup.md][Browser Startup]] (init of main broker process that manages sandboxes)
+
+*** Crash Dumps
+
+For minidump, start here [[https://www.chromium.org/developers/crash-reports/][Crash Reports]] and [[https://chromium.googlesource.com/chromium/src/+/HEAD/docs/linux/minidump_to_core.md][Linux Minidump to Core]]. A lot of
+older information in various places. These are difficult workflows, esp. for
+solo devs or devs without infrastructure. If you know, you know (may not need
+docs at that point)
+
++ [[https://www.chromium.org/developers/decoding-crash-dumps/][Decoding Crash Dumps]]
++ [[https://source.chromium.org/chromium/chromium/src/+/main:docs/linux/crash_dumping.md][Crash Dumping]] and =chrome://crash=
+
+**** Chromium OS
++ [[https://www.chromium.org/chromium-os/packages/crash-reporting/debugging-a-minidump/][Debugging a Minidump]]
+
+**** Linux
++ [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/linux][Linux Docs]]
++ [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/linux/debugging_minidump.md][Linux Minidump Code Lab]]
+*** Config
++ programs.chromium.extraOpts :: [[https://chromeenterprise.google/policies/][Policies]]
++ programs.chromium.initialPreferences :: [[https://www.chromium.org/administrators/configuring-other-preferences/][Other Preferences]]
+
+** Breakpad
++ [[https://chromium.googlesource.com/breakpad/breakpad/+/HEAD/docs][Docs]] and [[https://github.com/google/breakpad/tree/main][google/breakpad]]
++ [[https://chromium.googlesource.com/breakpad/breakpad/+/HEAD/docs/getting_started_with_breakpad.md][Getting Started With Breakpad]]
+
+* Overview
+
+Basically, you'll need a copy of the local sources at that version -- or a
+checkout that's sufficiently close to whatever =nixpkgs= builds for
+=pkgs.chromium=... which may not work out well, since it's such a large project.
+
+** Chromium Startup
+
+Linux
+
+#+begin_quote
+On Linux due to the sandbox we launch subprocesses by repeatedly forking from a
+helper process. This means that new subprocesses don't enter through main()
+again, but instead resume from clones in the middle of startup. The initial
+launch of the helper process still executes the normal startup path, so any
+initialization that happens in ChromeMain() will have been run for all
+subprocesses but they will all share the same initialization.
+#+end_quote
+
+** Breakpad
+
++ The breakpad minidumps are =*.dmp= files somewhere in the =~/.config/chromium=
+  directory, though it seems I'm missing some.
+  - There are also the core dumps via =coredumpctl=, but I don't have a debug
+    version of chromium
+
+*** GDB vs Minidump Stackwalk
+
+[[https://source.chromium.org/chromium/chromium/src/+/main:docs/linux/minidump_to_core.md][Minidump To Core]] covers GDB
+
++ minidump to core conversion
++ source debugging (req. sources approx. match with the build)
++ technical notes on using minidump output with =gdb=
++ manual module loading (objdump to calculate)
+
+And also just using =minidump_stackwalk= for basic stack trace info.
+* Breakpad
+
+
+* Chromium Builds 
+
+** Environment
+:PROPERTIES:
+:header-args+: :var crsrc="/data/dev/cr/checkout/chromium"
+:END:
+
+Sources (again)
+
+Using =:session *crsrc-session*= for these blocks
+
+#+begin_src shell :session *crsrc-session*
+crsrc=${crsrc:-/some/path/cr/checkout/chromium} && cd $crsrc
+
+nix-shell ../tools/nix/shell.nix
+crsrc=$(pwd) # redefine
+crtools=$(dirname $crsrc)/tools
+crdepot=$(dirname $crsrc)/depot_tools
+
+export PATH=$crdepot:$PATH
+# fetch --nohooks --nohistory chromium
+#+end_src
+
+#+RESULTS:
+
+Maybe set up a terminal profile to automate. Probably a better way though.
+
+*** Tools
+
++ the fetch and gclient tools warn about handling partial clones, so
+  =--no-history= may bite me in the ass.
++ $crdepot/gclient.py :: parses options and runs other =gclient*.py= scripts. run
+  from the =gclient= entry point.
+
+**** Other Scripts
+
+#+begin_src shell :session *crsrc-session*
+find $crdepot -maxdepth 1 -type f -printf '%P\n' \
+    | grep -vE '(.py|.bat|.md|.cfg|.yapf)' \
+    | grep -vE '^(tmp|\.|LICENSE)' \
+    | sort | uniq
+#+end_src
+
+or just...
+
+#+name: crToolsEntryPoints
+#+begin_src shell :session *crsrc-session* :results output verbatim
+scripts=$(find $crdepot -maxdepth 1 -type f -executable -printf '%P\n' \
+    | grep -vE '(.py|.bat)' | grep -vE '^\.' | sort | uniq)
+#+end_src
+
+all the scripts are text executables. these are the entry points ... so they're
+all greppable. they don't all sound interesting though.
+
+#+begin_src shell :session *crsrc-session* :results output verbatim
+filetest=elf
+for s in $scripts; do which $s; done \
+    | xargs -n1 file -e $filetest \
+    | grep text | head -n5
+#+end_src
+
+#+RESULTS:
+: /data/dev/cr/checkout/depot_tools/autoninja: Bourne-Again shell script, ASCII text executable
+: /data/dev/cr/checkout/depot_tools/bb: Bourne-Again shell script, ASCII text executable
+: /data/dev/cr/checkout/depot_tools/black: a vpython3 script, ASCII text executable
+: /data/dev/cr/checkout/depot_tools/build_telemetry: Bourne-Again shell script, ASCII text executable
+: /data/dev/cr/checkout/depot_tools/cipd: Bourne-Again shell script, ASCII text executable, with escape sequences
+
+*** Usage
+
+Still not sure whether this runs within the earlier =nix shell= environment. if
+so, that =PATH= would be getting pretty busy (w/o environment resets). if not,
+how's =autoninja= run?
+
+#+begin_src shell
+# run cmd in dev env
+NIX_SHELL_RUN='autoninja -C out/Default chrome' nix-shell $crtools/nix/shell.nix
+#+end_src
+
+*** Python (NixOS)
+
+.... あれ？
+
+#+begin_src shell :session *crsrc-session* :async yes :results output verbatim
+cd $crsrc
+NIX_SHELL_RUN='which python; which python3' nix-shell $crtools/nix/shell.nix
+#+end_src
+
+#+RESULTS:
+: which: no python in (/run/wrappers/bin:/usr/bin:/usr/sbin:/nix/store/2j7r5np0vaz4cnqkymp1mqivmjj1x9xl-bash-interactive-5.3p3/bin:/nix/store/nk427kbyf9l6fpfdxb8hmrq2nlkl8nfl-patchelf-0.15.0/bin:/nix/store/yh6qg1nsi5h2xblcr67030pz58fsaxx3-coreutils-9.6/bin:/nix/store/xq5f95pp297afc2xjgrmhmf9w631qp7m-findutils-4.10.0/bin:/nix/store/wj1c3gsiajabnq50ifxqnlv60i5rhqj7-diffutils-3.10/bin:/nix/store/xhql0ilzbiqwnmz4z8y0phk611wynxf2-gnused-4.9/bin:/nix/store/40yifhx34v4g4llrdn3v2ag8w02j10fv-gnugrep-3.11/bin:/nix/store/r66s4mjwqi7zkqqyry5yhhv0wm5rw96a-gawk-5.3.1/bin:/nix/store/hfkclq54gppdb9fshnkwfdph1safyvli-gnutar-1.35/bin:/nix/store/4q2sv4sqb7y8y4pp3n9bf2aabmgqmwmy-gzip-1.13/bin:/nix/store/pcf18502sz0b25qya2lzm5f7wy0pd7a6-bzip2-1.0.8-bin/bin:/nix/store/zzgldw3dwyhzn7sw9cyq7d7k57h0yx46-gnumake-4.4.1/bin:/nix/store/58br4vk3q5akf4g8lx0pqzfhn47k3j8d-bash-5.2p37/bin:/nix/store/lf3ln60nya8xmkymabap9i7gqj60k9py-patch-2.7.6/bin:/nix/store/f246qzchy7zy00z1f42dqz9jiwcf5n7f-xz-5.6.4-bin/bin:/nix/store/hyp4b779nh5y4m48zvvhd4y3z1gm8hd5-file-5.46/bin:/data/dev/cr/checkout/depot_tools:/run/wrappers/bin:/usr/bin:/usr/sbin:/nix/store/2j7r5np0vaz4cnqkymp1mqivmjj1x9xl-bash-interactive-5.3p3/bin:/nix/store/nk427kbyf9l6fpfdxb8hmrq2nlkl8nfl-patchelf-0.15.0/bin:/nix/store/yh6qg1nsi5h2xblcr67030pz58fsaxx3-coreutils-9.6/bin:/nix/store/xq5f95pp297afc2xjgrmhmf9w631qp7m-findutils-4.10.0/bin:/nix/store/wj1c3gsiajabnq50ifxqnlv60i5rhqj7-diffutils-3.10/bin:/nix/store/xhql0ilzbiqwnmz4z8y0phk611wynxf2-gnused-4.9/bin:/nix/store/40yifhx34v4g4llrdn3v2ag8w02j10fv-gnugrep-3.11/bin:/nix/store/r66s4mjwqi7zkqqyry5yhhv0wm5rw96a-gawk-5.3.1/bin:/nix/store/hfkclq54gppdb9fshnkwfdph1safyvli-gnutar-1.35/bin:/nix/store/4q2sv4sqb7y8y4pp3n9bf2aabmgqmwmy-gzip-1.13/bin:/nix/store/pcf18502sz0b25qya2lzm5f7wy0pd7a6-bzip2-1.0.8-bin/bin:/nix/store/zzgldw3dwyhzn7sw9cyq7d7k57h0yx46-gnumake-4.4.1/bin:/nix/store/58br4vk3q5akf4g8lx0pqzfhn47k3j8d-bash-5.2p37/bin:/nix/store/lf3ln60nya8xmkymabap9i7gqj60k9py-patch-2.7.6/bin:/nix/store/f246qzchy7zy00z1f42dqz9jiwcf5n7f-xz-5.6.4-bin/bin:/nix/store/hyp4b779nh5y4m48zvvhd4y3z1gm8hd5-file-5.46/bin:/data/dev/cr/checkout/depot_tools:/gnu/store/r7k4kl3r0qb7v90hj5m0598izm8j2z96-profile/bin:/run/wrappers/bin:/home/dc/bin:/home/dc/.config/guix/current/bin:/home/dc/.guix-home/profile/bin:/home/dc/.guix-profile/bin:/home/dc/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:/home/dc/.nix-profile/bin:/home/dc/.local/state/nix/profile/bin:/home/dc/.local/state/nix/profile/bin:/etc/profiles/per-user/dc/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/0fq1mnfqjl9ain4jg5j56kl6h8bbmy1h-binutils-wrapper-2.44/bin:/nix/store/rjlb4xmm91i20jsc0bvs46i2h5gxmbxf-hyprland-qtutils-0.1.5/bin:/nix/store/yisdgd4qh67xsl6xx0zj7v8d7m34bdrb-pciutils-3.14.0/bin:/nix/store/yl7wip489lq6phpvpcydjc2qzb303rp3-pkgconf-wrapper-2.4.3/bin:/gnu/store/ch4v61a0lw0f1hkm5adai5z42qpyf20k-gzip-1.14/bin:/gnu/store/f2rcir6yz0n74jaa6d0fm82f8flmwjnk-coreutils-9.1/bin)
+: which: no python3 in (/run/wrappers/bin:/usr/bin:/usr/sbin:/nix/store/2j7r5np0vaz4cnqkymp1mqivmjj1x9xl-bash-interactive-5.3p3/bin:/nix/store/nk427kbyf9l6fpfdxb8hmrq2nlkl8nfl-patchelf-0.15.0/bin:/nix/store/yh6qg1nsi5h2xblcr67030pz58fsaxx3-coreutils-9.6/bin:/nix/store/xq5f95pp297afc2xjgrmhmf9w631qp7m-findutils-4.10.0/bin:/nix/store/wj1c3gsiajabnq50ifxqnlv60i5rhqj7-diffutils-3.10/bin:/nix/store/xhql0ilzbiqwnmz4z8y0phk611wynxf2-gnused-4.9/bin:/nix/store/40yifhx34v4g4llrdn3v2ag8w02j10fv-gnugrep-3.11/bin:/nix/store/r66s4mjwqi7zkqqyry5yhhv0wm5rw96a-gawk-5.3.1/bin:/nix/store/hfkclq54gppdb9fshnkwfdph1safyvli-gnutar-1.35/bin:/nix/store/4q2sv4sqb7y8y4pp3n9bf2aabmgqmwmy-gzip-1.13/bin:/nix/store/pcf18502sz0b25qya2lzm5f7wy0pd7a6-bzip2-1.0.8-bin/bin:/nix/store/zzgldw3dwyhzn7sw9cyq7d7k57h0yx46-gnumake-4.4.1/bin:/nix/store/58br4vk3q5akf4g8lx0pqzfhn47k3j8d-bash-5.2p37/bin:/nix/store/lf3ln60nya8xmkymabap9i7gqj60k9py-patch-2.7.6/bin:/nix/store/f246qzchy7zy00z1f42dqz9jiwcf5n7f-xz-5.6.4-bin/bin:/nix/store/hyp4b779nh5y4m48zvvhd4y3z1gm8hd5-file-5.46/bin:/data/dev/cr/checkout/depot_tools:/run/wrappers/bin:/usr/bin:/usr/sbin:/nix/store/2j7r5np0vaz4cnqkymp1mqivmjj1x9xl-bash-interactive-5.3p3/bin:/nix/store/nk427kbyf9l6fpfdxb8hmrq2nlkl8nfl-patchelf-0.15.0/bin:/nix/store/yh6qg1nsi5h2xblcr67030pz58fsaxx3-coreutils-9.6/bin:/nix/store/xq5f95pp297afc2xjgrmhmf9w631qp7m-findutils-4.10.0/bin:/nix/store/wj1c3gsiajabnq50ifxqnlv60i5rhqj7-diffutils-3.10/bin:/nix/store/xhql0ilzbiqwnmz4z8y0phk611wynxf2-gnused-4.9/bin:/nix/store/40yifhx34v4g4llrdn3v2ag8w02j10fv-gnugrep-3.11/bin:/nix/store/r66s4mjwqi7zkqqyry5yhhv0wm5rw96a-gawk-5.3.1/bin:/nix/store/hfkclq54gppdb9fshnkwfdph1safyvli-gnutar-1.35/bin:/nix/store/4q2sv4sqb7y8y4pp3n9bf2aabmgqmwmy-gzip-1.13/bin:/nix/store/pcf18502sz0b25qya2lzm5f7wy0pd7a6-bzip2-1.0.8-bin/bin:/nix/store/zzgldw3dwyhzn7sw9cyq7d7k57h0yx46-gnumake-4.4.1/bin:/nix/store/58br4vk3q5akf4g8lx0pqzfhn47k3j8d-bash-5.2p37/bin:/nix/store/lf3ln60nya8xmkymabap9i7gqj60k9py-patch-2.7.6/bin:/nix/store/f246qzchy7zy00z1f42dqz9jiwcf5n7f-xz-5.6.4-bin/bin:/nix/store/hyp4b779nh5y4m48zvvhd4y3z1gm8hd5-file-5.46/bin:/data/dev/cr/checkout/depot_tools:/gnu/store/r7k4kl3r0qb7v90hj5m0598izm8j2z96-profile/bin:/run/wrappers/bin:/home/dc/bin:/home/dc/.config/guix/current/bin:/home/dc/.guix-home/profile/bin:/home/dc/.guix-profile/bin:/home/dc/.local/share/flatpak/exports/bin:/var/lib/flatpak/exports/bin:/home/dc/.nix-profile/bin:/home/dc/.local/state/nix/profile/bin:/home/dc/.local/state/nix/profile/bin:/etc/profiles/per-user/dc/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:/nix/store/0fq1mnfqjl9ain4jg5j56kl6h8bbmy1h-binutils-wrapper-2.44/bin:/nix/store/rjlb4xmm91i20jsc0bvs46i2h5gxmbxf-hyprland-qtutils-0.1.5/bin:/nix/store/yisdgd4qh67xsl6xx0zj7v8d7m34bdrb-pciutils-3.14.0/bin:/nix/store/yl7wip489lq6phpvpcydjc2qzb303rp3-pkgconf-wrapper-2.4.3/bin:/gnu/store/ch4v61a0lw0f1hkm5adai5z42qpyf20k-gzip-1.14/bin:/gnu/store/f2rcir6yz0n74jaa6d0fm82f8flmwjnk-coreutils-9.1/bin)
+
+#+begin_src shell :session *crsrc-session* :async yes :results output verbatim
+grep -iE '(BYTECODE)'  $crdepot/vpython3
+
+# should this be true most of the time? (oh, only for cog or something)
+vpython3 -c "import sys; print(f'{sys.dont_write_bytecode}');"
+#+end_src
+
+#+RESULTS:
+: export PYTHONDONTWRITEBYTECODE=1
+: False
+
+I think I'm missing some setup. =vpython3= interacts with [[https://chromium.googlesource.com/experimental/chromium/src/+/refs/tags/90.0.4400.10/docs/cipd.md][CIPD for Chromium Deps]]
+and maybe it sets up =venv='s or something
+
+**** vpython3
+
+
+** Emacs
+
+*** Clangd
+
+Still not sure where to set the =lsp-mode= workspace root.
+
++ The =.dir-locals.el= should set =lsp-clangd-binary-path= there.
++ For now, the project root is =$crsrc=
++ The =compile_commands.json= command implies... it's maybe the parent directory.
+  - Usually, emacs walks paths until it finds a root for =project.el=, but Doom
+    uses =projectile= and I'm unsure of how lsp-mode handles that for large
+    projects. I assume it's just the workspace root.
+
+#+begin_src shell
+# For remote indexing support, this returns the =clangd= binary needed
+NIX_SHELL_RUN='readlink /usr/bin/clangd' nix-shell $crtools/nix/shell.nix
+#+end_src
+
+[[https://chromium.googlesource.com/chromium/src/+/lkgr/docs/clangd.md][Generate Compilation Database]]
+
+#+begin_src shell :session *crsrc-session* :async yes :results output verbatim
+# :session *crsrc-session* :async yes :results output verbatim
+# tools/clang/scripts/generate_compdb.py -p out/Default > compile_commands.json
+cd $crsrc
+NIX_SHELL_RUN='../tools/clang/scripts/generate_compdb.py -p out/Default > ../compile_commands.json' nix-shell $crtools/nix/shell.nix
+#+end_src
+
+#+RESULTS:
+: env: ‘python3’: No such file or directory
+
+
+
+** Misc
+
+*** Chromium Builds via REAPI from a NixOS machine
+
+I guess a local nix build would link all objects locally anyways. this is needed
+to support multiple build targets with separate configurations, among other
+requirements.
+* Chromium Sources
+
+Moved this here bc it's more relevant
+
+** Checkout for build
+
+See [[https://source.chromium.org/chromium/chromium/src/+/main:docs/linux/build_instructions.md][build_instructions.md]]. For nix, instead [[https://chromium.googlesource.com/chromium/src/tools][clone code in nix shell]] using [[https://chromium.googlesource.com/chromium/src/tools/+/refs/heads/main/nix][the
+nix shell in the src/tools repository]]
+
+#+begin_src shell
+tools=https://chromium.googlesource.com/chromium/src/tools.git
+depot=https://chromium.googlesource.com/chromium/tools/depot_tools.git
+chkout=/some/path/cr/checkout/chromium
+mkdir -p $chkout
+cd $(dirname $chkout)/..
+git clone "$depot" depot_tools
+git clone "$tools" tools
+
+cd chromium && nix-shell ../tools/nix/shell.nix
+export PATH=$(dirname $chkout)/depot_tools:$PATH
+fetch --nohooks --no-history chromium
+#+end_src
+
+This should fetch the source into =$chkout=
+
+This is nice. It's actually what I /thought/ that LSP was like from idk
+2019-2022ish? Nope.
+
+#+begin_example shell
+# To set up clangd with remote indexing support, run the command below,
+# then copy the path into your editor config:
+NIX_SHELL_RUN='readlink /usr/bin/clangd' nix-shell tools/nix/shell.nix
+#+end_example
+
++ find -type d -name .git -print | tree --fromfile . :: this would visually
+  depict all the git repos
+
+#+begin_src shell :results output verbatim
+# this shows just the pieces i'm focused on for now (getting the --switches)
+find -type d -name .git -print | grep -v third_party | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+└── .
+    └── src
+        ├── chrome
+        │   └── test
+        │       └── data
+        │           ├── perf
+        │           │   ├── canvas_bench
+        │           │   └── frame_rate
+        │           │       └── content
+        │           └── xr
+        │               └── webvr_info
+        ├── docs
+        │   └── website
+        ├── media
+        │   └── cdm
+        │       └── api
+        ├── testing
+        │   └── libfuzzer
+        │       └── fuzzers
+        │           └── wasm_corpus
+        └── v8
+
+22 directories, 0 files
+#+end_example
+
+** Sources
+*** AI Prompts
+
+There are varying degrees in these prompts' usage of the imperative.
+
+Also ... =ctags= really not a bad idea
+
+#+begin_quote
+## Symbol Lookup
+
+- The user informed me that I can use the bash command 'readtags <symbol>' to
+  quickly look up files for a single symbol.
+- When looking up symbols, I should use the `readtags` tool first, and only use
+  full text search if that fails.
+#+end_quote
+
+*** Switches
+
+bingo
+
+#+begin_example shell
+grep --include='*.h' -re switch src/chrome/ | grep app
+# src/chrome/browser/ui/startup/web_app_startup_utils.h
+#+end_example
+
+mainly handled in startup. many namespaces have a "=name::switches= namepace
+
+The main ones would be in in the =src/chrome= project though
+
+#+begin_src shell :results output verbatim
+find src/chrome -name '*switches.h' -print | tree --fromfile .
+#+end_src
+
+#+begin_example
+.
+└── src
+    └── chrome
+        ├── browser
+        │   ├── actor
+        │   │   └── actor_switches.h
+        │   ├── ash
+        │   │   ├── android_sms
+        │   │   │   └── android_sms_switches.h
+        │   │   └── borealis
+        │   │       └── borealis_switches.h
+        │   ├── enterprise
+        │   │   └── connectors
+        │   │       └── device_trust
+        │   │           └── attestation
+        │   │               └── browser
+        │   │                   └── attestation_switches.h
+        │   ├── extensions
+        │   │   └── updater
+        │   │       └── extension_updater_switches.h
+        │   ├── google
+        │   │   └── switches.h
+        │   ├── headless
+        │   │   └── headless_mode_switches.h
+        │   ├── ip_protection
+        │   │   └── ip_protection_switches.h
+        │   ├── nearby_sharing
+        │   │   └── common
+        │   │       └── nearby_share_switches.h
+        │   ├── new_tab_page
+        │   │   └── modules
+        │   │       └── modules_switches.h
+        │   ├── predictors
+        │   │   └── predictors_switches.h
+        │   ├── signin
+        │   │   └── bound_session_credentials
+        │   │       └── bound_session_switches.h
+        │   └── webauthn
+        │       └── webauthn_switches.h
+        ├── common
+        │   └── chrome_switches.h
+        ├── test
+        │   └── base
+        │       ├── chromeos
+        │       │   └── crosier
+        │       │       └── helper
+        │       │           └── switches.h
+        │       └── test_switches.h
+        └── windows_services
+            └── service_program
+                └── switches.h
+#+end_example
