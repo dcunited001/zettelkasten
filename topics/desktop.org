@@ -64,6 +64,114 @@ This is already a bit complex
 **** Notifications
 
 *** Dmenu Scripts
+* Service Management
+*** Systemd
+
+**** Env
+
+#+begin_quote
+it would be extremely helpful if there were tools like =fcitx5-diagnose= that
+could diff environments spawned from systemd. One way to do this would be with a
+NixOS module that:
+
+- takes some specification of systemd service unit/target hierarchies to dump
+- associates some dummy unit that gets spawned at the same level
+- on system startup each unit then dumps a =.env= file to some log directory
+- once you login, you just diff each file (or a terminating service does this
+  after they're all guaranteed to complete)
+
+When you're done with it, just remove the module from your system and rebuild.
+It requires a restart, but is otherwise fairly automatic.
+
+Getting visibility on this is otherwise a PITA. There are commands to do so, but
+they sometimes require creating =--runtime= services to be sure.
+#+end_quote
+
+***** UWSM Env
+
+This extends from the Systemd =DefaultEnvironment= set in
+
+- the user's session service manager
+- and changes in startup (& reactivation?) in units/targets before UWSM launches
+  - I'm still unclear on on the extent of process/environment that
+    restarts/cycles at this point.
+- potentially any =environment.d= files in =~/.config/environment.d=, I think
+- any =*.env= files in =~/.config/uwsm=
+- any =.env= files that =elephant= picks up in it's environment (if
+  =overload_local_env= is set)
+
+One of UWSM's final tasks is to adjust the D-Bus session environment before
+"finalizing" it, so there's another potential issue. I also have a somewhat
+unrelated problem of duplicate D-Bus service registratiions that show up in the
+journal, which causes a few issues later on.
+
+Diffing these environments is a PITA.
+
+Elephant and Walker can test this to some extent, but I'm unsure of how =elephant=
+resets the environment.
+
++ When I use =walker --dmenu= via this script
++ which gets launched via =hyprctl dispatch exec ...=
++ Then I get an alacritty without colorized =man= pages
+
+#+begin_example shell
+#!/usr/bin/env bash
+manquery="$(walker --dmenu --keepopen -p "Query for man -k ...")"
+manpage="$(man -k "$manquery" | cut -d' ' -f1,2 | walker --dmenu -p "Open ..." | cut -f1 -d' ')"
+setsid uwsm app -- alacritty --class 'Alacritty:org.dc.tuitray' -T 'tuitray:man' -e man "$manpage"
+#+end_example
+
+This terminal launches under the original =hyprland= environment. I was writing
+this up bc I thought that =walker= was triggering elephant to spawn a process, but
+digging deeper, it's a combination of =hyprland= and =alacritty=.
+
+The first two commands here give me colorized man pages.
+
+#+begin_src shell
+alacritty --class 'Alacritty:org.dc.tuitray' -T 'tuitray:man' -e man lvs
+uwsm app -- \
+    alacritty --class 'Alacritty:org.dc.tuitray' -T 'tuitray:man' -e man lvs
+hyprctl dispatch exec \
+    "uwsm app -- \
+          alacritty --class 'Alacritty:org.dc.tuitray' -T 'tuitray:man' -e man lvs"
+#+end_src
+
+They ran from an =uwsm app -- alacritty= process, so I think alacritty doesn't
+=source ~/.bashrc= when started in this way.... ugh so nevermind
+
+#+begin_src shell
+# Running as `bash -c 'man lvs'` works... but makes me a bit nervous
+#
+# - a better way is using `alacritty --config-file $config man lvs`
+# - the interpolated command via dmenu is the last arg (alacritty) of the last
+#   arg (uwsm) ... which is one less degree of quoting
+hyprctl dispatch exec \
+    "uwsm app -- \
+          alacritty --class 'Alacritty:org.dc.tuitray' -T 'tuitray:man' \
+               -e /usr/bin/env bash -ic 'man lvs'"
+#+end_src
+
+***** Systemd Env
+
++ Elephant can load =.env= files in the configuration directories it searches, so
+  that processes it spawns will have a consistent =uwsm= environment.
++ Another option: fix this in =sysstemd.user.extraConfig= by overriding what
+  =programs.hyprland.systemd.setPath.enable= would otherwise set, which is
+  probably not where you want to set it
+
+#+begin_src shell
+DefaultEnvironment="PATH=/run/wrappers/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:\$PATH"
+echo $DefaultEnvironment | tr ':' '\n'
+#+end_src
+
+#+RESULTS:
+| PATH=/run/wrappers/bin            |
+| /etc/profiles/per-user/%u/bin     |
+| /nix/var/nix/profiles/default/bin |
+| /run/current-system/sw/bin        |
+| $PATH                             |
+
+
 
 * Xorg Desktops
 

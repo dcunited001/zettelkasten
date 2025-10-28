@@ -44,3 +44,56 @@ Increasing complexity =->= ... though refs/closure is more complex
   - runs =shellcheck=, supports =runtimeInputs=
   - bashOptions :: override defaults: =errexit=, =nounset=, =pipefail=
 + The =Bin= variants are automatically placed into =./bin=.
+
+** Walker
+
+*** Tweaks
+
+**** Socket/Service
+
+This isn't quite right (or something's wrong with my systemd
+environment/targets). I think I need to check again, but it doesn't
+automatically pick up on =uwsm=
+
+#+begin_src nix
+
+systemd.user.services.elephant = lib.mkIf elephantSystemD {
+  unitConfig = {
+    Description = "Elephant Launcher and Indexer Service";
+    Documentation = "https://github.com/abenz1257/elephant";
+    Requires = [ "sockets.target" ];
+    After = [ "graphical-session.target" ];
+    PartOf = [ "graphical-session.target" ];
+    ConditionEnvironment = "WAYLAND_DISPLAY";
+  };
+  serviceConfig = {
+    ExecStart = "${elephantPkg}/bin/elephant"; # "${lib.optionalString elephantCfg.debug "--debug"}";
+    # ExecReload = "${elephantCfg.package}/bin/elephant ${}";
+
+    Restart = "on-failure";
+    RestartSec = 5;
+  };
+};
+
+systemd.user.sockets.elephant = lib.mkIf elephantSystemD {
+  unitConfig = {
+    Description = "Elephant Launcher and Indexer Socket";
+    Documentation = "https://github.com/abenz1257/elephant";
+  };
+  socketConfig = {
+    # l, err := net.ListenUnix("unix", &net.UnixAddr{ ... }; # SOCK_STREAM =~ "unix"
+    #
+    # https://github.com/abenz1267/elephant/blob/master/internal/comm/comm.go#L41
+    ListenStream = "%t/elephant/elephant.sock";
+    SocketMode = "0600";
+    Service = "elephant.service"; # redundant
+
+    # elephant will otherwise creates dir (& socket) with 755
+    DirectoryMode = "0700";
+  };
+  wantedBy = [ "sockets.target" ];
+};
+
+#+end_src
+
+#+RESULTS:

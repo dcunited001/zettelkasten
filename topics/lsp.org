@@ -40,6 +40,694 @@ Uses the VDM language (for Theorem Proving) as an example. Lots of pictures.
 
 *** [[github:lspcontainers/lspcontainers.nvim][lspcontainers/lspcontainers.nvim]] (nvim)
 
+** JSON-RPC
+
+
+*** JQ Queries for =nixd=
+:PROPERTIES:
+:header-args+: :dir "/tmp/tmp.CISKhfdq2G/"
+:END:
+
+**** Why?
+
+The issue I'm having is is =nix-ts-mode= with =nixd=:
+
++ Type something, anything: until it's syntactically correct, server refuses to
+  complete. Everything from that point onwards turns yellow bc the LSP gods are
+  angry.
++ It's likely that =nixd= has changed it's implementation in some way that
+  =lsp-mode= doesn't anticipate, but it may be a combination of emacs' =corfu=
+  completion functionality.
++ looking at =lsp-mode='s server logs & tracing, there's a few RPC calls that are
+  juggled back/forth which look odd.
++ So the only time I get completion to work is by keeping the grammar
+  continuously correct ... I have to complete the grammatical structures as
+  below
+
+#+begin_example nix
+{...}}:
+  envi # completion fails (grammar invalid)
+  environment.se # triggers grammatical issue and emacs changes buffer.
+  # find "references" works for sessionVariables
+  environment.sessionVariables = {
+
+  };
+
+  services.postgresql. # completion fails as grammar is invalid
+  services.postgresql. = {}; # completion fails after dot
+  services.postgresql.s = {} # completion finds "s.*" only
+
+  services.postgresql = {
+  # "references" works when cursor on postgresql
+  };
+  services.postgresql.settings = {
+  # "references" works when cursor on settings, not on postgresql
+  };
+};
+#+end_example
+
+
+This just started happening at the same time that I upgraded to =nixpkgs-unstable=
+(and then downgraded to =nixos-unstable=), at the same time that it started
+formatting using the RFC. I don't like the aesthetic per-se, except that maybe
+it's easy to grep idk, but i don't care. Minimal diffs >> anything else.
+
+***** =lsp-mode= logs
+
+#+begin_src jsonc
+{
+  // [Trace - 09:41:34 PM] Sending request 'textDocument/completion - (2111)'.
+  "Params": {
+    "textDocument": { "uri": "file:///home/dc/.dotfiles/nixos/modules/nixos/programs/gnupg.nix" },
+    "position": { "line": 32, "character": 9 },
+    "context": { "triggerKind": 1
+    }
+  }
+
+  // [Trace - 09:41:34 PM] Sending notification '$/cancelRequest'.
+  "Params": { "id": 2111 }
+
+  // [Trace - 09:41:34 PM] Sending request 'textDocument/completion - (2112)'.
+  "Params": {
+    "textDocument": { "uri": "file:///home/dc/.dotfiles/nixos/modules/nixos/programs/gnupg.nix" },
+    "position": { "line": 32, "character": 9 },
+    "context": { "triggerKind": 1 }
+  }
+
+
+  // [Trace - 09:41:34 PM] Sending notification '$/cancelRequest'.
+  "Params": { "id": 2112 }
+
+  // [Trace - 09:41:35 PM] Sending notification '$/cancelRequest'.
+  "Params": { "id": 2099 }
+
+  // [Trace - 09:41:35 PM] Sending request 'textDocument/documentSymbol - (2113)'.
+  "Params": { "textDocument": { "uri": "file:///home/dc/.dotfiles/nixos/modules/nixos/programs/gnupg.nix" } }
+
+  // [Trace - 09:41:35 PM] Sending request 'textDocument/codeAction - (2114)'.
+  "Params": {
+    "textDocument": { "uri": "file:///home/dc/.dotfiles/nixos/modules/nixos/programs/gnupg.nix" },
+    "range": { "start": { "line": 32, "character": 8 }, "end": { "line": 32, "character": 9 } },
+    "context": {
+      "diagnostics": [{
+        "code": "parse-select-extra-dot",
+        "message": "extra `.` after expression, but missing attrpath (2 fixes available)",
+        "range": {
+          "end": { "character": 9, "line": 32 },
+          "start": { "character": 8,"line": 32 }
+          },
+        "relatedInformation": [],
+        "severity": 1,
+        "source": "nixf"
+      }]
+    }
+  }
+}
+#+end_src
+
+**** Server Caps
+
+
+#+name: jqNixdServerCaps
+#+headers: :results output code :wrap example json
+#+begin_src jq :cmd-line -r :in-file "nixd-server-caps.json"
+[paths | select(last | type != "number") | join("/")]
+#+end_src
+
+#+call: lspCapsTree(rgx=".*", json=jqNixdServerCaps)
+
+#+RESULTS:
+#+begin_example
+.
+├── codeActionProvider
+│   ├── codeActionKinds
+│   └── resolveProvider
+├── completionProvider
+│   ├── resolveProvider
+│   └── triggerCharacters
+├── definitionProvider
+├── documentFormattingProvider
+├── documentHighlightProvider
+├── documentLinkProvider
+├── documentSymbolProvider
+├── hoverProvider
+├── inlayHintProvider
+├── referencesProvider
+├── renameProvider
+│   └── prepareProvider
+└── textDocumentSync
+    ├── change
+    ├── openClose
+    └── save
+#+end_example
+
+#+call: lspCapsTree(rgx=".*", json=jqLspCaps(maxDepth=3, key="textDocument"))
+
+**** Eglot Caps
+
+It looks like the client caps are the same as below for =hyprls=. In other words,
+they're based on =lsp-mode=. However =(eglot-client-capabilities server)= accepts
+=server= as a parameter, implying this is not 100% true -- correction, the
+function is parameterized by server because it's a common-lisp accessor.
+
+#+begin_example emacs-lisp
+;; eglot uses cl-lib to define this accessor for server capabilities
+(capabilities :initform nil
+              :documentation "JSON object containing server capabilities."
+              :accessor eglot--capabilities)
+#+end_example
+
+To get the capabilities from =eglot=, run this with =C-u M-:= in a buffer where it's
+active. Or just watch the buffer...
+
+#+begin_src emacs-lisp
+(let ((server (eglot-current-server))
+      ;; server
+      (server-caps (eglot--capabilities server))
+      (server-caps-json (json-serialize server-caps
+                                        :null-object nil
+                                        :false-object :json-false))
+      ;; client
+      (client-caps (eglot-client-capabilities server))
+      (client-caps-json (json-serialize client-caps
+                                        :null-object nil
+                                        :false-object :json-false)))
+  (list ('client-caps . ,client-caps-json)
+        ('server-caps . ,server-caps-json)))
+
+;; elisp may truncate the strings, in which case, try to dump the raw string
+;; instead of fetching an alist
+#+end_src
+
+***** =eglot= and =lsp-mode= differences
+
+TL;DR:
+
+#+begin_example
+eglot                               lsp-mode
+$ comm -1 -2                        $ comm -2 -3
+.                                   .
+├── experimental                    ├── textDocument
+├── textDocument                    │   ├── callHierarchy
+│   ├── completion                  │   │   └── dynamicRegistration
+│   │   └── completionItem          │   ├── completion
+│   │       └── tagSupport          │   │   └── completionItem
+│   │           └── valueSet        │   │       ├── documentationFormat
+│   ├── documentHighlight           │   │       ├── insertReplaceSupport
+│   │   └── dynamicRegistration     │   │       ├── insertTextModeSupport
+│   ├── documentSymbol              │   │       │   └── valueSet
+│   │   └── dynamicRegistration     │   │       ├── labelDetailsSupport
+│   ├── inlayHint                   │   │       └── resolveAdditionalTextEditsSupport
+│   │   └── dynamicRegistration     │   ├── diagnostic
+│   ├── publishDiagnostics          │   │   ├── dynamicRegistration
+│   │   └── codeDescriptionSupport  │   │   └── relatedDocumentSupport
+│   ├── signatureHelp               │   ├── documentLink
+│   │   └── signatureInformation    │   │   ├── dynamicRegistration
+│   │       └── documentationFormat │   │   └── tooltipSupport
+│   └── synchronization             │   ├── inlineCompletion
+│       └── dynamicRegistration     │   ├── linkedEditingRange
+├── window                          │   │   └── dynamicRegistration
+│   └── showDocument                │   ├── onTypeFormatting
+│       └── support                 │   │   └── dynamicRegistration
+└── workspace                       │   ├── publishDiagnostics
+    └── symbol                      │   │   └── versionSupport
+        └── dynamicRegistration     │   ├── rename
+                                    │   │   └── prepareSupport
+                                    │   ├── selectionRange
+                                    │   │   └── dynamicRegistration
+                                    │   └── typeHierarchy
+                                    │       └── dynamicRegistration
+                                    ├── window
+                                    │   └── showDocument
+                                    │       └── support
+                                    └── workspace
+                                        ├── codeLens
+                                        │   └── refreshSupport
+                                        ├── diagnostics
+                                        │   └── refreshSupport
+                                        ├── fileOperations
+                                        │   ├── didCreate
+                                        │   ├── didDelete
+                                        │   ├── didRename
+                                        │   ├── willCreate
+                                        │   ├── willDelete
+                                        │   └── willRename
+                                        ├── symbol
+                                        │   └── symbolKind
+                                        │       └── valueSet
+                                        └── workspaceEdit
+                                            └── resourceOperations
+#+end_example
+
+Nixd =lsp-mode=
+
+#+name: jqNixdClientCaps
+#+begin_src jq :cmd-line -r :in-file "nixd-client-caps.json" :results output code :wrap example json
+[paths | select(last | type != "number") | join("/")] # | length
+#+end_src
+
+#+call: lspCapsTree(rgx=".*", json=eglotNixdClientCaps)
+
+Client caps: =eglot= has =88= non-number keys, =lsp-mode= gives =115=
+
+#+name: nixdDeltaLsp
+#+begin_src shell :var a=eglotNixdClientCaps b=jqNixdClientCaps gradient="-1 -3"  :results output code :wrap example
+echo -n '['
+
+comm $gradient \
+    <(echo $a | jq . | sort) \
+    <(echo $b | jq . | sort) \
+    | tr -d ', \t\n' \
+    | sed -E 's/""/","/g'
+echo ']'
+# | sed -E 's/,$/\n]/g'
+#+end_src
+
+#+call: lspCapsTree(rgx=".*", json=nixdDeltaLsp)
+
+#+name: nixdDeltaEglot
+#+begin_src shell :var a=eglotNixdClientCaps b=jqNixdClientCaps gradient="-2 -3"  :results output code :wrap example
+echo -n '['
+
+comm $gradient \
+    <(echo $a | jq . | sort) \
+    <(echo $b | jq . | sort) \
+    | tr -d ', \t\n' \
+    | sed -E 's/""/","/g'
+echo ']'
+# | sed -E 's/,$/\n]/g'
+#+end_src
+
+#+call: lspCapsTree(rgx=".*", json=nixdDeltaEglot)
+
+#+begin_example org
+This won't eval for some reason. Just =nixDeltaLsp=
+
+#+name: nixdDeltaEglot
+#+call: nixDeltaLsp(a=eglotNixdClientCaps, b=jqNixdClientCaps, gradient="-1 -3")
+#+end_example
+
+
+***** Server Caps
+
+Same thing
+
+#+name: eglotNixdServerCaps
+#+headers: :results output code :wrap example json
+#+begin_src jq :cmd-line -r :in-file "nixd-eglot-server.json"
+[paths | select(last | type != "number") | join("/")]
+#+end_src
+
+#+call: lspCapsTree(rgx=".*", json=eglotNixdServerCaps)
+
+#+RESULTS:
+#+begin_example
+.
+├── codeActionProvider
+│   ├── codeActionKinds
+│   └── resolveProvider
+├── completionProvider
+│   ├── resolveProvider
+│   └── triggerCharacters
+├── definitionProvider
+├── documentFormattingProvider
+├── documentHighlightProvider
+├── documentLinkProvider
+├── documentSymbolProvider
+├── hoverProvider
+├── inlayHintProvider
+├── referencesProvider
+├── renameProvider
+│   └── prepareProvider
+└── textDocumentSync
+    ├── change
+    ├── openClose
+    └── save
+#+end_example
+
+***** Client Caps
+
+Slightly less caps
+
+#+name: eglotNixdClientCaps
+#+headers: :results output code :wrap example json
+#+begin_src jq :cmd-line -r :in-file "nixd-eglot-client.json"
+[paths | select(last | type != "number") | join("/")]
+#+end_src
+
+#+call: lspCapsTree(rgx=".*", json=eglotNixdClientCaps)
+
+*** Linguisto-mono-editor Server-node Protocol
+:PROPERTIES:
+:header-args+: :dir "/tmp/tmp.CISKhfdq2G/"
+:END:
+
+#+begin_quote
+Keep in mind this code is exploratory. Issues with =jq= and =org-babel= (to a lesser
+extent) kinda be balla-blockin' here. The way I imagined the =#+call: bableBlock=
+interface for running/passing =jq= results kinda broke halfway through where I
+found the results were inconsistent. I changed some aspects of that interface,
+but ... yeh some of it's probably wrong. GLHF and if you have any problems, ask
+Glaude Code to do it for you.
+
+At some point, there are actually other things I need to do. I just want to be
+faster with debugging JSON-RPC and lacking awareness of what functionalities
+client/server are supposed to offer each other is a huge block.
+#+end_quote
+
+Literally sitting here =C-c C-c= repeatedly being like "this could be lisp and
+then JQ would be sane...."
+
+#+begin_src shell
+# d=$(mktemp -d)
+# echo $le_jçon > $d/hyprls-client-caps.json
+# echo $le_jçon_serveur > $d/hyprls-server-caps.json
+#+end_src
+
+Without realizing... I fetched the data from the source buffer like this:
+
+#+begin_src emacs-lisp
+(defun dc/lsp-json-serialize (params)
+  ;; (let ((json-encoding-pretty-print t))) ; can't extend inside macro scope?
+  (lsp--json-serialize params))
+
+(defun dc/lsp-json-pp (params)
+  (with-temp-buffer
+    (insert (dc/lsp-json-serialize params))
+    (json-pretty-print (point-min) (point-max))
+    (buffer-string)))
+
+(dc/lsp-json-pp lsp--client-capabilities)
+(dc/lsp-json-pp lsp--server-capabilities)
+#+end_src
+
+DMAITUYFUSHIOTCK
+
+**** JQ Queries
+***** LSP Caps
+
+#+name: jqLspCaps
+#+begin_src jq :in-file hyprls-client-caps.json :cmd-line -r :var maxDepth=2 key="textDocument"
+# #+begin_src jq :in-file hyprls-client-caps.json :cmd-line -r :var maxDepth=1
+# [.. | paths(type == "object")
+#     | select(length <= ($maxDepth | tonumber))]
+#   | map(join("/")) # | length
+
+[."\($key)" | paths(type == "object" or type == "array")
+    | select(length <= ($maxDepth | tonumber))]
+#  | map([$key] + .)
+  | map(join("/"))
+#+end_src
+
+#+RESULTS: jqLspCaps
+#+begin_example
+[
+  "declaration",
+  "definition",
+  "references",
+  "implementation",
+  "typeDefinition",
+  "synchronization",
+  "documentSymbol",
+  "documentSymbol/symbolKind",
+  "formatting",
+  "rangeFormatting",
+  "onTypeFormatting",
+  "rename",
+  "codeAction",
+  "codeAction/codeActionLiteralSupport",
+  "codeAction/resolveSupport",
+  "completion",
+  "completion/completionItem",
+  "signatureHelp",
+  "signatureHelp/signatureInformation",
+  "documentLink",
+  "hover",
+  "hover/contentFormat",
+  "selectionRange",
+  "callHierarchy",
+  "typeHierarchy",
+  "publishDiagnostics",
+  "publishDiagnostics/tagSupport",
+  "diagnostic",
+  "linkedEditingRange"
+]
+#+end_example
+
+***** LSP Caps Scalars
+
+#+name: jqLspCapsScalar
+#+begin_src jq :in-file hyprls-client-caps.json :cmd-line -r :var depth=1 key="textDocument"
+[."\($key)" | paths(type == "number" or type == "string")
+    | select(length == ($depth | tonumber))]
+#  | map([$key] + .)
+  | map(join("/"))
+
+  #+end_src
+
+#+RESULTS: jqLspCapsScalar
+: []
+
+#+name: jqLspCapsTop
+#+call: jqLspCaps(d=1)
+
+***** Query LSP Caps (non-scalar)
+
+#+name: lspCapsTree
+#+headers: :results output code :wrap example
+#+begin_src shell :var rgx="workspace" q="map(select(test(\"workspace\")))" json=jqLspCaps(maxDepth=3, key="textDocument")
+# kinda hard to quote
+[[ -n "$rgx" ]] && q="map(select(test(\"$rgx\"; \"i\")))"
+echo $json | jq -r ". | $q | join(\"\\n\")" | tree --noreport --fromfile .
+#+end_src
+
+#+RESULTS: lspCapsTree
+#+begin_example
+.
+#+end_example
+
+***** Rollup Table
+
+Feelin' kinda cute ... don't wanna scroll...
+
+I'll write a simple table =reshape= in =jq=
+
+#+name: jqRollupTable
+#+begin_src jq :cmd-line -r :var w=8 :stdin jqLspCaps :results output table
+reduce
+  .[] as $el
+  ([]; . as $acc
+    | ($acc | (map(select(type=="string"))) // []) as $accacc
+    | $accacc | length as $accacclen
+    | ($acc | map(select(type=="array")) // []) as $assarr
+    | if ($accacclen < ($w | tonumber))
+      then ($acc + [$el])
+      else ($assarr + [$accacc]) end) as $smh
+  | [($smh[] | arrays)] + [[$smh[] | strings]] # arrays + strings
+#+end_src
+
+#+RESULTS: jqRollupTable
+| declaration                        | definition         | references | implementation      | typeDefinition                      | synchronization           | documentSymbol | documentSymbol/symbolKind |
+| rangeFormatting                    | onTypeFormatting   | rename     | codeAction          | codeAction/codeActionLiteralSupport | codeAction/resolveSupport | completion     | completion/completionItem |
+| signatureHelp/signatureInformation | documentLink       | hover      | hover/contentFormat | selectionRange                      | callHierarchy             | typeHierarchy  | publishDiagnostics        |
+| diagnostic                         | linkedEditingRange |            |                     |                                     |                           |                |                           |
+
+JQ is like a crazy "choose your own adventure" into "double-after spree" (...
+don't worry: I'm licensed to use non-sequitors and I know what I'm doing)
+
+#+begin_example jq :cmd-line -r :var w=8 :stdin jqLspCaps :results output table
+.WTF #?
+
+# produces integers for final strings
+| (($smh | arrays) + ($smh + strings))
+
+# produces nothing
+| (($smh[] | arrays) + ($smh[] + strings))
+| (($smh | arrays) + ($smh[] + strings))
+
+# indivudually ⮦(arrays) (strings)⮧
+| ([$smh[] | arrays] + [$smh[] | strings]) # but, together? ....... NOTHING
+
+# produces: [[8], [8], [8], [8], [1], [1], [1], [1], [1]]
+| ($smh[] | ([arrays] + [strings]))
+
+# produces Array(div(n,8) + mod(n,8)) ..... of empty arrays
+| ($smh[] | ([arrays + strings]))
+
+# inserts (strings)⮧ into each copy of ⮦(arrays)
+| [$smh[] | strings] + ($smh[] | arrays)
+
+# ........... Here's the random combination
+| [($smh[] | arrays)] + [[$smh[] | strings]] # arrays + strings
+
+# WTF JQ
+# ["a" "b" "c" ] | strings # => DAMIT
+# {"foo": { "a": "b", "3": "4"}, "bar": {}} | strings #  | length
+#        ([]; . as $acc | ($acc | strings // []) | length as $acclen | $acc + [$acclen | tostring])
+
+# ... I suspected jq may do each thing that went wrong... but somehow, each
+# thing still happened.
+#+end_example
+**** Server
+
+#+name: jqHyprServerCaps
+#+headers: :results output code :wrap example json
+#+begin_src jq :cmd-line -r :in-file "hyprls-server-caps.json"
+[paths | join("/")]
+#+end_src
+
+#+RESULTS: jqHyprServerCaps
+#+begin_example json
+[
+  "textDocumentSync",
+  "textDocumentSync/openClose",
+  "textDocumentSync/change",
+  "completionProvider",
+  "hoverProvider",
+  "documentSymbolProvider",
+  "colorProvider"
+]
+#+end_example
+
+It doesn't need to do much.
+
+#+call: lspCapsTree(rgx=".*", json=jqHyprServerCaps)
+
+#+RESULTS:
+#+begin_example
+.
+├── colorProvider
+├── completionProvider
+├── documentSymbolProvider
+├── hoverProvider
+└── textDocumentSync
+    ├── change
+    └── openClose
+#+end_example
+
+Applying the same =jq= functionality to get =jqLspServerCaps=.
+
+#+name: jqLspServerCaps
+#+call: jqLspCaps(maxDepth=3, key="textDocument") :in-file "hyprls-server-caps.json" :results output code :wrap example json
+
+#+RESULTS: jqLspServerCaps
+#+begin_example json
+[]
+#+end_example
+
+**** Client
+
+general
+
+#+call: lspCapsTree(rgx=".*", json=jqLspCaps(maxDepth=3, key="general"))
+
+#+RESULTS:
+#+begin_example
+.
+└── positionEncodings
+#+end_example
+
+window
+
+#+call: lspCapsTree(rgx=".*", json=jqLspCaps(maxDepth=3, key="window"))
+
+#+RESULTS:
+#+begin_example
+.
+└── showDocument
+#+end_example
+
+workspace
+
+#+call: lspCapsTree(rgx=".*", json=jqLspCaps(maxDepth=3, key="workspace"))
+
+#+RESULTS:
+#+begin_example
+.
+├── codeLens
+├── diagnostics
+├── didChangeWatchedFiles
+├── executeCommand
+├── fileOperations
+├── symbol
+│   └── symbolKind
+│       └── valueSet
+└── workspaceEdit
+    └── resourceOperations
+#+end_example
+
+***** textDocument
+
+#+call: lspCapsTree(rgx=".*", json=jqLspCaps(maxDepth=3, key="textDocument"))
+
+#+RESULTS:
+#+begin_example
+.
+├── callHierarchy
+├── codeAction
+│   ├── codeActionLiteralSupport
+│   │   └── codeActionKind
+│   └── resolveSupport
+│       └── properties
+├── completion
+│   └── completionItem
+│       ├── documentationFormat
+│       ├── insertTextModeSupport
+│       └── resolveSupport
+├── declaration
+├── definition
+├── diagnostic
+├── documentLink
+├── documentSymbol
+│   └── symbolKind
+│       └── valueSet
+├── formatting
+├── hover
+│   └── contentFormat
+├── implementation
+├── linkedEditingRange
+├── onTypeFormatting
+├── publishDiagnostics
+│   └── tagSupport
+│       └── valueSet
+├── rangeFormatting
+├── references
+├── rename
+├── selectionRange
+├── signatureHelp
+│   └── signatureInformation
+│       └── parameterInformation
+├── synchronization
+├── typeDefinition
+└── typeHierarchy
+#+end_example
+
+****** Hierarchy
+
+#+call: lspCapsTree(rgx="hierarchy", json=jqLspCaps(maxDepth=3))
+
+#+RESULTS:
+#+begin_example
+.
+├── callHierarchy
+├── textDocument
+│   ├── callHierarchy
+│   └── typeHierarchy
+└── typeHierarchy
+#+end_example
+
+****** Hover
+
+#+call: lspCapsTree(rgx="hover", json=jqLspCaps(maxDepth=3))
+
+#+RESULTS:
+#+begin_example
+.
+├── hover
+└── textDocument
+    └── hover
+#+end_example
+
 
 * Python LSP Server
 
@@ -303,35 +991,35 @@ Produced with =embark-collect=.
 
 Eglot server/connection management:
 
-| eglot                               | Start LSP server.                                         |
-| eglot-clear-status                  | Clear the last JSONRPC error for SERVER.                  |
-| eglot-forget-pending-continuations  | Forget pending requests for SERVER.                       |
-| eglot-list-connections              | List currently active Eglot connections.                  |
-| eglot-manual                        | Open documentation.                                       |
-| eglot-reconnect                     | Reconnect to SERVER.                                      |
-| eglot-rename                        | Rename the current symbol                                 |
-| eglot-show-workspace-configuration  | Dump ‘eglot-workspace-configuration’ for debugging.       |
-| eglot-shutdown                      | Politely ask SERVER to quit.                              |
-| eglot-shutdown-all                  | Politely ask all language servers to quit, in order.      |
-| eglot-signal-didChangeConfiguration | Send a ‘:workspace/didChangeConfiguration’ signal         |
-| eglot-stderr-buffer                 | Display stderr buffer for SERVER.                         |
+| eglot                               | Start LSP server.                                    |
+| eglot-clear-status                  | Clear the last JSONRPC error for SERVER.             |
+| eglot-forget-pending-continuations  | Forget pending requests for SERVER.                  |
+| eglot-list-connections              | List currently active Eglot connections.             |
+| eglot-manual                        | Open documentation.                                  |
+| eglot-reconnect                     | Reconnect to SERVER.                                 |
+| eglot-rename                        | Rename the current symbol                            |
+| eglot-show-workspace-configuration  | Dump ‘eglot-workspace-configuration’ for debugging.  |
+| eglot-shutdown                      | Politely ask SERVER to quit.                         |
+| eglot-shutdown-all                  | Politely ask all language servers to quit, in order. |
+| eglot-signal-didChangeConfiguration | Send a ‘:workspace/didChangeConfiguration’ signal    |
+| eglot-stderr-buffer                 | Display stderr buffer for SERVER.                    |
 
 Eglot LSP calls:
 
-| consult-eglot-symbols               | Select a symbol from the current workspace.               |
-| eglot-code-action-extract           | Execute ‘refactor.extract’ code actions                   |
-| eglot-code-action-inline            | Execute ‘refactor.inline’ code actions                    |
-| eglot-code-action-organize-imports  | Execute ‘source.organizeImports’ code actions             |
-| eglot-code-action-quickfix          | Execute ‘quickfix’ code actions                           |
-| eglot-code-action-rewrite           | Execute ‘refactor.rewrite’ code actions                   |
-| eglot-code-actions                  | Find LSP code actions of type ACTION-KIND                 |
-| eglot-code-actions-at-mouse         | Like ‘eglot-code-actions’, but intended for mouse events. |
-| eglot-events-buffer                 | Display events buffer for SERVER.                         |
-| eglot-find-declaration              | Find declaration for SYM, the identifier at point.        |
-| eglot-find-implementation           | Find implementation for SYM, the identifier at point.     |
-| eglot-find-typeDefinition           | Find type definition for SYM, the identifier at point.    |
-| eglot-format                        | Format region BEG END.                                    |
-| eglot-format-buffer                 | Format contents of current buffer.                        |
+| consult-eglot-symbols              | Select a symbol from the current workspace.               |
+| eglot-code-action-extract          | Execute ‘refactor.extract’ code actions                   |
+| eglot-code-action-inline           | Execute ‘refactor.inline’ code actions                    |
+| eglot-code-action-organize-imports | Execute ‘source.organizeImports’ code actions             |
+| eglot-code-action-quickfix         | Execute ‘quickfix’ code actions                           |
+| eglot-code-action-rewrite          | Execute ‘refactor.rewrite’ code actions                   |
+| eglot-code-actions                 | Find LSP code actions of type ACTION-KIND                 |
+| eglot-code-actions-at-mouse        | Like ‘eglot-code-actions’, but intended for mouse events. |
+| eglot-events-buffer                | Display events buffer for SERVER.                         |
+| eglot-find-declaration             | Find declaration for SYM, the identifier at point.        |
+| eglot-find-implementation          | Find implementation for SYM, the identifier at point.     |
+| eglot-find-typeDefinition          | Find type definition for SYM, the identifier at point.    |
+| eglot-format                       | Format region BEG END.                                    |
+| eglot-format-buffer                | Format contents of current buffer.                        |
 
 Eglot Menus:
 

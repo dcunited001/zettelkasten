@@ -1,0 +1,93 @@
+:PROPERTIES:
+:ID:       e362b059-7037-4163-b8b8-fd44400c23c3
+:END:
+#+TITLE: Nix: Troubleshooting Builds
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:3daa7903-2e07-4664-8a20-04df51b715de][C/C++ (cpp)]]
++ 
+
+* General
+** CLI For Builds: =nix= vs =nh=
+
+*** nh
+
+=nh os build -kK ".#$(hostname)"=
+
++ -k --keep-failed :: check the source tree for the build
+- -K --keep-going :: for a large system derivation, this will slim down the
+  unbuilt derivations when running the system build repeatedly.
+
+Issuing builds for derivations from CLI without building the entire system
+requires understanding which build results would've been deterministic in order
+to initiate them via repl or CLI.
+
++ For =fcitx5= or other complex modules with overlays/overrides (requiring graph
+  traversal for consistency), this is difficult to specify from out-of-tree.
+  - it increases the feedback loop cycles you can run
+  - also helps you narrow the scope. useful if the build has implicitly
+    propagated inputs into a shared profile/environment. That shouldn't happen
+    ... but maybe (usually that'd be a runtime problem)
+
+** Flakes
+*** =nixos-unstable= vs =nixpkgs-unstable=
+
+I would've been more amenable to =unstable= had I known that =nixos-unstable= is
+about a week behind.
+
+**** Extracting available versions from =fh=
+
+DetSys publishes =nixpkgs-weekly= which forwards to =nixos-unstable= 
+
+#+begin_src shell
+semver='0.1.*'
+fh list versions --json 'DeterminateSystems/nixpkgs-weekly' "$semver" \
+    | jq '.[-3:] | reverse'
+#+end_src
+[[https://docs.determinate.systems/flakehub/concepts/semver][
+flakehub semantic versioning]]
+
+** Optimizations
+*** Kernel Builds
+
+=linux-zen= builds with one core pretty much the whole time.
+
+**** Compiler
+
+From =pkgs.linux_zen= in the repl, seems to be =gcc=
+
+#+begin_src shell
+CC=/nix/store/k6gpflj398qaxzx4bmqhnnj4l328vabk-gcc-14.3.0/bin/gcc
+LD=/nix/store/7h3qnwgvkw6z2r8lq4j5mks4l6r5x2cq-binutils-2.44/bin/ld
+AR=/nix/store/dmypp1h4ldn0vfk3fi6yfyf5yxp9yz0k-gcc-wrapper-14.3.0/bin/ar
+NM=/nix/store/dmypp1h4ldn0vfk3fi6yfyf5yxp9yz0k-gcc-wrapper-14.3.0/bin/nm
+STRIP=/nix/store/7h3qnwgvkw6z2r8lq4j5mks4l6r5x2cq-binutils-2.44/bin/strip
+OBJCOPY=/nix/store/dmypp1h4ldn0vfk3fi6yfyf5yxp9yz0k-gcc-wrapper-14.3.0/bin/objcopy
+OBJDUMP=/nix/store/dmypp1h4ldn0vfk3fi6yfyf5yxp9yz0k-gcc-wrapper-14.3.0/bin/objdump
+READELF=/nix/store/dmypp1h4ldn0vfk3fi6yfyf5yxp9yz0k-gcc-wrapper-14.3.0/bin/readelf
+HOSTCC=/nix/store/dmypp1h4ldn0vfk3fi6yfyf5yxp9yz0k-gcc-wrapper-14.3.0/bin/cc
+HOSTCXX=/nix/store/dmypp1h4ldn0vfk3fi6yfyf5yxp9yz0k-gcc-wrapper-14.3.0/bin/c++
+HOSTAR=/nix/store/0fq1mnfqjl9ain4jg5j56kl6h8bbmy1h-binutils-wrapper-2.44/bin/ar
+HOSTLD=/nix/store/0fq1mnfqjl9ain4jg5j56kl6h8bbmy1h-binutils-wrapper-2.44/bin/ld
+ARCH=x86_64
+CROSS_COMPILE=
+#+end_src
+
+**** LTO
+
+Link time optimization
+
++ [[https://github.com/chaotic-cx/nyx/blob/3d65529ded65e7d3c725864f80d95e677fad8353/pkgs/linux-cachyos/config-nix/cachyos-gcc.x86_64-linux.nix#L757][chaotic-nx/nyx
+  ./pkgs/linux-cachyos/config-nix/cachyos-gcc.x86_64-linux.nix#L757]]
+  - diff this .........
++ [[https://discourse.nixos.org/t/experimenting-with-cachyos-kernel-on-nixos-via-chaotics-nyx/70041][Experimenting with CachyOS kernel on NixOS via Chaotic Nyx]]
+
+*** =tmpfs=
+
++ boot....tmpfs
+
+* FCITX5 + QT
+
+** Keeping build results

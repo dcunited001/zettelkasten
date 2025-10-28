@@ -56,167 +56,347 @@ Tools to help mock requests/data, design changes and modify content
   - see Chrome Exp. telnet client below
   - [[https://github.com/WICG/isolated-web-apps][WICG/isolated-web-apps]] the propoal
 
-*** PWAs
+*** Guix
 
-*** Management & Policy
+**** Master Preferences
 
-See [[chrome://management][chrome://management]] and [[chrome://policy][chrome://policy]]
+Guix distributes these preferences in
+=.gnu/packages/aux-files/chromium/master-preferences.json= which i guess ends up
+in the directory below, via =fd -H -t d 'chromium'  ~=
 
-*** Building
+=$HOME/.cache/guix/checkouts/$checkoutId/gnu/packages/aux-files/chromium/master-preferences.json=
 
-**** Checkout for build
-
-See [[https://source.chromium.org/chromium/chromium/src/+/main:docs/linux/build_instructions.md][build_instructions.md]]. For nix, instead [[https://chromium.googlesource.com/chromium/src/tools][clone code in nix shell]] using [[https://chromium.googlesource.com/chromium/src/tools/+/refs/heads/main/nix][the
-nix shell in the src/tools repository]]
-
-#+begin_src shell
-tools=https://chromium.googlesource.com/chromium/src/tools.git
-depot=https://chromium.googlesource.com/chromium/tools/depot_tools.git
-chkout=/some/path/cr/checkout/chromium
-mkdir -p $chkout
-cd $(dirname $chkout)/..
-git clone "$depot" depot_tools
-git clone "$tools" tools
-
-cd chromium && nix-shell ../tools/nix/shell.nix
-export "PATH=$(dirname $chkout)/depot_tools:$PATH"
-fetch --nohooks --no-history chromium
-#+end_src
-
-This should fetch the source into =$chkout=
-
-This is nice. It's actually what I /thought/ that LSP was like from idk
-2019-2022ish? Nope.
-
-#+begin_example shell
-# To set up clangd with remote indexing support, run the command below,
-# then copy the path into your editor config:
-NIX_SHELL_RUN='readlink /usr/bin/clangd' nix-shell tools/nix/shell.nix
+#+begin_example json
+{
+    "distribution": {
+        "import_bookmarks": false,
+        "make_chrome_default": false,
+        "make_chrome_default_for_user": false,
+        "verbose_logging": true,
+        "skip_first_run_ui": true
+    },
+    "browser": {
+        "has_seen_welcome_page" : true,
+        "default_browser_setting_enabled" : false
+    },
+    "dns_prefetching": {
+        "enabled": false
+    },
+    "alternate_error_pages": {
+        "enabled": false
+    },
+    "settings": {
+        "first_run_tutorial_shown": true
+    },
+    "default_apps": "noinstall",
+    "hide_web_store_icon": true,
+    "homepage": "https://www.gnu.org/software/guix/"
+}
 #+end_example
+*** Browser
+**** Broker
 
-+ find -type d -name .git -print | tree --fromfile . :: this would visually
-  depict all the git repos
+***** SingletonLock
+
+These files are used to determine state so only one governing process can
+write to a profile's data at any time.
+
+See [[https://chromium.googlesource.com/chromium/src/+/HEAD/chrome/browser/process_singleton_posix.cc][./src/chrome/browser/process_singleton_posix.cc]]
 
 #+begin_src shell :results output verbatim
-# this shows just the pieces i'm focused on for now (getting the --switches)
-find -type d -name .git -print | grep -v third_party | tree --fromfile .
+ls -al $(fd 'Singleton' ~/.config/chromium)
+#+end_src
+
+#+RESULTS:
+: lrwxrwxrwx 1 dc dc 19 Oct 21 19:01 /home/me/.config/chromium/SingletonCookie -> 0891672785766630363
+: lrwxrwxrwx 1 dc dc 13 Oct 21 19:01 /home/me/.config/chromium/SingletonLock -> muhhost-111996
+: lrwxrwxrwx 1 dc dc 50 Oct 21 19:01 /home/me/.config/chromium/SingletonSocket -> /tmp/.org.chromium.Chromium.akBre/SingletonSocket
+
+*** Profiles
+:PROPERTIES:
+:header-args+: :dir (concat (getenv "XDG_CONFIG_HOME") "/chromium/")
+:END:
+
+**** Basics
+
+Active profile at =chrome://version=
+
+Launch with specific profile:
+
+#+begin_src shell
+chromium --profile-directory="Profile 1"
+#+end_src
+
+User Data Directory: [[https://chromium.googlesource.com/chromium/src/+/main/docs/user_data_dir.md][docs]]
+
++ calculated by =GetDefaultUserDataDirectory= which says it caluclates this path
+  regardless of whether it was overridden [[https://source.chromium.org/chromium/chromium/src/+/main:chrome/common/chrome_paths_internal.h;l=27?q=GetDefaultUserDataDirectory&ss=chromium][./src/common/chrome_paths_internal.h]]
++ override with =CHROME_USER_DATA_DIR= or =--user-data-dir=
+
+**** Enumeration
+
+Anyways, they're in =.org.chromium.Chromium.*=
+#+name: qProfiles
+#+begin_example jq
+[..
+  | paths(type == "string" and test("^(profile |default).*"; "i"))]
+  | map(join("/")) | join("\n")
+#+end_example
+
+lol dammit =paste= (trying to get this to line up horizontally, but calculating
+column width and correcting tabs requires extracting the max column of each
+result)
+
+#+begin_src shell :var q=qProfiles :results output code :wrap example
+# find ~/.config/chromium -maxdepth 1 -type f -name '.org.chromium.Chromium.*' -printf '%p\n'
+declare -a profs
+profs=() # dammit bash
+for p in $(find ~/.config/chromium -maxdepth 1 -type f -name '.org.chromium.Chromium.*' -printf '%p\n'); do
+    profs+=($p)
+done
+
+paste -d"\t" <(jq -r "$q" ${profs[0]} | tree --noreport --fromfile .) \
+    <(jq -r "$q" ${profs[1]} | tree --noreport --fromfile .) \
+    <(jq -r "$q" ${profs[2]} | tree --noreport --fromfile .) \
+    <(jq -r "$q" ${profs[3]} | tree --noreport --fromfile .) \
+    | sed -e 's/\t/\t\t/g'
+
+# fd -Ht f '.org.chromium.Chromium..*' ~/.config/chromium | tr ' ' '\n'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.		.		.		.
+├── 0		├── 0		├── 0		├── 0
+├── 1		├── 1		├── 1		├── 1
+├── last_used		├── last_used		├── 2		├── 2
+├── profile		├── profile		├── last_active_profiles		├── 3
+│   ├── last_used		│   ├── last_used		│   └── 0		├── last_active_profiles
+│   └── profiles_order		│   └── profiles_order		├── last_used		│   └── 0
+│       ├── 0		│       ├── 0		├── profile		├── last_used
+│       └── 1		│       └── 1		│   ├── last_active_profiles		├── profile
+└── profiles_order		└── profiles_order		│   │   └── 0		│   ├── last_active_profiles
+    ├── 0		    ├── 0		│   ├── last_used		│   │   └── 0
+    └── 1		    └── 1		│   └── profiles_order		│   ├── last_used
+                                │       ├── 0		│   └── profiles_order
+                                │       ├── 1		│       ├── 0
+                                │       └── 2		│       ├── 1
+                                └── profiles_order		│       ├── 2
+                                    ├── 0		│       └── 3
+                                    ├── 1		└── profiles_order
+                                    └── 2		    ├── 0
+                                                    ├── 1
+                                                    ├── 2
+                                                    └── 3
+#+end_example
+
+=paste= is about as useful as it looks above, unless maybe using =paste -s= instead
+of many =tee -a >(*・_・)ノ⌒᠁💻|= Anyways
+
+#+begin_src shell :var q=qProfiles :results output code :wrap example
+jq -r "$q" $(find ~/.config/chromium -maxdepth 1 -type f -name '.org.chromium.Chromium.*' -printf '%p\n' | head -n1) \
+    | tree --noreport --fromfile .
 #+end_src
 
 #+RESULTS:
 #+begin_example
 .
-└── .
-    └── src
-        ├── chrome
-        │   └── test
-        │       └── data
-        │           ├── perf
-        │           │   ├── canvas_bench
-        │           │   └── frame_rate
-        │           │       └── content
-        │           └── xr
-        │               └── webvr_info
-        ├── docs
-        │   └── website
-        ├── media
-        │   └── cdm
-        │       └── api
-        ├── testing
-        │   └── libfuzzer
-        │       └── fuzzers
-        │           └── wasm_corpus
-        └── v8
-
-22 directories, 0 files
+├── 0
+├── 1
+├── last_used
+├── profile
+│   ├── last_used
+│   └── profiles_order
+│       ├── 0
+│       └── 1
+└── profiles_order
+    ├── 0
+    └── 1
 #+end_example
 
-***** AI Prompts
+Well damn. is that right? [[https://stackoverflow.com/questions/20458406/what-is-the-format-of-chromes-timestamps][Format of chrome timestamps]]
 
-There are varying degrees in these prompts' usage of the imperative.
-
-Also ... =ctags= really not a bad idea
-
-#+begin_quote
-## Symbol Lookup
-
-- The user informed me that I can use the bash command 'readtags <symbol>' to
-  quickly look up files for a single symbol.
-- When looking up symbols, I should use the `readtags` tool first, and only use
-  full text search if that fails.
-#+end_quote
-
-**** Switches
-
-bingo
-
-#+begin_example shell
-grep --include='*.h' -re switch src/chrome/ | grep app
-# src/chrome/browser/ui/startup/web_app_startup_utils.h
+#+begin_example jq
+[.. | objects | paths(type == "object" and  has("enabled_time"))]
 #+end_example
 
-mainly handled in startup. many namespaces have a "=name::switches= namepace
+Well everyone else has deleted all their accounts & data... not much is left.
+Censored today? Maybe. Censored in the future? lol
+*** PWAs
+:PROPERTIES:
+:header-args+: :dir (concat (getenv "XDG_CONFIG_HOME") "/chromium/" (getenv "CHROMEPROFILE"))
+:END:
 
-The main ones would be in in the =src/chrome= project though
++ Must run in a [[https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts][secure context]]. Use =window.isSecureContext= to test
++ [[https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps/Guides/Making_PWAs_installable#:~:text=For%20a%20PWA%20to%20be%20installable%20it%20must%20be%20served,://%20URLs%20to%20be%20secure.][MDN: Making PWAs Installable]] These will run with extra features enabled
++ [[https://chromeos.dev/en/publish/pwa-in-play][Publish PWA to Google Play]] to make available on android. (uses =bubblewrap=?)
 
-#+begin_src shell :results output verbatim
-find src/chrome -name '*switches.h' -print | tree --fromfile .
+**** Configuration
+***** Fuzzable
+
+lol ... almost.
+
+The =paste <(yes '"') - <(yes '"') | tr -d '\t'= handles the spaces, but doesn't
+know when to stop unless a later process signals back. The =grep -lI= ignores the
+binarie matches though
+
+#+begin_src shell
+u=translate.google.com
+nlines=10
+grep -lI -re "$u" ~/.config/chromium \
+    | paste <(yes '"') - <(yes '"') | tr -d '\t' \
+    | head -n10
 #+end_src
 
+***** Icons
+
+These are distributed in:
+
++ =$XDG_DATA_HOME/icons/hicolor/$Px$P/chrome-$crxAppId-$profileName.png=
++ And =$XDG_CONFIG_HOME/chromium/$profile/Web\ Applications=
+  - under =./Manifest\ Resources/$crxAppId/icons/$P.png=
+
+**** App IDs
+
+***** Generating
+
+According to Gemini, the CRX App Id is derived from the public key assoc. to the
+extension.
+
++ [[https://translate.google.com/_/TranslateWebserverUi/manifest.json][manifest.json]] for Google Translate
+
+****** PWA Builder
+The docs/source for [[https://docs.pwabuilder.com/#/builder/manifest][PWA Builder: Manifest]] would have more information
+
++ This could basically be converted to an XDG desktop file, which Chromium will
+  do for you... but only from within the interface. (It should probably just
+  replace XDG)
++ This would include the =shortcuts=, =file_handers=, =protocol_handlers=
++ Maybe [[https://docs.pwabuilder.com/#/builder/manifest?id=share_target-object][share_target]] (see [[https://docs.pwabuilder.com/#/home/native-features?id=web-share-api][Web Share API]])... but idk about that. The OS/Desktop
+  needs a means of intercepting a "share" (I'm late to this party).
+
+***** Locating
+Some fake App IDs, the second one generated from the first with =C-u M-| rev=
+
+#+name: crxAppIds2
 #+begin_example
-.
-└── src
-    └── chrome
-        ├── browser
-        │   ├── actor
-        │   │   └── actor_switches.h
-        │   ├── ash
-        │   │   ├── android_sms
-        │   │   │   └── android_sms_switches.h
-        │   │   └── borealis
-        │   │       └── borealis_switches.h
-        │   ├── enterprise
-        │   │   └── connectors
-        │   │       └── device_trust
-        │   │           └── attestation
-        │   │               └── browser
-        │   │                   └── attestation_switches.h
-        │   ├── extensions
-        │   │   └── updater
-        │   │       └── extension_updater_switches.h
-        │   ├── google
-        │   │   └── switches.h
-        │   ├── headless
-        │   │   └── headless_mode_switches.h
-        │   ├── ip_protection
-        │   │   └── ip_protection_switches.h
-        │   ├── nearby_sharing
-        │   │   └── common
-        │   │       └── nearby_share_switches.h
-        │   ├── new_tab_page
-        │   │   └── modules
-        │   │       └── modules_switches.h
-        │   ├── predictors
-        │   │   └── predictors_switches.h
-        │   ├── signin
-        │   │   └── bound_session_credentials
-        │   │       └── bound_session_switches.h
-        │   └── webauthn
-        │       └── webauthn_switches.h
-        ├── common
-        │   └── chrome_switches.h
-        ├── test
-        │   └── base
-        │       ├── chromeos
-        │       │   └── crosier
-        │       │       └── helper
-        │       │           └── switches.h
-        │       └── test_switches.h
-        └── windows_services
-            └── service_program
-                └── switches.h
+cefklejpffnngppfdbepnoghkbihdpji
+ijpdhibkhgonpebdfppgnnffpjelkfec
 #+end_example
 
+The app ids result from a truncated hex SHA256, shifted from =[0-9a-f]= to =[a-p]=
 
+#+name: noncedCrxAppIds
+#+begin_src shell :var appIds=crxAppIds2
+for id in $appIds; do
+    echo $id | sha256sum | tr '01234567890abcdef' 'abcdefghijklmnop' | head -c32
+    echo
+done
+#+end_src
+
+#+RESULTS: noncedCrxAppIds
+| ecjcmfmhnjicjhckhnkinbpppgbebjjp |
+| obfcmpcgoboicbpbhehppkociimjmipd |
+
+
+
+****** From ="$profile/Web\ Applications/Manifest\ Resources"=
+
+#+name: pwaAppIds
+#+begin_src shell :results output silent
+ls "Web Applications/Manifest Resources"
+#+end_src
+
+#+call: noncedCrxAppIds(appIds=pwaAppIds)
+
+#+RESULTS:
+: cefklejpffnngppfdbepnoghkbihdpji
+
+****** From =$profile/Preferences=
+
+In =$XDG_CONFIG_HOME/chromium/$profile/Preferences= which is a JSON file
+
+#+name: crxAppIds
+#+headers: :results output silent
+#+begin_src jq :cmd-line -rj :in-file "Preferences"
+[(.browser.app_window_placement | keys
+   | map(capture("_crx_(?<id>(.*))"; "s") | .id)),
+ (.web_app_install_metrics | keys)]
+  | flatten | unique | join("\n")
+
+#. | your | query
+#  | here | @text
+# 1: (if yas-modified-p "#+NAME:") 1
+#+end_src
+
+Testing
+
+#+call: noncedCrxAppIds(appIds=crxAppIds)
+
+#+RESULTS:
+: cefklejpffnngppfdbepnoghkbihdpji
+*** Management & Policy
+
+See [[chrome://management][chrome://management]] and [[chrome://policy][chrome://policy]]
+
+**** Apps
+
++ [[https://chromeenterprise.google.com/policies/#WebAppInstallForceList][WebAppInstallForceList]]
++ [[https://chromeenterprise.google.com/policies/#WebAppSettings][WebAppSettings]]
++ [[https://chromeenterprise.google.com/policies/#IsolatedWebAppInstallForceList][IsolatedWebAppInstallForceList]] this is only available on ChromeOS (managed
+  guest sessions only)
+
+**** DNS
+
+| AdditionalDnsQueryTypesEnabled | BuiltInDnsClientEnabled              | DnsInterceptionChecksEnabled | DnsOverHttpsMode            |
+| DnsOverHttpsTemplates          | DnsPrefetchingEnabled                | DnsOverHttpsExcludedDomains  | DnsOverHttpsIncludedDomains |
+| DnsOverHttpsSalt               | DnsOverHttpsTemplatesWithIdentifiers |                              |                             |
+
+And =OutOfProcessSystemDnsResolutionEnabled=
+
+**** Defaults
+
+=Default.*(Setting)?=
+
+| Clipboard                 | ControlledFrame  | Cookies             | DeviceAttributes     | DirectSockets                 |
+| DownloadDirectory         | FileHandling     | FileSystemReadGuard | FileSystemWriteGuard | Geolocation                   |
+| HandlersForFileExtensions | Image            | InsecureContent     | JavascriptOptimizer  | Javascript                    |
+| Keygen                    | LocalFonts       | MediaStream         | Notifications        | Plugins                       |
+| Popups                    | PrinterSelection | Sensors             | SerialGuard          | ThirdPartyStoragePartitioning |
+| WebBluetoothGuard         | WebHid           | WebUsb              | WindowManagement     | WindowPlacement               |
+
++ =DefaultSearchProvider.*Setting=
++ =DefaultBrowserSettingEnabled=
+**** AI
++ =BuiltInAIAPIsEnabled=
++ =GenAiDefaultSettings=
+
+**** Security
+
++ =AutoFillEnabled=
++ =AbusiveExperienceInterventionEnforce= lol
++ =HttpsOnlyMode=
++ =BrowsingDataLifetime=
++ =CertificateTransparencyEnforcementDisabled.*=
+
+=ApplicationBoundEncryptionEnabled= ...
+
++ says it matters when application runs from non-standard locations. idk
+  whether it applies to binaries running from =/.+ix/store=
++ [[https://www.cyberark.com/resources/threat-research-blog/c4-bomb-blowing-up-chromes-appbound-cookie-encryption][C4 Bomb Blowing Up Chromes Appbound Cookie Encryption]]
+  - um yeh. AES be AES. you need block-level access to the device/files
+    though. probably easier for files. the kernel part sounds hard. kinda
+    pointless if it's "app-bound"
++ [[https://blog.chromium.org/2024/04/fighting-cookie-theft-using-device.html][Fighting Cookie Theft Using Device Bound Sessions]]
+  - [[https://security.googleblog.com/2024/04/detecting-browser-data-theft-using.html][Detecting Browser Data Theft Using Windows Event Logs]]
+  - really just looking for the =chrome://= url that tells me it's on, but TPM
+    does't function so easily in Linux.
++ [[https://www.chromium.org/chromium-os/chromiumos-design-docs/protecting-cached-user-data/#:~:text=Adding%20cryptography%20to%20a%20filesystem,Operating%20System%20files%20and%20programs.][Protecting Cached User Data]]
+  - [[https://www.chromium.org/developers/design-documents/tpm-usage/][TPM Usage]]
+  - [[https://www.chromium.org/developers/design-documents/chaps-technical-design/][Chaps Technical Design]] PKCS#11 implementation. Pretty illuminating for a
+    TPM/Sops-nix integration (the one using SSH key on TPM or something idk)
+
+*** Building
 *** Repo
 
 **** Chromium Checkout

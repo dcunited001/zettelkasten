@@ -21,8 +21,6 @@
 + [[https://github.com/micha4w/Hypr-DarkWindow][micha4w/hypr-darkwindow]] inverts windows
 + [[https://github.com/alexhulbert/Hyprchroma/blob/main/flake.nix][alexhulbert/Hyprchroma ./main/flake.nix]] requires building darkwindow
 
-
-
 ** Configs
 *** Misako
 + [[https://codeberg.org/look/misako/src/16aa0d52c0ede3f61b4b5cb91c8b0c261c1524d5/misako/home-environments/look/files/.config/hypr/rules.conf#L15][misako/home-environments: home/environments/.config/hypr/rules.conf]]
@@ -37,7 +35,48 @@ guix graph --type=reverse-package $hyprpkgs \
 
 #+RESULTS:
 [[file:img/hyprland-revdeps.svg]]
-
 ** Rules
 ** Binds
+
+** Instance Socket
+
+A better way to get the instance socket (than =ls= or something)
+
+#+begin_src shell
+inst=$(hyprctl instances -j | jq -r 'first | .instance')
+#+end_src
+
+*** Triggering commands remotely
+
+You can't troubleshoot everything over =ssh=, since =ssh= can't usually access
+remote sockets... or something...
+
+#+begin_quote
+yeh that didn't seem right... it's not. without =jq -r=, then =$inst= will include
+quotes. you can absolutely interact with the instance socket remotely.
+#+end_quote
+
+**** Using =at=
+
+You'd need =atd= or some other =at=-like daemon to execute jobs. This isn't a good
+idea, since they'll run under the authority of the =atd= user. From the remote:
+
+#+begin_src shell
+t=$(mktemp -d) # I /think/ this correct but idk
+at now + 5 minutes "echo 'foob ar '\"$(date +%s)\" >> $t/foo.job"
+at -c # list jobs
+#+end_src
+
+**** Using =watchexec=
+
+Something like this:
+
+#+begin_src shell
+tf=$(mktemp -d)/task.watch # I /think/ this correct but idk
+tfrun=$(dirname $tf)/task.run
+debounce=25
+touch $tf # again, I didn't exactly test this
+watchexec -d $debounce -f "$tf" 'echo "$(date +%s)" >> $tfrun"'
+#+end_src
+
 * Issues

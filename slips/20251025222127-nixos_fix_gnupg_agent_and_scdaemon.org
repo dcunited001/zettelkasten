@@ -1,0 +1,179 @@
+:PROPERTIES:
+:ID:       ab3eefdb-1dae-404b-afc0-be939c55769f
+:END:
+#+TITLE: NixOS: Fix GnuPG Agent and SCDaemon
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
++ [[id:c613304f-f025-4c75-b418-be2131d26038][Gnupg Scdaemon]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+
+* Overview
+
+I have two problems:
+
++ pinentry became inaccessible (just fixed that)
++ but I think I need to restart bc I tested something with
+  =yubikey-touch-detector=, which created some bad systemd state.
+
+Something similar happened when I had started =emacs -q= in a profile that uses
+elpa. I couldn't fix it & needed to restart. I noticed later that =gpg-agent=
+wasn't working: the emacs had started it up under an internal
+=GNUPGHOME=~/.emacs.d/.gnupg= profile or something, so it could validate
+signatures on packages it downloads.
+
+TLDR, similar to the content in [[id:f02112b7-890c-4d98-81c9-41613e64aff7][Guix on NixOS]] in the =GPG= section
+
++ =systemctl --user daemon-reload= wasn't causing =gpg-agent= to pick up new config.
+  This is because some other =gpg-agent= invocation (idk) started an agent outside
+  of =systemd=, which wasn't starting/stopping on service restart
++ pinentry was wrong. since the configuration wasn't being refreshed (and for
+  various reasons), it wasn't running =/etc/gnupg/gpg-agent.conf=
++ Then getting =scdaemon[1646542]: ccid open error: skip= in logs
+
+The first thing to do would be check the below, then start digging deeper
+
++ =systemctl --user list-dependencies gpg-agent=
+  
+* Methods
+
+It's still complaining about =pinentry=. Probably needs restart
+
+#+begin_src shell
+gpgconf --check-programs 
+gpgconf --list-dirs
+#+end_src
+
+Apparently, you can dump config state using
+
+#+begin_src shell :results output table
+component=scdaemon
+# if the final char in each line is ':', it's just a default
+gpgconf --list-options $component \
+      | cut -f1,4 -d':' | tr ':' '\t'
+#+end_src
+
+#+RESULTS:
+| Monitor              | Options controlling the diagnostic output         |
+| verbose              | verbose                                           |
+| quiet                | be somewhat more quiet                            |
+| debug-level          | set the debugging level to LEVEL                  |
+| log-file             | write a log to FILE                               |
+| Configuration        | Options controlling the configuration             |
+| reader-port          | connect to reader at port N                       |
+| ctapi-driver         | use NAME as ct-API driver                         |
+| pcsc-driver          | use NAME as PC/SC driver                          |
+| disable-ccid         | do not use the internal CCID driver               |
+| card-timeout         | disconnect the card after N seconds of inactivity |
+| disable-pinpad       | do not use a reader's pinpad                      |
+| enable-pinpad-varlen | use variable length input for pinpad              |
+| application-priority | change the application priority to LIST           |
+| Security             | Options controlling the security                  |
+| deny-admin           | deny the use of admin card commands               |
+
+Check =gpg-agent='s pinentry, which is missing an explicit option.
+
+#+begin_src shell
+component=gpg-agent
+gpgconf --list-options $component \
+    | grep -i pinentry \
+    | cut -f1,4 -d':' | tr ':' '\t'
+#+end_src
+
+#+RESULTS:
+| Pinentry                   | Options controlling the PIN-Entry             |
+| no-allow-loopback-pinentry | disallow caller to override the pinentry      |
+| pinentry-timeout           | set the Pinentry timeout to N seconds         |
+| allow-emacs-pinentry       | allow passphrase to be prompted through Emacs |
+
+dump everything
+
+#+begin_src shell
+ga=$(mktemp -d)
+for c in $(gpgconf --list-components | cut -d':' -f1); do
+    gpgconf --list-options $c > $ga/$c.conf.orig;
+done
+
+# now restart/reload and repeat using $ga/$c.conf as suffix
+#+end_src
+
+It actually turns out that this only dumps the defaults. =man gpgconf= shows that
+the final value in each line would be the active value .....
+
+
+** Environment
+
+These will tell you what's shimmed into the environment when the agent starts:
+the delta between the environment that systemd passes to controlled processes
+and what gets modified by their =.service= definitions.
+
++ =systemctl --user cat gpg-agent | grep Environment=
++ confirm: =gpg-connect-agent 'getinfo getenv PATH' /bye=
++ confirm pinentry: =env PATH=$gpgAgentPath which pinentry=
+
+*** diffing environments
+
+#+begin_src shell
+pgpg=$(pgrep gpg-agent | head -n1)
+cat $(fd env /proc/$pgpg/environ) | covia
+#+end_src
+
+=fd= will include environments of child processes. that'd be useful, if you spawn
+a bare =bash= shell (with almost no env) then source a file file. Otherwise you
+need to iterate over the child process =environs= and call =diff= on =covia results=
+
+[[# https://github.com/dcunited001/ellipsis/blob/master/dc/dc/home/services.scm#L40][alias covia]]
+
+#+begin_src scheme
+'(("envia" . "grep -e '^[A-Za-z0-9]*PATH=' | sort | uniq")
+  ("covia" . "sed -e 's/:/\n:\t/g'") ;; `env | envia | covia'
+  ("nenvia" . "grep -ve '^[A-Za-z0-9_]*PATH=' | sort | uniq")
+  ;; diff environments: `someother_env | diffia`
+  ;; ... just get the env there (mktemp, etc)
+  ("diffia" . "envia | covia | diff - <(env | envia | covia)")
+  ("difnia" . "nenvia | diff - <(env | nenvia)"))
+#+end_src
+
+** Sockets
+
+I'm still not 100% sure why I have problems with =uwsm= slices and sockets, but it
+sure as hell will kill =Hyprland= if you start an emacs server without =uwsm app=
+
++ =systemctl --user list-dependencies sockets.target=
++ =systemctl --user list-dependencies gpg-agent yubikey-touch-detector=
+  - =gpg-agent= seems fine.... nevermind, the socket is down
+  - otherwise I was more focused on =yubikey-touch-detector= which I think is
+    running in the wrong scope.
+
+** lsof
+
+This is a command that needs a good cheatsheet. For whatever reason, it's always
+been difficult to pick up & use. At least it was a few years ago before I was
+more comfortable extracting info from =man= packages.
+
+Between =lsof= and =strace=, there's not much that you can't learn about what a
+process is doing.
+
+#+begin_src shell
+pid=$(pgrep scdaemon | head -n1)
+watch -x lsof -p $pid # oh -p why didn't I .... damit
+#+end_src
+
+Run this for =pid=$(pgrep pcscd | head -n1)= with sudo and you can watch =pcscd=
+become aware of the USB device file.
+
+** NixOS =scdaemon= conf
+
+I'm not using home-manager, so I use =programs.gnupg= to set up =gpg-agent.conf=.
+it's unclear from the docs/source how this configuration exactly makes it into
+the running agent.
+
++ These are only read on startup so this doesn't show up on =lsof=
++ And the processes need to be started under =gpg-agent=
+
+However I couldn't quite find =gpg-agent.conf= file or =scdaemon.conf= -- the former
+is .
+
+IIRC, if you replace this file in the actual =GNUPGHOME= then you lose the
+assembled configuration.
