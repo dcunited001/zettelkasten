@@ -80,6 +80,8 @@ I have no idea why it's so difficult to find examples.
 
 * Extra Modifiers
 
++ [[https://github.com/qmk/qmk_firmware/issues/17749][qmk/qmk_firmware#17749]] there's a "shift of 8"
+  + =xkb_keycode = linux_input_keycode + 8=
 
 ** =ISO_Level5_Shift= to =EightLevel= character entry.
 
@@ -119,6 +121,271 @@ From there, you should be able add the option to variants in Hyprland's conf,
 The keyboard's =fn= key remaps =print/break/pause= on top of =insert/home/end=, so
 i'll probably map one of those to an additional =super= or something. I want
 relative symmetry with functionality.
+
+** =ISO_LEVELX_{SHIFT,LATCH,LOCK}=
+
+From [[https://unix.stackexchange.com/questions/302163/how-to-make-a-iso-level4-shift-and-lock-in-xkb][How to make a ISO_Level4_Shift and Lock in xkb?]]
+
+*** First Example
+
+https://unix.stackexchange.com/questions/302163/how-to-make-a-iso-level4-shift-and-lock-in-xkb
+
+#+begin_src xkb
+// $ xkbcomp $DISPLAY - | less
+//....
+xkb_compatibility "complete+ledcaps(shift_lock)" {
+    //....
+    interpret ISO_Level3_Shift+AnyOf(all) {
+        virtualModifier= LevelThree;
+        useModMapMods=level1;
+        action= SetMods(modifiers=LevelThree,clearLocks);
+    };
+    interpret ISO_Level3_Latch+AnyOf(all) {
+        virtualModifier= LevelThree;
+        useModMapMods=level1;
+        action= LatchMods(modifiers=LevelThree,clearLocks,latchToLock);
+    };
+    interpret ISO_Level3_Lock+AnyOf(all) {
+        virtualModifier= LevelThree;
+        useModMapMods=level1;
+        action= LockMods(modifiers=LevelThree);
+    };
+    //....
+    interpret ISO_Level3_Shift+AnyOfOrNone(all) {
+        action= SetMods(modifiers=LevelThree,clearLocks);
+    };
+    interpret ISO_Level3_Latch+AnyOfOrNone(all) {
+        action= LatchMods(modifiers=LevelThree,clearLocks,latchToLock);
+    };
+    interpret ISO_Level3_Lock+AnyOfOrNone(all) {
+        action= LockMods(modifiers=LevelThree);
+    };
+
+    //....
+
+    // the 'level2' latch apparently doesn't have the same support
+    interpret ISO_Level2_Latch+AnyOf(all) {
+        useModMapMods=level1;
+        action= LatchMods(modifiers=Shift,clearLocks,latchToLock);
+    };
+    interpret ISO_Level2_Latch+AnyOfOrNone(all) {
+        action= LatchMods(modifiers=Shift,clearLocks,latchToLock);
+    };
+}; // <-- mind these fucking semicolons (they matter)
+
+#+end_src
+
+From 
+
+#+begin_src c++
+//....in xkbcommon/xkbcommon-keysyms.h:
+//....
+#define XKB_KEY_ISO_Fast_Cursor_Left          0xfe2c
+#define XKB_KEY_ISO_Fast_Cursor_Right         0xfe2d
+#define XKB_KEY_ISO_Fast_Cursor_Up            0xfe2e
+#define XKB_KEY_ISO_Fast_Cursor_Down          0xfe2f
+
+// "Remove the XKB_KEY_ prefix to get keysym names we can reference in XKB rules.
+// Let's use ISO_Fast_Cursor_Left to fake ISO_Level4_Latch."
+#+end_src
+
+with =setxkbmap -print=:
+
+#+begin_src text
+xkb_keymap {
+    xkb_keycodes  { include "evdev+aliases(qwerty)" };
+    xkb_types     { include "complete"  };
+    xkb_compat    { include "complete"  };
+    xkb_symbols   { include "pc+us(altgr-intl)+inet(evdev)" };
+    xkb_geometry  { include "pc(pc105)" };
+};
+#+end_src
+
+Apparently, you can just edit this file in place...............................
+
+yes. the dots are necessary................................
+
+#+begin_src xkb
+// Attempting to define and use a key as Level4 Shift/Latch/Lock.
+// Plan: * activate lv5 shift on rctrl.
+//       * place latches on lv5 of keys 2,3,4,5 for corresponding level.
+//       * replace keys ASDF with 8-level versions and define symbols for test.
+//       * pressing RCtrl+4 then A should result in Á
+
+// starting point: setxkbmap -layout us -variant altgr-intl -option '' -print
+// load this file: xkbcomp myfile.xkb $DISPLAY
+xkb_keymap {
+    xkb_keycodes  { include "evdev+aliases(qwerty)" };
+    xkb_types     { include "complete"      };
+    xkb_compat    { 
+        include "complete"      
+
+        // add in interpretations
+        // ISO_Level3_Latch includes a +AnyOf stanza and a +AnyOfOrNone stanza (same for ISO_Level5_Latch)
+        // assume each additional latch needs both
+        interpret ISO_Level2_Latch+AnyOf(all) {
+            useModMapMods=level1;
+            action= LatchMods(modifiers=Shift,clearLocks,latchToLock);
+        };
+        interpret ISO_Level2_Latch+AnyOfOrNone(all) {
+            action= LatchMods(modifiers=Shift,clearLocks,latchToLock);
+        };
+        interpret ISO_Fast_Cursor_Left+AnyOf(all) {
+            // Level4 needs both Shift and LevelThree
+            useModMapMods=level1;
+            action= LatchMods(modifiers=Shift+LevelThree,clearLocks,latchToLock);
+        };
+        interpret ISO_Fast_Cursor_Left+AnyOfOrNone(all) {
+            // Level4 needs both Shift and LevelThree
+            action= LatchMods(modifiers=Shift+LevelThree,clearLocks,latchToLock);
+        };
+    };
+    xkb_symbols   { 
+        include "pc"
+        include "us(altgr-intl)"
+        include "inet(evdev)"
+
+        // latch keys
+        key <AE02> {
+            type= "EIGHT_LEVEL",
+            symbols[Group1]= [ 2, at, twosuperior, dead_doubleacute, ISO_Level2_Latch, X, z, Z ]
+        };
+        key <AE03> {
+            type= "EIGHT_LEVEL",
+            symbols[Group1]= [ 3, numbersign, threesuperior, dead_macron, ISO_Level3_Latch, X, z, Z ]
+        };
+        // no ISO_Level4_Latch so use ISO_Fast_Cursor_Left
+        key <AE04> {
+            type= "EIGHT_LEVEL",
+            symbols[Group1]= [ 4, dollar, currency, sterling, ISO_Fast_Cursor_Left, X, z, Z ]
+        };
+        key <AE05> {
+            type= "EIGHT_LEVEL",
+            symbols[Group1]= [ 5, percent, EuroSign, dead_cedilla, ISO_Level5_Latch, X, z, Z ]
+        };
+        // no ISO_Level6_Latch so use ISO_Fast_Cursor_Right
+        // no ISO_Level7_Latch so use ISO_Fast_Cursor_Up
+        // no ISO_Level8_Latch so use ISO_Fast_Cursor_Down
+
+        // eight-level keys ASDF for testing
+        key <AC01> {
+            type= "EIGHT_LEVEL_SEMIALPHABETIC",
+            symbols[Group1]= [ a, A, aacute, Aacute, agrave, Agrave, aring, Aring ]
+        };
+        key <AC02> {
+            type= "EIGHT_LEVEL_SEMIALPHABETIC",
+            symbols[Group1]= [ s, S, ssharp, section, ccedilla, Ccedilla, ntilde, Ntilde ]
+        };
+        key <AC03> {
+            type= "EIGHT_LEVEL_SEMIALPHABETIC",
+            symbols[Group1]= [ d, D, eth, ETH, thorn, THORN, t, T ]
+        };
+        key <AC04> {
+            type= "EIGHT_LEVEL_SEMIALPHABETIC",
+            symbols[Group1]= [ f, F, eacute, Eacute, x, X, z, Z ]
+        };
+
+        // ISO_Level3_Shift on Right Alt
+        include "level3(ralt_switch)"
+        // ISO_Level5_Shift on Right Ctrl
+        include "level5(rctrl_switch)"  
+    };
+    xkb_geometry  { include "pc(pc105)"     };
+};
+#+end_src
+
+You have no idea how much time I've wasted dabbling with this... basically to
+turn around and find the answers were online ... just invisible. It would be so
+much easier to test the =*.xkb= file (on X11 or wherever)
+
+#+begin_quote
+Every other person who has the "skills and knowledge" has about 5 or 10 QMK
+keyboards to their name. They're $300+ each. I've never touched one and maybe
+I've seen one twice. There's no grey-market for hobbyist or specialist tools
+like that in Roanoke, so it's like quadruple-jeopardy.
+#+end_quote
+
+*** Example: create a =type=
+
+https://unix.stackexchange.com/a/768054
+
+Nice to finally know what a =type= is (I feel bad because it's not like the xkb
+docs are that bad, but I really needed to be able to /speak/ or /interact/ with one
+of these "mythical programmer keyboard enthusiasts" or whatever)
+
+Almost zero interaction with anyone else with passion/enthusiasm for programming
+(until maybe somewhat recently). I can only describe my life as some kind of
+sardonic "Chinese water torture" designed to maximize a "Tantalus" or "Buridan's
+Ass" dynamic. It is fucking bullshit.
+
+#+begin_src xkb
+default partial xkb_types "default" {
+
+    // Adds the shortcut Hyper to reach level 7
+    // and Hyper+Shift to reach level 8
+
+    virtual_modifiers  LevelThree, LevelFive, Hyper;
+
+    type "EIGHT_LEVEL_HYPER" {
+        modifiers = Shift + LevelThree + LevelFive + Hyper;
+        map[None] = Level1;
+        map[Shift] = Level2;
+        map[LevelThree] = Level3;
+        map[Shift+LevelThree] = Level4;
+        map[LevelFive] = Level5;
+        map[Shift+LevelFive] = Level6;
+        map[Hyper] = Level7;
+        map[LevelThree+LevelFive] = Level7;
+        map[Shift+Hyper] = Level8;
+        map[Shift+LevelThree+LevelFive] = Level8;
+        level_name[Level1] = "Base";
+        level_name[Level2] = "Shift";
+        level_name[Level3] = "Alt Base";
+        level_name[Level4] = "Shift Alt";
+        level_name[Level5] = "X";
+        level_name[Level6] = "X Shift";
+        level_name[Level7] = "X Alt Base";
+        level_name[Level8] = "X Shift Alt";
+    };
+};
+#+end_src
+
+Then apply the type here.
+
+#+begin_src xkb
+default partial alphanumeric_keys
+xkb_symbols "level7se" {
+    // Include your favourite symbols
+    include "se" 
+
+    name[Group1]="Level7-se";
+    key.type[Group1] = "EIGHT_LEVEL_HYPER";
+
+    // Copy in the lines from the symbols file of your choice and make
+    // your edits, here just the button A
+    key <AC01>  { [ a, A, b, B, c, C, d, D ]}; 
+
+    // Modifier keys only have one level
+    key.type[Group1] = "ONE_LEVEL";
+
+    // Right Alt gives level 3
+    key <RALT> {[ ISO_Level3_Shift ]};
+
+    // Left Win key gives level 5 
+    key <LWIN> {[ ISO_Level5_Shift ]};
+
+    // The button to the left of the number line (paragraph on Swedish 
+    // keyboards. Tilde on some others?) gives level 7.
+    key <TLDE> {[ Hyper_R ]};    
+};
+#+end_src
+
+Then load with =setxkbmap -types complete+level7_hyper level7se=
+
+*** Seriously
+
+Where the fuck was this on the internet the entire fucking time goddamit
+
 
 * Modifier Bits
 
