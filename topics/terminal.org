@@ -6,197 +6,98 @@
 #+EMAIL:     noreply@te.xel.io
 #+DESCRIPTION: notes
 
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
 
 * Terminal Multiplexors
 
 | screen | ctrl-a | permits bash commands +superset of bash+ |
 | tmux   | ctrl-b | more "modern" DSL with nice features   |
 
-** General
+** Docs
+** Resources
+** Topics
+*** General
+
+*** Comparison: Screen & Tmux
+
 + [[https://linuxhint.com/tmux_vs_screen/][Tmux vs Screen]]
-
-** Tmux
-
-*** Docs
-+ [[https://github.com/rothgar/awesome-tmux][rothgar/awesome-tmux]]
-
-*** Resources
-
-+ [[https://protechnotes.com/comprehensive-tmux-tutorial-for-beginners-with-a-cheat-sheet/    ][Comprehensive Tmux Tutorial]]
-
-**** With Emac
-
-+ [[https://whhone.com/posts/emacs-in-a-terminal/][Emacs in a Terminal]]
-
-*** Topics
-*** Issues
-
-** GNU Screen
-
-*** Docs
-
-+ GNU Screen [[https://www.gnu.org/software/screen/manual/screen.html#toc-Regions-1][manual]]
-
-*** Resources
-
-*** Topics
-**** Basics
-
-+ Screen runs =C-a := commands in the context of the =env= that first started
-  screen.
-+ The =.screenrc= details should be shared in common for most systems, then you
-  make changes and reload with =C-a :source ~/.screenrc= without spawning new
-  processes.
-+ Window customizations (splitting and assignment) do not survive detaching from
-  a session, so window layout scripts ideally should avoid commands resulting in
-  side-effects, so they are simple to re-source.
-  - running =C-a :layout save $layout= will associate the current layout to the
-    screen session, restoring it on reattach.
-+ Archlinux [[https://bbs.archlinux.org/viewtopic.php?id=55618][discussion with user screenrc's]]
-+ GNU screen [[https://www.gnu.org/software/screen/manual/screen.html#Layout][regions/layouts]]
-
-**** Signals
-
-According to [[https://stackoverflow.com/a/27727310][this s/o answer]]
-
-#+begin_quote
-Screen catches HUP signals, so it doesn't automatically exit when its
-controlling terminal goes away. Instead, when it gets a HUP, it goes into
-background mode (since it no longer has an actual terminal attached) and waits.
-When you start screen with various -d/-D/-r/-R/-RR options, it looks for an
-already running screen process (possibly detached after having received a HUP,
-and/or possibly detaching it directly by sending it a HUP) and takes over the
-child terminal sessions of that screen process (a cooperative process whereby
-the old screen process sends all the master PTYs to the new process for it to
-manage, before exiting).
-#+end_quote
-
-**** Config
-
-Basic Config
-
-#+begin_src sh :tangle .screenrc
-startup_message off
-defmousetrack on
-
-term screen-256color
-#term xterm-256color
-#term rxvt-unicode-256color
-
-# enable bold colors (shouldn't be req.)
-# attrcolor b ".I"
-
-# when available: use x-scrolling mechanism
-# termcapinfo xterm*|rxvt*|kterm*|Eterm* ti@:te@
-
-# remove window/proc number from name in windowlist (C-a ")
-windowlist string "%4n %h%=%f"
-# windowlist string "%4n %t%=%f" # default
-
-# index windows starting at 1
-bind c screen 1
-bind ^c screen 1
-bind 0 select 10
-screen 1
-
-# should fix issues where text editor's don't properly reset the window
-altscreen on
-
-hardstatus off
-hardstatus alwayslastline
-hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %m-%d %{W} %c %{g}]'
-
-# TODO: dynamic titles for screen windows:
-# https://www.gnu.org/software/screen/manual/screen.html#Dynamic-Titles
-#+end_src
-
-***** Window Title
-
-[[https://www.gnu.org/software/screen/manual/screen.html#Dynamic-Titles][Screen § 10.1.2]] describes setting the window title using =search|name= where:
-
-+ search :: regexp that flips through your =PS1= prompt
-+ name :: a default name where a final =:= will set the title according to the
-  currently running command.
-
-It's a bit tough to get screen to update the Terminal emulator's window title,
-so that should be set first. Thus...
-
-+ if you start a =screen= session using =alacritty= as the outer emulator, it /may/
-  set it if =screen= is the command that alacritty runs...
-+ otherwise, then you can pair an alacritty config with a screen session
-
-**** Task-based Configs
-Multiple windows to show progress tensorflow training status
-
-#+begin_src shell
-# A GPU/screen config to run all jobs for training and evaluation in parallel.
-# Execute:
-# source /path/to/your/virtualenv/bin/activate
-# screen -R TF -c all_jobs.screenrc
-
-screen -t train 0 python train.py --train_log_dir=workdir/train
-screen -t eval_train 1 python eval.py --split_name=train --train_log_dir=workdir/train --eval_log_dir=workdir/eval_train
-screen -t eval_test 2 python eval.py --split_name=test --train_log_dir=workdir/train --eval_log_dir=workdir/eval_test
-screen -t tensorboard 3 tensorboard --logdir=workdir
-#+end_src
-
-
-
-
-
-**** Scripts
-
-+ These scripts can be included with =C-a :source /home/dc/.screen/layout.rc=.
-+ Running =C-a :layout dump /home/dc/.screen/123.layout.screenrc= will save the
-  current layout to a file.
-
-***** Window arrangement for servers
-
-Start =ssh-agent= before launching the screen session.
-
-Then, source:
-
-#+begin_src sh :tangle .screen/remote.layout.screenrc
-split
-split -h
-#+end_src
-
-Also, it may be possible to add =source ~/.screenrc= at the top, include the =ssh-agent= startup in the =.screenrc= and start with =screen -c .screen/remotelayout.screenrc=.
-
-***** Start processes for web development
-
-***** Setup SSH/GPG for a Yubikey
-
-Useful to have a common =GPG_TTY= with more control over sharing ... though this
-may cause problems with email clients or other programs. If it does, then some
-issues could lead to pin lockouts.
-
-So maybe it's only useful for controlling access to =ssh-agent=, though there's
-probably a better way to set that up without problems (e.g. every
-console/program has SSH/GPG agent vars/access)
-
-** Image rendering
-
-
-** Comparison: Screen & Tmux
-
 + tmux has a great explanation of [[https://github.com/tmux/tmux/wiki/Modifier-Keys#what-terminal-keys-look-like][how keys are encoded & relayed to terminals]]
 
-*** Serial Connections
+**** Serial Connections
 
-screen can connect directly to a serial port
++ screen can connect directly to a serial port
+  - e.g. connect to cisco router, config, arduino, servos, i2c
++ tmux must use some other program after a connection is open
 
-+ e.g. connect to cisco router, config, arduino, servos, i2c
+screen also implements obscure protocols like =xmodem=, =ymodem= and =zmodem= (and one
+or more of those is a huge PITA). tmux doesn't necessarily.
 
-tmux must use some other program after a connection is open
++ IIRC screen multiplexes a single (or multiple?) connections -- you specify
+  baud rate at connection time. so the connection-ness is coupled to the
+  multiplexing. You can jump to connected =i2c= serials easily, but IDK whether
+  you can also view an SSH connection at the same time (... idky, u would?)
+  - these could be chained servo motors (in a robot arm, or on a circuit board)
+  - you can also connect easily to an i2c "command prompt" for an HDMI monitor
+  - you can connect to any device for which the output can be rendered sensibly
+    on a screen (... whatever that means; idk the limitations). you can do the
+    same with =tmux=, but each process starts a new connection
++ tmux needs to connect to devices from within it's multiplexing. it's virtual,
+  which is probably better for most non-esoteric applications.
 
-*** Usability?
+I may be wrong, but this has implications for how program state is distributed
+between the connected endpoints. (relavent for things like whether you're
+concerned about trustworthiness of the core host for your screen/tmux session)
+
++ TIA-485 [[https://www.ti.com/lit/ug/tiducq8/tiducq8.pdf?ts=1761684022265&ref_url=https%253A%252F%252Fwww.ti.com%252Ftool%252FTIDA-01365][devices]] & [[https://e2e.ti.com/support/interface-group/interface/f/interface-forum/616909/pca9518-daisy-chaining-of-i2c-or-other-hubs-for-multiple-point---to---point-connections-creating-a-large-tree-network][topologies]] for industrial applications (... which you won't
+  connect to via laptop)
++ [[https://docs.nordicsemi.com/bundle/ncs-latest/page/matter/nrfconnect_examples_cli.html][CLI for nRF Connect]] (some kinda embedded device using the Zephyr framework)
++ [[https://www.youtube.com/watch?v=INWghYZH3hI&t=2228s][Intro to Embedded Bootloader U-boot]]
+
+#+begin_quote
+[[https://anabrid.dev/docs/lucidac-user-docs.pdf][Lucidac Analog Computer]] (completely unrelated wtf?)
+#+end_quote
+
+Anyways, it all seems esoteric, until people interact daily with 10-100
+semi-personal smart-devices per person. That's a lotta um debugging. Whether any
+of that matters depends on which kinds of network connectivity people assume is
+ubuquitous/implicit... and no one cares. Which is exactly why I would be
+interested in it. There's a supply side problem: literally no one gives a shit
+about technical details.
+
+**** Exec & Flow Control
+
++ The =!:$cmd= and =!..|less= patterns with [[https://www.gnu.org/software/screen/manual/screen.html#Exec][exec]] allow you to bridge together output
+  from multiple processes into a single window, where =less= functions as a pager.
+  So you can establish multiple connections to disparate devices, but still see
+  a clear timeline of events.
+  - You can also merge data from socket streams (multiple =socat= invocations, etc)
+    in a similar way
+  - [[https://www.gnu.org/software/screen/manual/screen.html#Window-Types][Window Types]] and =socat= would allow you to bridge pretty much anything in
+    real time. you need to be able to setup/teardown though.
++ you can combine processing/pager with [[https://www.gnu.org/software/screen/manual/screen.html#Flow-Control][flow control]] on the window, instead of
+  the process. (maybe?) this seems useful for hardware: it can be
+  dangerous/impossible to stop program flow. ideally you'd have "event
+  handling" built into data-streams.
+  - it's inefficient to do everything ad hoc, but that's why it's useful: few
+    dependencies/components to connect to I2C/UART/xmodem and send it any output
+    =bash= could forward.
+  - it's pretty stateless ... except for the configs/scripts and whatever
+    experience you'd need with it to actually be valuable in such situations.
+    e.g. transferring files for ROMMON, etc.
+  - probably not so great for newer protocols.
+
+=tmux= probably has similar features (as =iterm2= has some of these filters/hooks
+for output, but i've never heard a single person mention them)
+
+**** Usability?
 
 Sure =tmux= is more extensible and that's great. It's far more portable than most
 terminal multiplexors. The =screen= status bar is fine, if you keep it simple ...
 but yes, it's difficult to work with.
 
-*** Security
+**** Security
 
 Via [[https://www.reddit.com/r/selfhosted/comments/1bbw6ta/comment/kuh6ci3/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button][this reddit post]], RHEL deprecated Screen as "hard to maintain & validate"
 and the notice that specifically mentions that =tmux= satisfies the stringent
@@ -206,7 +107,6 @@ The =tmux= you'd run in a secure environment will not include many or even most 
 the functionality listed in [[https://github.com/rothgar/awesome-tmux][rothgar/awesome-tmux]]
 
 + this [[https://www.hackingarticles.in/linux-for-pentester-tmux-privilege-escalation/][tmux priviledge esc.]] is a nothing burger...
-+
 
 However, I'm cynical. =screen= is just simpler (no plugins, etc)
 
@@ -264,6 +164,310 @@ find ~/src/screen/src -type f -name "*.c" -exec wc -l \{\} +
 |   322 | /home/dc/src/screen/src/winmsgbuf.c             |
 |   127 | /home/dc/src/screen/src/winmsgcond.c            |
 | 36244 | total                                           |
+*** Image rendering
+
+
+*** Usage
+General use for screen/tmux profiles
+**** Monitor
++ watch =lsof= output
++ or =watch -x ...= generally
+
+
+* GNU Screen
+
+
+
+** Docs
+
++ GNU Screen [[https://www.gnu.org/software/screen/manual/screen.html#toc-Regions-1][manual]]
+
+** Resources
+
+** Topics
+*** Basics
+
++ Screen runs =C-a := commands in the context of the =env= that first started
+  screen.
++ The =.screenrc= details should be shared in common for most systems, then you
+  make changes and reload with =C-a :source ~/.screenrc= without spawning new
+  processes.
++ Window customizations (splitting and assignment) do not survive detaching from
+  a session, so window layout scripts ideally should avoid commands resulting in
+  side-effects, so they are simple to re-source.
+  - running =C-a :layout save $layout= will associate the current layout to the
+    screen session, restoring it on reattach.
++ Archlinux [[https://bbs.archlinux.org/viewtopic.php?id=55618][discussion with user screenrc's]]
++ GNU screen [[https://www.gnu.org/software/screen/manual/screen.html#Layout][regions/layouts]]
+
+*** Signals
+
+According to [[https://stackoverflow.com/a/27727310][this s/o answer]]
+
+#+begin_quote
+Screen catches HUP signals, so it doesn't automatically exit when its
+controlling terminal goes away. Instead, when it gets a HUP, it goes into
+background mode (since it no longer has an actual terminal attached) and waits.
+When you start screen with various -d/-D/-r/-R/-RR options, it looks for an
+already running screen process (possibly detached after having received a HUP,
+and/or possibly detaching it directly by sending it a HUP) and takes over the
+child terminal sessions of that screen process (a cooperative process whereby
+the old screen process sends all the master PTYs to the new process for it to
+manage, before exiting).
+#+end_quote
+
+*** Config
+
+**** Basic Layout
+
++ apply =focus $dir= repeatedly to reach fixpoint.
+  - =focus up; focus left; focus up; focus left=....
+  - only works interactively ...
+  - don't use more than 2x2, so fixpoints are simple
++ use =layout dump $name.screenrc= instead.
+
+#+begin_example shell
+source $HOME/.screenrc
+
+screen -t "watch1: lsof" watch 'date +%s | sha256sum' # ~/bin/lsofCmd $args
+
+# title "watch1: lsof"      # titles the screen assoc to a window
+# select "watch1"           # selects window by title
+# sort                      # sort windows by title (changes ids & windowlist)
+
+split
+split -v # doesn't change focus
+
+# | ------ | ------ |
+# | 1 (F)  | 3      |
+# | ------ | ------ |
+# | 2               |
+# | ------ | ------ |
+
+focus right
+screen -t "watch2: lsof delta" watch 'echo $(date +%s) $(date +%s)' # watch -x ~/bin/lsofDelta $args
+
+# | ------ | ------ |
+# | 1      | 3 (F)  |
+# | ------ | ------ |
+# | 2               |
+# | ------ | ------ |
+
+focus down
+
+screen -t "watch3: ping" watch 'ping -c1 1.1.1.1'
+focusminsize 90% 10% # resize 0 keeps a small buffer visible
+resize 0
+#+end_example
+
+=focusminsize= works, but the constraint's applied to the outer window
+so splitting afterwards results in a bit of confusion
+
+=resize [-h|-v|-b|-l|-p] [ [+|-]n[%] | = | max | min | _ | 0 ]=
+
+region commands
+
+| only | split [-v] | remove |
+
+layout commands
+
+| select [n,title] | next,prev        | dump [filename] | autosave [on,off] | show           |   |
+| new [title]      | remove [n,title] | title [title]   | number [n]        | save [n,title] |   |
+
+**** Basic Config
+
+#+begin_src sh :tangle .screenrc
+startup_message off
+defmousetrack on
+
+term screen-256color
+#term xterm-256color
+#term rxvt-unicode-256color
+
+# enable bold colors (shouldn't be req.)
+# attrcolor b ".I"
+
+# when available: use x-scrolling mechanism
+# termcapinfo xterm*|rxvt*|kterm*|Eterm* ti@:te@
+
+# remove window/proc number from name in windowlist (C-a ")
+windowlist string "%4n %h%=%f"
+# windowlist string "%4n %t%=%f" # default
+
+# index windows starting at 1
+bind c screen 1
+bind ^c screen 1
+bind 0 select 10
+screen 1
+
+# should fix issues where text editor's don't properly reset the window
+altscreen on
+
+hardstatus off
+hardstatus alwayslastline
+hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %m-%d %{W} %c %{g}]'
+
+# TODO: dynamic titles for screen windows:
+# https://www.gnu.org/software/screen/manual/screen.html#Dynamic-Titles
+#+end_src
+
+**** Window Title
+
+[[https://www.gnu.org/software/screen/manual/screen.html#Dynamic-Titles][Screen § 10.1.2]] describes setting the window title using =search|name= where:
+
++ search :: regexp that flips through your =PS1= prompt
++ name :: a default name where a final =:= will set the title according to the
+  currently running command.
+
+It's a bit tough to get screen to update the Terminal emulator's window title,
+so that should be set first. Thus...
+
++ if you start a =screen= session using =alacritty= as the outer emulator, it /may/
+  set it if =screen= is the command that alacritty runs...
++ otherwise, then you can pair an alacritty config with a screen session
+
+*** Task-based Configs
+
+**** Watch =lsof=
+
+gotta be careful with pgrep, since the process could end up selecting itself
+maybe not, depending on bash expansion & =watch -x= internals
+
+# walkerPid=$(pgrep -f `which walker`); watch -x lsof -Fn -p $walkerPid 2>/dev/null
+# elephantPid=$(pgrep -f `nwix elephant`); watch -x lsof -Fn -p $elephantPid 2>/dev/null
+
+# TODO: finish up walker/elephant watch script
+#
+# just use `lsof -r1` instead of watch -x?
+
+#+begin_src bash
+# these need to go into a wrapper file
+emacsPPid=$(pgrep -f 'guile-wrapper/.*.emacs.doom')
+emacsPid=emacsRealPid
+
+# tree works here...
+lsof -Fn -p $emacsPid \
+| grep -e '^n/' \
+| sed -e 's/ (path.*)$//g' \
+| sed -e 's/^n//' \
+| grep -ve 'lib/.*\.so' \
+| grep -ve 'fc-cache' \
+| grep -ve 'ttf$' \
+| tree --noreport --fromfile .
+
+# until you combine it with this
+lsof -r1 -Fn -p $walkerPid \
+| grep -e '^n/' \
+| sed -e 's/ (path.*)$//g' \
+| sed -e 's/^n//' \
+| grep -ve 'lib/.*\.so' \
+| grep -ve 'fc-cache' \
+| grep -ve 'ttf$' \
+| tree --noreport --fromfile .
+
+# - `lsof -r1` establishes a single pipe (tree needs finalized output)
+# - `watch -x` runs exec, so it's difficult to pipe in a command
+
+# this works though (watch -d tracks deltas)
+watch -d "lsof -Fn -p $emacsPid \
+    | grep -e '^n/' \
+    | sed -e 's/ (path.*)$//g' \
+    | sed -e 's/^n//' \
+    | grep -ve '^/gnu/store' \
+    | grep -ve 'lib/.*\.so' \
+    | grep -ve 'fc-cache' \
+    | grep -ve 'ttf$' \
+    | tree --noreport --fromfile . \
+    | tee >(date +%s)"
+
+# tee clarifies whether the pipe completes
+#+end_src
+
+for =watch=
+
+- already contains a delta
+- can't pipe from watch (need a wrapper)
+  - there's also =watchexec=, but this is meant for more project task management
+
+for =lsof=
+
+- already contains a repeat/watch option  =lsof -r1=
+- for LSOF, you'll need to fetch the exact pid (not the parent) ... I think
+- can't conveniently pipe from lsof -r1 (need a wrapper)
+  - the pipes chain until that point.
+  - otherwise, it works
+
+for =tree=
+
++ tree doesn't want to work from =lsof -r1= or from =watch= (see above)
+  - =tree --fromfile= can take an actual file as input... lol
++ so you need to use =comm= to split out the differences from a wrapper command
+  - maybe even literal =csplit= on a pattern, then:
+    -  =watch "cat \"$aa11\" | tree --fromfile ."= or just the direct =tree=
+
+**** Tensorflow Training Status
+Multiple windows to show progress tensorflow training status
+
+#+begin_src shell
+# A GPU/screen config to run all jobs for training and evaluation in parallel.
+# Execute:
+# source /path/to/your/virtualenv/bin/activate
+# screen -R TF -c all_jobs.screenrc
+
+screen -t train 0 python train.py --train_log_dir=workdir/train
+screen -t eval_train 1 python eval.py --split_name=train --train_log_dir=workdir/train --eval_log_dir=workdir/eval_train
+screen -t eval_test 2 python eval.py --split_name=test --train_log_dir=workdir/train --eval_log_dir=workdir/eval_test
+screen -t tensorboard 3 tensorboard --logdir=workdir
+#+end_src
+*** Scripts
+
++ These scripts can be included with =C-a :source /home/dc/.screen/layout.rc=.
++ Running =C-a :layout dump /home/dc/.screen/123.layout.screenrc= will save the
+  current layout to a file.
+
+**** Window arrangement for servers
+
+Start =ssh-agent= before launching the screen session.
+
+Then, source:
+
+#+begin_src sh :tangle .screen/remote.layout.screenrc
+split
+split -h
+#+end_src
+
+Also, it may be possible to add =source ~/.screenrc= at the top, include the =ssh-agent= startup in the =.screenrc= and start with =screen -c .screen/remotelayout.screenrc=.
+
+**** Start processes for web development
+
+**** Setup SSH/GPG for a Yubikey
+
+Useful to have a common =GPG_TTY= with more control over sharing ... though this
+may cause problems with email clients or other programs. If it does, then some
+issues could lead to pin lockouts.
+
+So maybe it's only useful for controlling access to =ssh-agent=, though there's
+probably a better way to set that up without problems (e.g. every
+console/program has SSH/GPG agent vars/access)
+
+** Issues
+
+* Tmux
+
+** Docs
++ [[https://github.com/rothgar/awesome-tmux][rothgar/awesome-tmux]]
+
+** Resources
+
++ [[https://protechnotes.com/comprehensive-tmux-tutorial-for-beginners-with-a-cheat-sheet/    ][Comprehensive Tmux Tutorial]]
+
+*** With Emac
+
++ [[https://whhone.com/posts/emacs-in-a-terminal/][Emacs in a Terminal]]
+
+** Topics
+** Issues
+
 * Terminal Emulators
 
 + alacritty :: good overall. minimalistic. i like
@@ -465,8 +669,3 @@ hmmm some of these are incorrect
 
 *** Resources
 + Reddit [[https://www.reddit.com/r/commandline/comments/sd166i/alacritty_with_sixel/][discussion comparing sixel/chafa/notcurses]]
-
-* Roam
-
-+ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
-+ [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
