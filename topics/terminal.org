@@ -68,12 +68,18 @@ about technical details.
 
 **** Exec & Flow Control
 
+
 + The =!:$cmd= and =!..|less= patterns with [[https://www.gnu.org/software/screen/manual/screen.html#Exec][exec]] allow you to bridge together output
   from multiple processes into a single window, where =less= functions as a pager.
   So you can establish multiple connections to disparate devices, but still see
   a clear timeline of events.
+  - NOTE: it appears there's no naive way to do this. you can only have one =exec=
+    process per "window" (mostly for filtering). and each window can only run
+    one process at a time. So, i'm sure you /can/ accomplish this, but it probably
+    requires juggling file descriptors in an external bash script that gets run
+    in the window.
   - You can also merge data from socket streams (multiple =socat= invocations, etc)
-    in a similar way
+    in a similar way.
   - [[https://www.gnu.org/software/screen/manual/screen.html#Window-Types][Window Types]] and =socat= would allow you to bridge pretty much anything in
     real time. you need to be able to setup/teardown though.
 + you can combine processing/pager with [[https://www.gnu.org/software/screen/manual/screen.html#Flow-Control][flow control]] on the window, instead of
@@ -90,6 +96,23 @@ about technical details.
 
 =tmux= probably has similar features (as =iterm2= has some of these filters/hooks
 for output, but i've never heard a single person mention them)
+
+#+begin_quote
+The =fdpat= dots are confusing. There's a =doc/fdpat.ps= file which you can print
+with =lpr -P $(lpstat -e) -l doc/fdpat.ps= if you a balla. You can print from
+=dired= by hitting =!= followed by =lpr -P $(lpstat -e) -l= while the file is
+highlighted....
+
+which just prints the =.ps= source... SMH so nvm just drop the =-l= flag (and be
+skeptical of gemini).
+#+end_quote
+
+I had previous /tried/ to develop an informal system of specifying all/most
+combinations of bash redirection using an ad hoc system inspired by "greek
+miniscule", so I could quickly convey bash redirection semantics with a minimal
+set of pen strokes... but I failed.
+
+[[file:img/terminal-redirection.jpg]]
 
 **** Usability?
 
@@ -419,6 +442,95 @@ screen -t eval_train 1 python eval.py --split_name=train --train_log_dir=workdir
 screen -t eval_test 2 python eval.py --split_name=test --train_log_dir=workdir/train --eval_log_dir=workdir/eval_test
 screen -t tensorboard 3 tensorboard --logdir=workdir
 #+end_src
+
+**** Control =journalctl= with a dumb robot
+
+Run the =slowyes= command and pass it's output back to =stdin= for window's process
+
+#+begin_src shell
+#!/usr/bin/env bash
+
+# the `yes` command will repeat any sequence of chars, even newlines, but has no
+# control over speed.
+
+# echo G
+while [ "1" == "1" ]; do
+    r="$((RANDOM % 256))"
+    if [ "$r" == "$((0x66))" ]; then echo -en '\x66'; fi    # f
+    if [ "$r" == "$((0x62))" ]; then echo -en '\x62'; fi    # b
+    if [ "$(($r % 17 ))" == "0" ]; then echo -en '\x66'; fi # a few more f's
+    if [ "$(($r % 7 ))" == "0" ]; then echo -en '\x62'; fi  # a few more b's
+    sleep 0.01
+done
+
+# echo -n "123" | tee >(echo -n "    ")
+#+end_src
+
+See the exec command.
+
+#+begin_example shell
+# -*- mode: shell-ts -*-
+# source this to index windows at 1
+source $HOME/.screenrc
+
+#----------------------------------
+# Region 1 (top), Window 1: bash
+focusminsize 90% 10%
+split                   # split before resize
+resize 0
+
+#----------------------------------
+# Region 2 (bottom), Window 2: journalctl
+focus down              # then focus
+screen -t "2: journalctl" 2 journalctl -rb -p7
+# starting journalctl is blocking on Screen UI
+# but the rest of the script is executed.
+
+#----------------------------------
+# Region 1 (top), Window 1: bash
+focus up
+wall "Window 2 has a pager"
+
+#----------------------------------
+# Region 2 (bottom), Window 2: journalctl
+focus down
+# stuff 'G' # would send journalctl to end
+exec .!. $HOME/.screen/slowyes
+# stuff "killall slowyes" # pastes immediately
+
+#----------------------------------
+# Region 1 (top), Window 1: bash
+focus up
+slowpaste 200
+register '.' 'kill $(pgrep -f slowyes)'\n
+paste '.'
+
+# select 2
+slowpaste 1000
+wall 'paste is NON-blocking'
+# stuff 'q'
+#+end_example
+
+
+**** Debug =pcscd= and =gpg-agent= 
+
+
+#+begin_example shell
+source $HOME/.screenrc
+
+screen -t "1: journalctl: GnuPG and pcscd"
+exec !journalctl -f --no-tail --no-pager -b -p7 -u --user gpg-agent
+exec !journalctl -f --no-tail --no-pager -b -p7 -u --user yubikey-touch-detector
+exec !journalctl -f --no-tail --no-pager -b -p7 -u pcscd
+split
+focus down
+# title "2: bash"
+screen -t "2: bash"
+focusminsize 90% 10%
+resize 0
+focus up
+wall "Window 1 has no pager"
+#+end_example
 *** Scripts
 
 + These scripts can be included with =C-a :source /home/dc/.screen/layout.rc=.
@@ -431,10 +543,10 @@ Start =ssh-agent= before launching the screen session.
 
 Then, source:
 
-#+begin_src sh :tangle .screen/remote.layout.screenrc
+#+begin_example sh :tangle .screen/remote.layout.screenrc
 split
 split -h
-#+end_src
+#+end_example
 
 Also, it may be possible to add =source ~/.screenrc= at the top, include the =ssh-agent= startup in the =.screenrc= and start with =screen -c .screen/remotelayout.screenrc=.
 
