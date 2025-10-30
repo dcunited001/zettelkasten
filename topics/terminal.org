@@ -351,6 +351,129 @@ so that should be set first. Thus...
 
 *** Task-based Configs
 
+**** Tensorflow Training Status
+Multiple windows to show progress tensorflow training status
+
+#+begin_src shell
+# A GPU/screen config to run all jobs for training and evaluation in parallel.
+# Execute:
+# source /path/to/your/virtualenv/bin/activate
+# screen -R TF -c all_jobs.screenrc
+
+screen -t train 0 python train.py --train_log_dir=workdir/train
+screen -t eval_train 1 python eval.py --split_name=train --train_log_dir=workdir/train --eval_log_dir=workdir/eval_train
+screen -t eval_test 2 python eval.py --split_name=test --train_log_dir=workdir/train --eval_log_dir=workdir/eval_test
+screen -t tensorboard 3 tensorboard --logdir=workdir
+#+end_src
+
+**** Debug =pcscd= and =gpg-agent= 
+
+#+begin_example shell
+# -*- mode: shell-ts -*-
+source $HOME/.screenrc
+
+# ----------------------------------
+# journal
+screen -t 'journalctl' 1 journalctl -f --no-tail --no-pager -b -p7 --unit pcscd.service --user-unit=gpg-agent.service --user-unit=yubikey-touch-detector.service
+
+# ----------------------------------
+# bash console
+split
+focus down
+select 1
+focusminsize 50% 10%         # focusminsize is global
+# screen -t "2: bash" 2      # it's already running bash
+
+# ----------------------------------
+# gpg-agent help
+
+split
+focus down
+split -v
+# focusminsize 50%
+screen -t 'gpg-agent: help getinfo' 4 gpg-connect-agent 'help getinfo'
+resize 50%
+
+focus right
+# focusminsize 50%
+screen -t 'scdaemon: help getinfo' 5 gpg-connect-agent 'scd help getinfo'
+resize 50%
+
+# ----------------------------------
+# back to bash
+focus up
+resize 0
+#+end_example
+
+**** Control =journalctl= with a dumb robot
+
+Run the =slowyes= command and pass it's output back to =stdin= for window's process
+
+#+begin_src shell
+#!/usr/bin/env bash
+
+# the `yes` command will repeat any sequence of chars, even newlines, but has no
+# control over speed.
+
+# echo G
+while [ "1" == "1" ]; do
+    r="$((RANDOM % 256))"
+    if [ "$r" == "$((0x66))" ]; then echo -en '\x66'; fi    # f
+    if [ "$r" == "$((0x62))" ]; then echo -en '\x62'; fi    # b
+    if [ "$(($r % 17 ))" == "0" ]; then echo -en '\x66'; fi # a few more f's
+    if [ "$(($r % 7 ))" == "0" ]; then echo -en '\x62'; fi  # a few more b's
+    sleep 0.01
+done
+
+# echo -n "123" | tee >(echo -n "    ")
+#+end_src
+
+See the exec command.
+
+#+begin_example shell
+# -*- mode: shell-ts -*-
+# source this to index windows at 1
+source $HOME/.screenrc
+
+#----------------------------------
+# Region 1 (top), Window 1: bash
+focusminsize 90% 10%
+split                   # split before resize
+resize 0
+
+#----------------------------------
+# Region 2 (bottom), Window 2: journalctl
+focus down              # then focus
+screen -t "2: journalctl" 2 journalctl -rb -p7
+# starting journalctl is blocking on Screen UI
+# but the rest of the script is executed.
+
+#----------------------------------
+# Region 1 (top), Window 1: bash
+focus up
+wall "Window 2 has a pager"
+
+#----------------------------------
+# Region 2 (bottom), Window 2: journalctl
+focus down
+# stuff 'G' # would send journalctl to end
+exec .!. $HOME/.screen/slowyes
+# stuff "killall slowyes" # pastes immediately
+
+#----------------------------------
+# Region 1 (top), Window 1: bash
+focus up
+slowpaste 200
+register '.' 'kill $(pgrep -f slowyes)'\n
+paste '.'
+
+# select 2
+slowpaste 1000
+wall 'paste is NON-blocking'
+# stuff 'q'
+#+end_example
+
+
 **** Watch =lsof=
 
 gotta be careful with pgrep, since the process could end up selecting itself
@@ -428,109 +551,6 @@ for =tree=
   - maybe even literal =csplit= on a pattern, then:
     -  =watch "cat \"$aa11\" | tree --fromfile ."= or just the direct =tree=
 
-**** Tensorflow Training Status
-Multiple windows to show progress tensorflow training status
-
-#+begin_src shell
-# A GPU/screen config to run all jobs for training and evaluation in parallel.
-# Execute:
-# source /path/to/your/virtualenv/bin/activate
-# screen -R TF -c all_jobs.screenrc
-
-screen -t train 0 python train.py --train_log_dir=workdir/train
-screen -t eval_train 1 python eval.py --split_name=train --train_log_dir=workdir/train --eval_log_dir=workdir/eval_train
-screen -t eval_test 2 python eval.py --split_name=test --train_log_dir=workdir/train --eval_log_dir=workdir/eval_test
-screen -t tensorboard 3 tensorboard --logdir=workdir
-#+end_src
-
-**** Control =journalctl= with a dumb robot
-
-Run the =slowyes= command and pass it's output back to =stdin= for window's process
-
-#+begin_src shell
-#!/usr/bin/env bash
-
-# the `yes` command will repeat any sequence of chars, even newlines, but has no
-# control over speed.
-
-# echo G
-while [ "1" == "1" ]; do
-    r="$((RANDOM % 256))"
-    if [ "$r" == "$((0x66))" ]; then echo -en '\x66'; fi    # f
-    if [ "$r" == "$((0x62))" ]; then echo -en '\x62'; fi    # b
-    if [ "$(($r % 17 ))" == "0" ]; then echo -en '\x66'; fi # a few more f's
-    if [ "$(($r % 7 ))" == "0" ]; then echo -en '\x62'; fi  # a few more b's
-    sleep 0.01
-done
-
-# echo -n "123" | tee >(echo -n "    ")
-#+end_src
-
-See the exec command.
-
-#+begin_example shell
-# -*- mode: shell-ts -*-
-# source this to index windows at 1
-source $HOME/.screenrc
-
-#----------------------------------
-# Region 1 (top), Window 1: bash
-focusminsize 90% 10%
-split                   # split before resize
-resize 0
-
-#----------------------------------
-# Region 2 (bottom), Window 2: journalctl
-focus down              # then focus
-screen -t "2: journalctl" 2 journalctl -rb -p7
-# starting journalctl is blocking on Screen UI
-# but the rest of the script is executed.
-
-#----------------------------------
-# Region 1 (top), Window 1: bash
-focus up
-wall "Window 2 has a pager"
-
-#----------------------------------
-# Region 2 (bottom), Window 2: journalctl
-focus down
-# stuff 'G' # would send journalctl to end
-exec .!. $HOME/.screen/slowyes
-# stuff "killall slowyes" # pastes immediately
-
-#----------------------------------
-# Region 1 (top), Window 1: bash
-focus up
-slowpaste 200
-register '.' 'kill $(pgrep -f slowyes)'\n
-paste '.'
-
-# select 2
-slowpaste 1000
-wall 'paste is NON-blocking'
-# stuff 'q'
-#+end_example
-
-
-**** Debug =pcscd= and =gpg-agent= 
-
-
-#+begin_example shell
-source $HOME/.screenrc
-
-screen -t "1: journalctl: GnuPG and pcscd"
-exec !journalctl -f --no-tail --no-pager -b -p7 -u --user gpg-agent
-exec !journalctl -f --no-tail --no-pager -b -p7 -u --user yubikey-touch-detector
-exec !journalctl -f --no-tail --no-pager -b -p7 -u pcscd
-split
-focus down
-# title "2: bash"
-screen -t "2: bash"
-focusminsize 90% 10%
-resize 0
-focus up
-wall "Window 1 has no pager"
-#+end_example
 *** Scripts
 
 + These scripts can be included with =C-a :source /home/dc/.screen/layout.rc=.
