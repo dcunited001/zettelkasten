@@ -322,66 +322,7 @@ tree -L 1 \
   - part 2: [[https://blog.gitguardian.com/securing-containers-with-seccomp-part-2/][configuring github actions to automate]]
 
 ** Inter-Process Communication (IPC) Unit
-
-*** Socat
-
-[[https://github.com/StudioEtrange/socat-windows][StudioEtrange/socat-windows]]: =socat= on windows with Cygwin
-
-Ouch. I bet this guy really knows =socat=. Tons of [[https://github.com/StudioEtrange/socat-windows/blob/master/EXAMPLES][examples]] in the repo, but no
-named pipes afaik.
-
-*** Bridging Sockets with socat, nc, ssh
-
-[[https://aweirdimagination.net/2024/04/21/streams-and-socket-and-pipes-oh-my/][Streams and Sockets and Pipes, oh my]] essentially describes using =socat= or
-=ssh= as functor-generators to type-lift a socket to another type. This helps
-you bridge IPC streams between programs that only support a limited set of
-socket types.
-
-e.g. (examples shamelessly copied from A Weird Imagination's blog)
-
-#+begin_src sh
-# Bridge a pair of named pipes to a Unix socket
-socat UNIX-LISTEN:test.sock 'PIPE:pipe_in!!PIPE:pipe_out'
-
-# Connect to Unix socket HTTP server via TCP
-socat TCP-LISTEN:8042,fork,bind=localhost \
-    UNIX-CONNECT:http.sock
-
-# Forward a Unix socket over an SSH connection (two options)
-# 1
-socat EXEC:"ssh remote 'socat UNIX-CLIENT:service.sock -'" \
-    UNIX-LISTEN:proxy-to-remote.sock
-
-# 2 (in newer versions, ssh can forward Unix sockets)
-ssh -N -L ./proxy-to-remote.sock:./service.sock remote
-#+end_src
-
-The author has several other good articles on sockets:
-
-+ [[https://aweirdimagination.net/2024/04/07/http-over-unix-sockets/][HTTP over Unix Sockets]]: PoC script in python (handy in general). Also
-  describes setting =umask= for socket permissions
-+ [[https://aweirdimagination.net/2024/03/24/scripting-control-of-web-browser/][Scripting Control of Web Browser]]: use Firefox Marionette via python's
-  =marionette_driver= for remote control of the browser (enumerate window
-  placement, enumerate tabs, move windows, etc)
-
-*** IPC Performance
-
-Named pipes are fast at very low block sizes
-
-Results (data From Baeldung's [[https://www.baeldung.com/linux/ipc-performance-comparison][Linux IPC Performance Comparison]]...)
-
-|           |   Anon Pipe |  Named Pipe |  Unix Socket |   TCP Socket |
-|-----------+-------------+-------------+--------------+--------------|
-| 100 B     |  278.062607 |  318.413648 |   245.992742 |   269.562354 |
-| 500 B     | 1270.474921 | 1475.198028 |  1184.959553 |  1284.184400 |
-| 10000 B   | 8070.641040 | 8843.554059 | 15885.902502 | 14798.750616 |
-| 1000000 B | 9039.146532 | 9699.212714 | 41334.862565 | 36208.454080 |
-
-
-
-
-
-** Other Subsystems
+See [[id:dae42c2e-aba7-4c9c-9878-b9665befe205][IPC And Sockets]]** Other Subsystems
 
 Where to place these?
 
@@ -980,65 +921,6 @@ kill -l | rev | cut -f1,3,5,7,9 -d'' | rev
 + Fork again & return pid. Exit parent with success/failure (or handle error)
 + Set =umask= and =PWD=.
 + Close file descriptors & clean up.
-
-*** IPC
-
-+ [[https://opensource.com/article/19/4/interprocess-communication-linux-networking][IPC in Linux: Sockets & Signals]]
-+ Linux fuser command
-+ Socket Forwarding Over SSH
-  - from [[https://medium.com/@dperny/forwarding-the-docker-socket-over-ssh-e6567cfab160][Forwarding Docker Socket via SSH Tunnel]]
-  - also: [[https://blog.ruanbekker.com/blog/2018/04/30/forwarding-the-docker-socket-via-a-ssh-tunnel-to-execute-docker-commands-locally/][forwarding docker socket (to exec docker cmd locally)]]
-  - Since [[https://lwn.net/Articles/609321/][OpenSSH 6.7]]
-+ [[https://www.baeldung.com/linux/communicate-with-unix-sockets][IPC with unix sockets (baeldung)]]
-
-**** Comparison
-
-+ [[https://news.ycombinator.com/item?id=6739374][ØMQ vs Sockets]] (hacker news)
-
-**** Learning
-
-MPV may be a good way to learn about sockets and IPC on host or over the network
-
-***** Workflow
-
-Run =top=, hit =o= and type =COMMAND=$command= to follow the status of
-processes, so you don't have to repeatedly run =ps aux= or =pgrep=. The =o=
-filters are case sensitive. =htop= includes the descendents by default.
-
-*** Sockets
-
-**** Remoting
-+ ZeroTier/Yggdrasil
-  - or Meshnet or Tor
-+ VPN over SSH
-+ Proxy Server or Reverse Proxy
-+ SSH-D + Bind + Socks
-  - One way to avoid agent forwarding
-
-**** Send to socket
-See [[https://www.man7.org/linux/man-pages/man2/send.2.html][man send]] for info on send, sendto, sendmsg
-
-**** Socat Tunnelling
-+ [[https://www.cyberciti.biz/faq/linux-unix-tcp-port-forwarding/][SOcket CAT]]
-+ Tunneling w/ =socat= is an option (to avoid SSH agent forwarding)
-
-From [[https://blog.travismclarke.com/post/socat-tutorial/][Socat Cheatsheet]]
-
-#+begin_example shell
-# Server
-socat TCP-LISTEN:54321\
-,reuseaddr\
-,fork \
-TCP:remote.server.com:22
-
-# Client
-ssh root@localhost -p 54321
-#+end_example
-
-**** Dante/Stunnel
-
-+ [[https://hamy.io/post/0014/setting-up-an-encrypted-socks-proxy-using-dante-and-stunnel/][Setting up an encrypted SOCKS proxy using Dante and stunnel]]
-+ [[https://hamy.io/post/0011/how-to-run-stunnel-on-your-android-device/][Stunnel on android devices]]
 
 * Misc
 

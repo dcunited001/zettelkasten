@@ -67,6 +67,105 @@ This is already a bit complex
 * Service Management
 *** Systemd
 
+**** NixOS Env
+
+NixOS settings
+
++ config.environment.sessionVariables ::
+  + merged into =environment.variables= (not pamified)
+    - the =sessionVariables= are particularly "initialized by =pam_env=, (that is,
+      not only in shells)"
+  + apparently this is only in =nixos-unstable= ... (no wonder I got so confused)
++ config.profileRelativeSessionVariables :: PAM
+  - these pamified vars are merged into =environment.profileRelativeEnvVars= (the
+    non-pamified vars).
+  - the =profileRelative.*= vars are relative to nix profiles on the system.
++ /etc/pam/environment :: the pamified vars end up here
+  - set by display managers [[https://github.com/NixOS/nixpkgs/blob/85fe7380cc14e96a569f53fc07133b2db55049d9/nixos/modules/services/display-managers/sddm.nix#L367-L402][SDDM]], GDM, Cage, LightDM
+    - for SDDM, several configs are created as =security.pam.services.<name>=
+    - but =pam_env.so= is not "sourced last" ([[https://www.reddit.com/r/archlinux/comments/l0ascx/pam_env_is_being_deprecated_any_alternatives/][apparently important]] idfk)
+
+There are several files for configuring vars in the profile (potentially outside
+of =nixos-rebuild=)
+
++ $HOME/.profile ::
+  - should be at least sourced by your =.bash_profile=
++ $XDG_CONFIG_HOME/environment.d ::
+  - I was under the impression that this wasn't sourced as a typical shell file.
++ $XDG_CONFIG_HOME/uwsm/env{-hyprland} ::
+  - Same deal, "not a typical shell source" ... that's wrong? The hyde project
+    uses this to load environment for UWSM
+  - =HYPRLAND_CONFIG= is set here
+
+***** Probing
+
+#+begin_src shell
+t=$(mktemp -d)
+# may run this in a vty to understand what's not run by uwsm
+env | sort | uniq > $t/alacritty.hypr.uwsm.env
+
+# changes introduced when uwsm sources this
+grep -e 'export' ~/.config/uwsm/env-hyprland \
+    | sed -E 's/export (.*)=(.*)\b( *#.*)?/\1=\2/g' \
+    | tr -d '"' | sort | uniq > $t/config.uwsm.env
+
+# what systemd thinks is happening...
+systemctl --user show-environment | sort | uniq > $t/systemd.user.env
+
+# if you really must... (this should be the same as the other uwsm-based apps)
+hyprctl dispatch exec "uwsm app -- /bin/sh -c \"env | sort > $t/uwsm.hypr.env\""
+
+# only differs from uwsm.hypr.env by HL_INITIAL_WORKSPACE_TOKEN and INVOCATION_ID
+hyprctl dispatch exec "env | sort > $t/hypr.env"
+#+end_src
+***** SystemD
+
+God I hate the singular =systemctl= man page with the fury of 1,000 suns.
+
+YTF can i not _simply_ get a list of unit files to enumerate?
+
+#+begin_src shell
+systemctl --user list-units --no-pager # fucking _____ lines
+systemctl --user list-units --no-pager --property=name # same output?
+systemctl --user cat --no-pager '*' | grep -e '^PATH=' # only error output
+systemctl --user cat --no-pager '*' 2>/dev/null | grep -e '^PATH=' # no output
+
+# ... oh
+
+systemctl --user cat --no-pager '*' 2>/dev/null | grep -e '^Environment='
+
+# finally. shouldn't require 30 minutes & shouldn't block 2 days of productivity
+
+# I'm sorry i never showed up to Red Hat "boot camp" excuse me
+#+end_src
+
+****** setting =PATH=
+
+This =config.systemd.user.sessionVariables= is =home-manager=-only
+
+
+
+***** UWSM
+
+You want =fumon= and =uuctl= support built-in to =uwsm=... they are by default, but
+they're not configured
+
++ systemctl --user fumon --enable --now fumon.service :: it basically just gives
+  you notifications about failed =uwsm app= units. this isn't super-valuable until
+  you have zero broken =uwsm app= units.
+  - you need to enable it to link the target... which you can't simply do when
+   using =hjem=, since it owns =~/.config/systemd/user=
++ uuctl menu walker :: shows a menu to help you start/stop =uwsm-app= services
+  created from systemd templates.
+
+****** Slices
+
+configure as unit files by either =hjem= files, =home-manager= or =nixos=. See [[https://www.reddit.com/r/hyprland/comments/1ij420c/trying_ro_figure_out_uwsm/][Trying
+to figure out UWSM]]. Mostly for resource contstraints, but I think also for
+environment configuration.
+
+****** Fumon
+
 **** Env
 
 #+begin_quote
@@ -171,9 +270,6 @@ echo $DefaultEnvironment | tr ':' '\n'
 | /nix/var/nix/profiles/default/bin |
 | /run/current-system/sw/bin        |
 | $PATH                             |
-
-
-
 * Xorg Desktops
 
 ** Launcher
