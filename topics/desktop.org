@@ -10,9 +10,7 @@
 
 The [[id:da888d96-a444-49f7-865f-7b122c15b14e][Desktop]] Formerly Known As "Free"
 
-
 ** Docs
-
 
 ** Resources
 
@@ -31,7 +29,6 @@ controlled with dbus, sway/i3-IPC or other technology. The reason for this is
 that we believe that custom IPCs and protocols create a fragmentation that
 hinders general Wayland adoption.
 #+end_quote
-
 
 ** Topics
 
@@ -141,6 +138,41 @@ systemctl --user cat --no-pager '*' 2>/dev/null | grep -e '^Environment='
 
 ****** Linking unit files
 
+******* After source
+
+[[https://github.com/feel-co/hjem/blob/3c01274451544d3f5ebceec382447c46cb9ca83c/modules/nixos/systemd.nix#L60][feel-co/hjem modules/nixos/systemd.nix#L60]] handles SystemD units conversion
+
++ I have =hjem.users.dc.systemd.enable=true=, which I guess I forgot about.
++ This takes ownership of systemd unit management.
++ It also seems to expose some of the more core NixOS [[https://github.com/NixOS/nixpkgs/blob/85fe7380cc14e96a569f53fc07133b2db55049d9/nixos/lib/utils.nix#L422-L436][attrset-to-systemd
+  functionality]] which is broken down by type here for
+  [[https://github.com/NixOS/nixpkgs/blob/85fe7380cc14e96a569f53fc07133b2db55049d9/nixos/lib/systemd-lib.nix#L744][target,service,socket,timer,mount,timer,path]]
+
+... so now i feel dumb
+
+#+begin_src nix
+  hjem.users.dc.systemd.services.fumon = {
+    unitConfig = {
+      Description = "Failed unit monitor";
+      Documentation = "man:fumon(1) man:busctl(1)";
+      Requisite = "graphical-session.target";
+    };
+    serviceConfig = {
+      Type = "exec";
+      ExecCondition = "/bin/sh -c \"command -v notify-send > /dev/null\"";
+      ExecStart = "${lib.getExe' pkgs.uwsm "fumon"}";
+      Restart = "on-failure";
+      Slice = [ "background-graphical.slice" ];
+    };
+
+    environment.PATH = lib.mkForce null;
+    after = [ "graphical-session.target" ];
+    wantedBy = [ "graphical-session.target" ];
+  };
+#+end_src
+
+******* Before source
+
 I'm still having one last problem where I can't enable user services. =hjem=
 creates an empty =~/.config/systemd/user= directory to backup user services.
 
@@ -152,7 +184,6 @@ It depends on how many types of SystemD "things" need links. I will also use it
 to manage sockets. And I'm wondering whether it can manage sockets for processes
 that aren't managed by systemd... obviously not if i'm expecting socket
 activation.
-
 ****** Finding current unit files
 
 This seems to work. i'm not sure how else to get the current active unit file.
