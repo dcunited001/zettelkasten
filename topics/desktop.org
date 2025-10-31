@@ -139,11 +139,118 @@ systemctl --user cat --no-pager '*' 2>/dev/null | grep -e '^Environment='
 # I'm sorry i never showed up to Red Hat "boot camp" excuse me
 #+end_src
 
+****** Linking unit files
+
+I'm still having one last problem where I can't enable user services. =hjem=
+creates an empty =~/.config/systemd/user= directory to backup user services.
+
++ I could create systemd services from raw files via =hjem=
++ Or I could just create the links via =hjem=.
++ Or there may be some mechanism to enable services via =systemd.users.services=
+
+It depends on how many types of SystemD "things" need links. I will also use it
+to manage sockets. And I'm wondering whether it can manage sockets for processes
+that aren't managed by systemd... obviously not if i'm expecting socket
+activation.
+
+****** Finding current unit files
+
+This seems to work. i'm not sure how else to get the current active unit file.
+
+#+begin_src shell
+systemctl --user cat '*.service' | grep -e '^# /' | tree --fromfile .
+#+end_src
+
+I guess my problem is that systemd does _not_ use path to lookup a command...
+maybe it helps avoid mistakes.
+
+#+begin_src nix
+  # users.users.${dc}.packages = [ pkgs.fumon ];
+  systemd.user.services.fumon2 = {
+    unitConfig = {
+      Description = "Failed unit monitor";
+      Documentation = "man:fumon(1) man:busctl(1)";
+      Requisite = "graphical-session.target";
+    };
+    serviceConfig = {
+      Type = "exec";
+
+      # if systemd.user.services.<name> inserts Environment=PATH, this will fail
+      ExecCondition = "/bin/sh -c \"command -v notify-send > /dev/null\"";
+
+      # this does NOT work
+      ExecStart = "fumon";
+      # this would work
+      ExecStart = "${lib.getExe' pkgs.uwsm "fumon"}";
+
+      # this fails to find `printf`
+      ExecStart = "printf \"$PATH\"";
+
+      # this finds printf and dumps path (whats set in DefaultEnvironment below, unless ...)
+      ExecStart = "/run/current-system/sw/bin/printf \"$PATH\"";
+
+      Restart = "on-failure";
+      Slice = [ "background-graphical.slice" ];
+    };
+    after = [ "graphical-session.target" ];
+    wantedBy = [ "graphical-session.target" ];
+
+    # if this isn't set, systemd, the service gets a stripped down PATH
+    # because Environment=PATH gets overridden by when systemd.user.services creates files
+    environment.PATH = lib.mkForce null;
+
+    # Hyprland sets this for systemd.user.extraConfig, but specifies its
+    # systemd.user.services so that the environment is NOT overidden. And I
+    # guess it's uwsm that instantiates a template service.
+    #
+    # DefaultEnvironment="PATH=/run/wrappers/bin:/etc/profiles/per-user/%u/bin:/nix/var/nix/profiles/default/bin:/run/current-system/sw/bin:$PATH"
+  };
+  #+end_src
+
 ****** setting =PATH=
 
 This =config.systemd.user.sessionVariables= is =home-manager=-only
 
+[[https://stackoverflow.com/questions/68330711/nixos-service-systemd-units-path-does-not-contain-expected-dependency#comment121189034_68339169][By what mechanism did you expect your finderapp script to find ffmpeg without
+setting PATH?]] by the same mechanism it settles on a reasonable default for
+system services. I guess I don't know SystemD, but i'm surprised there's no
+clear answer for this.
 
++ I checked =systemctl --user show-environment=, but that was correct. I didn't
+  realize SystemD refuses =PATH= lookups (or something? still not 100% sure)
++ I didn't quite understand the default properties were being injected to
+  override =Environment=PATH=. That was simple enough to grok with =systemctl cat=
+
+TL;DR: use this if the command needs to spawn additional environments with your
+full SystemD User Service Manager's environment.
+
+#+begin_example nix
+# this DOES change the path (by preventing it from being overridden)
+environment.PATH = lib.mkForce null;
+#+end_example
+
+A more specific =PATH= is probably a better idea.
+
+Otherwise, it will set something like below (the =printf= and =systemctl cat= do
+show the same thing)
+
+#+begin_example
+/nix/store/00bc157nm93q5fjz551fwk60ihlbilvj-coreutils-9.7/bin
+:/nix/store/wq1cxh4s8rz8vs4ssp2z49v96m0nhxhj-findutils-4.10.0/bin
+:/nix/store/6q57mnfak3q8ss656qgp245qzqvnniyr-gnugrep-3.12/bin
+:/nix/store/7zy6jnnpqh16b18j6ar289vhwp17msh0-gnused-4.9/bin
+:/nix/store/cwyd97h7wf5sprgvpg44j6rjws1bbjkm-systemd-257.9/bin
+:/nix/store/00bc157nm93q5fjz551fwk60ihlbilvj-coreutils-9.7/sbin
+:/nix/store/wq1cxh4s8rz8vs4ssp2z49v96m0nhxhj-findutils-4.10.0/sbin
+:/nix/store/6q57mnfak3q8ss656qgp245qzqvnniyr-gnugrep-3.12/sbin
+:/nix/store/7zy6jnnpqh16b18j6ar289vhwp17msh0-gnused-4.9/sbin
+:/nix/store/cwyd97h7wf5sprgvpg44j6rjws1bbjkm-systemd-257.9/sbin
+#+end_example
+
+On some systems, =ExecStart=/bin/sh -l -c "$cmd"= will re-source the profile,
+giving it a full environment. I think =-l= is required, idk. But =/etc/profile= on
+nixos suppresses this when =__ETC_PROFILE_DONE=1= is inherited from the parent
+environment.
 
 ***** UWSM
 
