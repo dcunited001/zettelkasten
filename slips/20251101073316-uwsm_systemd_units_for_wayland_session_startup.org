@@ -1,0 +1,224 @@
+:PROPERTIES:
+:ID:       007e076f-3037-4296-98b9-6df7172daace
+:END:
+#+TITLE: UWSM: Systemd Units for Wayland Session Startup
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
++ [[id:f92bb944-0269-47d4-b07c-2bd683e936f2][Wayland]]
++ [[id:df7f060a-d663-4eaa-844e-f8baec7c94a2][SystemD]]
++ [[id:da888d96-a444-49f7-865f-7b122c15b14e][Desktop]]
+
+A few of these are probably wrong and most of them are misleading. I've removed
+the =.*shutdown= targets, since it gets multiple edges per node.
+
+
+=(targets)^2=
+
+[[file:img/nix/nixos-systemd-uwsm.from-targets.to-targets.svg]]
+
+=(slices)*(targets)=
+
+[[file:img/nix/nixos-systemd-uwsm.from-slices.to-targets.svg]]
+
+=(non-templated services)^2=
+
+[[file:img/nix/nixos-systemd-uwsm.from-nt-services.to-nt-services.svg]]
+
+=(slices + scopes + targets)^2=
+
+[[file:img/nix/nixos-systemd-uwsm.slices-scopes-targets.svg]]
+
+* noexport :noexport:
+** Graphs
+
+#+name: analyzeDot
+#+headers: :results output file :file img/nix/nixos-systemd-uwsm.from-targets.to-targets.svg
+#+begin_src shell :var from=uglob("from", sysuTargets) to=uglob("to", sysuTargets) dotType="svg" dotRank="LR" filter=""
+# it's soo eval
+# eval systemd-analyze --user dot ${from[@]} ${to[@]} \
+
+declare -a fp=(); declare -a tp=();
+for p in $from; do fp+=($p); done
+for p in $to; do tp+=($p); done
+
+# echo ${fp[@]} # not even the declare -a 
+
+# oh well...
+eval systemd-analyze --user dot ${fp[@]} ${tp[@]} \
+     | grep -vE "${filter:-"\0"}" \
+     | dot -T"$dotType" -Grankdir="$dotRank" 
+# filter defaults to \0 lol ... which doesn't work :(
+#
+# ... nevermind
+#+end_src
+
+#+RESULTS: analyzeDot
+[[file:img/nix/nixos-systemd-uwsm.from-targets.to-targets.svg]]
+
+#+name: testanalyzeDot
+#+headers: :results output 
+#+begin_src shell :var from=uglob("from", sysuTargets) to=uglob("to", sysuTargets) dotType="svg" dotRank="LR" filter=""
+# it's soo eval
+# eval systemd-analyze --user dot ${from[@]} ${to[@]} \
+
+declare -a fp=(); declare -a tp=();
+for p in $from; do fp+=($p); done
+for p in $to; do tp+=($p); done
+
+# echo ${fp[@]} # not even the declare -a 
+
+# oh well...
+echo "systemd-analyze --user dot ${fp[@]} ${tp[@]} \
+| dot -T\"$dotType\" -Grankdir=\"$dotRank\"" | sed -e 's/--/\\\n --/g'
+#+end_src
+
+*** Targets to Targets
+ 
+#+call: analyzeDot(from=uglob("from", sysuTargets), to=uglob("to", sysuTargets), dotType="svg", dotRank="TB") :results output file :file img/nix/nixos-systemd-uwsm.from-targets.to-targets.svg
+
+#+RESULTS:
+[[file:img/nix/nixos-systemd-uwsm.from-targets.to-targets.svg]]
+
+*** Slices to Targets
+ 
+#+call: analyzeDot(from=uglob("from", '("*.slice")), to=uglob("to", '("*.target")), dotType="svg", dotRank="TB") :results output file :file img/nix/nixos-systemd-uwsm.from-slices.to-targets.svg
+
+#+RESULTS:
+[[file:img/nix/nixos-systemd-uwsm.from-slices.to-targets.svg]]
+
+
+*** Slices, Scopes, Targets to Slices, Scopes, Targets
+
+#+begin_src shell :results output file :file img/nix/nixos-systemd-uwsm.slices-scopes-targets.svg
+systemd-analyze --user dot \
+    --from-pattern='*.target' --from-pattern='*.slice' --from-pattern='*.scope'  \
+    --to-pattern='*.target' --to-pattern='*.slice' --from-pattern='*.scope'  \
+    | grep -v 'shutdown' | grep -vE "app-flatpak-" \
+    | grep -vE "app-Hyprland-(alacritty|elephant|doomclient)" \
+    | dot -Tsvg -Grankdir="TB" 
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/nixos-systemd-uwsm.slices-scopes-targets.svg]]
+
+*** Services 
+
+=(Services)*(1 + Targets)=
+
+babel no likey
+
+#+begin_example
+call: analyzeDot(
+  from=uglob("from", sysuServices),
+  to=uglob(patternType="to",
+    patterns=sysuUnits(q=(identity "\.(service|target)$"))),
+  dotType="svg",
+  dotRank="LR")
+
+:results output file :file img/nix/nixos-systemd-uwsm.from-services.to-services-targets.svg
+#+end_example
+
+#+call: analyzeDot(from=uglob("from", sysuServices), to=uglob(patternType="to", patterns=sysuUnits(q=(identity "\.(service|target)$"))), dotType="svg", dotRank="LR") :results output file :file img/nix/nixos-systemd-uwsm.from-services.to-services-targets.svg
+
+#+RESULTS:
+[[file:img/nix/nixos-systemd-uwsm.from-services.to-services-targets.svg]]
+
+**** All Services
+
+#+call: analyzeDot(from=uglob("from", sysuServices), to=uglob("to", sysuServices), dotType="svg", dotRank="TB") :results output file :file img/nix/nixos-systemd-uwsm.from-services.to-services.svg
+
+#+RESULTS:
+[[file:img/nix/nixos-systemd-uwsm.from-services.to-services.svg]]
+
+**** Non-Templated Services
+
+
+=Non-Templated Services^2=
+
+#+call: analyzeDot(from=uglob("from", sysuServicesNT), to=uglob("to", sysuServicesNT), dotType="svg", dotRank="TB") :results output file :file img/nix/nixos-systemd-uwsm.from-nt-services.to-nt-services.svg
+
+#+RESULTS:
+[[file:img/nix/nixos-systemd-uwsm.from-nt-services.to-nt-services.svg]]
+** Data
+
+#+name: uglob
+#+begin_src emacs-lisp :results value :var patternType="from" patterns="1\n2\n3\n"
+; patterns='(1 2 3)
+(let ((patterns (or (and (listp patterns) patterns)
+                    (string-split patterns "\n" t))))
+  (string-join (mapcar (lambda (u) (format "--%s-pattern='%s'" patternType u)) patterns) " "))
+#+end_src
+
+#+RESULTS: uglob
+: --from-pattern='1' --from-pattern='2' --from-pattern='3'
+
+*** Units
+
+#+name: sysuUnits
+#+begin_src shell :results output verbatim :var q="\.(service|target)$"
+systemctl --user --all list-units \
+  | cut -f3 -d' ' \
+  | grep -E "$q" \
+  | grep -v gvfs \
+  | grep -v shutdown
+#  | grep -v @
+#+end_src
+
+*** Targets
+
+#+name: sysuShutdownTargets
+| shutdown.target                 |
+| wayland-session-shutdown.target |
+
+#+name: sysuTargets
+#+begin_src shell :results output verbatim silent :var type="target"
+systemctl --user --all list-units \
+  | cut -f3 -d' ' \
+  | grep -e "\.$type\$" \
+  | grep -v shutdown
+#  | grep -v @
+#+end_src
+
+*** Slices
+
+#+name: sysuSlices
+#+begin_src shell :results output verbatim
+systemctl --user --all list-units \
+  | cut -f3 -d' ' \
+  | grep -e 'slice$' \
+#   | grep -v @ | grep -v gvfs
+# | grep -v 
+#+end_src
+
+#+RESULTS: sysuSlices
+: -.slice
+: app-graphical.slice
+: app.slice
+: background-graphical.slice
+: background.slice
+: session.slice
+: user.slice
+
+*** Services
+
+#+name: sysuServices
+#+begin_src shell :results output verbatim silent
+systemctl --user --all list-units \
+  | cut -f3 -d' ' \
+  | grep -e 'service$' \
+  | grep -v gvfs
+# | grep -v 
+#+end_src
+ 
+**** non-templated
+
+#+name: sysuServicesNT
+#+begin_src shell :results output verbatim silent
+systemctl --user --all list-units \
+  | cut -f3 -d' ' \
+  | grep -e 'service$' \
+  | grep -v @ | grep -v gvfs
+# | grep -v 
+#+end_src
+ 
