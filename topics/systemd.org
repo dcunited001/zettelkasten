@@ -11,6 +11,13 @@
 * Docs
 
 * Resources
+
+** Nixos
+
++ [[https://github.com/NixOS/nixpkgs/blob/85fe7380cc14e96a569f53fc07133b2db55049d9/nixos/lib/systemd-lib.nix#L70][nixos/lib/systemd-lib.nix]] regexp for systemd unit types
++ [[https://github.com/NixOS/nixpkgs/blob/85fe7380cc14e96a569f53fc07133b2db55049d9/nixos/lib/systemd-unit-options.nix#L64][nixos/lib/systemd-unit-options.nix]] spec/validation of systemd unit options
++ [[https://github.com/NixOS/nixpkgs/blob/85fe7380cc14e96a569f53fc07133b2db55049d9/nixos/modules/system/boot/systemd/user.nix#L71][nixos/modules/system/boot/systemd/user.nix]] handling units for users
+
 ** SystemD
 
 *** On Demand Activation
@@ -21,6 +28,119 @@
   toml/conf? I'm guessing Jinja does it more than half the time.
 
 * Topics
+** Examples
+*** NixOS
+
+These queries are confusing.
+
++ I'm looking for =$type= mentioned in any =[ "fdsa.$type" ]= where attrs are set.
++ It doesn't catch directives that span over multiple lines (see [[https://github.com/nix-community/home-manager/blob/ca2ab1d877a24d5a437dad62f56b8b2c02e964e9/modules/services/radicle.nix#L101][radical.nix]]).
+  simple, but I'm just trying to find entry-points to elucidate patterns
++ These queries only capture =requires = [...];=, not =Requires = "foobar.service";=
++ Many units could be leaf-level or pulled in from a package.
++ Too many syntax patterns are used to specify =...systemd.(user\.)?.<service>=
+
+I would evaluate =nix= expressions and extract JSON, but they seem a bit difficult
+to access in the repl. some evaluation is required for modules whose services
+depend on config or module interactions.
+
+**** Nixpkgs
+
+Units specifying an edge to another unit.
+
+#+name: nixpkgsSystemdEdges
+#+begin_src shell :results output table :var type="target" checkout="/data/ecto/nixos/nixos/nixpkgs" include="" exclude=""
+#  'wantedby\s*=.*\[.*".*\.target"' # '.*\[.*".*\.target"'
+grep  --include='*.nix' -ire '=.*\[.*".*\.'$type'"' $checkout \
+| grep -i "$include" | grep -iv "${exclude:-\0}" | sed -E 's/.*(\[.*\]);/\1/g' \
+| grep -E '^\[' | sed -E 's/\[ *"(.*)" *\].*/\1/g' \
+| sort | uniq
+# the null char in exclude is probably unsafe... it's also temperamental
+# (1) req. echo -e (2) can't quote a variable after assigning nullchar
+# (3) grep warns you
+
+# d=$(date +%s | rev); h=$(echo $d | sha256sum | rev); grep -v $h # - \bacd8b8ceb8c ... lol woops
+#+end_src
+
+Files with units
+
+#+name: nixpkgsSystemdFilesWithUnits
+#+begin_src shell :results output table :var type="path" checkout="/data/ecto/nixos/nixos/nixpkgs"
+grep -l --include='*.nix' -ire ' \+".*\.'$type'" \+' $checkout | grep -v 'nixos/tests/'
+#+end_src
+
+#+RESULTS: nixpkgsSystemdFilesWithUnits
+| /data/ecto/nixos/nixos/nixpkgs/pkgs/development/python-modules/svg-path/default.nix    |
+| /data/ecto/nixos/nixos/nixpkgs/pkgs/development/python-modules/jaraco-path/default.nix |
+| /data/ecto/nixos/nixos/nixpkgs/nixos/modules/system/boot/systemd/initrd.nix            |
+| /data/ecto/nixos/nixos/nixpkgs/nixos/modules/system/boot/systemd/user.nix              |
+| /data/ecto/nixos/nixos/nixpkgs/nixos/modules/services/cluster/hadoop/default.nix       |
+| /data/ecto/nixos/nixos/nixpkgs/nixos/modules/services/monitoring/thanos.nix            |
+| /data/ecto/nixos/nixos/nixpkgs/nixos/modules/services/misc/zoneminder.nix              |
+
+#+call: nixpkgsSystemdFilesWithUnits(checkout="/data/ecto/nixos/nixos/nixpkgs", type="timer")
+
+***** Timers
+
+These are usually setup using =wantedBy=
+
+***** Targets
+****** PartOf
+
+#+call: nixpkgsSystemdEdges(checkout="/data/ecto/nixos/nixos/nixpkgs", type="target", include="partOf")
+
+#+RESULTS:
+| ax25-axports.target       | matrix-synapse.target | windmill.target |
+| ceph-${daemonType}.target | multi-user.target     |                 |
+| ceph.target               | network.target        |                 |
+| firezone.target           | phpfpm.target         |                 |
+| gitlab.target             | postgresql.target     |                 |
+| graphical-session.target  | samba.target          |                 |
+| kerberos-server.target    | sleep.target          |                 |
+| lock.target               | unlock.target         |                 |
+
+****** WantedBy
+
+#+call: nixpkgsSystemdEdges(checkout="/data/ecto/nixos/nixos/nixpkgs")
+
+| basic.target              | getty.target                 | initrd.target          | machines.target       | paths.target           | shutdown.target |
+| bluetooth.target          | gitlab.target                | kerberos-server.target | mastodon.target       | peering-manager.target | sleep.target    |
+| capsule@alice.target      | graphical-session-pre.target | kexec.target           | matrix-synapse.target | phpfpm.target          | sockets.target  |
+| ceph-${daemonType}.target | graphical-session.target     | kubernetes.target      | multi-user.target     | poweroff.target        | sound.target    |
+| ceph.target               | graphical.target             | lcd.target             | netbox.target         | reboot.target          | sysinit.target  |
+| default.target            | halt.target                  | local-fs-pre.target    | network-online.target | remote-fs.target       | timers.target   |
+| emergency.target          | healthchecks.target          | local-fs.target        | network-pre.target    | samba.target           | unlock.target   |
+| firezone.target           | initrd-switch-root.target    | lock.target            | network.target        | sata-timeout.target    | zfs.target      |
+
+Not including =wantedBy=
+
+#+call: nixpkgsSystemdEdges(checkout="/data/ecto/nixos/nixos/nixpkgs", exclude="wantedBy")
+
+| ax25-axports.target       | firezone.target        | nss-lookup.target           | windmill.target              |
+| ceph-${daemonType}.target | fs.target              | nss-user-lookup.target      | xdg-desktop-autostart.target |
+| ceph.target               | initrd-fs.target       | phpfpm.target               | zfs-import.target            |
+| cfssl.target              | ipset.target           | postgresql.target           |                              |
+| cloud-config.target       | keycloak.service       | rustdesk.target             |                              |
+| dissect.target            | machines.target        | sysinit-reactivation.target |                              |
+| dysnomia.target           | networking.target      | test-target.target          |                              |
+| final.target              | nominatim-init.service | time-sync.target            |                              |
+**** Home Manager
+
+
+** Automation
+*** Timers
+
+#+begin_src shell
+grep -ire 'wantedby\s*=.*\[.*"timers.target"' \
+    --include='*.nix' /data/ecto/nixos/nixos/nixpkgs
+#+end_src
+
+*** Useful tasks
+
+
++ database backups
++ path activation (dev project? logs?)
++ cache cleanup
 ** Learning
 
 *** =systemd-analyze dot=
@@ -143,7 +263,6 @@ done
 /etc/systemd/user/nixos-activation.service
 /etc/systemd/user/dbus.service
 #+end_example
-
 ** Commands
 
 *** systemd-path

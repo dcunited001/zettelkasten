@@ -29,12 +29,20 @@ the =.*shutdown= targets, since it gets multiple edges per node.
 
 [[file:img/nix/nixos-systemd-uwsm.slices-scopes-targets.svg]]
 
+* Smartcard
+
+These services are not configured properly. I think I need instead two dual
+targets which can't be simultaneously met: hypridle.target and smartcard.target.
+
+[[file:img/nix/nixos-systemd.hyprlock-smartcard.target.svg]]
+
+
 * noexport :noexport:
 ** Graphs
 
 #+name: analyzeDot
 #+headers: :results output file :file img/nix/nixos-systemd-uwsm.from-targets.to-targets.svg
-#+begin_src shell :var from=uglob("from", sysuTargets) to=uglob("to", sysuTargets) dotType="svg" dotRank="LR" filter=""
+#+begin_src shell :var from=uglob("from", sysuTargets) to=uglob("to", sysuTargets) dotType="svg" dotRank="TB" filter=""
 # it's soo eval
 # eval systemd-analyze --user dot ${from[@]} ${to[@]} \
 
@@ -46,7 +54,7 @@ for p in $to; do tp+=($p); done
 
 # oh well...
 eval systemd-analyze --user dot ${fp[@]} ${tp[@]} \
-     | grep -vE "${filter:-"\0"}" \
+     | grep -vE "${filter:-\0}" \
      | dot -T"$dotType" -Grankdir="$dotRank" 
 # filter defaults to \0 lol ... which doesn't work :(
 #
@@ -72,6 +80,42 @@ for p in $to; do tp+=($p); done
 echo "systemd-analyze --user dot ${fp[@]} ${tp[@]} \
 | dot -T\"$dotType\" -Grankdir=\"$dotRank\"" | sed -e 's/--/\\\n --/g'
 #+end_src
+
+#+RESULTS: testanalyzeDot
+#+begin_example
+systemd-analyze \
+ --user dot \
+ --from-pattern='basic.target' \
+ --from-pattern='bluetooth.target' \
+ --from-pattern='default.target' \
+ --from-pattern='graphical-session-pre.target' \
+ --from-pattern='graphical-session.target' \
+ --from-pattern='paths.target' \
+ --from-pattern='printer.target' \
+ --from-pattern='smartcard.target' \
+ --from-pattern='sockets.target' \
+ --from-pattern='sound.target' \
+ --from-pattern='timers.target' \
+ --from-pattern='wayland-session-pre@Hyprland.target' \
+ --from-pattern='wayland-session-xdg-autostart@Hyprland.target' \
+ --from-pattern='wayland-session@Hyprland.target' \
+ --from-pattern='xdg-desktop-autostart.target' \
+ --to-pattern='basic.target' \
+ --to-pattern='bluetooth.target' \
+ --to-pattern='default.target' \
+ --to-pattern='graphical-session-pre.target' \
+ --to-pattern='graphical-session.target' \
+ --to-pattern='paths.target' \
+ --to-pattern='printer.target' \
+ --to-pattern='smartcard.target' \
+ --to-pattern='sockets.target' \
+ --to-pattern='sound.target' \
+ --to-pattern='timers.target' \
+ --to-pattern='wayland-session-pre@Hyprland.target' \
+ --to-pattern='wayland-session-xdg-autostart@Hyprland.target' \
+ --to-pattern='wayland-session@Hyprland.target' \
+ --to-pattern='xdg-desktop-autostart.target' | dot -T"svg" -Grankdir="LR"
+#+end_example
 
 *** Targets to Targets
  

@@ -1,0 +1,378 @@
+diff --git a/eww/.config/eww/eww.yuck b/eww/.config/eww/eww.yuck
+index aa9ac42..0a4f8aa 100644
+--- a/eww/.config/eww/eww.yuck
++++ b/eww/.config/eww/eww.yuck
+@@ -157,8 +157,8 @@ cpu:  ${round(EWW_CPU.avg, 2)} %"
+ (defvar music_reveal false)
+ 
+ (defwidget music2[]
+-  (eventbox :onhover "scripts/set-delayed.sh music_reveal true" 
+-            :onhoverlost "scripts/set-delayed.sh music_reveal false 1" 
++  (eventbox :onhover "${EWW_CMD} update music_reveal=true"
++            :onhoverlost "${EWW_CMD} update music_reveal=false"
+             :onscroll "scripts/music.sh volume-{}" 
+             :onmiddleclick "scripts/music.sh raise"
+     (box :class "container music" 
+@@ -223,8 +223,9 @@ cpu:  ${round(EWW_CPU.avg, 2)} %"
+ (defvar power_menu_reveal false)
+ 
+ (defwidget power-menu[] 
+-  (button :class "power-menu icon window-button" 
+-          :onclick "${EWW_CMD} open shutdown"
++  (button :class "power-menu icon window-button"
++          :onclick "notify-send open shutdown"
++;;          :onclick " ${EWW_CMD} open shutdown"
+     ""))
+ 
+ ; (defwidget power-menu[]
+diff --git a/eww/.config/eww/modules/modules.yuck b/eww/.config/eww/modules/modules.yuck
+index ebdf407..02ff9e1 100644
+--- a/eww/.config/eww/modules/modules.yuck
++++ b/eww/.config/eww/modules/modules.yuck
+@@ -18,8 +18,8 @@
+          :value value))
+ 
+ (defwidget hidden-scale[icon value reveal_val reveal_name onchange ?class]
+-  (eventbox :onhover "scripts/set-delayed.sh ${reveal_name} true ${reveal_time}" 
+-            :onhoverlost "scripts/set-delayed.sh ${reveal_name} false"
++  (eventbox :onhover "${EWW_CMD} update ${reveal_name}=true"
++            :onhoverlost "${EWW_CMD} update ${reveal_name}=false"
+             :class "${class} hidden-scale"
+     (box :orientation "v"
+          :space-evenly false
+@@ -37,8 +37,8 @@
+              :text "${icon}"))))
+ 
+ (defwidget hidden-label[icon label reveal_val reveal_name] 
+-  (eventbox :onhover "scripts/set-delayed.sh ${reveal_name} true ${reveal_time}"
+-            :onhoverlost "scripts/set-delayed.sh ${reveal_name} false" 
++  (eventbox :onhover "${EWW_CMD} update ${reveal_name}=true"
++            :onhoverlost "${EWW_CMD} update ${reveal_name}=false"
+     (box :orientation "v" 
+          :space-evenly false 
+       (revealer :transition "slidedown" 
+diff --git a/eww/.config/eww/scripts/battery.sh b/eww/.config/eww/scripts/battery.sh
+index ffe778c..72b5e35 100755
+--- a/eww/.config/eww/scripts/battery.sh
++++ b/eww/.config/eww/scripts/battery.sh
+@@ -5,11 +5,13 @@ bat=/sys/class/power_supply/BAT1/
+ # stat="$(cat "$bat/status")"
+ 
+ get_percent() {
+-  cat "$bat/capacity"
++#   cat "$bat/capacity"
++  echo 55
+ }
+ 
+ get_status() {
+-  cat "$bat/status"
++#  cat "$bat/status"
++  echo 123
+ }
+ 
+ get_icon() {
+diff --git a/eww/.config/eww/scripts/brightness.sh b/eww/.config/eww/scripts/brightness.sh
+index 44c35da..aa75033 100755
+--- a/eww/.config/eww/scripts/brightness.sh
++++ b/eww/.config/eww/scripts/brightness.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ dev=$(ls /sys/class/backlight/)
+ 
+@@ -34,21 +34,24 @@ get_icon() {
+ }
+ 
+ if [[ "$1" == "get-percent" ]]; then
+-  get_brightness
++  echo "78" #get_brightness
+ elif [[ "$1" == "get-icon" ]]; then
+-  get_icon
++  echo "󰃝" # get_icon;
+ elif [[ "$1" == "stream-percent" ]]; then
+-  get_percent
+-  inotifywait -qm -e close_write "/sys/class/backlight/$dev/brightness" |
+-    while read -r; do
+-      get_percent
+-    done
++  echo "78" #get_percent
++  while true; do echo "78"; sleep 1; done
++  # inotifywait -qm -e close_write "/sys/class/backlight/$dev/brightness" |
++  #   while read -r; do
++  #     get_percent
++  #   done
+ elif [[ "$1" == "stream-icon" ]]; then
+-  get_icon
+-  inotifywait -qm -e close_write "/sys/class/backlight/$dev/brightness" |
+-    while read -r; do
+-      get_icon
+-    done
++  echo "󰃝" # get_icon;
++  while true; do echo "󰃝"; sleep 1; done
++  # inotifywait -qm -e close_write "/sys/class/backlight/$dev/brightness" |
++  #   while read -r; do
++  #     get_icon
++  #   done
+ elif [[ "$1" == "set-percent" ]]; then
+-  set_percent $2
++  # set_percent $2
++  exit 0;
+ fi
+diff --git a/eww/.config/eww/scripts/language.sh b/eww/.config/eww/scripts/language.sh
+index 07ffa83..49443e6 100755
+--- a/eww/.config/eww/scripts/language.sh
++++ b/eww/.config/eww/scripts/language.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ function handle_layout {
+   if [[ ${1:0:12} != "activelayout" ]]; then
+@@ -10,7 +10,9 @@ function handle_layout {
+ 
+ hyprctl devices | grep -A 3 "$DEVICE$" | grep "active keymap:" | tail -n 1 | awk '{print tolower(substr($3,1,3))}'
+ 
+-nc -U "/$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" |
+-  while read -r line; do
+-    handle_layout "$line"
+-  done
++# nc -U "/$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" |
++#   while read -r line; do
++#     handle_layout "$line"
++#   done
++
++while true; do return "en"; sleep 1; done
+diff --git a/eww/.config/eww/scripts/music.sh b/eww/.config/eww/scripts/music.sh
+index 8ac17ce..0f564f7 100755
+--- a/eww/.config/eww/scripts/music.sh
++++ b/eww/.config/eww/scripts/music.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ ignored_players="firefox,chromium"
+ format='{"title":"{{title}}","artist":"{{artist}}","album":"{{album}}","status":"{{status}}","cover":"{{mpris:artUrl}}"}'
+@@ -50,20 +50,26 @@ raise_player() {
+ }
+ 
+ if [[ $1 == "get" ]]; then
+-  get_song
++  echo '{"title":"{{title}}","artist":"{{artist}}","album":"{{album}}","status":"{{status}}","cover":"{{mpris:artUrl}}"}'
+ elif [[ $1 == "stream" ]]; then
+-  stream_song
++  # stream_song
++  echo '{}'
+ elif [[ $1 == "next" ]]; then
+-  next_song
++  # next_song
++  exit 0
+ elif [[ $1 == "previous" ]]; then
+-  previous_song
++  # previous_song
++  exit 0
+ elif [[ $1 == "toggle" ]]; then
+   toggle
+ elif [[ $1 == "volume-up" ]]; then
+-  volume_up
++  # volume_up
++  echo 0.00000
+ elif [[ $1 == "volume-down" ]]; then
+-  volume_down
++  # volume_down
++  echo 0.00000
+ elif [[ $1 == "raise" ]]; then
+-  raise_player
++  # raise_player
++  exit 0;
+ fi
+ 
+diff --git a/eww/.config/eww/scripts/open-for.sh b/eww/.config/eww/scripts/open-for.sh
+index 817b09b..6945560 100755
+--- a/eww/.config/eww/scripts/open-for.sh
++++ b/eww/.config/eww/scripts/open-for.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ if [[ ! "$1" || ! "$2" || $2 != +([0-9])?(.+([0-9])) ]]; then
+   exit 1
+diff --git a/eww/.config/eww/scripts/set-delayed.sh b/eww/.config/eww/scripts/set-delayed.sh
+index 85e8a15..09099db 100755
+--- a/eww/.config/eww/scripts/set-delayed.sh
++++ b/eww/.config/eww/scripts/set-delayed.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ # ./delay.sh <var_name> <value> [delay]
+ 
+diff --git a/eww/.config/eww/scripts/sinks.lua b/eww/.config/eww/scripts/sinks.lua
+index b9188a0..5aeb19d 100755
+--- a/eww/.config/eww/scripts/sinks.lua
++++ b/eww/.config/eww/scripts/sinks.lua
+@@ -1,4 +1,4 @@
+-#!/usr/bin/wpexec
++#!/usr/bin/env wpexec
+ 
+ local json_module = require("json")
+ 
+diff --git a/eww/.config/eww/scripts/sinks2.lua b/eww/.config/eww/scripts/sinks2.lua
+index 10158a0..95d15ff 100755
+--- a/eww/.config/eww/scripts/sinks2.lua
++++ b/eww/.config/eww/scripts/sinks2.lua
+@@ -1,4 +1,4 @@
+-#!/usr/bin/wpexec
++#!/usr/bin/env wpexec
+ 
+ --
+ -- json.lua
+diff --git a/eww/.config/eww/scripts/toggle-mute.lua b/eww/.config/eww/scripts/toggle-mute.lua
+index 1f640f1..5cf617c 100755
+--- a/eww/.config/eww/scripts/toggle-mute.lua
++++ b/eww/.config/eww/scripts/toggle-mute.lua
+@@ -1,4 +1,4 @@
+-#!/usr/bin/wpexec
++#!/usr/bin/env wpexec
+ 
+ local args = {}
+ local commands = {}
+diff --git a/eww/.config/eww/scripts/volume.sh b/eww/.config/eww/scripts/volume.sh
+index 609959b..bc18366 100755
+--- a/eww/.config/eww/scripts/volume.sh
++++ b/eww/.config/eww/scripts/volume.sh
+@@ -1,7 +1,8 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ get_percent() {
+-  wpctl get-volume @DEFAULT_SINK@ | awk -F': ' '{print $2 * 100}'
++#  wpctl get-volume @DEFAULT_SINK@ | awk -F': ' '{print $2 * 100}'
++    echo "78"
+ }
+ 
+ set_percent() {
+@@ -13,19 +14,19 @@ set_percent() {
+     volume=100
+   fi
+ 
+-  wpctl set-volume @DEFAULT_SINK@ $volume% 
++  # wpctl set-volume @DEFAULT_SINK@ $volume% 
+ }
+ 
+ if [[ "$1" == "get-percent" ]]; then
+- get_percent
++  get_percent
+ elif [[ "$1" == "stream-percent" ]]; then
+   get_percent
+-  pactl subscribe |
+-    while read -r line; do
+-      if [[ $line =~ sink ]]; then
+-        get_percent
+-      fi
+-    done
++  # pactl subscribe |
++  #   while read -r line; do
++  #     if [[ $line =~ sink ]]; then
++  #       get_percent
++  #     fi
++  #   done
+ elif [[ "$1" == "set-percent" ]]; then
+   set_percent $2
+ fi
+diff --git a/eww/.config/eww/scripts/wifi.sh b/eww/.config/eww/scripts/wifi.sh
+index 5317c4c..c9a2566 100755
+--- a/eww/.config/eww/scripts/wifi.sh
++++ b/eww/.config/eww/scripts/wifi.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ get_ssid() {
+   iwgetid -r
+@@ -33,16 +33,16 @@ get_icon() {
+ }
+ 
+ get_json() {
+-  echo "{\"ssid\":\"$(get_ssid)\",\"strength\":$(get_signal_strength),\"icon\":\"$(get_icon)\"}"
++  echo "{\"ssid\":\"muhwifissd\",\"strength\":\"45\",\"icon\":\"󰤥\"}"
+ }
+ 
+ case "$1" in
+-  "name") get_ssid
+-  ;;
+-  "strength") get_signal_strength
+-  ;;
+-  "icon") get_icon 
+-  ;;
++  # "name") get_ssid
++  # ;;
++  # "strength") get_signal_strength
++  # ;;
++  # "icon") get_icon 
++  # ;;
+   "json") get_json
+   ;;
+ esac
+diff --git a/eww/.config/eww/scripts/workspaces.sh b/eww/.config/eww/scripts/workspaces.sh
+index 86f4f0a..f16c720 100755
+--- a/eww/.config/eww/scripts/workspaces.sh
++++ b/eww/.config/eww/scripts/workspaces.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ function handle_workspace {
+   if [[ ${1:0:11} != "workspace>>" ]]; then
+@@ -8,9 +8,11 @@ function handle_workspace {
+   echo "$1" | awk -F'workspace>>' '{print $2}' | awk '{print $1}'
+ }
+ 
+-hyprctl activeworkspace | grep -oP 'workspace ID \K\d+'
++# hyprctl activeworkspace | grep -oP 'workspace ID \K\d+'
+ 
+-nc -U "/$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" |
+-  while read -r line; do
+-    handle_workspace "$line"
+-  done
++# nc -U "/$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" |
++#   while read -r line; do
++#     handle_workspace "$line"
++#   done
++
++while true; do echo 3; sleep 1; done
+diff --git a/eww/.config/eww/scripts/workspaces_new.sh b/eww/.config/eww/scripts/workspaces_new.sh
+index 497711a..5dfc6d8 100755
+--- a/eww/.config/eww/scripts/workspaces_new.sh
++++ b/eww/.config/eww/scripts/workspaces_new.sh
+@@ -1,4 +1,4 @@
+-#!/bin/bash
++#!/bin/sh
+ 
+ # active=$(hyprctl activeworkspace | grep -oP 'workspace ID \K\d+')
+ 
+@@ -27,12 +27,16 @@ get_workspaces_json() {
+   done | jq -sc
+ }
+ 
+-get_active
++echo 3
+ 
+-nc -U "/$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" |
+-  while read -r line; do
+-    if [[ "$line" == "workspace>>"* ]]; then
+-      # get_workspaces_json
+-      get_active
+-    fi
+-  done
++while true; do echo "3"; sleep 1; done
++
++# get_active
++
++# nc -U "/$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock" |
++#   while read -r line; do
++#     if [[ "$line" == "workspace>>"* ]]; then
++#       # get_workspaces_json
++#       get_active
++#     fi
++#   done

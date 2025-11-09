@@ -24,12 +24,150 @@
 + [[https://wiki.archlinux.org/title/PipeWire][Archwiki]]
 + [[https://wiki.gentoo.org/wiki/PipeWire][Gentoo]]
 
+*** Config
++ use =pw-config paths= to check paths that load configuration.
+
 ** Wireplumber
 + [[https://wiki.archlinux.org/title/WirePlumber][Archwiki]]
 
-*** Configuration
+*** Config
++ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/src/config/wireplumber.conf#L1][src/config/wireplumber.conf]] the base configuration
+  - in +lua+ [[https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/conf_file.html#the-spa-json-format][SPA JSON]] syntax... which is also used for pipewire
++ See [[https://pipewire.pages.freedesktop.org/wireplumber/daemon/locations.html#configuration-fragments][Configuration Fragments]] for load order. on NixOS without much other
+  configuration, this includes what's built into
+
+I guess i didn't get the [[https://www.collabora.com/news-and-blog/blog/2022/10/27/from-lua-to-json-refactoring-wireplumber-configuration-system/][push notification]]. I think the Lua system is still used
+for scripting, just not top-level configuration.
+
+| SPA JSON       | Old Lua Config                                       |
+|----------------+------------------------------------------------------|
+| policy.conf    | 10-default-policy.lua                                |
+| access.conf    | 20-default-access.lua                                |
+| alsa.conf      | 30-alsa-monitor.lua, 50-alsa-config.lua              |
+| libcamera.conf | 30-libcamera-monitor.lua, 50-libcamera-config.lua    |
+| v4l2.conf      | 30-v4l2-monitor.lua, 50-v4l2-config.lua              |
+| device.conf    | 40-device-defaults.lua, 50-default-access-config.lua |
+| stream.conf    | 40-stream-defaults.lua                               |
+
+**** Scripts
+
+Similar setup to systemd (provides, requires)
+
+*** Scripting
+
++ [[https://blog.wido.dev/wireplumber-scripting][Wireplumber Scripting]] practical example from end-to-end
++ [[https://gist.github.com/THS-on/a8fe22891c1008454a948e86d25315f5][auto_attach_filter.lua]]
++ [[https://github.com/bennetthardwick/dotfiles/tree/master/.config/wireplumber][bennetthardwick/dotfiles]]
++ lua scripts can be loaded into [[https://github.com/bennetthardwick/dotfiles/blob/master/.config/wireplumber/wireplumber.conf.d/99-auto-connect-ports.conf][wireplumber.components]]
+
+**** Logging
+
+[[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/docs/rst/daemon/logging.rst#L10][Categories]] and Levels:
+
+|-------+-------+------+--------+------+-------+-------|
+| Fatal | Error | Warn | Notice | Info | Debug | Trace |
+|-------+-------+------+--------+------+-------+-------|
+| F     | E     | W    | N      | I    | D     | T     |
+|-------+-------+------+--------+------+-------+-------|
+#+begin_quote
+For example, set the log level to W for all categories and I for wp-core:
+log.level = "W,wp-core:I"
+#+end_quote
+
++ It supports globs (which is nice to know)
++ =wpctl set-log-level D= then =journalctl --user -xb -u wireplumber -f=
++ or =wpctl set-log-level 'W,wp-*:D'=
+
+| wp-*            | libwireplumber              |
+| wplua           | LOG Topic For C++ Side      |
+| s-linking       | ~linking/*.lua~ scripts       |
+| s-default-nodes | ~default-nodes/*.lua~ scripts |
+
+You're going to want at least ~s-*:D~ for lua scripts. (org won't let me add
+without emphasis marks...)
+
+**** Scope
+
+There is a concept of global state:
+
++ some variables must be global
++ other locals cant default to splat =...=
+
+**** Constraints
+
+[[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.lua#L10][Constraint (spec)]] either the symbol or the verb is appropriate. each one has
+valid arity.
+
+| ~=~ | equals     |
+| ~!~ | not-equals |
+| ~c~ | in-list    |
+| ~~~ | in-range   |
+| ~#~ | matches    |
+| ~+~ | is-present |
+| ~-~ | is-absent  |
 
 
+
+**** Event Hooking
+
+See [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/src/scripts/device/automute-alsa-routes.lua#L195-212][automute-alsa-routes.lua]] which responds to events by un/hooking event
+handlers
+
+**** Notifications
+
+There's a plugin for =notify-send= via d-bus which loads in the default
+configuration
+
++ IDK whether =Plugin.find("notifications-api")= needs to run in the correct scope
++ It doesn't do anything, regardless of where this block runs
+  - inside an =ObjectManager= block, in a Core block afterwards, by itself
+  - =Core.require_api('api.notifications', function(...) ... end) block=
+
+#+begin_src lua
+notifications = notifications or Plugin.find("notifications-api")
+if notifications ~= nil and send_notification then
+  notifications:call ("send", I18n.gettext("Audio was auto-muted"),
+                      I18n.gettext("Active playback device was disconnected"))
+end
+#+end_src
+
+I guess the docs address this, so does the code.
+
++ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.c#L305-318][modules/module-lua-scripting/api/api.c#L305-318]]
+  - warns if runs in daemon context
++ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.c#L273-285][modules/module-lua-scripting/api/api.c#L273-285]]
+  - this is the definition of the Lua table associated to Core
+
+#+begin_src shell
+systemctl restart --user pipewire
+wpctl set-log-level 'W,m-*:I,wp-*:I,wplua*:T,s-*:T'
+journalctl --user -xb -f -u wireplumber
+# The service may not have the DBUS session address...
+#+end_src
+
+This should work, I think
+
+#+begin_src lua
+#!/usr/bin/env wpexec
+-- -*- mode: lua-ts -*-
+-- Plugin.find() is used for Lua scripts registered through wireplumber.conf
+        Core.require_api(
+            "api.notifications",
+            function(notify) -- this was needed in the closure
+                if notify ~= nil then
+                    notify:call ("send", I18n.gettext("Audio was auto-muted"),
+                                 I18n.gettext("Active playback device was disconnected"))
+                else
+                    print("its nil")
+                end
+                Core.quit()
+
+        end)
+
+#+end_src
+
+I don't think it's D-Bus, since org.pipewire.Telephony is registered (see
+[[https://gkiagia.gr/2025-02-20-pipewire-telephony/][Introducing Bluetooth Telephony Support in Pipewire]])
 
 ** Articles
 + [[https://venam.nixers.net/blog/unix/2021/06/23/pipewire-under-the-hood.html][Pipewire Under The Hood]]
@@ -279,7 +417,7 @@ pw-dump | jq --raw-output "$q"
 | 34 | Main-Output-Proxy |
 | 59 | Midi-Bridge       |
 
- 
+
 *** Wireplumber
 
 **** SystemD Configuration
@@ -545,12 +683,60 @@ permissions notifications that I clicked.
 + The Stereo outputs
 * Wireplumber
 
+** Topics
+
+*** Lua
+
+**** wpexec
+
+[[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/src/tools/wpexec.c#L33-62][=wpexec= only accepts two args]]: =wpexec $script $spaJson=
+
+
+
+**** Modules
+These are all in [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/tree/master/src/scripts/lib?ref_type=heads][./src/scripts/lib]]
+
+#+begin_src shell :results output verbatim :dir /data/ecto/pipewire/pw/wireplumber
+grep -re 'require \?(' pw/wireplumber/src/scripts
+    | sed -E 's/.*:(.*) = require ?\("(.*)"\)/\/\1/g'
+    | sort
+    | tree --fromfile .
+#+end_src
+
+| agutils | audio-group-utils |
+| cutils  | common-utils      |
+| devinfo | device-info-cache |
+| futils  | filter-utils      |
+| lutils  | linking-utils     |
+| mutils  | monitor-utils     |
+| nutils  | node-utils        |
+
+#+begin_src dot :file img/wireplumber-lua-utils.svg
+digraph G {
+    agutils;
+    {futils,lutils,nutils} -> cutils;
+    devinfo;
+    mutils;
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/wireplumber-lua-utils.svg]]
+
+Modules imported by each script
+
+#+begin_src shell :results output verbatim :dir /data/ecto/pipewire/pw/wireplumber
+find src/scripts/ -name '*.lua' \
+    -exec grep -e 'require \?(' \{\} + \
+    | sed -E 's/:.*require ?\("(.*)"\)/\/\1/g' \
+    | tree --fromfile .
+#+end_src
 ** Issues
 
+*** Troubleshooting
 
-** Troubleshooting
-
-=wpexec= can run arbitrary scripts, but the proper environment must be loaded.
+=wpexec= can run arbitrary scripts and it loads the proper environment (inside
+=Core=, i think)
 
 * Pulseaudio
 

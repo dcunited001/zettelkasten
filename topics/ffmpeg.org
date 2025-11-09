@@ -1,0 +1,78 @@
+:PROPERTIES:
+:ID:       d0520396-2193-4f4d-9ebd-bab9fcfe2ff3
+:END:
+#+TITLE: FFMPEG
+#+DESCRIPTION:
+#+TAGS:
+
+* Roam
+
+* Docs
+
+* Resources
+
+** Projects
+
+[[https://github.com/Draver93/ff-studio][Draver93/ff-studio]] cross-platform desktop app for designing ffmpeg pipelines
+** Tools
++ [[https://github.com/MediaArea/MediaInfo][mediaarea/mediainfo]] display technical & tag data for video/audio files
+
+* Topics
+** Releases
+
+*** Packages
+
+From Repology API, which also offers [[https://dumps.repology.org/README.txt][daily =postgresql= dumps]]. nice.
+
+#+begin_src jq :stdin repologyProject cmd-line "-r"
+[ to_entries | map(.value) | .[] | paths | ("/" + join("/"))]
+  | map(sub("^/[0-9]+";"";"g")
+         | sub("/[0-9]+"; "/א"; "g")
+         | select(length > 0))
+  | sort | unique | join("\n")
+#+end_src
+
+The output schema for =/projects= is an array containing objects whose structure
+looks like this, where all array indices have been condensed into =א=. Some fields
+could be missing.
+
+#+begin_example json
+.
+├── binname
+├── categories
+│   └── א
+├── licenses
+│   └── א
+├── maintainers
+│   └── א
+├── origversion
+├── repo
+├── srcname
+├── status
+├── subrepo
+├── summary
+├── version
+├── visiblename
+└── vulnerable
+#+end_example
+
+#+name: repologyProject
+#+headers: :var project="ffmpeg"
+#+begin_src restclient :jq "." :jq-args "--raw-output"
+:repology-route = projects/?search=:project
+:repology-url = https://repology.org/api/v1
+
+:headers = <<
+Accept: application/json
+User-Agent: Emacs
+#
+
+GET :repology-url/:repology-route
+:headers
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "(.owner.login)")
+#+end_src
+
+* Issues
