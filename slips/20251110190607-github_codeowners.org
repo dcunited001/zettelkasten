@@ -1,0 +1,3746 @@
+:PROPERTIES:
+:ID:       2b86d9e4-a280-40e0-92b2-f95b3abf1e4e
+:END:
+#+TITLE: Github: Codeowners
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:96ea2679-1c00-4144-a97a-c1db570b7407][Github]]
++ [[id:4cdfd5a2-08db-4816-ab24-c044f2ff1dd9][Programming]]
++ [[id:8d789c98-5e74-4bf8-9226-52fb43c5ca51][Gitforge]]
+
+* Github Code Owners
+
+This stuff always has interesting data. The users listed here are all just being
+signed up for notifications, more or less, instead of actually registering that.
+
+** Apropos
+
+*** Iterate over users
+
++ Writes to =:file fdsa.json= though
++ Here =(sleep 420)= isn't necessary (it asks me for the touch every time the
+  cache expires)
+
+#+begin_src emacs-lisp :var usersStr=codeownersUsers :results value table
+(let ((users (split-string usersStr "\\n" t " +")))
+  (org-sbe "fetchUserRepos" (gh-user "\"Mic92\"")))
+
+#+end_src
+
+#+RESULTS:
+| gh-apropos/mic92.user.repos.json |
+
+*** Fetching JSON
+
+#+name: fetchUser
+#+headers: :var gh-user="Mic92" :jq-args "--raw-output" :eval query :results output file :file "gh-apropos/mic92.user.json"
+#+begin_src restclient :jq "map(keys)" :results output file :file "mic92.json"
+:gh-graphql-url = https://api.github.com/graphql
+:gh-url-base = https://api.github.com
+:gh-url-path = users/:gh-user/repos
+:gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+
+:headers = <<
+Accept: application/vnd.github+json
+Authorization: Bearer :gh-token
+X-GitHub-Api-Version: 2022-11-28
+User-Agent: Emacs
+#
+
+GET :gh-url-base/:gh-url-path
+:headers
+#+end_src
+
+
+#+name: fetchUserRepos
+#+headers: :var gh-user="Mic92" :jq-args "--raw-output" :eval query :results output file :file "gh-apropos/mic92.user.repos.json"
+#+begin_src restclient :jq "sort_by(-.size) | map([.owner.login, .name, .size,.default_branch, .archived, .updated_at])[] | @csv"
+:gh-graphql-url = https://api.github.com/graphql
+:gh-url-base = https://api.github.com
+:gh-url-path = users/:gh-user/repos
+:gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+
+:headers = <<
+Accept: application/vnd.github+json
+Authorization: Bearer :gh-token
+X-GitHub-Api-Version: 2022-11-28
+User-Agent: Emacs
+#
+
+GET :gh-url-base/:gh-url-path
+:headers
+#+end_src
+
+*** Users JSON
+**** Repositories
+
+repo name
+
+| name     | full_name | description |
+| homepage | license   | language    |
+
+owner/misc
+
+| owner | id | node_id | size| ired |
+
+timestamps
+
+| created_at | pushed_at | updated_at |
+
+
+status, visibility
+
+| archived | disabled | private | visibility | web_commit_signoff_req |
+
+ideological confomance
+
+| default_branch | allow_forking | is_template |
+
+fork
+
+| fork | forks | forks_count |
+
+has?
+
+| has_discussions | has_downloads | has_issues |
+| has_pages       | has_projects  | has_wiki   |
+
+subs
+
+| watchers | watchers_count | stargazers_count |
+
+permissions
+
+| topics | open_issues | open_issues_count |
+
+URLs
+
+| archive_url       | commits_url      | forks_url       | issue_comment_url | milestones_url    | statuses_url     | url |
+| assignees_url     | compare_url      | git_commits_url | issue_events_url  | mirror_url        | subscribers_url  |     |
+| blobs_url         | contents_url     | git_refs_url    | issues_url        | notifications_url | subscription_url |     |
+| branches_url      | contributors_url | git_tags_url    | keys_url          | pulls_url         | svn_url          |     |
+| clone_url         | deployments_url  | git_url         | labels_url        | releases_url      | tags_url         |     |
+| collaborators_url | downloads_url    | hooks_url       | languages_url     | ssh_url           | teams_url        |     |
+| comments_url      | events_url       | html_url        | merges_url        | stargazers_url    | trees_url        |     |
+
+
+** All users
+
+#+begin_src shell
+# dammit find
+find /data/ecto -name CODEOWNERS -type f -readable |
+  ! -wholename '/data/ecto/*/.git*' |
+  ! -wholename '/data/ecto/vyos/vyos/vyos-build/*' |
+  ! -wholename '/data/ecto/*/.repo*' |
+  -printf '\n%p\t'
+#   -exec cat \{\} + 2>&1
+#+end_src
+
+
+*** Convert into a yaml list of usernames
+
+#+name: codeownersByProj
+#+begin_src shell :results output code :wrap src json :dir /data/ecto
+ff=$(fd CODEOWNERS . | sed -e 's/^.\///g')
+# for f in $ff; do echo -n "$f\t" cat $f; done
+
+for f in $ff; do
+    echo -en "\n\n\"$f\":\n"
+    # relies on greediness of first sed
+    grep -ve '^#' $f \
+    | sed -E 's/.*@/- "@/g'  \
+    | sed -e 's/$/"/g'  \
+    | grep '@'  \
+    | sort  \
+    | uniq
+done | yq .
+#+end_src
+
+#+name: codeownersUsers
+#+begin_src shell :var owners=codeownersByProj :results output verbatim
+echo "$owners" | grep -E ' +"@[^/]+"' | tr -d ' ",' \
+    | tr '[:upper:]' '[:lower:]' \
+    | sort | uniq 
+echo ' '
+#+end_src
+
+#+RESULTS: codeownersUsers
+#+begin_example
+@1025kb
+@8bitmp3
+@abock
+@a-dai
+@adamcrume
+@advaitjain
+@alband
+@alexeykurakin
+@alexgorban
+@alexwaygood
+@alxndrnh
+@aminim
+@anaik91
+@ananthr
+@andrefaraujo
+@aneliaangelova
+@anirudh2290
+@anjali411
+@araziusubov
+@armando-fandango
+@arvind2505
+@asimshankar
+@avditvs
+@ayosec
+@bactaki
+@barretzoph
+@brianmcgee
+@britter
+@buckman-google
+@burntsushi
+@caisq
+@carlocab
+@casassg
+@cbfinn
+@cfezequiel
+@chillee
+@chrisohaver
+@chsigg
+@courmisch
+@cruse1977
+@cshallue
+@cvitan
+@danabo
+@darshanime
+@dave-andersen
+@daviddao
+@dblalock
+@dcreager
+@ddavis-2015
+@depristo
+@deutranium
+@dhruvmanila
+@dieterichlawson
+@dilyevsky
+@dmathieu
+@dmitrievanthony
+@dmrd
+@dpwe
+@drybjed
+@dynamicwebpaige
+@ebrevdo
+@eifinger
+@ematejska
+@emiller88
+@ericyz
+@erlanderlo
+@ezyang
+@fegin
+@fgaz
+@gagika
+@gariel-google
+@gigasquid
+@gjtucker
+@gpapan
+@guanhuawang
+@gyand
+@haasn
+@hanneshapke
+@hdcharles
+@honglaklee
+@hsjobeki
+@ihac
+@imrannayer
+@imrejonk
+@ivanyashchuk
+@jamrial
+@janeyx99
+@jbschlosser
+@jeffdaily
+@jerryzh168
+@jianhuaw
+@jianyuh
+@joanafilipa
+@joefernandez
+@joel-shor
+@johnbelamaric
+@josephdt12
+@kalbasit
+@karmel
+@karunreddy30
+@kenji
+@khumba
+@knathanieltucker
+@kulinseth
+@kumvijaya
+@lamberta
+@lanre-og
+@lassulus
+@laurent-dinh
+@lego0901
+@lezcano
+@lmthang
+@lukaszkaiser
+@lw
+@lyndeno
+@lynne
+@mackeya-google
+@madvikinggod
+@manivaradarajan
+@marcoabreu
+@markdaoust
+@markomernick
+@marksandler2
+@mdanatg
+@mgaur10
+@mhong
+@mic92
+@michaelni
+@michareiser
+@miekg
+@mikemcquaid
+@mnorouzi
+@moredread
+@mqasimsarfraz
+@mruberry
+@mstorsjo
+@nathansilberman
+@natm
+@nehalk-tf
+@ngimel
+@niranjankl
+@nirum
+@nirzu97
+@nitisht
+@niumanar
+@nmjohn
+@nswamy
+@nzmsv
+@ofirnachum
+@olebedev
+@oribon
+@panyx0718
+@penpornk
+@perfinion
+@peterjliu
+@petewarden
+@pkanwar23
+@pkulzc
+@pmoroney
+@poxvoculi
+@prabhu34
+@programmerjake
+@pross
+@protoget
+@q2w
+@qqfish
+@qubasa
+@quink
+@rachellj218
+@rahul003
+@rajansandeep
+@rashikakheria
+@rbultje
+@rclough
+@rcrowe-google
+@rebortg
+@rezama
+@rikel
+@r-k-b
+@robieta
+@rohan100jain
+@rtreffer
+@saberkun
+@saipriyavk
+@samyam
+@saxenasaurabh
+@sayakpaul
+@sean_mcg
+@sergeykolychev
+@sermanet
+@s-gupta
+@shlens
+@sjswerdlow
+@sleighton2022
+@snebel29
+@snurkabill
+@soulitzer
+@stp-ip
+@sub-mod
+@superq
+@susillo
+@sussillo
+@szha
+@tantalor93
+@tasosalvas
+@terryheo
+@theadactyl
+@theraysmith
+@thevilledev
+@thirdwing
+@thtrieu
+@tmthrgd
+@tomfitzhenry
+@tong1wu
+@tparker00
+@tpryan
+@traneptora
+@truenaho
+@tzolov
+@vamsimanchala
+@vighneshbirodkar
+@vincentvanhoucke
+@vpalmisano
+@wamuir
+@waterson
+@wdirons
+@wihanbooyse
+@xavigibert
+@yegortimoshenko
+@yeqingli
+@yeweidaniel
+@yhliang2018
+@yinxiaoli
+@ykhr53
+@yknzhu
+@yongtang
+@yongzhe2160
+@ypid
+@z-a-f
+@zane
+@zhuchenwang
+@zouyee
+ 
+#+end_example
+
+
+#+name: codeownersUsersDamit
+#+begin_example jq :stdin codeownersReduce
+. as $dot
+  | paths
+  | select(last == "CODEOWNERS")
+  | reduce . as $p
+           ({}; . as $acc
+             | ($dot | getpath($p) | select(match("/") | not)) as $users
+#             | ($dot | getpath($p) | map(select(.))) as $users
+             | $users)
+           #              | if ($users | length > 0) then $acc |= (setpath($p; $users)) end)
+
+           # if (0 < ($p | map(select(match("/") | not)) | length)) then
+           #     setpath($p; $p | map(select(match("/") | not)))
+           #   end)
+#+end_example
+
+#+name: codeownersUsers2
+#+begin_src jq :stdin codeownersReduce :results output code :wrap example json
+. as $dot
+  | paths
+  | select(last == "CODEOWNERS")
+  | reduce . as $p ({}; setpath($p; $p | map(select(match("/") | not))))
+#+end_src
+
+#+RESULTS: codeownersUsers2
+#+begin_example json
+{
+  "clab": {
+    "cnf": {
+      "metallb": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "ansible-collections": {
+    "debops": {
+      "debops": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "ansible-collections": {
+    "community.digitalocean": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tfx-addons": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "runtime": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ansible-collections": {
+    "vyos.vyos": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tensorflow": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "docs-l10n": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "community": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "examples": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ffmpeg": {
+    "ffmpeg": {
+      "ffmpeg": {
+        ".forgejo": {
+          "CODEOWNERS": []
+        }
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "build": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "docs": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "cloud": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tflite-micro-arduino-examples": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tf-build-actions": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "models": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tflite-micro": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "hacknet": {
+    "orc": {
+      "scan4all": {
+        "vendor": {
+          "github.com": {
+            "miekg": {
+              "dns": {
+                "CODEOWNERS": []
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "nixos": {
+    "clan": {
+      "clan-core": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-bgp": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-acls": {
+        "netbox_acls": {
+          "CODEOWNERS": []
+        }
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-qrcode": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-floorplan-plugin": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "nixos": {
+    "nix-community": {
+      "browser-previews": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "guix": {
+    "guix": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyatta-cfg": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "packer": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-dataflow": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-utils": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-sap": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vpc-service-controls": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyatta-bash": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-workflows": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-project-factory": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-group": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-utils": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-address": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vm": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-analytics-lakehouse": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-service-accounts": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-kms": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "svc": {
+      "serf": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-out-of-band-security": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-startup-scripts": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-run": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-workflow-test-temp": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-secured-data-warehouse": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-log-export": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-pubsub": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-operations": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-documentation": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "vault": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-build": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-github-actions-runners": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "nixos": {
+    "nix-community": {
+      "nur-combined": {
+        "repos": {
+          "milahu": {
+            "pkgs": {
+              "development": {
+                "tools": {
+                  "js2nix": {
+                    "CODEOWNERS": []
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "nixos": {
+    "nixos": {
+      "nixos-hardware": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-scheduled-function": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-gcloud": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "boundary": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-datastore": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-armor": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-bigquery": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-folders": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-secure-cicd": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-log-analysis": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-lb-http": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-load-balanced-vms": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-iam": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-datalab": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-data-fusion": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-kubernetes-engine": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-network": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-lb": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-ids": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "gh-action-test-vyos-1x": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-nat": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-org-policy": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-deploy": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-gsuite-export": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-event-function": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vpn": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "notebooks-blueprint-security": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-sql-db": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-lb-internal": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-bootstrap": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-example-foundation": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos.vyos": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-secret-manager": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-memorystore": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-functions": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-bastion-host": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-network-forensics": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-router": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos1x-config": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vault": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-dns": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-gke-gitlab": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-anthos-vm": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-storage": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-healthcare": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-composer": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-alloy-db": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-jenkins": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-three-tier-web-app": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-media-cdn-vod": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-container-vm": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-slo": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-crmint": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-1x": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "action-smallstep-ca-bootstrap": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "terraform": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "homebrew-core": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "nosql": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ansible-collection-cli": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "helm-charts": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "step-kms-plugin": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "smallstep-python": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "step-sds": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "sshutil": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "nomad": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ansible-collection-sigstore": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "zcrypto": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "truststore": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "scim": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "certinfo": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "setup-step-cli": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "step-issuer": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "singleflight": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "sequel": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "logging": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "docs": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "workflows": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "linkedca": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ocsp": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ansible-collection-agent": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "webhooks": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "talos": {
+    "siderolabs": {
+      "coredns": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "astral": {
+    "setup-uv": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "astral": {
+    "ruff": {
+      ".github": {
+        "CODEOWNERS": []
+      }
+    }
+  }
+}
+{
+  "talos": {
+    "siderolabs": {
+      "distribution": {
+        "vendor": {
+          "go.opentelemetry.io": {
+            "otel": {
+              "CODEOWNERS": []
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "astral": {
+    "ruff-action": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "DeepLearningExamples": {
+      "TensorFlow": {
+        "Detection": {
+          "SSD": {
+            "models": {
+              "CODEOWNERS": []
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "DeepSpeed": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "DeepSpeed-MII": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "mxnet": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "mosaicml_benchmarks_internal": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "pytorch": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "Megatron-LM": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "tensorflow-upstream": {
+      "CODEOWNERS": []
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "aws-ofi-rccl": {
+      "CODEOWNERS": []
+    }
+  }
+}
+#+end_example
+
+#+name: codeownersReduce
+#+begin_src jq :stdin codeownersByProj :results output code :wrap example json
+to_entries[] | reduce . as $p ({}; setpath($p.key | split("/"); $p.value))
+#+end_src
+
+#+RESULTS: codeownersReduce
+#+begin_example json
+{
+  "ROCmSoftwarePlatform": {
+    "mosaicml_benchmarks_internal": {
+      "CODEOWNERS": [
+        "@dblalock"
+      ]
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "DeepSpeed": {
+      "CODEOWNERS": [
+        "@niumanar"
+      ]
+    }
+  }
+}
+{
+  "tensorflow": {
+    "community": {
+      "CODEOWNERS": [
+        "@adamcrume",
+        "@armando-fandango",
+        "@dmitrievanthony",
+        "@dynamicwebpaige",
+        "@ematejska",
+        "@manivaradarajan",
+        "@perfinion",
+        "@petewarden",
+        "@pkanwar23",
+        "@poxvoculi",
+        "@tzolov"
+      ]
+    }
+  }
+}
+{
+  "tensorflow": {
+    "build": {
+      "CODEOWNERS": [
+        "@Avditvs",
+        "@perfinion",
+        "@sub-mod",
+        "@wamuir",
+        "@wdirons"
+      ]
+    }
+  }
+}
+{
+  "tensorflow": {
+    "runtime": {
+      "CODEOWNERS": [
+        "@mhong"
+      ]
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyatta-cfg": {
+        "CODEOWNERS": null
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "action-smallstep-ca-bootstrap": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "docs-l10n": {
+      "CODEOWNERS": [
+        "@joefernandez"
+      ]
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "step-kms-plugin": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "cloud": {
+      "CODEOWNERS": null
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "mxnet": {
+      "CODEOWNERS": [
+        "@anirudh2290",
+        "@apache/mxnet-committers",
+        "@gigasquid",
+        "@marcoabreu",
+        "@nswamy",
+        "@rahul003",
+        "@sergeykolychev",
+        "@szha",
+        "@thirdwing"
+      ]
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-utils": {
+        "CODEOWNERS": null
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyatta-bash": {
+        "CODEOWNERS": null
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-workflow-test-temp": {
+        "CODEOWNERS": [
+          "@kumvijaya"
+        ]
+      }
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "Megatron-LM": {
+      "CODEOWNERS": [
+        "@guanhuawang"
+      ]
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-documentation": {
+        "CODEOWNERS": [
+          "@rebortg"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "scim": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "certinfo": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "setup-step-cli": {
+        "CODEOWNERS": [
+          "@puppetlabs/community-maintainers"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "step-issuer": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "docs": {
+      "CODEOWNERS": [
+        "@8bitmp3",
+        "@joanafilipa",
+        "@tensorflow/docs-team"
+      ]
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "docs": {
+        "CODEOWNERS": [
+          "@smallstep/docs"
+        ]
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-build": {
+        "CODEOWNERS": null
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tflite-micro-arduino-examples": {
+      "CODEOWNERS": [
+        "@advaitjain",
+        "@ddavis-2015"
+      ]
+    }
+  }
+}
+{
+  "ansible": {
+    "roles": {
+      "infra.osbuild": {
+        "changelogs": {
+          "archive": {
+            "2.1.0": {
+              "144-Add-pull-request-template-and-CODEOWNERS.yaml": null
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "DeepLearningExamples": {
+      "TensorFlow": {
+        "Detection": {
+          "SSD": {
+            "models": {
+              "CODEOWNERS": [
+                "@a-dai",
+                "@AlexeyKurakin",
+                "@alexgorban",
+                "@ananthr",
+                "@andrefaraujo",
+                "@aneliaangelova",
+                "@arvind2505",
+                "@asimshankar",
+                "@barretzoph",
+                "@buckman-google",
+                "@cbfinn",
+                "@cshallue",
+                "@danabo",
+                "@dave-andersen",
+                "@daviddao",
+                "@depristo",
+                "@dieterichlawson",
+                "@dmrd",
+                "@dpwe",
+                "@ebrevdo",
+                "@gariel-google",
+                "@gjtucker",
+                "@gpapan",
+                "@honglaklee",
+                "@joel-shor",
+                "@karmel",
+                "@knathanieltucker",
+                "@lamberta",
+                "@laurent-dinh",
+                "@lmthang",
+                "@lukaszkaiser",
+                "@mackeya-google",
+                "@markomernick",
+                "@mnorouzi",
+                "@nathansilberman",
+                "@nirum",
+                "@nmjohn",
+                "@ofirnachum",
+                "@panyx0718",
+                "@peterjliu",
+                "@pkulzc",
+                "@protoget",
+                "@rezama",
+                "@rikel",
+                "@sermanet",
+                "@s-gupta",
+                "@shlens",
+                "@snurkabill",
+                "@susillo",
+                "@tensorflow/tf-garden-team",
+                "@theraysmith",
+                "@thtrieu",
+                "@vincentvanhoucke",
+                "@waterson",
+                "@yinxiaoli"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "webhooks": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "singleflight": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "pytorch": {
+      "CODEOWNERS": [
+        "@abock",
+        "@albanD",
+        "@anjali411",
+        "@chillee",
+        "@Chillee",
+        "@ezyang",
+        "@fegin",
+        "@hdcharles",
+        "@IvanYashchuk",
+        "@janeyx99",
+        "@jbschlosser",
+        "@jeffdaily",
+        "@jerryzh168",
+        "@jianyuh",
+        "@kulinseth",
+        "@lezcano",
+        "@lw",
+        "@mruberry",
+        "@ngimel",
+        "@pytorch/pytorch-dev-infra",
+        "@robieta",
+        "@soulitzer",
+        "@z-a-f"
+      ]
+    }
+  }
+}
+{
+  "guix": {
+    "guix": {
+      "CODEOWNERS": [
+        "@guix/ai",
+        "@guix/audio",
+        "@guix/bootstrap",
+        "@guix/core",
+        "@guix/core-packages",
+        "@guix/cpp",
+        "@guix/debian",
+        "@guix/documentation",
+        "@guix/electronics",
+        "@guix/emacs",
+        "@guix/embedded",
+        "@guix/games",
+        "@guix/gnome",
+        "@guix/go",
+        "@guix/haskell",
+        "@guix/home",
+        "@guix/hpc",
+        "@guix/hurd",
+        "@guix/installer",
+        "@guix/java",
+        "@guix/javascript",
+        "@guix/julia",
+        "@guix/kde",
+        "@guix/kernel",
+        "@guix/lisp",
+        "@guix/localization",
+        "@guix/lxqt",
+        "@guix/mozilla",
+        "@guix/ocaml",
+        "@guix/python",
+        "@guix/qt",
+        "@guix/r",
+        "@guix/racket",
+        "@guix/release",
+        "@guix/reproduciblebuilds",
+        "@guix/ruby",
+        "@guix/rust",
+        "@guix/science",
+        "@guix/sugar",
+        "@guix/sysadmin",
+        "@guix/telephony",
+        "@guix/tex",
+        "@guix/translations",
+        "@guix/xfce",
+        "@guix/zig"
+      ]
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "truststore": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tfx-addons": {
+      "CODEOWNERS": [
+        "@1025KB",
+        "@alxndrnh",
+        "@BACtaki",
+        "@casassg",
+        "@cfezequiel",
+        "@deutranium",
+        "@hanneshapke",
+        "@lego0901",
+        "@nirzu97",
+        "@rclough",
+        "@rcrowe-google",
+        "@sayakpaul",
+        "@theadactyl",
+        "@wihanbooyse"
+      ]
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "homebrew-core": {
+        "CODEOWNERS": [
+          "@carlocab ",
+          "@MikeMcQuaid ",
+          "@MikeMcQuaid"
+        ]
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "gh-action-test-vyos-1x": {
+        "CODEOWNERS": null
+      }
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "tensorflow-upstream": {
+      "CODEOWNERS": [
+        "@aminim",
+        "@caisq",
+        "@chsigg",
+        "@markdaoust",
+        "@mdanatg",
+        "@penpornk",
+        "@perfinion",
+        "@qqfish",
+        "@rohan100jain"
+      ]
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos.vyos": {
+        "CODEOWNERS": [
+          "@vyos/vyos-ansible-collection-maintainers"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "zcrypto": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "nosql": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "sshutil": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ansible-collection-sigstore": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ansible-collection-cli": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "step-sds": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos1x-config": {
+        "CODEOWNERS": null
+      }
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "aws-ofi-rccl": {
+      "CODEOWNERS": [
+        "@nzmsv",
+        "@rashikakheria"
+      ]
+    }
+  }
+}
+{
+  "ROCmSoftwarePlatform": {
+    "DeepSpeed-MII": {
+      "CODEOWNERS": [
+        "@samyam"
+      ]
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-dataflow": {
+        "CODEOWNERS": [
+          "@q2w",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "vyos": {
+    "vyos": {
+      "vyos-1x": {
+        "CODEOWNERS": null
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "packer": {
+      "CODEOWNERS": [
+        "@hashicorp/packer"
+      ]
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tensorflow": {
+      "CODEOWNERS": [
+        "@aminim",
+        "@caisq",
+        "@chsigg",
+        "@markdaoust",
+        "@mdanatg",
+        "@penpornk",
+        "@perfinion",
+        "@qqfish",
+        "@rohan100jain"
+      ]
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-group": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-utils": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vpc-service-controls": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-address": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-analytics-lakehouse": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@GoogleCloudPlatform/jump-start-solutions-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-project-factory": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "svc": {
+      "serf": {
+        "CODEOWNERS": [
+          "@hashicorp/consul-core-reviewers"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-service-accounts": {
+        "CODEOWNERS": [
+          "@q2w",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-kms": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vm": {
+        "CODEOWNERS": [
+          "@q2w",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-startup-scripts": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-secured-data-warehouse": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@lanre-OG"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-out-of-band-security": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@Saipriyavk"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-run": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@q2w"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "vault": {
+      "CODEOWNERS": [
+        "@hashicorp/team-vault-quality",
+        "@hashicorp/vault",
+        "@hashicorp/vault-crypto",
+        "@hashicorp/vault-ecosystem",
+        "@hashicorp/vault-education-approvers",
+        "@hashicorp/vault-ui",
+        "@hashicorp/web-presence"
+      ]
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-log-export": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-pubsub": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/api-pubsub-and-pubsublite",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-operations": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins",
+          "@terraform-google-modules/stackdriver-committers"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-github-actions-runners": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-scheduled-function": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-datastore": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tf-build-actions": {
+      "CODEOWNERS": [
+        "@aminim",
+        "@caisq",
+        "@chsigg",
+        "@markdaoust",
+        "@mdanatg",
+        "@penpornk",
+        "@perfinion",
+        "@qqfish",
+        "@rohan100jain"
+      ]
+    }
+  }
+}
+{
+  "ffmpeg": {
+    "ffmpeg": {
+      "ffmpeg": {
+        ".forgejo": {
+          "CODEOWNERS": [
+            "@ArazIusubov",
+            "@ayosec",
+            "@Courmisch",
+            "@GyanD",
+            "@haasn",
+            "@jamrial",
+            "@jianhuaw",
+            "@lynne",
+            "@michaelni",
+            "@mstorsjo",
+            "@programmerjake",
+            "@pross",
+            "@quink",
+            "@rbultje",
+            "@sean_mcg",
+            "@tong1wu",
+            "@Traneptora",
+            "@vpalmisano",
+            "@zane"
+          ]
+        }
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-bigquery": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins",
+          "@terraform-google-modules/jump-start-solutions-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-lb-http": {
+        "CODEOWNERS": [
+          "@q2w",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-kubernetes-engine": {
+        "CODEOWNERS": [
+          "@ericyz",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "models": {
+      "CODEOWNERS": [
+        "@a-dai",
+        "@andrefaraujo",
+        "@barretzoph",
+        "@dpwe",
+        "@gagika",
+        "@gjtucker",
+        "@karunreddy30",
+        "@lmthang",
+        "@marksandler2",
+        "@ofirnachum",
+        "@pkulzc",
+        "@rachellj218",
+        "@rezama",
+        "@saberkun",
+        "@saxenasaurabh",
+        "@s-gupta",
+        "@sussillo",
+        "@tensorflow/tf-model-garden-team",
+        "@vighneshbirodkar",
+        "@vincentvanhoucke",
+        "@xavigibert",
+        "@yeqingli",
+        "@yhliang2018",
+        "@yknzhu",
+        "@yongzhe2160"
+      ]
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "notebooks-blueprint-security": {
+        "CODEOWNERS": [
+          "@erlanderlo",
+          "@GoogleCloudPlatform/blueprint-solutions"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-sql-db": {
+        "CODEOWNERS": [
+          "@q2w",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-lb-internal": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-bootstrap": {
+        "CODEOWNERS": [
+          "@josephdt12",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-router": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vault": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-storage": {
+        "CODEOWNERS": [
+          "@q2w",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-composer": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-crmint": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-gcloud": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-example-foundation": {
+        "CODEOWNERS": [
+          "@sleighton2022",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-folders": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-log-analysis": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@GoogleCloudPlatform/jump-start-solutions-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-load-balanced-vms": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@tpryan"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-datalab": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-secret-manager": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@q2w"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-data-fusion": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "examples": {
+      "CODEOWNERS": [
+        "@MarkDaoust",
+        "@tensorflow/docs-team",
+        "@terryheo"
+      ]
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-memorystore": {
+        "CODEOWNERS": [
+          "@q2w",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-network": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-org-policy": {
+        "CODEOWNERS": [
+          "@nehalk-tf",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-three-tier-web-app": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@GoogleCloudPlatform/jump-start-solutions-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-media-cdn-vod": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@GoogleCloudPlatform/jump-start-solutions-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-functions": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@prabhu34"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-container-vm": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-gsuite-export": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-bastion-host": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-vpn": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-slo": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-deploy": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@niranjankl"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-network-forensics": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-event-function": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-gke-gitlab": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-anthos-vm": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@zhuchenwang"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-jenkins": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-sap": {
+        "CODEOWNERS": [
+          "@sjswerdlow",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-workflows": {
+        "CODEOWNERS": [
+          "@anaik91",
+          "@GoogleCloudPlatform/blueprint-solutions"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-armor": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@imrannayer"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "boundary": {
+      "CODEOWNERS": [
+        "@hashicorp/boundary"
+      ]
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-secure-cicd": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@GoogleCloudPlatform/jump-start-solutions-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-dns": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-iam": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-healthcare": {
+        "CODEOWNERS": [
+          "@terraform-google-modules/cft-admins",
+          "@yeweidaniel"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-alloy-db": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@q2w"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-lb": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-ids": {
+        "CODEOWNERS": [
+          "@GoogleCloudPlatform/blueprint-solutions",
+          "@mgaur10"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "gcp": {
+      "terraform-google-cloud-nat": {
+        "CODEOWNERS": [
+          "@imrannayer",
+          "@terraform-google-modules/cft-admins"
+        ]
+      }
+    }
+  }
+}
+{
+  "tensorflow": {
+    "tflite-micro": {
+      "CODEOWNERS": [
+        "@tensorflow/micro",
+        "@vamsimanchala"
+      ]
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "workflows": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "sequel": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "logging": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "linkedca": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ansible-collection-agent": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "ocsp": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "helm-charts": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "crypto": {
+    "smallstep": {
+      "smallstep-python": {
+        "CODEOWNERS": [
+          "@smallstep/core"
+        ]
+      }
+    }
+  }
+}
+{
+  "hashicorp": {
+    "terraform": {
+      "CODEOWNERS": [
+        "@hashicorp/terraform-aws",
+        "@hashicorp/terraform-azure",
+        "@hashicorp/terraform-core",
+        "@hashicorp/tf-core-cloud",
+        "@hashicorp/tf-eco-hybrid-cloud"
+      ]
+    }
+  }
+}
+{
+  "hashicorp": {
+    "nomad": {
+      "CODEOWNERS": [
+        "@hashicorp/nomad-eng"
+      ]
+    }
+  }
+}
+{
+  "astral": {
+    "ruff-action": {
+      "CODEOWNERS": [
+        "@eifinger"
+      ]
+    }
+  }
+}
+{
+  "astral": {
+    "setup-uv": {
+      "CODEOWNERS": [
+        "@eifinger"
+      ]
+    }
+  }
+}
+{
+  "astral": {
+    "ruff": {
+      ".github": {
+        "CODEOWNERS": [
+          "@AlexWaygood",
+          "@BurntSushi",
+          "@dcreager",
+          "@dhruvmanila",
+          "@MichaReiser"
+        ]
+      }
+    }
+  }
+}
+{
+  "ansible-collections": {
+    "community.digitalocean": {
+      "CODEOWNERS": [
+        "@tparker00"
+      ]
+    }
+  }
+}
+{
+  "nixos": {
+    "clan": {
+      "clan-core": {
+        "CODEOWNERS": [
+          "@brianmcgee",
+          "@hsjobeki",
+          "@kenji",
+          "@lassulus",
+          "@mic92",
+          "@Qubasa"
+        ]
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-bgp": {
+        "CODEOWNERS": [
+          "@cruse1977"
+        ]
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-acls": {
+        "netbox_acls": {
+          "CODEOWNERS": [
+            "@natm"
+          ]
+        }
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-qrcode": {
+        "CODEOWNERS": [
+          "@cvitan"
+        ]
+      }
+    }
+  }
+}
+{
+  "talos": {
+    "siderolabs": {
+      "coredns": {
+        "CODEOWNERS": [
+          "@chrisohaver",
+          "@darshanime",
+          "@dilyevsky",
+          "@ihac",
+          "@johnbelamaric",
+          "@miekg",
+          "@mqasimsarfraz",
+          "@nitisht",
+          "@pmoroney",
+          "@rajansandeep",
+          "@rtreffer",
+          "@snebel29",
+          "@stp-ip",
+          "@superq",
+          "@Tantalor93",
+          "@thevilledev",
+          "@ykhr53",
+          "@yongtang",
+          "@zouyee"
+        ]
+      }
+    }
+  }
+}
+{
+  "dcim": {
+    "netbox-community": {
+      "netbox-floorplan-plugin": {
+        "CODEOWNERS": [
+          "@cruse1977 "
+        ]
+      }
+    }
+  }
+}
+{
+  "talos": {
+    "siderolabs": {
+      "distribution": {
+        "vendor": {
+          "go.opentelemetry.io": {
+            "otel": {
+              "CODEOWNERS": [
+                "@dmathieu",
+                "@MadVikingGod"
+              ]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "ansible-collections": {
+    "vyos.vyos": {
+      "CODEOWNERS": [
+        "@vyos/vyos-ansible-collection-maintainers"
+      ]
+    }
+  }
+}
+{
+  "ansible-collections": {
+    "debops": {
+      "debops": {
+        "CODEOWNERS": [
+          "@drybjed",
+          "@imrejonk",
+          "@tasosalvas",
+          "@ypid"
+        ]
+      }
+    }
+  }
+}
+{
+  "clab": {
+    "cnf": {
+      "metallb": {
+        "CODEOWNERS": [
+          "@oribon"
+        ]
+      }
+    }
+  }
+}
+{
+  "nixos": {
+    "nix-community": {
+      "browser-previews": {
+        "CODEOWNERS": [
+          "@r-k-b"
+        ]
+      }
+    }
+  }
+}
+{
+  "nixos": {
+    "nix-community": {
+      "nur-combined": {
+        "repos": {
+          "milahu": {
+            "pkgs": {
+              "development": {
+                "tools": {
+                  "js2nix": {
+                    "CODEOWNERS": [
+                      "@olebedev"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "hacknet": {
+    "orc": {
+      "scan4all": {
+        "vendor": {
+          "github.com": {
+            "miekg": {
+              "dns": {
+                "CODEOWNERS": [
+                  "@tmthrgd"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+{
+  "nixos": {
+    "nixos": {
+      "nixos-hardware": {
+        "CODEOWNERS": [
+          "@britter",
+          "@emiller88",
+          "@fgaz",
+          "@kalbasit",
+          "@khumba",
+          "@Lyndeno",
+          "@Mic92",
+          "@moredread",
+          "@tomfitzhenry",
+          "@trueNAHO",
+          "@yegortimoshenko"
+        ]
+      }
+    }
+  }
+}
+#+end_example

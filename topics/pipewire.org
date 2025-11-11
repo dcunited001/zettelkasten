@@ -27,10 +27,32 @@
 *** Config
 + use =pw-config paths= to check paths that load configuration.
 
++ via [[https://discourse.nixos.org/t/pipewires-extraconfig-wireplumbers-extraconfig-virtual-microphone-source-confusion/68154/6][NixOS Discourse =pipewire.extraConfig= and =pipewiere.wireplumber.extraconfig=]]
+  - [[https://sorrel.sh/blog/pipewire-how-to-static-loopbacks/][How To: Uncomplicated Loopbacks]]
+  - [[https://github.com/IceDBorn/pipewire-screenaudio][IceDBorn/pipewire-screenaudio]] passthrough pipewire audio to WebRTC
+  - [[https://www.reddit.com/r/pipewire/comments/1awv14w/when_creating_a_new_virtual_sink_how_do_you/][How to specificy a format besides F32P when creating a virtual sink?]]
+
+
+*** Articles
++ [[https://venam.nixers.net/blog/unix/2021/06/23/pipewire-under-the-hood.html][Pipewire Under The Hood]]
+
+**** Dotfiles
+- [[github:robbert-vdh/dotfiles]]
+- [[https://git.sr.ht/~scrumplex/dotfiles/tree/master/item/pipewire/.config][~scrumplex/dotfiles]]
+
 ** Wireplumber
 + [[https://wiki.archlinux.org/title/WirePlumber][Archwiki]]
 
+*** NixOS
+
+Haven't found any event-based =media.role= hooking
+
++ modular configuration for specific devices in [[https://github.com/notashelf/nyx/blob/d407b4d6e5ab7f60350af61a3d73a62a5e9ac660/modules/core/common/system/hardware/multimedia/sound/servers/pipewire/wireplumber/devices.nix#L12][notashelf/nyx]]
++ matching on =media.role= to change stream properties in [[https://github.com/JManch/nixos/blob/ee33781b763207d1c82a688b8a8e9d009445e359/modules/nixos/system/audio.nix#L95][JManch/nixos]]
+
+
 *** Config
+
 + [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/src/config/wireplumber.conf#L1][src/config/wireplumber.conf]] the base configuration
   - in +lua+ [[https://pipewire.pages.freedesktop.org/wireplumber/daemon/configuration/conf_file.html#the-spa-json-format][SPA JSON]] syntax... which is also used for pipewire
 + See [[https://pipewire.pages.freedesktop.org/wireplumber/daemon/locations.html#configuration-fragments][Configuration Fragments]] for load order. on NixOS without much other
@@ -52,7 +74,6 @@ for scripting, just not top-level configuration.
 **** Scripts
 
 Similar setup to systemd (provides, requires)
-
 *** Scripting
 
 + [[https://blog.wido.dev/wireplumber-scripting][Wireplumber Scripting]] practical example from end-to-end
@@ -86,95 +107,12 @@ log.level = "W,wp-core:I"
 You're going to want at least ~s-*:D~ for lua scripts. (org won't let me add
 without emphasis marks...)
 
-**** Scope
+** Issues
 
-There is a concept of global state:
+*** Troubleshooting
 
-+ some variables must be global
-+ other locals cant default to splat =...=
-
-**** Constraints
-
-[[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.lua#L10][Constraint (spec)]] either the symbol or the verb is appropriate. each one has
-valid arity.
-
-| ~=~ | equals     |
-| ~!~ | not-equals |
-| ~c~ | in-list    |
-| ~~~ | in-range   |
-| ~#~ | matches    |
-| ~+~ | is-present |
-| ~-~ | is-absent  |
-
-
-
-**** Event Hooking
-
-See [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/src/scripts/device/automute-alsa-routes.lua#L195-212][automute-alsa-routes.lua]] which responds to events by un/hooking event
-handlers
-
-**** Notifications
-
-There's a plugin for =notify-send= via d-bus which loads in the default
-configuration
-
-+ IDK whether =Plugin.find("notifications-api")= needs to run in the correct scope
-+ It doesn't do anything, regardless of where this block runs
-  - inside an =ObjectManager= block, in a Core block afterwards, by itself
-  - =Core.require_api('api.notifications', function(...) ... end) block=
-
-#+begin_src lua
-notifications = notifications or Plugin.find("notifications-api")
-if notifications ~= nil and send_notification then
-  notifications:call ("send", I18n.gettext("Audio was auto-muted"),
-                      I18n.gettext("Active playback device was disconnected"))
-end
-#+end_src
-
-I guess the docs address this, so does the code.
-
-+ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.c#L305-318][modules/module-lua-scripting/api/api.c#L305-318]]
-  - warns if runs in daemon context
-+ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.c#L273-285][modules/module-lua-scripting/api/api.c#L273-285]]
-  - this is the definition of the Lua table associated to Core
-
-#+begin_src shell
-systemctl restart --user pipewire
-wpctl set-log-level 'W,m-*:I,wp-*:I,wplua*:T,s-*:T'
-journalctl --user -xb -f -u wireplumber
-# The service may not have the DBUS session address...
-#+end_src
-
-This should work, I think
-
-#+begin_src lua
-#!/usr/bin/env wpexec
--- -*- mode: lua-ts -*-
--- Plugin.find() is used for Lua scripts registered through wireplumber.conf
-        Core.require_api(
-            "api.notifications",
-            function(notify) -- this was needed in the closure
-                if notify ~= nil then
-                    notify:call ("send", I18n.gettext("Audio was auto-muted"),
-                                 I18n.gettext("Active playback device was disconnected"))
-                else
-                    print("its nil")
-                end
-                Core.quit()
-
-        end)
-
-#+end_src
-
-I don't think it's D-Bus, since org.pipewire.Telephony is registered (see
-[[https://gkiagia.gr/2025-02-20-pipewire-telephony/][Introducing Bluetooth Telephony Support in Pipewire]])
-
-** Articles
-+ [[https://venam.nixers.net/blog/unix/2021/06/23/pipewire-under-the-hood.html][Pipewire Under The Hood]]
-
-** Dotfiles
-- [[github:robbert-vdh/dotfiles]]
-- [[https://git.sr.ht/~scrumplex/dotfiles/tree/master/item/pipewire/.config][~scrumplex/dotfiles]]
+=wpexec= can run arbitrary scripts and it loads the proper environment (inside
+=Core=, i think)
 
 * Topics
 ** Nixos
@@ -685,6 +623,8 @@ permissions notifications that I clicked.
 
 ** Topics
 
+*** NixOS
+
 *** Lua
 
 **** wpexec
@@ -731,13 +671,88 @@ find src/scripts/ -name '*.lua' \
     | sed -E 's/:.*require ?\("(.*)"\)/\/\1/g' \
     | tree --fromfile .
 #+end_src
-** Issues
+**** Scope
 
-*** Troubleshooting
+There is a concept of global state:
 
-=wpexec= can run arbitrary scripts and it loads the proper environment (inside
-=Core=, i think)
++ some variables must be global
++ other locals cant default to splat =...=
 
+**** Constraints
+
+[[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.lua#L10][Constraint (spec)]] either the symbol or the verb is appropriate. each one has
+valid arity.
+
+| ~=~ | equals     |
+| ~!~ | not-equals |
+| ~c~ | in-list    |
+| ~~~ | in-range   |
+| ~#~ | matches    |
+| ~+~ | is-present |
+| ~-~ | is-absent  |
+
+
+
+**** Event Hooking
+
+See [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/src/scripts/device/automute-alsa-routes.lua#L195-212][automute-alsa-routes.lua]] which responds to events by un/hooking event
+handlers
+
+**** Notifications
+
+There's a plugin for =notify-send= via d-bus which loads in the default
+configuration
+
++ IDK whether =Plugin.find("notifications-api")= needs to run in the correct scope
++ It doesn't do anything, regardless of where this block runs
+  - inside an =ObjectManager= block, in a Core block afterwards, by itself
+  - =Core.require_api('api.notifications', function(...) ... end) block=
+
+#+begin_src lua
+notifications = notifications or Plugin.find("notifications-api")
+if notifications ~= nil and send_notification then
+  notifications:call ("send", I18n.gettext("Audio was auto-muted"),
+                      I18n.gettext("Active playback device was disconnected"))
+end
+#+end_src
+
+I guess the docs address this, so does the code.
+
++ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.c#L305-318][modules/module-lua-scripting/api/api.c#L305-318]]
+  - warns if runs in daemon context
++ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/0dad52f7741726f0cd7917f9ad521a77bd50eb31/modules/module-lua-scripting/api/api.c#L273-285][modules/module-lua-scripting/api/api.c#L273-285]]
+  - this is the definition of the Lua table associated to Core
+
+#+begin_src shell
+systemctl restart --user pipewire
+wpctl set-log-level 'W,m-*:I,wp-*:I,wplua*:T,s-*:T'
+journalctl --user -xb -f -u wireplumber
+# The service may not have the DBUS session address...
+#+end_src
+
+This should work, I think
+
+#+begin_src lua
+#!/usr/bin/env wpexec
+-- -*- mode: lua-ts -*-
+-- Plugin.find() is used for Lua scripts registered through wireplumber.conf
+        Core.require_api(
+            "api.notifications",
+            function(notify) -- this was needed in the closure
+                if notify ~= nil then
+                    notify:call ("send", I18n.gettext("Audio was auto-muted"),
+                                 I18n.gettext("Active playback device was disconnected"))
+                else
+                    print("its nil")
+                end
+                Core.quit()
+
+        end)
+
+#+end_src
+
+I don't think it's D-Bus, since org.pipewire.Telephony is registered (see
+[[https://gkiagia.gr/2025-02-20-pipewire-telephony/][Introducing Bluetooth Telephony Support in Pipewire]])
 * Pulseaudio
 
 ** Docs
