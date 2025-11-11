@@ -28,6 +28,13 @@ Goddamit it's difficult to find references to this +CGAN+ CKAN software:
 
 + [[https://docs.ckan.org/en/2.11/contributing/architecture.html][CKAN code architecture]]
 
+** OAI PMH
+
+[[https://www.openarchives.org/OAI/openarchivesprotocol.htm][Open Archives Initiative]] :: [[https://www.openarchives.org/pmh/tools/][Protocol for Metadata Harvesting (PMH)]]
+
+See below how to get data into PostgreSQL. RDF Batteries not included.... it's
+hard: [[https://framagit.org/tyreunom/guile-rdf][tyreunom/guile-rdf]]
+
 * Resources
 
 
@@ -41,6 +48,114 @@ Goddamit it's difficult to find references to this +CGAN+ CKAN software:
 + schemas (and probably OpenAPI docs)
 + The metabrainz github org has projects like [[https://github.com/metabrainz][metabrainz/picard]] (which tags a
   music library)
+** OAI
+
+*** CKAN Integration
+
++ ckanext-oaipmh-server :: CKAN provides access to metadata via OAI
++ ckanext-oaipmh :: CKAN acts as an OAI client
+**** Data.Gov
+
+It runs CKAN, but extending it with plugins requires 1,000 bureaucrats (for
+reasons)
+
++ PubMed [[https://pmc.ncbi.nlm.nih.gov/tools/oai/][PMC OAI-PMH API]] and [[https://catalog.data.gov/dataset/pubmed-central-open-access-subset-pmc-oa][PubMed Central Open Access Subset (PMC OA)]]
++ [[https://catalog.data.gov/dataset/nasa-technical-reports-server-ntrs][NASA Technical Reports Server (NTRS)]]
++ [[https://catalog.data.gov/dataset/oai-pmh-for-doe-research-and-development-reports-6b113][DoE Research and Development Reports]]
+
+*** KOHA
+
+Another tool with a 2025 release: [[https://koha-community.org/manual/17.05/en/html/getting-started.html][Getting Started]]
+
+*** OAI FDW
+
++ [[https://github.com/jimjonesbr/oai_fdw][jimjonesbr/oai_fdw]] I have to imagine that this is the one to use. One of the
+  others mentioned Windows NT and I suddenly had to question my entire
+  existence. This is a bit new, but idk if it works (2 minute glance), you
+  should be able to ingest from multiple sources. into a fairly
+
+IDK how it gets batched.
+
+#+begin_src sql
+CREATE SERVER oai_server_dnb FOREIGN DATA WRAPPER oai_fdw
+OPTIONS (url 'https://services.dnb.de/oai/repository');
+
+CREATE FOREIGN TABLE dnb_zdb_oai_dc (
+  id text             OPTIONS (oai_node 'identifier'),
+  content text        OPTIONS (oai_node 'content'),
+  setspec text[]      OPTIONS (oai_node 'setspec'),
+  datestamp timestamp OPTIONS (oai_node 'datestamp'),
+  meta text           OPTIONS (oai_node 'metadataprefix')
+ ) SERVER oai_server_dnb OPTIONS (setspec 'zdb',
+                                  metadataprefix 'oai_dc',
+                                  from '2022-01-31',
+                                  until '2022-02-01');
+
+-- INSERT INTO my_local_table -- to avoid polling
+SELECT * FROM dnb_zdb_oai_dc
+WHERE
+  meta = 'MARC21-xml' AND
+  datestamp BETWEEN '2022-03-01' AND '2022-03-02' AND
+  setspec <@ ARRAY['dnb:reiheC'];
+#+end_src
+
+| oai:dnb.de/dnb:reiheC/1131642694 | <record xmlns="http://www.loc.gov/MARC21/slim" type="Bibliographic" ... /> | {dnb:reiheC} | 2022-03-01 13:54:09 | MARC21-xml |
+
+*** NASA
+
+They also use this OAI format (so does arXiv)
+
+
+**** Side Trek
+
+From the [[https://nasa-pds.github.io/pds4-information-model/index.html][PDS4 Information Model]] page
+
+#+begin_quote
+This enables data dictionary and ontology designers to share the _changing
+morphology_ of the PDS model with the rest of the PDS nodes and the general
+public.
+#+end_quote
+
+When I write crazy shit no one understands on my LinkedIn banner.
+
+#+begin_quote
+Epistemology with _Morphological Operators_ and Spectral Methods; Self-Styled
+Philosopher
+#+end_quote
+
+it's there bc it's prominently positioned and I consider this idea to be
+incredibly important -- at least to me, though obviously other people alread
+understand the same ideas. No matter how crazy that wording looks now, it has to
+be at the root of how AI will optimize knowledge expansion.
+
+I'm literally talking about the boundary of an expanding/contracting knowledge
+graph and using methods that look for similarity in the spectral content of
+changes to the graph's boundary's which should be observed consistently if there
+is some universal structure underlying knowledge (i.e. like if plato's forms are
+the atoms/elements that make up the Monad). Specifially, one should apply
+open/close/dilate/erode to the boundary of the graph, reevaluating it for
+consistency. The trends that play out as knowledge becomes certain should
+exhibit a kind of graph spectrum in the subgraphs & boundary.
+
+Protegé, apparently an old tool, is used by the administration-department
+interface in universities to queue up potential research: to decide what's
+likely answerable over a 5-10 year horizon; to decide how to allocate their
+staff's specific skills & resources.
+
+**** Using PDS Deep Archive
+
++ Find a base URL from one of NASA's services
+  - These serve collections of assets over HTTP coupled with a manifest
+  - explore the URL root to get a feel for the data
+  - JIRAM [[https://en.wikipedia.org/wiki/Jovian_Infrared_Auroral_Mapper][Jovian Infrared Auroral Mapper]] project has a [[https://atmos.nmsu.edu/PDS/data/jnojir_2050/DOCUMENT/JIRAM_SIS_V7.5.pdf][Software Interface
+    Specification]], which covers the organization of data as well as experiment
+    design and data processing ... $\frac{W}{m^{2} µm} sterad^{-1}$
+  - steradians should probably be in everyone's vocab
++ Bundles have DOIs, which is nice.
+  - [[https://pds.nasa.gov/ds-view/pds/viewCollection.jsp?identifier=urn%3Anasa%3Apds%3Amaven.static.c&version=4.7][10.17189/1517741]] is for MAVEN. Other MAVEN bundles are available from
+    [[https://pds-ppi.igpp.ucla.edu/bundle/urn:nasa:pds:maven.static.c][ppds-ppi.igpp.ucla.edu]] (the [[https://pds-ppi.igpp.ucla.edu/index.jsp][Planetary Plasma Interactions]] host)
+  - ahh here we are... the main [[https://pds.jpl.nasa.gov/][PDS page]] (nasa doesn't have a frontend designer)
+
 
 * Issues
 
