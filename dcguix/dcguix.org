@@ -183,6 +183,101 @@ Javascript proto being what it is, probably ... nevermind. Anyways, to clean up:
 mmdc -i linkedca.mmd -o linkedca.svg
 #+end_src
 
+*** Process Markdown
+:PROPERTIES:
+:header-args+: :dir "/data/ecto/crypto/smallstep/linkedca"
+:END:
+
+#+begin_src emacs-lisp
+(setq-local ob-mermaid-cli-path "/nix/store/p7g6ag8i5v3clwssfqh354d2vgw9r5s7-mermaid-cli-11.6.0/bin/mmdc")
+#+end_src
+
+Filter with awk stayteughmachinah
+
+#+name: mermaidFilter
+#+begin_src awk :in-file "uml/admin.proto.md" :results output verbatim
+BEGIN { mermaid=0; inType=0; afterClass=0; thisClass=""; }
+($0 ~/### Type Diagram$/) { inType=1; next; }
+($0 ~/### .*/) { inType=0; }
+(inType == 1) { next; }
+($0 ~/```mermaid$/) { mermaid=1; nBlocks++; next; }
+($0 ~/```$/) { mermaid=0; afterClass=0; next; }
+($0 ~/  \+ Type/) { printf "  + %sType type\n", thisClass; next}
+# ........ (from 5 minutes to 45...ish)
+($0 ~/^class .*{$/) {
+    afterClass=1;
+    matches = match($0,/^class ([^ ]*) *{$/, arr)
+    if (arr[1] && arr[1] != "Type") {
+        thisClass=arr[1];
+    } else {
+        thisClass = sprintf("%sType", thisClass);
+    }
+    printf "class %s {\n", thisClass;
+    next;
+}
+# it'll be easier next time?
+($0 ~/`Type`/) { sub(/`Type`/, sprintf("`%sType`", thisClass), $0); print $0; next }
+(mermaid == 1) && (afterClass) {print $0;}
+
+# and i shoulda git log'd those files first
+END { print " " }
+#+end_src
+
+Acme
+
+#+name: linkedcaAcme
+#+call: mermaidFilter() :in-file "uml/acme.proto.md"
+
+Admin
+
+#+name: linkedcaAdmin
+#+call: mermaidFilter() :in-file "uml/admin.proto.md"
+
+Config
+
+#+name: linkedcaConfig
+#+call: mermaidFilter() :in-file "uml/config.proto.md"
+
+Eab
+
+#+name: linkedcaEab
+#+call: mermaidFilter() :in-file "uml/eab.proto.md"
+
+Policy
+
+#+name: linkedcaPolicy
+#+call: mermaidFilter() :in-file "uml/policy.proto.md"
+
+Provisioners
+
+#+name: linkedcaProvisioners
+#+call: mermaidFilter() :in-file "uml/provisioners.proto.md"
+
+Majordomo
+
+#+name: linkedcaMajordomo
+#+call: mermaidFilter() :in-file "uml/majordomo.proto.md"
+
+*** Generate Mermaid
+
++ << linkedcaAcme() >>
++ << linkedcaEab() >>
++ << linkedcaAdmin() >>
++ << linkedcaConfig() >>
++ << linkedcaPolicy() >>
++ << linkedcaProvisioner() >>
+
+#+begin_src mermaid :file img/smallstep-mmdc-config-admin.svg :noweb yes
+classDiagram
+direction LR
+%%
+<<linkedcaConfig()>>
+<<linkedcaAdmin()>>
+#+end_src
+
+#+RESULTS:
+[[file:img/smallstep-mmdc-config-admin.svg]]
+
 ** With [[https://github.com/kinow/protobuf-uml-diagram][kinow/protobuf-uml-diagram]]
 
 See [[id:b4a8b4dd-940e-4e91-895d-5e1a9759407e][DC Guix: Protobuf UML Diagram]]

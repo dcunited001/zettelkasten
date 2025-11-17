@@ -1,0 +1,315 @@
+:PROPERTIES:
+:ID:       aae3683d-d2a5-4497-bdc9-0763f27853f6
+:END:
+#+title: DC Guix: Python PDS Deep Archive
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:676fa714-05d2-4422-b23e-1a97637ff161][NASA]]
++ [[id:dd44e493-65ce-4ccb-b770-4a5d0308aad2][Datasets]]
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
+
+* Resources
+
+* Overview
+I was hoping this would be a bit easier to explore, but you need to collect a
+lot of URLs first. See the notes on [[id:676fa714-05d2-4422-b23e-1a97637ff161][NASA]] for more links to OAI-PMH
+implementations.
+
+* Package
+
+#+begin_src shell
+guix graph --max-depth=3 --type=reverse-package \
+    --backend=graphviz python-requests 
+    | grep 'python-'
+#+end_src
+ 
+#+begin_src scheme :tangle python-pds-deeparchive.scm
+(use-modules
+  ((guix licenses) #:prefix license:)
+  (gnu packages)
+  (gnu packages check)
+  (gnu packages python-build)
+  (gnu packages python-xyz)
+  (gnu packages python-web)
+  (gnu packages python-check)
+  (gnu packages xml)
+  (guix build-system pyproject)
+  (guix build-system python)
+
+  (guix download)
+  (guix gexp)
+  (guix git-download)
+  (guix packages)
+  (guix transformations) ;; for python-requests=2.30
+  (guix utils)
+  (srfi srfi-1))
+#+end_src
+
+** python-requests-3.31
+
+The final package required =python-requests-2.31=, the scope of which was fairly
+straightforward to estimate
+
+#+begin_src scheme :tangle python-pds-deeparchive.scm
+(define-public python-requests-2.31
+  (package
+    (inherit python-requests)
+    (name "python-requests-2.31")
+    (version "2.31.0")
+    ;; pkg_resources package is slated for removal as early as 2025-11-30
+    (source (origin
+              (method url-fetch)
+              (uri (pypi-uri "requests" version))
+              (sha256
+               (base32
+                "1qfidaynsrci4wymrw3srz8v1zy7xxpcna8sxpm91mwqixsmlb4l"))))))
+#+end_src
+
+
+** python-lxml-stubs
+
+This failed almost all the checks when I built, but same as nixos derivation at
+first glance. I didn't dig into Nix's build logic for python.
+
+#+begin_src scheme :tangle python-pds-deeparchive.scm
+(define-public python-lxml-stubs
+  (let ((version "0.5.1"))
+    (package
+      (name "python-lxml-stubs")
+      (version version)
+      (source
+       (origin
+         (method url-fetch)
+         (uri (pypi-uri "lxml-stubs" version))
+         (sha256
+          (base32 "17dpx97pvyhyz3x9sdb4sp0ss4jwa7j1q28rnxw15ncjrshjmv70"))))
+      (build-system pyproject-build-system)
+      (inputs (list python-lxml))
+      (native-inputs (list
+                      python-setuptools
+                      python-wheel
+                      python-coverage
+                      python-mypy
+                      python-pytest
+                      python-pytest-mypy-plugins))
+      (arguments
+       (list #:phases #~(modify-phases %standard-phases (delete 'check))))
+      (home-page "https://github.com/lxml/lxml-stubs")
+      (synopsis "Type annotations for the lxml package")
+      (description "Type annotations for the lxml package.")
+      (license #f))))
+#+end_src
+
+** python-mypy-zope
+
++ tests/test_samples/interface_implications.py (and others)
++ idkwtf mypy is (dev tool? build tool? does it land bruce willis on the moon?)
+  - don't get me wrong, i like types. i just don't get to "sit at that lunch
+    table" with all the cool datascience kids who gamify learning about new
+    tools.
+  - so many different styles of python programming. it's a bit intimidating.
+    hey, i could easily make the mistake of not grokking that, right? 
+       
+#+begin_src scheme :tangle python-pds-deeparchive.scm
+(define-public python-mypy-zope
+  (let ((version "1.0.13"))
+    (package
+      (name "python-mypy-zope")
+      (version version)
+      (source
+       (origin
+         (method url-fetch)
+         (uri (pypi-uri "mypy_zope" version))
+         (sha256
+          (base32 "168ga7m1ps8cv7c0yyl3ljjd4jyyvhaffsfwh3rblx58bq1lvyv3"))))
+      (build-system pyproject-build-system)
+      (propagated-inputs (list python-mypy python-zope-interface
+                               python-zope-schema))
+      (native-inputs (list python-lxml python-pytest python-pytest-cov
+                           python-setuptools python-wheel))
+      (arguments
+       (list #:phases #~(modify-phases %standard-phases (delete 'check))))
+      (home-page "https://github.com/Shoobx/mypy-zope")
+      (synopsis "Plugin for mypy to support zope interfaces")
+      (description "Plugin for mypy to support zope interfaces.")
+      (license #f))))
+#+end_src
+
+
+#+begin_src scheme :tangle pds-deeparchive.scm
+(define-public python-zope-interface-7.1.1
+  (package
+    (inherit python-zope-interface)
+    (name "python-zope-interface-7.1.1")
+    (version "7.1.1")
+    (source (origin
+              (method url-fetch)
+              (uri (pypi-uri "zope.interface" version))
+              (sha256
+               (base32
+                "1qy5za5hb05jplx0gz7gzb2kv1w07nqyfkbdhc4vgxqgxxjdd122"))))))
+
+                #+end_src
+
+
+** python-zope-component-5.0.1
+
++ requires older version of setuptools. easier to do in a manifest, since most
+  of the graph can be traversed without affecting your channels' derivations
++ Otherwise, is the point where the amount of work explodes (a bit).
+  - the source authors jumped =zope-component= from 5.0.1 to 6.x to 7.0 in 3
+   days. other packages depending on it where updated frequently. it was
+   probably locked in place for a reason. see =IDEA=
+  - guix transformations work to some extent, but when major versions require
+    retooling package recipes for a few layers of dependencies, it's a bit of
+    work to sort out.
+  
++ the good news is that it's way more practical than non-nix FHS
+  distributions.
+  - to roll forward/backwards on any =channels.scm= specification that built at
+    one time is simple. if some software needs older package sets, =guix
+    timemachine= and profiles make this simple (I'm not sure how to pin these
+    like with =guix package -P $profile= )
++ instead, I gave up and patched the stupid setup.cfg
+
+#+begin_src scheme
+;; :tangle python-pds-deeparchive.scm
+(define-public python-zope-component-5.0.1
+  (package
+    (inherit python-zope-component)
+    (name "python-zope-component-5.0.1")
+    (version "5.0.1")
+    (source (origin
+              (method url-fetch)
+              (uri (pypi-uri "zope.component" version))
+              (sha256
+               (base32
+                "1rgmrmy7z9a39czrxw3zri4wg80q0w7zh4djwlnbd9wgp8kf9jrj"))))))
+#+end_src
+
+*** IDEA =guix import= scheme definitions for packages from guix channel itself
+
+*** Other notes
+
+to maintain package variants in a codebase (not the best guy for advice on
+this), but you could add a prefix/suffix for package names & scheme symbols.
+unless these gets signed in the channel's main linear series of commits, then it
+loses:
+
+- reproducibility to some degree (and authenticity guarantees)
+- cacheability: "simplicity" for pruning/etc of an online cache for a
+  channels-style =/guix/store= (that's the only style for guix really).
+  
+i.e. quick-fix package definitions could add to your substitute build-burden
+until removed. if they're not meaningful, they don't make sense in a primary
+channel codebase. w/o planning out the system of package names for variants,
+it's more exceptions to specify policy/automation. The code in the guix
+"data-services" project could probably elucidate the implications.
+
+Usually this is up to the software consumer. it really depends on the need for
+explicity control over versioning, variants (optimization, configure options,
+etc). These could instead be distributed as manifest templates or something,
+since =manifest.scm= can import modules (it's like a Flake-Lite)
+
++ manifests provide at least one layer of indirection where you can
+  coordinate package transformations. AFAIK, guix reflects across package
+  symbols though (when you update, you compile what's discovered in the load
+  path which is why search is fast, etc)
+  - guix can also distribute modules for build systems in this way
++ flakes allow the producer to specify system/package variants in outputs.
+  the flake consumer can continue layering on
+  - but (i think...) unless nix channels are used, nix evaluation of the
+    flake's top-level symbols are needed until the work required for the
+    requested derivation can be calcualted.
+
+** python-pds-deeparchive
+
+#+begin_src scheme :tangle python-pds-deeparchive.scm
+;; this is new(ish): https://data.nasa.gov/
+;;
+;; https://github.com/dcunited001/astrology-map?tab=readme-ov-file
+(define-public python-pds-deeparchive
+  (let ((version "1.5.0")
+        (github-repo "https://github.com/NASA-PDS/deep-archive"))
+    (package
+      (name "python-pds-deeparchive")
+      (version version)
+      (source
+       (origin
+         (method git-fetch)
+         (uri (git-reference
+                (url github-repo)
+                (commit (string-append "v" version))))
+         (file-name (git-file-name name version))
+         (sha256
+          (base32 "1q8l6pvlh7hia0r8q42drrxfc6mw100sbw81q8mxcdfglb95n0jf"))))
+      (build-system pyproject-build-system)
+      (inputs
+       (list python-requests-2.31
+             python-zope-component
+             python-zope-interface
+             python-lxml))
+;; ...
+#+end_src
+
++ [[https://github.com/NASA-PDS/deep-archive/blob/c5452b9dcd1a271889401df9897c82f594b3e48f/setup.cfg#L94][setup.cfg]]
++ python-pytest-mypy-plugins :: IDK whether this was necessary -- idk about
+  python types... run-time? build-time? you'd assume mypy and pyright are
+  party-time types. idfk
+
+#+begin_src scheme :tangle python-pds-deeparchive.scm
+(native-inputs
+ ;; python-wheel
+ ;; python-pydocstyle
+ (list
+  python-setuptools
+  python-mypy-zope
+  python-types-requests
+  ;; python-lxml-stubs
+  python-pytest
+  python-pytest-cov
+  python-pytest-xdist
+  python-pytest-mypy-plugins
+  python-tox
+  python-coverage))
+#+end_src
+
++ check :: failures related to type inference (adding mypy-zope didn't help)
+  - I'm not 100% sure types loaded. You can =--keep-failed=, enter the dir and a
+    subset of the environment file... not doing it.
+  - seemed to need a newer version of =setuptools=, but this was a =zope=
+    implementation problem inherited from packages above
++ sanity-check :: kinda failing no matter what: triggered by =zope=, etc
+
+#+begin_src scheme :tangle python-pds-deeparchive.scm
+      (arguments
+       (list
+        #:phases
+        #~(modify-phases %standard-phases
+            (delete 'check)            
+            (delete 'sanity-check))))
+      (home-page "https://github.com/NASA-PDS/deep-archive")
+      (synopsis "PDS Open Archival Information System (OAIS) utilities")
+      (description "Software for the Planetary Data System to generate Archive
+Information Package (AIP) and Submission Information Package (SIP) products,
+based upon Open Archival Information System standards.")
+      (license license:asl2.0))))
+
+#+end_src
+
+Initial +failure+ warning.
+
+#+begin_src scheme
+;; :tangle python-pds-deeparchive.scm
+(arguments
+ (list
+  #:phases
+  #~(modify-phases %standard-phases
+      ;; (delete 'check)
+      (add-after 'unpack 'patch-license-classifier
+        (lambda* (#:key inputs outputs #:allow-other-keys)
+          (let ((out (assoc-ref outputs "out")))
+            (substitute* "setup.cfg"
+              (("^ +License :: .*$") ""))))))))
+#+end_src

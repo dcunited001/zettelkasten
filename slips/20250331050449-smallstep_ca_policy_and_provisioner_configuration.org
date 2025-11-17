@@ -16,17 +16,21 @@
 
 ** Trust Bundle
 
-WR2.pkcs7.der
-
-
-
 * Concepts
+** Contexts
 
+These map a =profile= to an =authority= in =contexts.json=
 
-** Profiles
+*** Profiles
 
 + [[https://smallstep.com/docs/tutorials/intermediate-ca-new-ca/][Smallstep: Use step-ca with your existing Root CA]] This guide clarifies the
   purpose of profiles & their =defaults.json=
++ This =defaults.json= gets merged on top of the authority's =defaults.json=
+
+*** Authority
+
++ contains =ca.json= server configuration and =defaults.json= for certificate
+defaults
 
 ** Policies
 
@@ -34,11 +38,301 @@ WR2.pkcs7.der
 
 ** Templates
 
+** Provisioner
 
++ An authority has a list of provisioners
+
+* Smallstep
+:PROPERTIES:
+:header-args+: :dir (setq-local step-root "/tmp/tmp.AdBB5gOL2w")
+:END:
+
+
+** ykbootstrap ca
+:PROPERTIES:
+:header-args+: :var STEPPATH=".step.ykbootstrap" yk5root=12345678 ykpivpin=123456 ykpivpuk=12345678
+:END:
+
+*** Yubikey
+
+Doing this in org-babel is risky with multiple keys
+
+**** PIV
+
+#+begin_src shell :results output
+# also in :properties
+yk5root=12345678 # ykroot="$(ykman list -s | grep 123)"
+ykpivpin=123456
+ykpivpuk=12345678
+
+# echo $(date +%s) | sha256sum | head -c48 # defaults to aes192
+ykpivmgmt_default=010203040506070801020304050607080102030405060708
+ykpivmgmt=7eea8019e3c3042a33db408e8682efb5b3c415c52cee4952
+
+# set mgmt key first. needed to set-retries (which resets PIN/PUK)
+ykman -d "$yk5root" piv access change-management-key -P $(echo $ykpivpin) \
+    -t -a aes192 -m $ykpivmgmt_default -n $ykpivmgmt
+ykman -d "$yk5root" piv access set-retries -P $(echo $ykpivpin | rev) -m $(echo -m $ykpivmgmt)  7 7
+ykman -d "$yk5root" piv access change-pin -P $(echo $ykpivpin) -n $(echo $ykpivpin | rev)
+ykman -d "$yk5root" piv access change-puk -p $(echo $ykpivpuk) -n $(echo $ykpivpuk | rev)
+#+end_src
+
+PIN/Touch policies need to be set before import/generate [[https://docs.yubico.com/yesdk/users-manual/application-piv/pin-touch-policies.html#setting-keys-to-a-non-default-policy-all-slots-other-than-80-81-9b-f9][Non-default pin/touch
+policies for PIV slots]]
+
+Generate on =9c=
+
+#+begin_src shell :results output code :wrap example :var ykpivmgmt="7eea8019e3c3042a33db408e8682efb5b3c415c52cee4952"
+ykman -d "$yk5root" piv keys generate -F pem -a ed25519 \
+    --pin-policy always --touch-policy always \
+    -P $(echo $ykpivpin | rev) -m $(echo $ykpivmgmt) \
+    9c -
+#+end_src
+
+#+RESULTS:
+#+begin_example
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEA+abPSAzd8FYX/IX3DfMf0QbjvkWR2Qh6bU41vimRce4=
+-----END PUBLIC KEY-----
+#+end_example
+
+**** SOPS
+
+Create initial =.sops.yaml=
+
+#+begin_src yaml :tangle (expand-file-name ".sops.pre.yaml" step-root)
+keys:
+  users:
+    # - &admin0    # gpg1 key
+    # age1 key: x25519 via age-keygen
+    - &admin1 age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8
+    # age2 key: x25519 via openssl & ssh-to-age
+    - &admin2 age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9
+
+creation_rules:
+  - path_regex: .step.ykbootstrap/[^/]sopsca.yaml$
+    key_groups:
+      - ykbookstrap:
+          # - *admin0
+          - *admin1
+          - *admin2
+#+end_src
+
+Some scripts
+
+#+begin_src shell
+
+#+end_src
+
+Add secrets
+
+#+begin_src shell
+
+#+end_src
+
+
+**** Age
+
+Create keys (some of these tools may reset the key)
+
++ x25519 keys are not available yet with (see [[https://github.com/str4d/age-plugin-yubikey/issues/174][str4d/age-plugin-yubikey#174]] and
+  [[https://github.com/iqlusioninc/yubikey.rs/pull/577][iqlusioninc/yubikey.rs#577]]) and the UX may be a bit clunky, if it's at all
+  like the extant workarounds
++ =ssh-to-age= from mic92/sops-nix only mentions x25519 keys
++ manually pushing x25519 to yubikey slot won't work naively (idk)
+
+#+begin_src shell
+mkdir {.age,.ssh} && chmod 700 {.age,ssh}
+
+#userid=alice.id25519.pem
+#svc1id=svc1.id25519.pem
+#host1d=host1.id25519.pem
+admin1=alice.age.id_25519
+age-keygen > .age/$admin1.txt
+admin1pub=$(age-keygen -y .age/$admin1.txt)
+#+end_src
+
+Using =ssh-keygen=
+
+#+begin_src shell
+admin2=bob.ssh.id_25519
+ssh-keygen -t ed25519 -f .ssh/$admin2
+nix shell nixpkgs#ssh-to-age --command ssh-to-age -private-key -i .ssh/$admin2 > .age/$admin2.txt
+#+end_src
+
+Encrypt/delete the loose AGE keyfiles except =.age/key.txt= after concatting them.
+Then set ~SOPS_AGE_KEY_FILE=.age/key.txt~ when decrypting with sops.
+
+#+begin_src shell
+cat .age/{alice,bob}*25519.txt | grep -ve '^#'
+#+end_src
+
+#+RESULTS:
+| AGE-SECRET-KEY-1RNCQT3XW208JSFER458MAAWCE2RTFVSHUHUNN2W809ML5Z6CM3AQ8YWSP4 |
+| AGE-SECRET-KEY-18XK52JWFZQSH0QH7HNCC94RJNNZ6GA3URKLN0QZKQZYMWVKYV34SVT9MCD |
+
+#+begin_src shell
+age-keygen -y <(cat .age/{alice,bob}*25519.txt | grep -ve '^#')
+#+end_src
+
+#+RESULTS:
+| age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8 |
+| age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9 |
+
+***** Via openssl
+
+This is a key... not an ssh key-thing ... it's =PKCS#8= i guess? nope... still not
+working... i guess this is a raw key. This wasn't working. Probably safer to use
+=ssh-keygen= anyways, since these allow setting lower-level options
+
+#+begin_src shell
+admin2=bob.ssl.id_25519
+openssl genpkey -algorithm x25519 -out .ssh/$admin2.priv.der -outform DER
+openssl pkey -in .ssh/$admin2.priv.der -algorithm x25519 -out .ssh/$admin2.der
+# openssl genpkey -algorithm x25519 -out .ssh/$admin2.priv.pem
+# openssl pkey -in .ssh/$admin2.priv.pem -out .ssh/$admin2.pem
+ssh-keygen -i -f .ssh/$admin2.priv.der -m PKCS8
+#+end_src
+
+=M-x x509-viewasn1= shows ASN1... whatever C/C++ inspired witchcraft the
+ITU engaged it that wouldn't be reinvented until +JSON+ XML. Truly an ambitious
+vision: assign an integer to um everything? lol
+
+Anyways, equivalent to =openssl asn1parse -in .ssh/$admin2.priv.der -inform der=
+
+#+begin_quote
+    0:d=0  hl=2 l=  46 cons: SEQUENCE
+    2:d=1  hl=2 l=   1 prim: INTEGER           :00
+    5:d=1  hl=2 l=   5 cons: SEQUENCE
+    7:d=2  hl=2 l=   3 prim: OBJECT            :X25519
+   12:d=1  hl=2 l=  34 prim: OCTET STRING      [HEX DUMP]:0420C0868E47552DF004E324625091D6AD27794CADCDEE13D996E86B04F8079D2E6E
+#+end_quote
+
+*** Bootstrap
+
+#+name: stepConfigDefaults
+#+begin_src sh :results output code :wrap example json
+export STEPPATH # set in :properties:
+# echo $(date +%s) | sha256sum | base64 | head -c32
+echo Yzk1NWQ2ZjlhYzUwMDQ1MTJmZmY4NThk
+step ca init --key-password-file
+#+end_src
 
 * UML
+** Config
 
++ Defined in [[https://github.com/smallstep/certificates/blob/b5e87345c0527c222c6ef773b429505fb4eea6f9/authority/config/config.go#L67][./authority/config/config.go]]
 
+#+begin_src shell
+grep --include '*.go' -re '`json:".*"`' /data/ecto/crypto/smallstep/certificates/authority/
+#+end_src
+
++ root :: a =MultiString=
++ kms :: defined in smallstep/crypto in [[https://github.com/smallstep/crypto/blob/4949ea39338a56b8e02ae539ef71e6b4c55afb14/kms/apiv1/options.go#L197][kms/apiv1/options.go#L197]]
+
+#+begin_src plantuml :file img/devops/step-ca-config.svg
+@startjson
+{
+  "root": "examples/pki/secrets/root_ca.crt",
+  "federatedRoots": null,
+  "crt": "examples/pki/secrets/intermediate_ca.crt",
+  "key": "examples/pki/secrets/intermediate_ca_key",
+  "address": ":9000",
+  "insecureAddress": ":9000",
+  "tls": {
+    "cipherSuites": [
+      "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305",
+      "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+    ],
+    "minVersion": 1.2,
+    "maxVersion": 1.2,
+    "renegotiation": false
+  },
+  "dnsNames": [ "localhost" ],
+  // commonName, KMS and SSH omitted by default
+  "kms": {},
+  "ssh": {},
+  "commonName": "TheICACommonName",
+  "logger": { "format": "text" },
+  // CRL, MetricsAddress and Monitoring omitted by default
+  "crl": {
+    "enabled": false,
+     "generateOnRevoke": true // cacheDuration, renewPeriod, idpURL
+   },
+  "monitoring": {},
+  "authority": {
+    "authorityId": "",
+    "deploymentType": "",
+    "provisioners": [
+      { "type": "jwk", "name": "mariano@smallstep.com" },
+      { "type": "jwk", "name": "mike@smallstep.com", "claims": { "minTLSCertDuration": "1m0s", "defaultTLSCertDuration": "2m0s" } },
+      { "type": "jwk", "name": "decade", "claims": { "maxTLSCertDuration": "87600h", "defaultTLSCertDuration": "87600h" } },
+      { "type": "jwk", "name": "90days", "claims": { "maxTLSCertDuration": "2160h", "defaultTLSCertDuration": "2160h" } }
+    ],
+    "admins": [],
+    "claims": { "enableSSHCA": false, "disableRenewal": true },
+    "policy": {
+      "x509": {
+        "allowWildcardNames": false,
+        "allow": {
+          "cn": ["some", "commonnames"],
+          "dns": ["dns.name.com"],
+          "ip": ["123.231.123.231"],
+          "email": ["foo@fdsa.com"],
+          "uri": ["https://some.uri.com"]
+        },
+        "deny": {}
+      },
+      "ssh": {
+        "user": {
+          "allow": {
+            "dns": ["dns.name.com"],
+            "ip": ["123.231.123.231"],
+            "email": ["foo@fdsa.com"],
+            "principals": ["principalidentity"]
+          },
+          "deny": []
+        },
+        "host": {
+          "allow": [],
+          "deny": []
+        }
+      }
+    }
+  },
+  "password": "password",
+  "kms": {
+    "type": ["one of ...", "softkms", "cloudkms", "awskms", "pkcs11", "yubikey", "sshagentkms", "azurekms", "capi", "tpmkms", "mackms"],
+    "credentialsFile": "path/to/awsorcloud/credfile",
+    "uri": "pkcs11-uri:rfc7512",
+    "pin": "omit",
+    "managementKey": "hexstring",
+    "region": "aws-us-east1",
+    "profile": "aws-profile",
+    "storageDirectory": "path/to/serializedTPMobjects"
+  }
+}
+@endjson
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/step-ca-config.svg]]
+
+** X509 Templates
++ [[https://github.com/smallstep/crypto/blob/4949ea39338a56b8e02ae539ef71e6b4c55afb14/x509util/name.go#L30][smallstep/crypto ./x509util/name.go]] (see the [[https://pkg.go.dev/go.step.sm/crypto/x509util#Certificate][pkg.go.dev docs]])
++ [[https://github.com/smallstep/crypto/blob/4949ea39338a56b8e02ae539ef71e6b4c55afb14/x509util/testdata/fullsimple.tpl][smallstep/crypto ./x509util/testdata/fullsimple.tpl]]
++ see [[https://smallstep.com/docs/step-ca/templates/#advanced-x509-template-examples][advanced x.509 template exmaples]].
++ the most important fields are:
+  - =commonName= and =issuer= (the latter should be auto)
+  - =dnsNames=, or other similar shorthand for =sans=
+  - =signatureAlgorithm= and =publicKeyAlgorithm=
+  - =notBefore= and =notAfter=
++ Unless =sans= are set (whether in full or using shorthand), the
+  =.Subject.CommonName= will be set as =SANs=
++ =.Insecure.CR= values indicate what's supplied by the client requesting CSR
+  - this contains a subset of [[https://smallstep.com/docs/step-ca/templates/#x509-template-variables][Go tpls properties]] that are available.
+
+A certificate template needs to render to json like below
 
 #+begin_src plantuml :noweb yes :file img/devops/step-ca-tls.svg
 @startuml
@@ -57,39 +351,88 @@ title Step TLS Configuration
 
 <<x509Name>>
 <<x509NameConstraints>>
+<<x509Certificate>>
+@enduml
 #+end_src
 
 #+RESULTS:
 [[file:img/devops/step-ca-tls.svg]]
 
-** Certs
+*** Certs
 
 #+name: stepJsonMerges
-#+begin_src emacs-lisp :var aMerges='()
-(json-encode (a-merge '() '()))
+#+begin_src emacs-lisp :var a-merges='(((id . 42) (foo . 43)) ((id . 43)))
+(json-encode (apply #'a-merge a-merges))
+#+end_src
+
+#+RESULTS: stepJsonMerges
+: {"id":43,"foo":43}
+
+Certificate
+
+#+begin_src plantuml :noweb-ref x509Certificate
+json certificate {
+  "version": 3,
+  "subject": {
+    "commonName": "TheCommonName",
+    "extraNames": [{"type":"1.2.840.113549.1.9.1", "value":"jane@example.com"}]
+  },
+  "rawSubject": "deadbeef",
+  "issuer": "issuerCommonName",
+  "serialNumber": "0x1234567890",
+  "dnsNames": ["foo.bar.com", "baz.qux.org"],
+  "emailAddresses": ["foo@bar.com"],
+  "ipAddresses": ["123.231.123.231"],
+  "uris": ["https://doe.com"],
+  "sans": [
+        {"type": "dns", "value": "backend.example.com"},
+        {"type": "email", "value": "jane@example.com"},
+        {"type": "ip", "value": "10.0.1.10"},
+        {"type": "uri", "value": "https://backend.example.com/root.crt"}
+  ],
+  "notBefore": "2009-02-13T23:31:30Z",
+  "notAfter": "2009-02-14T23:31:30Z",
+  "extensions": [{"id":"1.2.3.4","critical":true,"value":"ZXh0ZW5zaW9u"}],
+  "keyUsage": ["digitalSignature"],
+  "extKeyUsage": ["serverAuth"],
+  "unknownExtKeyUsage": ["1.3.6.1.4.1.44924.1.6", "1.3.6.1.4.1.44924.1.7"],
+  "subjectKeyId": "c3ViamVjdEtleUlk",
+  "authorityKeyId": "YXV0aG9yaXR5S2V5SWQ=",
+  "ocspServer": "https://ocsp.server",
+  "issuingCertificateURL": "https://ca.com",
+  "crlDistributionPoints": "https://ca.com/ca.crl",
+  "policyIdentifiers": {},
+  "basicConstraints": {
+    "isCA": false,
+    "maxPathLen": 0
+  },
+  "nameConstraints": { "critical": true, "permittedDNSDomains": "jane.doe.com" },
+  "signatureAlgorithm": "Ed25519",
+  "publicKeyAlgorithm": "Ed25519"
+}
 #+end_src
 
 Name
 
 #+begin_src plantuml :noweb-ref x509Name
 json name {
-  "country": [],
-  "organization": [],
-  "organizationalUnit": [],
+  "country": ["US"],
+  "organization": ["Org1"],
+  "organizationalUnit": ["Org1 OU1", "Org1 OU2"],
   "locality": [],
   "province": [],
   "streetAddress": [],
   "postalCode": [],
   "serialNumber": "",
-  "commonName": "",
-  "extraNames": []
+  "commonName": "TheCommonName",
+  "extraNames": [{"type":"1.2.840.113549.1.9.1", "value":"jane@example.com"}]
 }
 #+end_src
 
 Name Constraints
 
 #+begin_src plantuml :noweb-ref x509NameConstraints
-json name_constraints {
+json nameConstraints {
   "critical": false,
   "permittedDNSDomains": ["doe.com"],
   "excludedDNSDomains": ["doe.org"],
@@ -102,20 +445,7 @@ json name_constraints {
 }
 #+end_src
 
-#+begin_src
 
-#+end_src
-
-* Smallstep
-
-#+name: stepConfigDefaults
-#+begin_src sh :session g :results output code :wrap example json
-
-#+end_src
-
-** CLI
-
-** CA
 * Test Run
 
 Submitting basic values to =step ca init= gives the file-tree below.
