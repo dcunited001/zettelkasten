@@ -1,0 +1,355 @@
+:PROPERTIES:
+:ID:       bf65099a-f570-4dbd-b2bd-fd237628714a
+:END:
+#+TITLE: Bash: Extracting Data From Completion
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:cf847bc5-31f7-4bb8-8324-7680a8f2953d][Shell]]
++ [[id:49373db0-532d-4b0f-b8ec-3f9a3f897895][Step CA]]
+
+* Docs
+
+* Resources
+
+* From File Tree
+
+It's easier to clone the smallstep/docs repo and run:
+
+#+begin_src shell
+repo=$(pwd)
+cd reference
+tree -d .
+#+end_src
+
+state machine ftw
+
+#+name: awkStepCmdInfo
+#+begin_example awk
+BEGIN { inName=0; inUsage=0; inOptions=0; inRaw=0; } 
+($0 ~/^## Name/) { inName=1; inUsage=0; inOptions=0; inRaw=0; print "#",FILENAME; next; }
+($0 ~/^## Usage/) { inName=0; inUsage=1; inOptions=0; inRaw=0; next; }
+($0 ~/^## .*$/ && inOptions==1) { inName=0; inUsage=0; inOptions=0; inRaw=0; exit; } # next; } 
+($0 ~/^## Options/) { inName=0; inUsage=0; inOptions=1; inRaw=0; print "## Options"; next; }
+($0 ~/^```$/ && inRaw==1) { inName=0; inUsage=0; inRaw=0; next; }
+($0 ~/^```raw$/ && inUsage==1) { inName=0; inUsage=1; inRaw=1; next; }
+(inName==1) { print $0; next; }
+(inRaw==1) { print $0; next; }
+(inOptions==1) { print $0; next; }
+
+#+end_example
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file step-cli-usage-options.mdx :dir "/data/ecto/crypto/smallstep/docs/step-cli/reference"
+mdx=$(find . -mindepth 2 -name '*.mdx' -type f -printf '%p\n' | sort)
+i=0
+for f in $mdx; do
+    i="$((i+1))";
+    gawk "$awkprog" $f
+    # [[ $i -gt 20 ]] && break
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/reference/step-cli-usage-options.mdx]]
+
+* From Completion
+** Basics
+
+Some of this was provided by gemini I guess lol
+
+It may be more useful to extract data from =zsh= completion. Since it's more fully
+featured, the data may be more convenient to process.
+
+Display the registered completion specification
+
+#+begin_src shell
+source <(step completion bash)
+complete -p step
+#+end_src
+
+#+RESULTS:
+: complete -o bashdefault -o default -F _step_cli_bash_autocomplete step
+
+*** Inherently interactive
+
+Completion relies on variables injected during interaction
+
+#+name: stepCompSpec
+#+begin_src shell :results output code :wrap src shell
+step completion bash
+# echo '' # these are too long
+# step kms completion bash
+#+end_src
+
+#+RESULTS: stepCompSpec
+#+begin_src shell
+# bash completion for step
+_step_cli_bash_autocomplete() {
+        local cur opts base
+        COMPREPLY=()
+        cur="${COMP_WORDS[COMP_CWORD]}"
+        if [[ "$cur" == "-"* ]]; then
+                opts=$( ${COMP_WORDS[@]:0:$COMP_CWORD} ${cur} --generate-bash-completion )
+        else
+                opts=$( ${COMP_WORDS[@]:0:$COMP_CWORD} --generate-bash-completion )
+        fi
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+        return 0
+}
+
+complete -o bashdefault -o default -F _step_cli_bash_autocomplete step
+
+#+end_src
+
+** Brute Force
+
+Monkeypatch the function and it echos to the console
+
+#+begin_src shell :results output code :wrap src shell
+_step_cli_bash_autocomplete() {
+        local cur opts base
+        COMPREPLY=()
+    echo $cur $COMP_CWORD # ---------------------------------------------
+    # $cur contains the final incomplete word
+        cur="${COMP_WORDS[COMP_CWORD]}"
+        if [[ "$cur" == "-"* ]]; then
+        echo ${COMP_WORDS[@]:0:$COMP_CWORD} '::' $opts # -----------------
+        # if $cur starts with a dash, pass it in to step ${cur} --generate-bash-completion
+                opts=$( ${COMP_WORDS[@]:0:$COMP_CWORD} ${cur} --generate-bash-completion )
+        else
+        echo ${COMP_WORDS[@]:0:$COMP_CWORD} ${cur} '::' $opts # ----------
+        # otherwise call without args
+                opts=$( ${COMP_WORDS[@]:0:$COMP_CWORD} --generate-bash-completion )
+        fi
+        COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) ) # --------------------
+    # this completion function uses `compgen -W` for completion response
+    #
+        return 0
+}
+#+end_src
+
+*** Setting prompt
+
+this dumps all the statements eval'd. i encountered PS4 when customizing my bash
+prompt ... but i guess i missed =set -x= or something
+
+#+begin_src shell
+set -x
+#+end_src
+
++ change your shell prompt to an obvious color & remove any dynamic
+  functionality (or it dumps)
++ if you're controlling bash from another process (like emacs =comint-mode=), =PS1=
+  can't include control characters and must be recognizable.
+
+#+begin_src shell
+# IIRC these escape sequences are supposed to be:
+# - opened by \001 and followed by \002
+# - where \000 would be the null char
+
+# idk if \002 is 100% correct, but you definitely want to open/close context
+PS1=$(echo -en '\001\033[01;44;33m\002 <$> \001\033[0m\002')
+PS4=$(echo -en '\001\033[00;47;31m\002\t\001\033[0m\002')
+#+end_src
+
++ Tabs can be eaten as commands without worrying about escaping/unescaping.
+  - the lines wrap, and so these commands can be filtered then redirected
+    elsewhere to maybe be evaluated (idk)
+  - as long as the bytes around newlines are =\n\t+= (regexp), then it's trivial
+    to spot. it's insufficient though (e.g. if source code is dumped)
++ The standout effect doesn't show up for tabs. i'd be working in terminal more
+  than =comint-mode=, =tmux= or =screen=
+
+#+begin_src shell
+tput smso | hexdump -C # 1b5b      37 6d :: standout (swap fg/bg)
+tput sgr0 | hexdump -C # 1b28 42 1b5b 6d :: reset attributes
+tput setaf $n # 1b5b 343n 6d :: set foreground color n
+tput setab $n # 1b5b 333n 6d :: set foreground color n
+RESTORE=$(echo -en '\001\033[0m\002')
+PS4="$(tput setab 2) $RESTORE" # using space instead, tab doesn't get colorized
+# PS4="$(tput setab 7)\t$RESTORE"
+#+end_src
+
+** Robot
+
+* Other methods
+
+** Tracing
+
+#+begin_example shell
+set -x
+step # tab
+set +x
+#+end_example
+
+* Step
+
+#+name: stepFilterSubcmds
+| h          |
+| help       |
+| version    |
+| completion |
+| beta       |
+
+#+name: stepFilterOptions
+| -h        |
+| --help    |
+| -v        |
+| --version |
+
+#+name: stepSubcmds
+#+begin_src shell :results output table :var fcmds=stepFilterSubcmds fopts=stepFilterOptions
+comm -2 -3 <(step --generate-bash-completion | sort) \
+    <(echo ${fcmds[@]} | tr ' ' '\n' | sort) \
+    | tr -d '\t'
+#+end_src
+
+#+RESULTS: stepSubcmds
+| base64      |
+| beta        |
+| ca          |
+| certificate |
+| context     |
+| crl         |
+| crypto      |
+| oauth       |
+| path        |
+| ssh         |
+
+#+name: stepAllSubcmds
+#+begin_src shell :results output table :var cmds=stepSubcmds fcmds=stepFilterSubcmds fopts=stepFilterOptions
+# first two levels
+for c in ${cmds[@]}; do
+    comm -2 -3 <(step $c --generate-bash-completion | sort) \
+        <(echo ${fcmds[@]} | tr ' ' '\n' | sort) \
+        | tr -d '\t'
+done | sort | uniq
+#+end_src
+
+#+RESULTS: stepAllSubcmds
+| acme          |
+| admin         |
+| bootstrap     |
+| bundle        |
+| ca            |
+| certificate   |
+| change-pass   |
+| check-host    |
+| config        |
+| create        |
+| current       |
+| federation    |
+| fingerprint   |
+| format        |
+| hash          |
+| health        |
+| hosts         |
+| init          |
+| inspect       |
+| install       |
+| jose          |
+| jwe           |
+| jwk           |
+| jws           |
+| jwt           |
+| kdf           |
+| key           |
+| keypair       |
+| lint          |
+| list          |
+| login         |
+| logout        |
+| nacl          |
+| needs-renewal |
+| otp           |
+| p12           |
+| policy        |
+| provisioner   |
+| proxycommand  |
+| rand          |
+| rekey         |
+| remove        |
+| renew         |
+| revoke        |
+| root          |
+| roots         |
+| select        |
+| sign          |
+| token         |
+| uninstall     |
+| verify        |
+| winpe         |
+
+#+name: stepSubcmdCompletion
+#+begin_src shell :results output table :var cmd="acme" fcmds=stepFilterSubcmds fopts=stepFilterOptions
+comm -2 -3 <(step $cmd --generate-bash-completion | sort) \
+    <(echo ${fcmds[@]} | tr ' ' '\n' | sort) \
+    | tr -d '\t'
+#+end_src
+
+#+RESULTS: stepSubcmdCompletion
+| base64      |
+| beta        |
+| ca          |
+| certificate |
+| context     |
+| crl         |
+| crypto      |
+| oauth       |
+| path        |
+| ssh         |
+
+#+name: dotFormatNodes
+#+begin_src emacs-lisp :var ul=stepSubcmds
+(string-join
+ (mapcar (lambda (el) (format "\"%s\"" (car el))) ul)
+            " ")
+#+end_src
+
+#+RESULTS: dotFormatNodes
+: "base64" "beta" "ca" "certificate" "context" "crl" "crypto" "oauth" "path" "ssh"
+
+#+name: dotFormatEdges
+#+begin_src emacs-lisp :var a="beta" b=stepSubcmdCompletion(cmd="oauth")
+(let* ((b (or (and (stringp b) (list (list b))) b))
+       (bb (->> b
+            (mapcar #'car)
+            (mapcar (apply-partially #'format "\"%s\"")))))
+  (if b (format "\"%s\" -> {%s}" a (string-join bb ",")) ""))
+#+end_src
+
+#+RESULTS: dotFormatEdges
+
+#+begin_src dot :file img/devops/step-cli-completion.svg :noweb yes
+digraph G {
+    rankdir=LR
+    // rankdir=TB
+    <<dotFormatNodes(ul=stepSubcmds)>>
+
+    <<dotFormatEdges(a="acme", b=stepSubcmdCompletion(cmd="acme"))>>
+    <<dotFormatEdges(a="base64", b=stepSubcmdCompletion(cmd="base64"))>>
+    <<dotFormatEdges(a="certificate", b=stepSubcmdCompletion(cmd="certificate"))>>
+    <<dotFormatEdges(a="context", b=stepSubcmdCompletion(cmd="context"))>>
+    <<dotFormatEdges(a="crl", b=stepSubcmdCompletion(cmd="crl"))>>
+    <<dotFormatEdges(a="crypto", b=stepSubcmdCompletion(cmd="crypto"))>>
+    <<dotFormatEdges(a="oauth", b=stepSubcmdCompletion(cmd="oauth"))>>
+    <<dotFormatEdges(a="path", b=stepSubcmdCompletion(cmd="path"))>>
+    <<dotFormatEdges(a="ssh", b=stepSubcmdCompletion(cmd="ssh"))>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/step-cli-completion.svg]]
+
+#+begin_src dot :file img/devops/step-ca-completion.svg :noweb yes
+digraph G {
+    rankdir=LR
+    // rankdir=TB
+    <<dotFormatNodes(ul=stepSubcmdCompletion(cmd="ca"))>>
+    <<dotFormatEdges(a="ca", b=stepSubcmdCompletion(cmd="ca"))>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/step-ca-completion.svg]]
