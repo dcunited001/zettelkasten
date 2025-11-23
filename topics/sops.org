@@ -1,0 +1,255 @@
+:PROPERTIES:
+:ID:       d4acf534-f60c-4471-bee8-f4b925dd0d90
+:END:
+#+TITLE: SOPS
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
+
+* Docs
+
+* Resources
+
+* Topics
+** Practical Problems
+
+#+begin_quote
+I am noob...
+
+TLDR, stick to hashicorp vault or your cloud's KMS unless necessary
+#+end_quote
+
+*** Design
+
+**** Project Structure
+
++ Anything that signs certs needs it's own yaml file (unless they're extremely
+  short-lived ... but idk)
++ I really don't understand multiple keys in a keygroup. that seems like a giant
+  PITA.
+
+**** Root YAML Namespace
+
++ =.sops= must contain metadata and also contains defaults for parsing that sops
+  document
++ Scalar values on the root of the tree are less flexible, but maybe
+  appropriate.
+  - Sometimes redundant though. If the filename indicates the usage context, you
+    don't want to script like =yq -Y .somecontext $somecontext.yaml= because it
+    breaks a lot of nice scripting faculties (e.g. =xargs -n1=)
+
+**** Publication To consuming services
+
+One keygroups' requirements for decryption are sufficient for decrypting ALL of
+the contents. So your project setup, file naming and YAML schema needs to
+anticipate how the final consumers of files will make their values accessible to
+the secrets' consumers. you don't take these pains to just leave everything open
+
+You end up with a coordination problem and a choice between push/pull
+registration. The scale of what's needed multiplies pretty quickly (for some of
+the use cases)
+
+***** Good enough
+
+For homelab scenarios -- or home-"i need computers do real things cheap"
+scenarios -- it's probably sufficient to:
+
++ push secrets to consuming services on boot
++ then dispose of the original sops file after deploying
+
+This is basically what [[https://github.com/EmergentMind/nix-secrets-reference/blob/simple/.sops.yaml][EmergentMind/nix-secrets-reference]] is doing, except that
+it can't delete the world-readable yaml files -- not really a huge problem, but
+overcoming the next hurdle is like 1.5-2 orders of magnitude more effort. Here,
+you just need to scope your files and add more keys. See the [[https://github.com/EmergentMind/nix-secrets-reference/blob/complex/.sops.yaml][complex branch]]
+
+***** Everything is a box
+
+Picking which boxes to use is key to reduncing unnecessary configuration.
+
++ pod, container
++ cgroup, process
++ guix or nix containers: these will provide an alternate filestore for keys
+  (but those can't be built into the image... damit)
++ baremetal, vm
++ subnet
+
+***** Level of Abstraction for updates
+
+You're probably going to use one of these. If you use more than two, you're
+almost certainly cooked.
+
+| Bare metal | Service | Container | Cluster (k8s) |
+
+***** Push vs. Pull
+
+For k8s or FluxCD, you can push secrets into the cluster or into a service
+within the cluster (like vault).
+
+For iPXE, you can have the server ping home once it boots, then connect out to
+it with SSH/etc. Your consuming services don't need to start immediately. This
+works at other levels as well, but it's the one I'm interested in.
+
++ Something triggers the baremetal/VM boot (push)
++ The new resource pings home (pull)
++ The listening service connects and starts services. You can use sytemd
+  features for this (path activation)
+
+***** Coordination problem
+
+If you have a layer of mTLS or you can use SSH tunnels with host/client
+restrictions (maybe unavailable), then you can coordinate activation remotely
+when the resource phones home.
+
+For k8s & containers, this could be a sidecar like envoy (but one that runs
+=sops --keyserver= over a TLS or SSH tunnel)
+
+For updates to single services or resources (metal/vm), it's _relatively_ simple.
+But once your dependency graph has order-dependencies or network dependencies
+... it's just probably not worth it.
+
+*** Ergonomics
+
++ At least one key must be available to decrypt otherwise editing/merging/etc
+  isn't possible (unless manual)
+
+**** MAC
+
+Another problem with validity is the =.sops.mac= validation. Notice the
+=--ignore-mac= CLI option.
+
+- If you're using external tools to manually merge the data, then you also need
+  =--mac-only-encrypted=... though mac provides a handy pre-flight check to
+  determine whether any config has changed
++ use =sops -i --ignore-mac $y= to force regeneration of the mac. This doesn't
+  necessarily get stored in =.sops= metadata. It would ordinarily be attached when
+  the file is initially created with the =.sops.yaml= settings
+
+This still means you can't detach subsets of encrypted data without regenerating
+the mac. Use something like this to get around this (the properties of
+=.ykbootstrap= are now at the YAML root)
+
+#+begin_src shell
+sops decrypt --extract '["ykbootstrap"]' $y \
+    | sops encrypt --filename-override="$y"
+#+end_src
+
+Though =sops= should reorder keys of the nested yaml objects in order to ensure
+the input is deterministically generated, there are a few problems:
+
++ First: =ENC[AES256_GCM,data:$data,iv:$nonce,type:str]= the =iv= is basically a
+  =$nonce= and idk how it's selected.
++ Secondly: ... idk, but i'm sure it doesn't get any easier. There are likely
+  many exceptions.
+
+**** Data Validity
+
++ Keys with unencrypted values need =.sops.unencrypted_suffix=
++ Anything that can't parse is probably a show-stopper.
+  - i.e. DO NOT MODIFY IN-PLACE, especially since validity of output from
+    automated pipelines results is dependent on input & state
+  - scripts should check for validity after modifications
+  - some in-place modification is probably alright
+
+**** Git Diffs
+
+Modifying a project's git config to view diffs is nice, but risky for obvious &
+non-obvious reasons. This should be set up at the project-level.
+
+If you don't encrypt entire files (which you should not), then you do at least
+see which lines changed anyways. you can emulate the diffing behavior without
+hooking it in your git config.
+
+There shouldn't be much of a reason to review these values outside of their
+encrypted form. PITA, yes. But PITA should be easy, not hard. Cumbersome maybe,
+but _not_ difficult.
+
+Some exceptions are after using =sops updatekeys= or =sops rotate= (many values will
+change). These operations should be independent of other changes to underlying
+configuration values -- most/all lines with encrypted values of the file will
+change, including keys which are reordered for some reason.
+
+**** YQ
+
+Use =yq -Y= for "round-trip YAML" ... still you should use =sops= CLI wherever
+possible because the validation is implicit in each modification.
+
+Without this, you'd have to re-append the data from the =.sops= key, which means
+all data processing would be "homomorphic" (not really, but at least ignorant of
+the encrypted contents).
+
++ In some cases, this is nice, but on the off chance that sops attempts to use a
+  key it can't understand or for which the =ENC[...]= parameters are insufficient,
+  then it will blow up.
+
+***** Nevermind...
+
+#+begin_quote
+just ensure you use =yq -Y=. there are probably some caveats to this.
+#+end_quote
+
+Can't easily use =yq -y=, since it strips YAML of special characters (e.g. for
+multiline strings). Options like =--raw-output0= don't seem to fix it (and since
+=yq= only converts back to YAML after completion, none of these options will)
+
+#+begin_src shell :results output code :wrap example yaml
+yq -iy '.ykbootstrap += {some_unencrypted: "config"}' $y
+# yq -iy 'delpaths([["ykbootstrap","some_unencrypted"]])' $y
+yq .sops.age[0].enc -y $y # OOF. use json, i guess?
+#+end_src
+
+#+RESULTS:
+#+begin_example yaml
+'-----BEGIN AGE ENCRYPTED FILE-----
+
+  YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBmUld3ejlqSmNGcjhrNzFp
+
+  d0hPR2pRWUZXM3ZZWUpReUlFeElNNnRMYTFVCnh6a3FGOHRITGpqR3ltLy9UNUpX
+
+  NjVmcXE3NDB6WW1kalpOeWJXU2JJMkUKLS0tIGlIN0s2VE5vTVc0MHVPeTVRK2RC
+
+  OW4zVzBWT3lrSXI5OUY2YUNsb2NSOUUKlCOEWMVq2WyMtmonHgD6sICy0tA0Cstj
+
+  aJGVsJUgE1iwgCfzqzyVf3odynmpeLjYwoXatQ9tggX/+FnS3rDvsQ==
+
+  -----END AGE ENCRYPTED FILE-----
+
+  '
+#+end_example
+
+**** Regexes And Suffixes
+
++ Don't use =unencrypted-regex= unless you need to. It's dumb.
+  - It's just easier for people to anticipate handling =unencrypted-suffix=
++ Also, these are user-supplied (in the files or by CLI). Don't splat options to
+  =sops=. Quotes are not arbitrary.
+
+***** Monoids and Namespaces
+
+the idea here is to reconsider the "hierarchical nested objects" view of objects
+as instead subspaces of string-space (i.e. as linear strings, which retain
+enough information to be parsed elsewhere). there is no spoon.
+  
++ The =_unencrypted= suffix adds a simple "right-handed predicate" to the
+  key-namespace "monoid" thingy.
+  - your yaml key space is an infinite string.
+  - where there are =.= characters, it implies a new keyspace where keys can
+    collide -- however, notice that whether you "parse" the dots or not, it all
+    exists within a single top-level namespace.
+  - appending the =_unencrypted= suffix creates subspace that's essentially
+    identical to the top-level string namespace (but not after dots are parsed)
++ if you're designing the schema for this stuff, you want simplicity. you have
+  to consider how un/encrypted keys will be handled at each level of the key
+  namespace.
+  - it's not as simple as bounding the regex =/...*$/= or selecting from
+    =/\_(some|options)$=. if you do that, it's probably not a security problem,
+    it's just a usability problem.
+
+#+begin_quote
+this is overly pedantic... but the free-monoid is a generally helpful
+perspective on otherwise hierarchical schema.
+#+end_quote
+
+* Issues
+

@@ -10,8 +10,10 @@
 + [[id:49373db0-532d-4b0f-b8ec-3f9a3f897895][StepCA]]
 + [[id:cf2191d6-e159-47b1-8e57-4154e190b956][Crypto]]
 + [[id:48d763a8-5579-4585-a9a2-e7cbb11701fe][Homelab]]
++ [[id:d4acf534-f60c-4471-bee8-f4b925dd0d90][SOPS]]
 
 * Resources
+
 
 * X-509
 
@@ -31,7 +33,7 @@ These map a =profile= to an =authority= in =contexts.json=
 *** Authority
 
 + contains =ca.json= server configuration and =defaults.json= for certificate
-defaults
+  defaults
 
 ** Policies
 
@@ -48,10 +50,106 @@ defaults
 :header-args+: :dir (setq-local step-root "/tmp/tmp.AdBB5gOL2w")
 :END:
 
+** Yubikey PIV
+
+If you don't need a 3-tier CA, then the Smallstep [[https://smallstep.com/docs/step-ca/cryptographic-protection/#yubikey-piv][Yubikey PIV]] example will:
+
++ generate keys on-device, certs off of the YK device
++ sign the certs with the YK device
++ install the certs to the YK
++ set up the CA to sign additional certs/CSRs
+
+Though the ability to do this is infinitely valuable, as is the example, there's
+one slight problem:
+
++ the same key with ICA signing authority...
++ also has the Root CA signing authority
++ and the yubikey PIV hardware app can only have one PIN
+
+This is further complicated if you're using the PIV app for other things:
+signing email, VPN access, mTLS access, AGE for SOPS. You must configure the
+touch & pin policy _after_ the management key is loaded and _before_ the pins are
+set. You _cannot_ change it afterwards
+
+This is partly addressed by using multiple keys and adding =serial= as a
+parameter:
+
+#+begin_src shell
+# NOTE this hasn't been tested
+# - it needs some further configuration in ca.json
+rootCard=993210; rootSlot=82; rootPin=123456;
+ca1Card=993220;  ca1Slot=83;  ca1Pin=123456;
+ca2Card=983230;  ca2Slot=84;  ca2Pin=123456;
+rootProfile=root-ca; rootName=root; rootCert=root_ca.crt
+ca1Profile=ca1-ca;   ca1Name=ca1;   ca1Cert=ca1_ca.crt;  ca1context=ca1
+ca2Profile=ca2-ca;   ca2Name=ca2;   ca2Cert=ca2_ca.crt;  ca2context=ca2
+
+# the root CA doesn't necessarily need to be generated on-device. I plan on
+# keeping it offline, so i really only need $ca2context (which is another
+# potential point of failure where it doesn't work or I need to dig deeper)
+step kms create --json "yubikey:slot-id=$rootSlot"
+step certificate create --profile "$rootProfile" \
+    --kms "yubikey:serial=$rootCard&pin-value=$rootPin" \
+    --key "yubikey:serial=$rootCard&slot-id=$rootSlot" \
+    "$rootName" "$rootCert" # output PEM file
+
+# ca-{kms,key} set the signing authority
+step kms create --json "yubikey:slot-id=$ca1Slot"
+step certificate create --profile "$ca1Profile" \
+    --ca-kms "yubikey:serial=$rootCard&pin-value=$rootPin" \
+    --ca-key "yubikey:serial=$rootCard&slot-id=$rootSlot" \
+    --kms "yubikey:serial=$ca1Card&pin-value=$ica1Pin" \
+    --key "yubikey:serial=$ca1Card&slot-id=$ca1Slot" \
+    "$ca1Name" "$ca1cert"
+
+# ensure these are set in ca.json for the $ca1context, 
+# - .root, .crt, .key, .kms.type, .kms.uri
+
+ykman piv certificates import "$rootSlot" "$rootCert"
+ykman piv certificates import "$ca1Slot"  "$ca1Cert"
+
+# here, it may be necessary to switch --context=$ca1context unless all
+# parameters are specified (iirc)
+step kms create --json "yubikey:slot-id=$ca2Slot"
+
+# here, I would ensure this ca2 config has an expiration < 90 days or so
+step certificate create --context "$ca1context" --profile "$ca2Profile" \
+    --ca-kms "yubikey:serial=$ca1Card&pin-value=$ca1Pin" \
+    --ca-key "yubikey:serial=$ca1Card&slot-id=$ca1Slot" \
+    --kms "yubikey:serial=$ca2Card&pin-value=$ica2Pin" \
+    --key "yubikey:serial=$ca2Card&slot-id=$ca2Slot" \
+    "$ca2Name" "$ca2cert"
+
+# then ensure these are set in ca.json for the $ca2context
+# .root, .crt, .key, .kms.type, .kms.uri
+ykman piv certificates import "$ca2Slot"  "$ca2Cert"
+
+# now, using --context=$ca2 should allow you to sign with ca2's keys
+#+end_src
+
+I keep waffling between intended configurations to address various
+insufficiencies:
+
++ couldn't simultaneously use piv and openpgp apps with scdaemon
+  - fixed with gnupg 2.4 if =scdaemon.conf= includes =application-priority piv=
++ couldn't use =age= keys if =scdaemon= was active
+  - this is sops-specific, but for the next few weeks at least,
+    =age-plugin-yubikey= can't use =x25519= keys
+  - may stll be problems getting =age-plugin-yubikey= and =scdaemon= to play nice
+
+To overcome these, i either needed
+
+1) moar yubikeys (i'm poar)
+2) to use =tpmkms=, which i do still need to use
+
+Seems kinda pedantic to block out the variables as above... but it's not. I need
+to understand the configuration surface for each operation. that helps
+generalize, so I can brainstorm the necessary configuration schemas, while
+ensuring it's not excruciating to remember arbitrary strings.
 
 ** ykbootstrap ca
 :PROPERTIES:
-:header-args+: :var STEPPATH=".step.ykbootstrap" yk5root="12345678" ykpivpin="123456" ykpivpuk="12345678" SOPS_EDITOR="vim" SOPS_AGE_KEY_FILE=".age/key.txt"
+:header-args+: :var STEPPATH=".step.ykbootstrap" yk5root="12345678" ykpivpin="123456" ykpivpuk="12345678" SOPS_EDITOR="vim" SOPS_AGE_KEY_FILE=".age/keys.txt"
 :END:
 
 if ={SOPS_,}EDITOR=vim= is set, org-babel cannot interactively complete.
@@ -77,7 +175,17 @@ export STEPPATH # set in :properties:
 # echo $(date +%s) | sha256sum | base64 | head -c32
 echo Yzk1NWQ2ZjlhYzUwMDQ1MTJmZmY4NThk
 step ca init --name 'ykbootstrap' --deployment-type=standalone
+
+# step ca init --name "Local CA" --provisioner admin --dns localhost --address ":443"
+# step ca certificate --offline foo.smallstep.com foo.crt foo.key
 #+end_src
+
+
+
+#+begin_src shell
+# step ca certificate --key yubikey:slot-id=82 # --kms yubikey:pin-value=123456
+#+end_src
+
 
 *** Yubikey
 
@@ -106,7 +214,7 @@ ykman -d "$yk5root" piv access change-puk -p $(echo $ykpivpuk) -n $(echo $ykpivp
 PIN/Touch policies need to be set before import/generate [[https://docs.yubico.com/yesdk/users-manual/application-piv/pin-touch-policies.html#setting-keys-to-a-non-default-policy-all-slots-other-than-80-81-9b-f9][Non-default pin/touch
 policies for PIV slots]]
 
-Generate on =9c=
+Generate on =9c= which will contain the second =ICA=
 
 #+begin_src shell :results output code :wrap example :var ykpivmgmt="7eea8019e3c3042a33db408e8682efb5b3c415c52cee4952"
 ykman -d "$yk5root" piv keys generate -F pem -a ed25519 \
@@ -126,7 +234,6 @@ MCowBQYDK2VwAyEA+abPSAzd8FYX/IX3DfMf0QbjvkWR2Qh6bU41vimRce4=
 
 Create initial =.sops.yaml=
 
-
 #+begin_src yaml :tangle (expand-file-name ".sops.yaml" step-root)
 keys:
   users:
@@ -138,6 +245,7 @@ keys:
 
 creation_rules:
   - path_regex: \.step\.ykbootstrap/root\.yaml$
+    mac_only_encrypted: true
     key_groups:
       - age:
           # - *admin0
@@ -147,38 +255,103 @@ creation_rules:
 
 ***** ykbootstrap.yaml
 :PROPERTIES:
-:header-args+: :var y=.step.ykbootstrap/root.yaml
+:header-args+: :var y=".step.ykbootstrap/root.yaml"
 :END:
 
 | y  | .step.ykbootstrap/root.yaml |
 
-#+begin_src yaml :tangle (expand-file-name ".step.ykbootstrap/root.yaml" step-root)
+Sops Schema
 
+
+
+Create an initial sops yaml file
+
+#+begin_src shell :results output code :wrap example yaml
+export SOPS_AGE_KEY_FILE
+sops edit $y
+# ykbootstrap:
+#     ca2:
+#         provisioners:
+#             - name_unencrypted: admin
+#               kms_unencrypted:
+#     ca1:
+#         provisioners:
+#             - name_unencrypted: admin
+#     root:
+#         provisioners:
+#             - name_unencrypted: admin
 #+end_src
 
-Some scripts
-
-#+begin_src shell
-y=.step.ykbootstrap/root.yaml
+#+begin_src shell :results output code :wrap example yaml
+export SOPS_AGE_KEY_FILE
 d=$(date +%s) # not great
 # v=$(echo $d | sha256sum | base64 | head -c32)
-k='["ykbootstrap"]'
+k='["ykbootstrap"]["root"]["password"]'
 v=Yzk1NWQ2ZjlhYzUwMDQ1MTJmZmY4NThky
-sops set --value-file $y $k <(echo "{ \"password\": \"$v\" }")
-# echo "{ \"password\": \"$v\" }" | sops set --value-stdin $y $k
-#+end_src
 
-#+RESULTS:
+sops set --value-file $y $k <(echo "\"$v\"")
 
-Add secrets
+k='["ykbootstrap"]["ca1"]["password"]'
+v=$(echo $v | rev)
+sops set --value-file $y $k <(echo "\"$v\"")
 
-#+begin_src shell
-y=.step.ykboostrap/sopsca.yaml
+# no password for the ca2, since it's on the key
+
 cat $y
 #+end_src
 
 #+RESULTS:
+#+begin_example yaml
+ykbootstrap:
+    ca1:
+        provisioners:
+            - name_unencrypted: admin
+        password: ENC[AES256_GCM,data:wJVG0zfHJCRy4hR4YzOtlR/7aDqx1T85fZ+5EWBmOcRV,iv:2QwxT0LnqC2X4jU801XTepdpbuCP58CCOueIrXglX7I=,tag:L9Ungs/eEKRgmgSwosIx4g==,type:str]
+    root:
+        provisioners:
+            - name_unencrypted: admin
+        password: ENC[AES256_GCM,data:HsS17m1Nlfa3xbgu8ZSaVMqir1SNE8wfgVW14SpD4m33,iv:sa6m6f+npabR517xTIAkBbC1/5WynBFwBFLxPCL7SFc=,tag:fSEt+U+aZyf2sGGAaRZCqA==,type:str]
+sops:
+    age:
+        - recipient: age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBmUld3ejlqSmNGcjhrNzFp
+            d0hPR2pRWUZXM3ZZWUpReUlFeElNNnRMYTFVCnh6a3FGOHRITGpqR3ltLy9UNUpX
+            NjVmcXE3NDB6WW1kalpOeWJXU2JJMkUKLS0tIGlIN0s2VE5vTVc0MHVPeTVRK2RC
+            OW4zVzBWT3lrSXI5OUY2YUNsb2NSOUUKlCOEWMVq2WyMtmonHgD6sICy0tA0Cstj
+            aJGVsJUgE1iwgCfzqzyVf3odynmpeLjYwoXatQ9tggX/+FnS3rDvsQ==
+            -----END AGE ENCRYPTED FILE-----
+        - recipient: age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBISVNzL0xJRmZDV0M2U29N
+            TFZOQWsySEV5WEt6a1lhdHdIeXE0NS9XSEdNCm5yVFY4NTNYZE9VZitWQTVkQ0Nh
+            RzNkVEhCRTBQRThGUTVWOWd2ODFFcmsKLS0tIGpHUmFlaVFBMkVmOTdKZGRaSGVO
+            ekxGZXR3eWRENHRIOXJOTWxmSGg2U3cKtKpcleeBb9bKzT8+ZqV7/ldaOJrRwDfT
+            xF+4iXcP+Zk2ugvbaJit7uhyc5yyV1bLdVFu6tC5+z8gdq+fU6EFtA==
+            -----END AGE ENCRYPTED FILE-----
+    lastmodified: "2025-11-23T19:41:10Z"
+    mac: ENC[AES256_GCM,data:IftsY77hCCemAKE4v8bxo1RtinLie15TafvnIAcy+McRqNpAjOBj+aOIWALT4fmQWzwgqu60okaBryNcAzhK/0TUPG6IuEXnLO3QFeYusxjay1uEq0jivuZTN43ovU+QqxJ3Mgrf40/n8WO6uZ2WGbATmaAcJbKmg4abvhwXB3c=,iv:tsYK7N+kggxT6N3a0Mc93h03haxJSkDBF/ORqYlipuo=,tag:+7rq9mW4hl7/uM4X4SURVA==,type:str]
+    unencrypted_suffix: _unencrypted
+    mac_only_encrypted: true
+    version: 3.11.0
+#+end_example
 
+Ensure =yq -Y .= to retain multiline strings like =enc: |=, otherwise you get line
+breaks.
+
+#+begin_src shell :results output code :wrap example yaml
+yq . -Y $y
+#+end_src
+
+Add secrets
+
+#+begin_src shell
+
+#+end_src
+
+#+RESULTS:
 
 ***** =exec-env= and =exec-file=
 
@@ -216,8 +389,8 @@ ssh-keygen -t ed25519 -f .ssh/$admin2
 nix shell nixpkgs#ssh-to-age --command ssh-to-age -private-key -i .ssh/$admin2 > .age/$admin2.txt
 #+end_src
 
-Encrypt/delete the loose AGE keyfiles except =.age/key.txt= after concatting them.
-Then set ~SOPS_AGE_KEY_FILE=.age/key.txt~ when decrypting with sops.
+Encrypt/delete the loose AGE keyfiles except =.age/keys.txt= after concatting them.
+Then set ~SOPS_AGE_KEY_FILE=.age/keys.txt~ when decrypting with sops.
 
 #+begin_src shell
 cat .age/{alice,bob}*25519.txt | grep -ve '^#'
