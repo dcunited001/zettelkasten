@@ -4,6 +4,7 @@
 #+TITLE: Smallstep: CA, Policy and Provisioner Configuration
 #+CATEGORY: slips
 #+TAGS:
+#+PROPERTY: header-args+ :comments none
 
 * Roam
 + [[id:49373db0-532d-4b0f-b8ec-3f9a3f897895][StepCA]]
@@ -50,8 +51,33 @@ defaults
 
 ** ykbootstrap ca
 :PROPERTIES:
-:header-args+: :var STEPPATH=".step.ykbootstrap" yk5root=12345678 ykpivpin=123456 ykpivpuk=12345678
+:header-args+: :var STEPPATH=".step.ykbootstrap" yk5root="12345678" ykpivpin="123456" ykpivpuk="12345678" SOPS_EDITOR="vim" SOPS_AGE_KEY_FILE=".age/key.txt"
 :END:
+
+if ={SOPS_,}EDITOR=vim= is set, org-babel cannot interactively complete.
+=emacsclient= interrupts asking whether I want to save =/tmp/12345678= and doesn't
+seem to complete the request. =vim= is safer anyways.
+
+Screenrc
+
+#+begin_src shell :tangle (expand-file-name "step.ykbootstrap.screenrc" step-root)
+
+#+end_src
+
+
+#+begin_src shell
+
+#+end_src
+
+*** CA
+
+#+name: stepConfigDefaults
+#+begin_src sh :results output code :wrap example json
+export STEPPATH # set in :properties:
+# echo $(date +%s) | sha256sum | base64 | head -c32
+echo Yzk1NWQ2ZjlhYzUwMDQ1MTJmZmY4NThk
+step ca init --name 'ykbootstrap' --deployment-type=standalone
+#+end_src
 
 *** Yubikey
 
@@ -100,7 +126,8 @@ MCowBQYDK2VwAyEA+abPSAzd8FYX/IX3DfMf0QbjvkWR2Qh6bU41vimRce4=
 
 Create initial =.sops.yaml=
 
-#+begin_src yaml :tangle (expand-file-name ".sops.pre.yaml" step-root)
+
+#+begin_src yaml :tangle (expand-file-name ".sops.yaml" step-root)
 keys:
   users:
     # - &admin0    # gpg1 key
@@ -110,25 +137,47 @@ keys:
     - &admin2 age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9
 
 creation_rules:
-  - path_regex: .step.ykbootstrap/[^/]sopsca.yaml$
+  - path_regex: \.step\.ykbootstrap/root\.yaml$
     key_groups:
-      - ykbookstrap:
+      - age:
           # - *admin0
           - *admin1
           - *admin2
 #+end_src
 
+***** ykbootstrap.yaml
+:PROPERTIES:
+:header-args+: :var y=.step.ykbootstrap/root.yaml
+:END:
+
+| y  | .step.ykbootstrap/root.yaml |
+
+#+begin_src yaml :tangle (expand-file-name ".step.ykbootstrap/root.yaml" step-root)
+
+#+end_src
+
 Some scripts
 
 #+begin_src shell
-
+y=.step.ykbootstrap/root.yaml
+d=$(date +%s) # not great
+# v=$(echo $d | sha256sum | base64 | head -c32)
+k='["ykbootstrap"]'
+v=Yzk1NWQ2ZjlhYzUwMDQ1MTJmZmY4NThky
+sops set --value-file $y $k <(echo "{ \"password\": \"$v\" }")
+# echo "{ \"password\": \"$v\" }" | sops set --value-stdin $y $k
 #+end_src
+
+#+RESULTS:
 
 Add secrets
 
 #+begin_src shell
-
+y=.step.ykboostrap/sopsca.yaml
+cat $y
 #+end_src
+
+#+RESULTS:
 
 
 ***** =exec-env= and =exec-file=
@@ -214,16 +263,6 @@ Anyways, equivalent to =openssl asn1parse -in .ssh/$admin2.priv.der -inform der=
     7:d=2  hl=2 l=   3 prim: OBJECT            :X25519
    12:d=1  hl=2 l=  34 prim: OCTET STRING      [HEX DUMP]:0420C0868E47552DF004E324625091D6AD27794CADCDEE13D996E86B04F8079D2E6E
 #+end_quote
-
-*** Bootstrap
-
-#+name: stepConfigDefaults
-#+begin_src sh :results output code :wrap example json
-export STEPPATH # set in :properties:
-# echo $(date +%s) | sha256sum | base64 | head -c32
-echo Yzk1NWQ2ZjlhYzUwMDQ1MTJmZmY4NThk
-step ca init --key-password-file
-#+end_src
 
 * UML
 ** Config
