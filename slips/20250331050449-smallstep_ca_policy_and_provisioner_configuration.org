@@ -71,7 +71,14 @@ signing email, VPN access, mTLS access, AGE for SOPS. You must configure the
 touch & pin policy _after_ the management key is loaded and _before_ the pins are
 set. You _cannot_ change it afterwards
 
-This is partly addressed by using multiple keys and adding =serial= as a
+You must also generate the initial =step ca init= directory structure specifying a
+=--context=$name=. Otherwise, you get the single context structure. Whether this
+matters depends on whether you run commands for CA signing ops from a machine
+that has all the contexts on it. You probably won't, instead using =step ca
+bootstrap --context=$name= to merge your safeish CA stuff to the management
+machine.
+
+The PIN issue is partly addressed by using multiple keys and adding =serial= as a
 parameter:
 
 #+begin_src shell
@@ -102,14 +109,17 @@ step certificate create --profile "$ca1Profile" \
     --key "yubikey:serial=$ca1Card&slot-id=$ca1Slot" \
     "$ca1Name" "$ca1cert"
 
-# ensure these are set in ca.json for the $ca1context, 
-# - .root, .crt, .key, .kms.type, .kms.uri
-
 ykman piv certificates import "$rootSlot" "$rootCert"
 ykman piv certificates import "$ca1Slot"  "$ca1Cert"
+#+end_src
 
-# here, it may be necessary to switch --context=$ca1context unless all
-# parameters are specified (iirc)
+ensure these are set in ca.json for the =$ca1context=: =[.root, .crt, .key,
+.kms.type, .kms.uri]=
+
+here, it may be necessary to switch =--context=$ca1context= unless all parameters
+are specified (iirc)
+
+#+begin_src shell
 step kms create --json "yubikey:slot-id=$ca2Slot"
 
 # here, I would ensure this ca2 config has an expiration < 90 days or so
@@ -120,11 +130,41 @@ step certificate create --context "$ca1context" --profile "$ca2Profile" \
     --key "yubikey:serial=$ca2Card&slot-id=$ca2Slot" \
     "$ca2Name" "$ca2cert"
 
-# then ensure these are set in ca.json for the $ca2context
-# .root, .crt, .key, .kms.type, .kms.uri
 ykman piv certificates import "$ca2Slot"  "$ca2Cert"
+#+end_src
 
-# now, using --context=$ca2 should allow you to sign with ca2's keys
+Then ensure these are set in ca.json for the $ca2context: =[.root, .crt, .key,
+.kms.type, .kms.uri]=. also ensure that pathlen and SAN constraints are set in
+the policy!
+
++ for =$ca2context=, you probably want pathlen set to zero or one.
++ If you plan to spin up a =k8s CA= for a cluster or for =harbor=, it's possible
+  that you would need pathlen 2...
++ but any certificates issued like that should plan on SAN constraints for DNS
+  for the endpoints.
+
+this depends on how you plan to
+
+1) distribute Root CA to trust stores
+2) distribute certificate bundles to endpoints (servers and/or clients)
+3) revoke trust (don't plan on it)
+4) configure applications/services to rely on trust
+
+you should generally not create a CA with pathlen >= 1 without SAN constraints
+if it's network accessible. (notice how much of a PITA it was to get a signing
+certificate from a classic CAB Forum vendor). here this is mitigated in three
+ways:
+
++ expiration < 90 days (or 90 idk)
++ I need to be physically present to enter the PIN and touch
++ the Root CA is basically disposable (it's like an "anonymous CA"). generally
+  not an option, for production/etc, but I can use a separate root of trust for
+  more permanent operations
+
+now, using =--context=$ca2= should allow you to sign with ca2's keys
+
+#+begin_src shell
+# ...
 #+end_src
 
 I keep waffling between intended configurations to address various
