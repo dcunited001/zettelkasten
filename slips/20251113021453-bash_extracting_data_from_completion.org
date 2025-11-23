@@ -12,7 +12,41 @@
 
 * Resources
 
+* Notes
+
+There's about 270 subcommands lol, so I need a way to compress the information &
+prioritize it. There are interactive ways to utilize =step= and =step ca=, but I
+really just want to script through the creation, so i can regen artifacts
+quickly. This doesn't include much of =step kms=, I think.
+
+The complexity is organized as follows:
+
++ step crypto :: low-level crypto utilities
+  - hash, jose, jwe, jwk, jws, jwt, kdf, key, nacl, otp
++ step {crl,fileserver,oauth,path,api,base64,beta,context} :: misc commands
++ step ssh :: ssh certificate commands
++ step certificate :: certificiate lifecycle & management utilities
+  
+The bulk of the complexity is found under the =step ca= subcommands, where the
+most number of unique options are under =step ca {init,certificate,bootstrap}=
+
++ step ca {acme,policy acme} :: acme configuration (and external account binding)
++ step ca {provisioner, provisioner ssh, provisioner x509} :: provisioner
+  configuration  
++ step ca {policy, policy authority ssh, policy authority x509} :: policy
+  configuration
++ step ca {bootstrap,health} :: bootstrapping a =step ca= client
++ step ca init :: initializing a CA
++ step ca certificate :: issue root-signed certificates
++ step ca sign :: sign a CSR and generate its certificate
++ step ca {rekey,renew,revoke,token} :: misc certificate management
++ step ca admin :: manage admin users for a CA
++ step ca {root,roots,federation} :: manage cert bundles
+
 * From File Tree
+:PROPERTIES:
+:header-args+: :dir "/data/ecto/crypto/smallstep/docs/step-cli/reference"
+:END:
 
 It's easier to clone the smallstep/docs repo and run:
 
@@ -40,7 +74,7 @@ BEGIN { inName=0; inUsage=0; inOptions=0; inRaw=0; }
 #+end_example
 
 #+headers: :var awkprog=awkStepCmdInfo
-#+begin_src shell :results output file :file step-cli-usage-options.mdx :dir "/data/ecto/crypto/smallstep/docs/step-cli/reference"
+#+begin_src shell :results output file :file "../step-cli-usage-options.mdx"
 mdx=$(find . -mindepth 2 -name '*.mdx' -type f -printf '%p\n' | sort)
 i=0
 for f in $mdx; do
@@ -51,7 +85,591 @@ done
 #+end_src
 
 #+RESULTS:
-[[file:../../../ecto/crypto/smallstep/docs/step-cli/reference/step-cli-usage-options.mdx]]
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-options.mdx]]
+
+Count options (imperfect, but sufficient)
+
+#+name: stepCountOptions
+#+begin_src shell :results output verbatim :var group="../step-cli-usage-options.mdx" n=25
+grep -E '^\*\*-' "$group" \
+| tr -d '*' | sort | uniq -c \
+| sort -rnk1 | head -n"$n"
+#+end_src
+
+#+RESULTS: stepCountOptions
+#+begin_example
+    101 --context=`name`
+    101 --ca-url=`URI`
+    100 --root=`file`
+     79 --admin-subject=`subject`, --admin-name=`subject`
+     78 --admin-provisioner=`name`, --admin-issuer=`name`
+     78 --admin-key=`file`
+     78 --admin-cert=`chain`
+     76 --admin-password-file=`file`, --password-file=`file`
+     65 --provisioner=`name`, --issuer=`name`
+     50 --remove
+     34 --eab-key-reference=`value`
+     34 --eab-key-id=`value`
+     28 -f, --force
+     23 --password-file=`file`
+     22 --ca-config=`file`
+     16 --offline
+     13 --insecure
+     11 --set=`key=value`
+     11 --set-file=`file`
+     11 --key=`file`
+     10 --provisioner=`name`
+     10 --kid=`kid`
+      9 --raw
+      8 --provisioner-password-file=`file`
+      8 --no-password
+#+end_example
+
+#+name: stepDumpOptions
+#+begin_src shell :results output verbatim :var group="../step-cli-usage-options.mdx" n=25
+grep -E '^\*\*-' "$group" \
+| tr -d '*' | sort | uniq
+#+end_src
+
+** =step certificate=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-certificate.mdx"
+mdx=$(find certificate -mindepth 2 -name '*.mdx' -type f -printf '%p\n' | sort)
+for f in $mdx; do
+    gawk "$awkprog" $f
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-certificate.mdx]]
+
+#+call: stepCountOptions(group="../step-cli-usage-certificate.mdx")
+
+#+RESULTS:
+#+begin_example
+      5 --servername=`value`
+      5 --roots=`roots`
+      5 --insecure
+      5 -f, --force
+      5 --bundle
+      3 --password-file=`file`
+      2 --verbose, -v
+      2 --template=`file`
+      2 --set=`key=value`
+      2 --set-file=`file`
+      2 --profile=`profile`
+      2 --prefix=`name`
+      2 --not-before=`time|duration`
+      2 --not-after=`time|duration`
+      2 --no-system
+      2 --no-password
+      2 --kms=`uri`
+      2 --java
+      2 --format=`format`
+      2 --firefox
+      2 --all
+      1 --verify-ocsp
+      1 --verify-crl
+      1 --subtle
+      1 --skip-csr-signature
+#+end_example
+** =step ca policy=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-policy.mdx"
+mdx="$(find ca -mindepth 2 -name '*.mdx' -type f -printf '%p\n' | sort \
+    | grep -E 'ca/policy' \
+    | grep -v '/acme' \
+    | grep -v '/provisioner')"
+for f in $mdx; do
+    gawk "$awkprog" $f
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-policy.mdx]]
+
+#+call: stepCountOptions(group="../step-cli-usage-ca-policy.mdx")
+
+#+RESULTS:
+#+begin_example
+     24 --root=`file`
+     24 --context=`name`
+     24 --ca-url=`URI`
+     24 --admin-subject=`subject`, --admin-name=`subject`
+     24 --admin-provisioner=`name`, --admin-issuer=`name`
+     24 --admin-password-file=`file`, --password-file=`file`
+     24 --admin-key=`file`
+     24 --admin-cert=`chain`
+     22 --provisioner=`name`, --issuer=`name`
+     20 --remove
+     12 --eab-key-reference=`value`
+     12 --eab-key-id=`value`
+      2 --provisioner=`name`
+#+end_example
+
+** =step ca provisioner=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-provisioner.mdx"
+mdx="$(find ca -mindepth 2 -name '*.mdx' -type f -printf '%p\n' \
+    | sort \
+    | grep -E 'ca(/policy)?/provisioner')"
+for f in $mdx; do
+    gawk "$awkprog" $f
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-provisioner.mdx]]
+
+#+call: stepCountOptions(group="../step-cli-usage-ca-provisioner.mdx")
+
+#+RESULTS:
+#+begin_example
+     32 --root=`file`
+     32 --context=`name`
+     32 --ca-url=`URI`
+     30 --admin-subject=`subject`, --admin-name=`subject`
+     30 --admin-provisioner=`name`, --admin-issuer=`name`
+     30 --admin-key=`file`
+     30 --admin-cert=`chain`
+     28 --admin-password-file=`file`, --password-file=`file`
+     22 --provisioner=`name`, --issuer=`name`
+     20 --remove
+     12 --eab-key-reference=`value`
+     12 --eab-key-id=`value`
+      6 --ca-config=`file`
+      2 --x5c-roots=`file`, --x5c-root=`file`
+      2 --x509-template=`file`
+      2 --x509-template-data=`file`
+      2 --x509-min-dur=`duration`
+      2 --x509-max-dur=`duration`
+      2 --x509-default-dur=`duration`
+      2 --url=`value`
+      2 --tenant-id=`tenant-id`
+      2 --ssh-user-min-dur=`duration`
+      2 --ssh-user-max-dur=`duration`
+      2 --ssh-user-default-dur=`duration`
+      2 --ssh-template=`file`
+#+end_example
+
+** =step ca {acme,policy acme}=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-acme.mdx"
+mdx="$(find ca -mindepth 2 -name '*.mdx' -type f -printf '%p\n' \
+    | sort \
+    | grep -E 'ca(/policy)?/acme')"
+for f in $mdx; do
+    gawk "$awkprog" $f
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-acme.mdx]]
+
+#+call: stepCountOptions(group="../step-cli-usage-ca-acme.mdx")
+
+#+RESULTS:
+#+begin_example
+     17 --root=`file`
+     17 --context=`name`
+     17 --ca-url=`URI`
+     17 --admin-subject=`subject`, --admin-name=`subject`
+     17 --admin-provisioner=`name`, --admin-issuer=`name`
+     17 --admin-password-file=`file`, --password-file=`file`
+     17 --admin-key=`file`
+     17 --admin-cert=`chain`
+     12 --provisioner=`name`, --issuer=`name`
+     10 --remove
+     10 --eab-key-reference=`value`
+     10 --eab-key-id=`value`
+      2 --provisioner=`name`
+      1 --no-pager
+      1 --limit=`value`
+#+end_example
+
+** =step ca=
+
+*** =step ca init=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-init.mdx"
+f=ca/init/README.mdx
+gawk "$awkprog" $f
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-init.mdx]]
+
+#+call: stepDumpOptions(group="../step-cli-usage-ca-init.mdx")
+
+#+RESULTS:
+#+begin_example
+--acme
+--address=`address`
+--admin-subject=`subject`, --admin-name=`subject`
+--authority=`name`
+--context=`name`
+--credentials-file=`file`
+--deployment-type=`name`
+--dns=`name`
+--helm
+--issuer-fingerprint=`fingerprint`
+--issuer-provisioner=`name`
+--issuer=`url`
+--key=`file`
+--key-password-file=`file`
+--kms-intermediate=`URI`
+--kms-root=`URI`
+--kms-ssh-host=`URI`
+--kms-ssh-user=`URI`
+--kms=`type`
+--name=`name`
+--no-db
+--password-file=`file`
+--pki
+--profile=`name`
+--provisioner=`name`
+--provisioner-password-file=`file`
+--ra=`type`
+--remote-management
+--root=`file`
+--ssh
+--with-ca-url=`URI`
+#+end_example
+
+*** =step ca certificate=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-certificate.mdx"
+f=ca/certificate/README.mdx
+gawk "$awkprog" $f
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-certificate.mdx]]
+
+#+call: stepDumpOptions(group="../step-cli-usage-ca-certificate.mdx")
+
+#+RESULTS:
+#+begin_example
+--acme=`url`
+--attestation-ca-root=`file`
+--attestation-ca-url=`value`
+--attestation-uri=`uri`
+--ca-config=`file`
+--ca-url=`URI`
+--console
+--contact=`email-address`
+--context=`name`
+--crv=`curve`, --curve=`curve`
+-f, --force
+--http-listen=`address`
+--k8ssa-token-path=`file`
+--kms=`uri`
+--kty=`kty`
+--nebula-cert=`file`
+--nebula-key=`file`
+--not-after=`time|duration`
+--not-before=`time|duration`
+--offline
+--password-file=`file`
+--provisioner=`name`, --issuer=`name`
+--provisioner-password-file=`file`
+--root=`file`
+--san=`dns|ip|email|uri`
+--set-file=`file`
+--set=`key=value`
+--size=`size`
+--standalone
+--token=`token`
+--tpm-storage-directory=`value`
+--webroot=`file`
+--x5c-cert=`chain`
+--x5c-chain=`file`
+--x5c-key=`file`
+#+end_example
+
+*** =step ca sign=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-sign.mdx"
+f=ca/sign/README.mdx
+gawk "$awkprog" $f
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-sign.mdx]]
+
+#+call: stepDumpOptions(group="../step-cli-usage-ca-sign.mdx")
+
+#+RESULTS:
+#+begin_example
+--acme=`url`
+--ca-config=`file`
+--ca-url=`URI`
+--console
+--contact=`email-address`
+--context=`name`
+-f, --force
+--http-listen=`address`
+--k8ssa-token-path=`file`
+--kms=`uri`
+--nebula-cert=`file`
+--nebula-key=`file`
+--not-after=`time|duration`
+--not-before=`time|duration`
+--offline
+--password-file=`file`
+--provisioner=`name`, --issuer=`name`
+--provisioner-password-file=`file`
+--root=`file`
+--set-file=`file`
+--set=`key=value`
+--standalone
+--token=`token`
+--webroot=`file`
+--x5c-cert=`chain`
+--x5c-chain=`file`
+--x5c-key=`file`
+#+end_example
+
+*** =step ca {bootstrap,health}=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-bootstrap.mdx"
+gawk "$awkprog" ca/{bootstrap,health}/README.mdx
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-bootstrap.mdx]]
+
+#+call: stepDumpOptions(group="../step-cli-usage-ca-bootstrap.mdx")
+
+#+RESULTS:
+#+begin_example
+--authority=`name`
+--ca-url=`URI`
+--context=`name`
+-f, --force
+--fingerprint=`fingerprint`
+--install
+--profile=`name`
+--redirect-url=`url`
+--team-authority=`sub-domain`
+--team=`ID`
+--team-url=`url`
+#+end_example
+
+
+*** =step ca {root,roots,federation}=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-roots.mdx"
+gawk "$awkprog" ca/{root,roots,federation}/README.mdx
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-roots.mdx]]
+
+#+call: stepDumpOptions(group="../step-cli-usage-ca-roots.mdx")
+
+#+RESULTS:
+: --ca-url=`URI`
+: --context=`name`
+: -f, --force
+: --fingerprint=`fingerprint`
+*** =step ca {
++ =step ca {rekey,renew,revoke,token}=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-rekey.mdx"
+gawk "$awkprog" ca/{rekey,renew,revoke,token}/README.mdx
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-rekey.mdx]]
+
+#+call: stepDumpOptions(group="../step-cli-usage-ca-rekey.mdx")
+
+#+RESULTS:
+#+begin_example
+--ca-config=`file`
+--ca-url=`URI`
+--crv=`curve`, --curve=`curve`
+--daemon
+--exec=`command`
+--expires-in=`duration`
+-f, --force
+--kms=`uri`
+--kty=`kty`
+--offline
+--out-cert=`file`
+--out-key=`file`
+--password-file=`file`
+--pid-file=`file`
+--pid=`value`
+--private-key=`file`
+--rekey-period=`duration`
+--rekey-period or --expires-in flags.
+--root=`file`
+--signal=`number`
+--size=`size`
+#+end_example
+
+
+*** =step ca admin=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ca-admin.mdx"
+gawk "$awkprog" ca/admin/*/README.mdx
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ca-admin.mdx]]
+
+#+call: stepDumpOptions(group="../step-cli-usage-ca-admin.mdx")
+
+#+RESULTS:
+: --admin-cert=`chain`
+: --admin-key=`file`
+: --admin-password-file=`file`, --password-file=`file`
+: --admin-provisioner=`name`, --admin-issuer=`name`
+: --admin-subject=`subject`, --admin-name=`subject`
+: --ca-url=`URI`
+: --context=`name`
+: --root=`file`
+: --super
+
+** =step crypto=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-crypto.mdx"
+mdx=$(find crypto -mindepth 2 -name '*.mdx' -type f -printf '%p\n' | sort)
+for f in $mdx; do
+    gawk "$awkprog" $f
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-crypto.mdx]]
+
+#+call: stepCountOptions(group="../step-cli-usage-crypto.mdx")
+
+#+RESULTS:
+#+begin_example
+     11 --password-file=`file`
+      9 --kid=`kid`
+      8 --raw
+      8 -f, --force
+      6 --key=`file`
+      6 --jwks=`jwks`
+      5 --alg=`algorithm`, --algorithm=`algorithm`
+      5 --alg=`algorithm`
+      4 --no-password
+      4 --insecure
+      2 --x5t-cert=`file`
+      2 --x5c-cert=`chain`
+      2 --ssh
+      2 --size=`size`
+      2 --pss
+      2 --period=`value`
+      2 --length=`value`, --digits=`value`
+      2 --key=`file`, --x5c-key=`file`, --x5t-key=`file`
+      2 --json
+      2 --iss=`issuer`, --issuer=`issuer`
+      2 --insecure flag and omit the --alg flag.
+      2 --format=`format`
+      2 --crv=`curve`, --curve=`curve`
+      2 --aud=`audience`, --audience=`audience`
+      2 --alg=`value`, --algorithm=`value`
+#+end_example
+** =step ssh=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-ssh.mdx"
+mdx=$(find ssh -mindepth 2 -name '*.mdx' -type f -printf '%p\n' | sort)
+for f in $mdx; do
+    gawk "$awkprog" $f
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-ssh.mdx]]
+
+#+call: stepCountOptions(group="../step-cli-usage-ssh.mdx")
+
+#+RESULTS:
+#+begin_example
+     10 --root=`file`
+     10 --offline
+     10 --context=`name`
+     10 --ca-url=`URI`
+     10 --ca-config=`file`
+      6 --set=`key=value`
+      6 --set-file=`file`
+      6 --provisioner=`name`, --issuer=`name`
+      5 -f, --force
+      5 --console
+      4 --provisioner-password-file=`file`
+      3 --token=`token`
+      3 --sshpop-key=`file`
+      3 --sshpop-cert=`chain`
+      3 --insecure
+      2 --verbose, -v
+      2 --size=`size`
+      2 --provisioner-password-file=`file`, --password-file=`file`
+      2 --not-before=`time|duration`
+      2 --not-after=`time|duration`
+      2 --no-password
+      2 --kty=`kty`
+      2 --identity=`value`
+      2 --host
+      2 --format=`format`
+#+end_example
+
+** =step {crl,fileserver,oauth,path,api,base64,beta,context}=
+
+#+headers: :var awkprog=awkStepCmdInfo
+#+begin_src shell :results output file :file "../step-cli-usage-misc.mdx"
+mdx=$(find {crl,fileserver,oauth,path,api,base64,beta,context} -mindepth 2 -name '*.mdx' -type f -printf '%p\n' | sort)
+for f in $mdx; do
+    gawk "$awkprog" $f
+done
+#+end_src
+
+#+RESULTS:
+[[file:../../../ecto/crypto/smallstep/docs/step-cli/step-cli-usage-misc.mdx]]
+
+Options
+
+#+call: stepCountOptions(group="../step-cli-usage-misc.mdx")
+
+#+RESULTS:
+#+begin_example
+      3 --root=`file`
+      3 --context=`name`
+      3 --ca-url=`URI`
+      3 --admin-subject=`subject`, --admin-name=`subject`
+      3 --admin-provisioner=`name`, --admin-issuer=`name`
+      3 --admin-password-file=`file`, --password-file=`file`
+      3 --admin-key=`file`
+      3 --admin-cert=`chain`
+      1 --roots=`roots`
+      1 --no-pager
+      1 --limit=`value`
+      1 --json
+      1 --insecure
+      1 --from
+      1 --format=`format`
+      1 -f, --force
+      1 --ca=`file`
+      1 --audience=`value`
+      1 --api-url=`value`
+#+end_example
 
 * From Completion
 ** Basics
