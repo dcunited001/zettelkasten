@@ -26,13 +26,14 @@ The complexity is organized as follows:
 + step {crl,fileserver,oauth,path,api,base64,beta,context} :: misc commands
 + step ssh :: ssh certificate commands
 + step certificate :: certificiate lifecycle & management utilities
-  
+  - includes
+
 The bulk of the complexity is found under the =step ca= subcommands, where the
 most number of unique options are under =step ca {init,certificate,bootstrap}=
 
 + step ca {acme,policy acme} :: acme configuration (and external account binding)
 + step ca {provisioner, provisioner ssh, provisioner x509} :: provisioner
-  configuration  
+  configuration
 + step ca {policy, policy authority ssh, policy authority x509} :: policy
   configuration
 + step ca {bootstrap,health} :: bootstrapping a =step ca= client
@@ -42,6 +43,39 @@ most number of unique options are under =step ca {init,certificate,bootstrap}=
 + step ca {rekey,renew,revoke,token} :: misc certificate management
 + step ca admin :: manage admin users for a CA
 + step ca {root,roots,federation} :: manage cert bundles
+
+** Common Options
+
+Available in almost every subcommand where it makes sense:
+
+| ~--context=$name~ | ~--ca-url=$uri~ | ~--root=$pem~ |
+
+Where admin credentials are necessary:
+
+| ~--admin-cert=$chain~       | ~--admin-key=$keyfile~  | ~--admin-password-file=$file~ |
+| ~--admin-subject=$subject~  | ~--admin-name=$subject~ |                             |
+| ~--admin-provisioner=$name~ | ~--admin-issuer=$name~  |                             |
+
+For clarity, those are excluded from the counts below
+
+*** KMS
+
+Commands that allow specifying =kms= options:
+
++ step ca init :: KMS type and config
+  - --kms=$type ::
+  - --kms-root=$uri ::
+  - --kms-intermediate=$uri ::
+  - --kms-ssh-host=$uri ::
+  - --kms-ssh-user=$uri ::
++ step ca certificate :: KMS and Attestation KMS
+  - --kms=$uri :: Cloud KMS or HSM
+  - --attestation=$uri :: KMS uri used for attestation
++ step ca {rekey,renew,sign,token} --kms=$uri :: Cloud KMS or HSM
++ step ca provisioner {add,update} :: SCEP provisioner
++ step certificate {create,sign} :: KMS and CA KMS
+  - --kms=$uri :: Cloud KMS or HSM
+  - --ca-kms=$uri :: signing KMS
 
 * From File Tree
 :PROPERTIES:
@@ -60,10 +94,10 @@ state machine ftw
 
 #+name: awkStepCmdInfo
 #+begin_example awk
-BEGIN { inName=0; inUsage=0; inOptions=0; inRaw=0; } 
+BEGIN { inName=0; inUsage=0; inOptions=0; inRaw=0; }
 ($0 ~/^## Name/) { inName=1; inUsage=0; inOptions=0; inRaw=0; print "#",FILENAME; next; }
 ($0 ~/^## Usage/) { inName=0; inUsage=1; inOptions=0; inRaw=0; next; }
-($0 ~/^## .*$/ && inOptions==1) { inName=0; inUsage=0; inOptions=0; inRaw=0; exit; } # next; } 
+($0 ~/^## .*$/ && inOptions==1) { inName=0; inUsage=0; inOptions=0; inRaw=0; exit; } # next; }
 ($0 ~/^## Options/) { inName=0; inUsage=0; inOptions=1; inRaw=0; print "## Options"; next; }
 ($0 ~/^```$/ && inRaw==1) { inName=0; inUsage=0; inRaw=0; next; }
 ($0 ~/^```raw$/ && inUsage==1) { inName=0; inUsage=1; inRaw=1; next; }
@@ -90,22 +124,15 @@ done
 Count options (imperfect, but sufficient)
 
 #+name: stepCountOptions
-#+begin_src shell :results output verbatim :var group="../step-cli-usage-options.mdx" n=25
-grep -E '^\*\*-' "$group" \
-| tr -d '*' | sort | uniq -c \
-| sort -rnk1 | head -n"$n"
+#+begin_src shell :results output code :wrap example :var group="../step-cli-usage-options.mdx" n=25
+grep -E '^\*\*-' "$group" | tr -d '*' \
+    | grep -vE '^--admin-(provisioner|subject|key|cert|password-file)=' \
+    | grep -vE '^--(context|ca-url|root)=' \
+    | sort | uniq -c | sort -rnk1 | head -n"$n"
 #+end_src
 
 #+RESULTS: stepCountOptions
 #+begin_example
-    101 --context=`name`
-    101 --ca-url=`URI`
-    100 --root=`file`
-     79 --admin-subject=`subject`, --admin-name=`subject`
-     78 --admin-provisioner=`name`, --admin-issuer=`name`
-     78 --admin-key=`file`
-     78 --admin-cert=`chain`
-     76 --admin-password-file=`file`, --password-file=`file`
      65 --provisioner=`name`, --issuer=`name`
      50 --remove
      34 --eab-key-reference=`value`
@@ -123,12 +150,22 @@ grep -E '^\*\*-' "$group" \
       9 --raw
       8 --provisioner-password-file=`file`
       8 --no-password
+      8 --kms=`uri`
+      7 --size=`size`
+      7 --not-before=`time|duration`
+      7 --not-after=`time|duration`
+      7 --format=`format`
+      7 --crv=`curve`, --curve=`curve`
+      7 --console
+      6 --x5c-cert=`chain`
 #+end_example
 
 #+name: stepDumpOptions
-#+begin_src shell :results output verbatim :var group="../step-cli-usage-options.mdx" n=25
-grep -E '^\*\*-' "$group" \
-| tr -d '*' | sort | uniq
+#+begin_src shell :results output code :wrap example :var group="../step-cli-usage-options.mdx"
+grep -E '^\*\*-' "$group" | tr -d '*' \
+    | grep -vE '^--admin-(provisioner|subject|key|cert|password-file)=' \
+    | grep -vE '^--(context|ca-url|root)=' \
+    | sort | uniq
 #+end_src
 
 ** =step certificate=
@@ -194,14 +231,6 @@ done
 
 #+RESULTS:
 #+begin_example
-     24 --root=`file`
-     24 --context=`name`
-     24 --ca-url=`URI`
-     24 --admin-subject=`subject`, --admin-name=`subject`
-     24 --admin-provisioner=`name`, --admin-issuer=`name`
-     24 --admin-password-file=`file`, --password-file=`file`
-     24 --admin-key=`file`
-     24 --admin-cert=`chain`
      22 --provisioner=`name`, --issuer=`name`
      20 --remove
      12 --eab-key-reference=`value`
@@ -228,14 +257,6 @@ done
 
 #+RESULTS:
 #+begin_example
-     32 --root=`file`
-     32 --context=`name`
-     32 --ca-url=`URI`
-     30 --admin-subject=`subject`, --admin-name=`subject`
-     30 --admin-provisioner=`name`, --admin-issuer=`name`
-     30 --admin-key=`file`
-     30 --admin-cert=`chain`
-     28 --admin-password-file=`file`, --password-file=`file`
      22 --provisioner=`name`, --issuer=`name`
      20 --remove
      12 --eab-key-reference=`value`
@@ -253,6 +274,14 @@ done
       2 --ssh-user-max-dur=`duration`
       2 --ssh-user-default-dur=`duration`
       2 --ssh-template=`file`
+      2 --ssh-template-data=`file`
+      2 --ssh-host-min-dur=`duration`
+      2 --ssh-host-max-dur=`duration`
+      2 --ssh-host-default-dur=`duration`
+      2 --ssh
+      2 --scep-decrypter-key-uri=`uri`
+      2 --scep-decrypter-key-password-file=`file`
+      2 --scep-decrypter-key-file=`file`
 #+end_example
 
 ** =step ca {acme,policy acme}=
@@ -274,14 +303,6 @@ done
 
 #+RESULTS:
 #+begin_example
-     17 --root=`file`
-     17 --context=`name`
-     17 --ca-url=`URI`
-     17 --admin-subject=`subject`, --admin-name=`subject`
-     17 --admin-provisioner=`name`, --admin-issuer=`name`
-     17 --admin-password-file=`file`, --password-file=`file`
-     17 --admin-key=`file`
-     17 --admin-cert=`chain`
      12 --provisioner=`name`, --issuer=`name`
      10 --remove
      10 --eab-key-reference=`value`
@@ -310,9 +331,7 @@ gawk "$awkprog" $f
 #+begin_example
 --acme
 --address=`address`
---admin-subject=`subject`, --admin-name=`subject`
 --authority=`name`
---context=`name`
 --credentials-file=`file`
 --deployment-type=`name`
 --dns=`name`
@@ -336,7 +355,6 @@ gawk "$awkprog" $f
 --provisioner-password-file=`file`
 --ra=`type`
 --remote-management
---root=`file`
 --ssh
 --with-ca-url=`URI`
 #+end_example
@@ -361,10 +379,8 @@ gawk "$awkprog" $f
 --attestation-ca-url=`value`
 --attestation-uri=`uri`
 --ca-config=`file`
---ca-url=`URI`
 --console
 --contact=`email-address`
---context=`name`
 --crv=`curve`, --curve=`curve`
 -f, --force
 --http-listen=`address`
@@ -379,7 +395,6 @@ gawk "$awkprog" $f
 --password-file=`file`
 --provisioner=`name`, --issuer=`name`
 --provisioner-password-file=`file`
---root=`file`
 --san=`dns|ip|email|uri`
 --set-file=`file`
 --set=`key=value`
@@ -410,10 +425,8 @@ gawk "$awkprog" $f
 #+begin_example
 --acme=`url`
 --ca-config=`file`
---ca-url=`URI`
 --console
 --contact=`email-address`
---context=`name`
 -f, --force
 --http-listen=`address`
 --k8ssa-token-path=`file`
@@ -426,7 +439,6 @@ gawk "$awkprog" $f
 --password-file=`file`
 --provisioner=`name`, --issuer=`name`
 --provisioner-password-file=`file`
---root=`file`
 --set-file=`file`
 --set=`key=value`
 --standalone
@@ -452,8 +464,6 @@ gawk "$awkprog" ca/{bootstrap,health}/README.mdx
 #+RESULTS:
 #+begin_example
 --authority=`name`
---ca-url=`URI`
---context=`name`
 -f, --force
 --fingerprint=`fingerprint`
 --install
@@ -478,10 +488,11 @@ gawk "$awkprog" ca/{root,roots,federation}/README.mdx
 #+call: stepDumpOptions(group="../step-cli-usage-ca-roots.mdx")
 
 #+RESULTS:
-: --ca-url=`URI`
-: --context=`name`
-: -f, --force
-: --fingerprint=`fingerprint`
+#+begin_example
+-f, --force
+--fingerprint=`fingerprint`
+#+end_example
+
 *** =step ca {
 + =step ca {rekey,renew,revoke,token}=
 
@@ -498,7 +509,6 @@ gawk "$awkprog" ca/{rekey,renew,revoke,token}/README.mdx
 #+RESULTS:
 #+begin_example
 --ca-config=`file`
---ca-url=`URI`
 --crv=`curve`, --curve=`curve`
 --daemon
 --exec=`command`
@@ -515,7 +525,6 @@ gawk "$awkprog" ca/{rekey,renew,revoke,token}/README.mdx
 --private-key=`file`
 --rekey-period=`duration`
 --rekey-period or --expires-in flags.
---root=`file`
 --signal=`number`
 --size=`size`
 #+end_example
@@ -534,15 +543,9 @@ gawk "$awkprog" ca/admin/*/README.mdx
 #+call: stepDumpOptions(group="../step-cli-usage-ca-admin.mdx")
 
 #+RESULTS:
-: --admin-cert=`chain`
-: --admin-key=`file`
-: --admin-password-file=`file`, --password-file=`file`
-: --admin-provisioner=`name`, --admin-issuer=`name`
-: --admin-subject=`subject`, --admin-name=`subject`
-: --ca-url=`URI`
-: --context=`name`
-: --root=`file`
-: --super
+#+begin_example
+--super
+#+end_example
 
 ** =step crypto=
 
@@ -604,10 +607,7 @@ done
 
 #+RESULTS:
 #+begin_example
-     10 --root=`file`
      10 --offline
-     10 --context=`name`
-     10 --ca-url=`URI`
      10 --ca-config=`file`
       6 --set=`key=value`
       6 --set-file=`file`
@@ -629,6 +629,9 @@ done
       2 --identity=`value`
       2 --host
       2 --format=`format`
+      2 --crv=`curve`, --curve=`curve`
+      2 --comment=`value`
+      2 --add-user
 #+end_example
 
 ** =step {crl,fileserver,oauth,path,api,base64,beta,context}=
@@ -650,14 +653,6 @@ Options
 
 #+RESULTS:
 #+begin_example
-      3 --root=`file`
-      3 --context=`name`
-      3 --ca-url=`URI`
-      3 --admin-subject=`subject`, --admin-name=`subject`
-      3 --admin-provisioner=`name`, --admin-issuer=`name`
-      3 --admin-password-file=`file`, --password-file=`file`
-      3 --admin-key=`file`
-      3 --admin-cert=`chain`
       1 --roots=`roots`
       1 --no-pager
       1 --limit=`value`
