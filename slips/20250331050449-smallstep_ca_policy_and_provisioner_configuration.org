@@ -13,13 +13,14 @@
 + [[id:d4acf534-f60c-4471-bee8-f4b925dd0d90][SOPS]]
 
 * Resources
-
++ https://gateway.smallstep.com/v2025-01-01
 
 * X-509
 
 ** Trust Bundle
 
 * Concepts
+
 ** Contexts
 
 These map a =profile= to an =authority= in =contexts.json=
@@ -45,12 +46,32 @@ These map a =profile= to an =authority= in =contexts.json=
 
 + An authority has a list of provisioners
 
-* Smallstep
-:PROPERTIES:
-:header-args+: :dir (setq-local step-root "/tmp/tmp.AdBB5gOL2w")
-:END:
+** Workstation
 
-** Yubikey PIV
+This is basically, a set of CA's, provisioners and policies. One workstation:
+one-to-many =STEPPATH= "deployments". Since deployment is overloaded, it makes
+more sense for me personally to think of this as a workstation or endpoint.
+
+#+begin_quote
+A "workstation" isn't an official concept, but it's useful for planning smaller
+deployments. This is less relevant for the Smallstep managed service,
+online/cloud-based integrations. It's still still somewhat applicable, depending
+on how you would interface with your contexts and provisioners.
+#+end_quote
+
+I need to distinguish a collection of =STEPPATH= directories:
+
++ on an air-gapped computer that's used to manage the Root CA
++ on an endpoint that can issue new certificates via ICA authority on a Yubikey
+
+You can switch between multiple =--context=ica2=, etc, but you really don't want
+that data existing everywhere all the time. Also, if some contexts use remote
+provisioner management, this data needs to be persisted (I think this is
+supposed to be online)
+
+
+
+* Yubikey PIV
 
 If you don't need a 3-tier CA, then the Smallstep [[https://smallstep.com/docs/step-ca/cryptographic-protection/#yubikey-piv][Yubikey PIV]] example will:
 
@@ -62,14 +83,14 @@ If you don't need a 3-tier CA, then the Smallstep [[https://smallstep.com/docs/s
 Though the ability to do this is infinitely valuable, as is the example, there's
 one slight problem:
 
-+ the same key with ICA signing authority...
++ the same yubikey with ICA signing authority...
 + also has the Root CA signing authority
 + and the yubikey PIV hardware app can only have one PIN
 
 This is further complicated if you're using the PIV app for other things:
 signing email, VPN access, mTLS access, AGE for SOPS. You must configure the
 touch & pin policy _after_ the management key is loaded and _before_ the pins are
-set. You _cannot_ change it afterwards.
+set. You _cannot_ change it afterwards. Changing the retry counts will
 
 You must also generate the initial =step ca init= directory structure specifying a
 =--context=$name=. Otherwise, you get the single context structure. Whether this
@@ -123,10 +144,10 @@ ykman piv certificates import "$rootSlot" "$rootCert"
 ykman piv certificates import "$ca1Slot"  "$ca1Cert"
 #+end_src
 
-ensure these are set in ca.json for the =$ca1context=: =[.root, .crt, .key,
+Ensure these are set in ca.json for the =$ca1context=: =[.root, .crt, .key,
 .kms.type, .kms.uri]=
 
-here, it may be necessary to switch =--context=$ca1context= unless all parameters
+Here, it may be necessary to switch =--context=$ca1context= unless all parameters
 are specified (iirc)
 
 #+begin_src shell
@@ -153,7 +174,7 @@ the policy!
 + but any certificates issued like that should plan on SAN constraints for DNS
   for the endpoints.
 
-this depends on how you plan to
+This depends on how you plan to
 
 1) distribute Root CA to trust stores
 2) distribute certificate bundles to endpoints (servers and/or clients)
@@ -196,6 +217,66 @@ Seems kinda pedantic to block out the variables as above... but it's not. I need
 to understand the configuration surface for each operation. that helps
 generalize, so I can brainstorm the necessary configuration schemas, while
 ensuring it's not excruciating to remember arbitrary strings.
+
+
+* Smallstep
+:PROPERTIES:
+:header-args+: :dir (setq-local step-root "/tmp/tmp.AdBB5gOL2w")
+:END:
+
+** home.lab.com ca
+
+Contexts
+
++ homelabcom ca0
++ homelabcom ca1
+  - homelabcom ca2.1
+  - homelabcom ca2.2...
++ homelabcom ca2
+  - homelabcom ca3net @ offline?
+    - jwk
+  - homelabcom ca3svc @ ca.svc.home.lab.com
+    - acme: device-attest-01 (yubikey:serial=12345678)
+    - jwk?
+  - homelabcom ca3k8s
+    - no provisioners (passed as root ca to k8s)
+  - homelabcom ca3harbor
+    - no provisioners (passed as root ca to harbor)
+
+workstations
+
++ offline
+  - homelabcom ca0 -> homelabcom ca1
+  - homelabcom ca1 -> homelabcom ca2
++ adhoc
+  - homelabcom ca2 -> homelabcom ca3 ... ?
++ bootstrap svc
+  - homelabcom ca3svc -> leaf
++ bootstrap k8s
+  - homelabcom ca3cluster -> homelabcom ca3x
+
+** home.lab.com ssh ca
+
+This is separate from the above CA. SSH doesn't validate the trust chain
+
+Contexts
+
++ homelabcom sshca0
++ homelabcom sshca1
+  - jwk:
+  - sshpop?:
+
+Workstations
+
++ offline
+  - homelabcom sshca0 -> sshca1
++ adhoc
+  - homelabcom sshca1 -> ssh hosts
+    - should only be needed when enrolling new devices
+  - homelabcom sshca1 -> ssh principles (admin)
++ bootstrap
+  - homelabcom sshca1 -> ssh principles (ansible/etc)
+  - homelabcom sshca1 -> ssh principles (... me?)
 
 ** ykbootstrap ca
 :PROPERTIES:
@@ -285,9 +366,19 @@ MCowBQYDK2VwAyEA+abPSAzd8FYX/IX3DfMf0QbjvkWR2Qh6bU41vimRce4=
 Create initial =.sops.yaml=
 
 #+begin_src yaml :tangle (expand-file-name ".sops.yaml" step-root)
+stores:
+  json:
+    indent: 2
+  json_binary:
+    indent: 2
+  yaml:
+    indent: 2
+
 keys:
+  hosts:
+    # age tpm key:
+    - &tpmtest
   users:
-    # - &admin0    # gpg1 key
     # age1 key: x25519 via age-keygen
     - &admin1 age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8
     # age2 key: x25519 via openssl & ssh-to-age
@@ -308,7 +399,7 @@ creation_rules:
 :header-args+: :var y=".step.ykbootstrap/root.yaml"
 :END:
 
-| y  | .step.ykbootstrap/root.yaml |
+| y | .step.ykbootstrap/root.yaml |
 
 Sops Schema
 
@@ -320,16 +411,16 @@ Create an initial sops yaml file
 export SOPS_AGE_KEY_FILE
 sops edit $y
 # ykbootstrap:
-#     ca2:
-#         provisioners:
-#             - name_unencrypted: admin
-#               kms_unencrypted:
-#     ca1:
-#         provisioners:
-#             - name_unencrypted: admin
-#     root:
-#         provisioners:
-#             - name_unencrypted: admin
+#   ca2:
+#     provisioners:
+#       - name_unencrypted: admin
+#         kms_unencrypted:
+#   ca1:
+#     provisioners:
+#       - name_unencrypted: admin
+#   root:
+#     provisioners:
+#       - name_unencrypted: admin
 #+end_src
 
 #+begin_src shell :results output code :wrap example yaml
@@ -353,39 +444,39 @@ cat $y
 #+RESULTS:
 #+begin_example yaml
 ykbootstrap:
-    ca1:
-        provisioners:
-            - name_unencrypted: admin
-        password: ENC[AES256_GCM,data:wJVG0zfHJCRy4hR4YzOtlR/7aDqx1T85fZ+5EWBmOcRV,iv:2QwxT0LnqC2X4jU801XTepdpbuCP58CCOueIrXglX7I=,tag:L9Ungs/eEKRgmgSwosIx4g==,type:str]
-    root:
-        provisioners:
-            - name_unencrypted: admin
-        password: ENC[AES256_GCM,data:HsS17m1Nlfa3xbgu8ZSaVMqir1SNE8wfgVW14SpD4m33,iv:sa6m6f+npabR517xTIAkBbC1/5WynBFwBFLxPCL7SFc=,tag:fSEt+U+aZyf2sGGAaRZCqA==,type:str]
+  ca1:
+    provisioners:
+      - name_unencrypted: admin
+    password: ENC[AES256_GCM,data:wJVG0zfHJCRy4hR4YzOtlR/7aDqx1T85fZ+5EWBmOcRV,iv:2QwxT0LnqC2X4jU801XTepdpbuCP58CCOueIrXglX7I=,tag:L9Ungs/eEKRgmgSwosIx4g==,type:str]
+  root:
+    provisioners:
+      - name_unencrypted: admin
+    password: ENC[AES256_GCM,data:HsS17m1Nlfa3xbgu8ZSaVMqir1SNE8wfgVW14SpD4m33,iv:sa6m6f+npabR517xTIAkBbC1/5WynBFwBFLxPCL7SFc=,tag:fSEt+U+aZyf2sGGAaRZCqA==,type:str]
 sops:
-    age:
-        - recipient: age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8
-          enc: |
-            -----BEGIN AGE ENCRYPTED FILE-----
-            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBmUld3ejlqSmNGcjhrNzFp
-            d0hPR2pRWUZXM3ZZWUpReUlFeElNNnRMYTFVCnh6a3FGOHRITGpqR3ltLy9UNUpX
-            NjVmcXE3NDB6WW1kalpOeWJXU2JJMkUKLS0tIGlIN0s2VE5vTVc0MHVPeTVRK2RC
-            OW4zVzBWT3lrSXI5OUY2YUNsb2NSOUUKlCOEWMVq2WyMtmonHgD6sICy0tA0Cstj
-            aJGVsJUgE1iwgCfzqzyVf3odynmpeLjYwoXatQ9tggX/+FnS3rDvsQ==
-            -----END AGE ENCRYPTED FILE-----
-        - recipient: age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9
-          enc: |
-            -----BEGIN AGE ENCRYPTED FILE-----
-            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBISVNzL0xJRmZDV0M2U29N
-            TFZOQWsySEV5WEt6a1lhdHdIeXE0NS9XSEdNCm5yVFY4NTNYZE9VZitWQTVkQ0Nh
-            RzNkVEhCRTBQRThGUTVWOWd2ODFFcmsKLS0tIGpHUmFlaVFBMkVmOTdKZGRaSGVO
-            ekxGZXR3eWRENHRIOXJOTWxmSGg2U3cKtKpcleeBb9bKzT8+ZqV7/ldaOJrRwDfT
-            xF+4iXcP+Zk2ugvbaJit7uhyc5yyV1bLdVFu6tC5+z8gdq+fU6EFtA==
-            -----END AGE ENCRYPTED FILE-----
-    lastmodified: "2025-11-23T19:41:10Z"
-    mac: ENC[AES256_GCM,data:IftsY77hCCemAKE4v8bxo1RtinLie15TafvnIAcy+McRqNpAjOBj+aOIWALT4fmQWzwgqu60okaBryNcAzhK/0TUPG6IuEXnLO3QFeYusxjay1uEq0jivuZTN43ovU+QqxJ3Mgrf40/n8WO6uZ2WGbATmaAcJbKmg4abvhwXB3c=,iv:tsYK7N+kggxT6N3a0Mc93h03haxJSkDBF/ORqYlipuo=,tag:+7rq9mW4hl7/uM4X4SURVA==,type:str]
-    unencrypted_suffix: _unencrypted
-    mac_only_encrypted: true
-    version: 3.11.0
+  age:
+    - recipient: age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8
+      enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBmUld3ejlqSmNGcjhrNzFp
+        d0hPR2pRWUZXM3ZZWUpReUlFeElNNnRMYTFVCnh6a3FGOHRITGpqR3ltLy9UNUpX
+        NjVmcXE3NDB6WW1kalpOeWJXU2JJMkUKLS0tIGlIN0s2VE5vTVc0MHVPeTVRK2RC
+        OW4zVzBWT3lrSXI5OUY2YUNsb2NSOUUKlCOEWMVq2WyMtmonHgD6sICy0tA0Cstj
+        aJGVsJUgE1iwgCfzqzyVf3odynmpeLjYwoXatQ9tggX/+FnS3rDvsQ==
+        -----END AGE ENCRYPTED FILE-----
+    - recipient: age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9
+      enc: |
+        -----BEGIN AGE ENCRYPTED FILE-----
+        YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBISVNzL0xJRmZDV0M2U29N
+        TFZOQWsySEV5WEt6a1lhdHdIeXE0NS9XSEdNCm5yVFY4NTNYZE9VZitWQTVkQ0Nh
+        RzNkVEhCRTBQRThGUTVWOWd2ODFFcmsKLS0tIGpHUmFlaVFBMkVmOTdKZGRaSGVO
+        ekxGZXR3eWRENHRIOXJOTWxmSGg2U3cKtKpcleeBb9bKzT8+ZqV7/ldaOJrRwDfT
+        xF+4iXcP+Zk2ugvbaJit7uhyc5yyV1bLdVFu6tC5+z8gdq+fU6EFtA==
+        -----END AGE ENCRYPTED FILE-----
+  lastmodified: "2025-11-24T11:59:42Z"
+  mac: ENC[AES256_GCM,data:jVNouyQOqXNSWtFeZB0HHtbeG2YHaQPMBEflFs4KdNzETQwSfwl9UamHzJNQMBwu8KjyXH9KKNKDEM10jRRPZ6HgIy1ZFHY8z7nSP/rjlKsHzuE78GjHm5CKgSXWUh+DmHLwaBx2+LNnZJFOxFuA78zyN02U24J7FYqtceJP5JQ=,iv:ql8ZyIR33CN3flVt5bShmXbjEy+ECRkg5HUdd2PRoSI=,tag:7U/PJ5d8viPaomPrxVduPA==,type:str]
+  unencrypted_suffix: _unencrypted
+  mac_only_encrypted: true
+  version: 3.11.0
 #+end_example
 
 Ensure =yq -Y .= to retain multiline strings like =enc: |=, otherwise you get line
@@ -400,8 +491,6 @@ Add secrets
 #+begin_src shell
 
 #+end_src
-
-#+RESULTS:
 
 ***** =exec-env= and =exec-file=
 
@@ -431,7 +520,75 @@ age-keygen > .age/$admin1.txt
 admin1pub=$(age-keygen -y .age/$admin1.txt)
 #+end_src
 
-Using =ssh-keygen=
+***** using =age-plugin-tpm=
+
++ If =TPM2TOOLS_TCTI= isn't set, then =-T $interface= is required
+  - I need to figure out how to add & remove an identity. otherwise it's stuck
+    ... or worse, transient.
++ If adding =security.tpm2= support to NixOS with udev, then a reboot is likely
+  required so that =tss= user/group owns =/dev/tpm(rm)?[0-9]=.
+  - =tpm= devices are owned by =tss= user
+  - =tpmrm= devices are accessible to =tss= group
++ Identities/handles managed under SRK need to be persistent, not transient.
+  - You would need to load an ISO to create the identity, then save the
+    =~/.age/identity.txt= pubkey
++ Depending on the status of [[https://github.com/Foxboron/age-plugin-tpm/issues/28][foxboron/age-plugin-tpm#28]], tpm access is required
+  to encrypt secrets, even though it's asymmetric. it's possible to do this
+  anyways, outside of =age= -- idk what bech32 is though. probably not a radiohead
+  reference. see [[https://github.com/C2SP/C2SP/pull/96][C2SP/C2SP#96]]. to me, writing standards like this seems a little
+  daunting.
++ the TPM isn't magical. here, it basically ensures that the contents of
+  secrets are only available if decrypted on the machine. the main benefit is
+  that someone needs to be on the machine to decrypt other secrets, so you at
+  least have specified the point where they attack (which you can watch)
+  - without some intermediary (and permissions/access model), anything that can
+    ask the =tpm= to do anything can ask it to perform decryption.
+    - getting around that requires a broker (nope), keywrapping
+      (redundant/brittle)...
+    - or an activation service that can decrypt, then recrypt with a wrapped
+      key. i.e. you'd also have an age identity (or a adhoc key) for the
+      consuming service, which requires path-activation before it starts. idk if
+      it checks out..... probably dumb.
+
+Check capabilities and SRK handles.
+
+#+begin_src shell
+sudo tpm2_getcap -T device:/dev/tpm0 handles-permanent
+sudo tpm2_getcap -T device:/dev/tpm0 handles-persistent
+sudo tpm2_getcap -T device:/dev/tpm0 handles-transient  # these reset on reboot
+sudo tpm2_getcap -T device:/dev/tpm0 handles-nv-index   # nvram?
+
+# supported commands
+sudo tpm2_getcap -T device:/dev/tpm0 commands
+#+end_src
+
+Hmmmm.... I really just don't want a read on an =/etc= file to pull my key out
+
+#+begin_quote
+I really have no fucking clue. [[https://github.com/Foxboron/age-plugin-tpm/blob/master/plugin/plugin.go#L74-L83][obviously, age-plugin-tpm can create an object
+under the SRK]], but i'm not sure how this corresponds to [[https://tpm2-tools.readthedocs.io/en/latest/man/tpm2_evictcontrol.1/][tpm2_evictcontrol]] or the
+need to manage contexts (where [[https://tpm2-tools.readthedocs.io/en/latest/man/tpm2_readpublic.1/#serialize-an-existing-persistent-object-handle-to-disk-for-later-use][tpm2_readpublic mention of serializing the
+handle]]). And holy shit whoever writes TPM2 with FFI/scripts must be some kind of
+human/computer hybrid i mean what the fuck?
+
+Some of these concepts circumvent what I'm overthinking below regarding
+keywrapping maybe?
+
++ age-plugin-tpm flushes the handle, since it's a self-contained tool.
++ But it also writes [[https://github.com/Foxboron/age-plugin-tpm/blob/master/plugin/plugin.go#L139-L145][SRKName]] (the handle reference)
+  - and then runs [[https://github.com/Foxboron/age-plugin-tpm/blob/master/plugin/identity.go#L116-L131][EncodeIdentity]] when it marshalls the identity
+  - this passes this representation through age's =plugin.EncodeIdentity()=
+  - and finally writes to =age-identity.txt=
++ The CLI logic for =HandleIdentity()= and =HandleRecipient()= handles in reverse
+#+end_quote
+
+
+#+begin_src shell
+# testtpm1=alice.age.tpm
+
+#+end_src
+
+***** Using =ssh-keygen= and =ssh-to-age=
 
 #+begin_src shell
 admin2=bob.ssh.id_25519
@@ -457,8 +614,7 @@ age-keygen -y <(cat .age/{alice,bob}*25519.txt | grep -ve '^#')
 #+RESULTS:
 | age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8 |
 | age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9 |
-
-***** Via openssl
+****** Via openssl
 
 This is a key... not an ssh key-thing ... it's =PKCS#8= i guess? nope... still not
 working... i guess this is a raw key. This wasn't working. Probably safer to use
@@ -486,8 +642,8 @@ Anyways, equivalent to =openssl asn1parse -in .ssh/$admin2.priv.der -inform der=
     7:d=2  hl=2 l=   3 prim: OBJECT            :X25519
    12:d=1  hl=2 l=  34 prim: OCTET STRING      [HEX DUMP]:0420C0868E47552DF004E324625091D6AD27794CADCDEE13D996E86B04F8079D2E6E
 #+end_quote
-
 * UML
+
 ** Config
 
 + Defined in [[https://github.com/smallstep/certificates/blob/b5e87345c0527c222c6ef773b429505fb4eea6f9/authority/config/config.go#L67][./authority/config/config.go]]
@@ -498,6 +654,9 @@ grep --include '*.go' -re '`json:".*"`' /data/ecto/crypto/smallstep/certificates
 
 + root :: a =MultiString=
 + kms :: defined in smallstep/crypto in [[https://github.com/smallstep/crypto/blob/4949ea39338a56b8e02ae539ef71e6b4c55afb14/kms/apiv1/options.go#L197][kms/apiv1/options.go#L197]]
++ See notes on [[https://smallstep.com/docs/step-ca/policies/#policy-evaluation][Certificate Issuance Policy vs Name Constraints]]
+  - policies to constraints are 1:1
+  - name constraints are applied by provisioner
 
 #+begin_src plantuml :file img/devops/step-ca-config.svg
 @startjson
@@ -533,6 +692,17 @@ grep --include '*.go' -re '`json:".*"`' /data/ecto/crypto/smallstep/certificates
     "authorityId": "",
     "deploymentType": "",
     "provisioners": [
+      {
+        "type": "ACME", "name": "acme-example", "forceCN": true,
+        "claims": { "maxTLSCertDuration": "8h", "defaultTLSCertDuration": "2h" },
+        "termsOfService": "",
+        "website": "",
+        "caaIdentities": [],
+        "challenges": [ "http-01", "dns-01", "tls-alpn-01", "device-attest-01" ],
+        "attestationFormats": [ "apple", "step", "tpm"],
+        "attestationRoots": "",
+        "options": { "x509": { "templateFile": "templates/certs/x509/default.tpl" } }
+      },
       { "type": "jwk", "name": "mariano@smallstep.com" },
       { "type": "jwk", "name": "mike@smallstep.com", "claims": { "minTLSCertDuration": "1m0s", "defaultTLSCertDuration": "2m0s" } },
       { "type": "jwk", "name": "decade", "claims": { "maxTLSCertDuration": "87600h", "defaultTLSCertDuration": "87600h" } },
@@ -851,11 +1021,6 @@ cat $(step path --base)/contexts.json | jq 'to_entries | map(.value.profile)'
 #+end_src
 
 That should be equivalent to =step context list=
-
-
-* Test Yubikey PIV
-
-
 
 * Babel
 
