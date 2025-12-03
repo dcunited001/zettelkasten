@@ -1,0 +1,176 @@
+:PROPERTIES:
+:ID:       b987ce8b-c42f-4de2-83c4-350be3cf5de1
+:END:
+#+TITLE: GNUPG
+#+DESCRIPTION:
+#+TAGS:
+* Roam
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
+
+* Docs
+* Resources
+
+** GPG
+
+*** Configuration
+
++ [[https://github.com/drduh/config/blob/master/gpg.conf][drduh/config]] gpg.conf
++ [[https://www.gnupg.org/documentation/manuals/gnupg/GPG-Configuration-Options.html][GPG Config Options]] (docs)
++ [[https://www.gnupg.org/documentation/manuals/gnupg/GPG-Esoteric-Options.html][GPG Esoteric Options]] (docs)
+
+*** Source [[https://git.gnupg.org/cgi-bin/gitweb.cgi][git.gnupg.org]]
+
+[[https://git.gnupg.org/cgi-bin/gitweb.cgi?p=gnupg.git;a=blob;f=agent/keyformat.txt;hb=HEAD][keyformat.txt]] the format of S-expressions in private keys. It answers all your
+questions about life, about the eternal mysteries and about what should be
+frequently mentioned by developers online ... but is not.
+
+**** Issues [[https://dev.gnupg.org][dev.gnupg.org]]
+
+*** Using multiple yubikeys
+
+GnuPG will default to using the most recent key for keysigning operations.
+
+#+begin_quote
+So just because the filesize doubles when you update your keyring with the
+=rsa4096= subkeys that you forgot doesnt mean that it's signing with both
+keys. The filesize is actually larger because GPG defaults to the newest public
+subkeys and RSA sucks so the files are larger.
+#+end_quote
+
+[[https://blogs.gentoo.org/mgorny/2018/05/12/on-openpgp-gnupg-key-management/][Leave it to the Gentoo guys]] to answer your questions. You can use multiple
+yubikeys, but only use one set of subkeys.
+
+*** Packets
++ [[https://www.ietf.org/archive/id/draft-koch-openpgp-2015-rfc4880bis-02.html#name-packet-tags][PGP Packet Tags]] (from IETF manual)
+
+Only the session key is included in the gpg message packets. The structure of
+the session key is dependent on the encryption algorithm, but it seems these
+keys are created per-message.
+
+This command dumps the session key.
+
+#+begin_src sh
+gpg -vv --show-session-key --list-packets $gpg_crypted_file
+#+end_src
+
++ The subkey ID will be included unless the =throw-keyid= option is set.
+
+*** Symmetric Encryption
+
++ [[https://unix.stackexchange.com/questions/560135/how-to-decrypt-file-that-was-symmetrically-encrypted-using-gpg][How to decrypt file that was symmetrically encrypted using GPG?]]
+  Particularly, see the answer with the [[https://unix.stackexchange.com/a/662662][batch script]] that uses FD's
+
+*** Private Keys
+
+#+begin_src shell
+gpg --list-packets $keyfile
+
+# or
+gpg --with-fingerprint --with-colons \
+    --keyring $keyfile --list-keys
+
+# or
+diff --color=always <(gpg --list-packets $old) <(gpg --list-packets $new) \
+    | less -R
+
+# TLDR
+gpg -K --list-options show-unusable-subkeys
+#+end_src
+
+After creating new subkeys, but before importing to keycard, then copy data to
+new =GNUPGHOME=. Collect new shadowed subkeys and combine.
+
+** GPG Agent
+
+See [[https://www.gnupg.org/documentation/manuals/gnupg/Agent-Protocol.html][Agent ASSUAN protocol]] for other things like:
+
+#+begin_example shell
+gpg-connect-agent updatestartuptty /bye > /dev/null
+#+end_example
+
+Commands need to be enclosed in quotes:
+
+#+begin_example shell
+gpg-connect-agent "help getinfo"
+#+end_example
+
+Getting a REPL with =gpg-connect-agent= allows =help [cmd]=
+
+And, =/if= you want GPG problems at scale, =/then= you can write scripts. I'm
+just curious about questions that are hard to see, like SSH =ControlMaster=.
+
+Getting leads on the above was actually pretty difficult ([[https://git.gnupg.org/cgi-bin/gitweb.cgi?p=gnupg.git;a=blob;f=agent/command.c;h=9481f47c3ec0b19af47a4db96b866e1928292caf;hb=HEAD#l3760][./agent/commands.c]]) I
+guess since no one customizes anything and the GUI does most of it for them.
+
+*See /Notes on Configuration/ below* in the section on =gpg-agent.conf=.
+
+** Crypto
++ [[https://developers.redhat.com/blog/2017/10/05/entropy-rhel-based-cloud-instances#][Entropy in RHEL-based cloud instances]]
++ [[https://www.random.org/randomness/][Introduction to Randomness and Random Numbers]]
+
+** GPG Integration
++ [[https://alexschroeder.ch/cgit/ugg/about/][The Using GPG Guide]]
++ [[https://git.vdm.dev/knowledge/YubiKey-Guide][VDM Yubikey-Guide]]
++ [[https://github.com/drduh/YubiKey-Guide][drduh/YubiKey-Guide]]
+
+*** Scute: PCKS#11 with =gpg-agent=
++ [[https://www.gnupg.org/documentation/manuals/scute.pdf][Scute manual]]
+
+*** OpenSC: SCDaemon Alternative
+
+[[https://github.com/alonbl/gnupg-pkcs11-scd][alonbl/gnupg-pkcs11-scd]] (link via [[https://docs.digicert.com/en/software-trust-manager/code-signing/sign-with-third-party-signing-tools/gpg-signing/install-gpg-tools/gnupg-pkcs11-scd.html][DigiCert Software Trust Manager (docs)]] which
+has their own proprietary alternative to this)
+
++ example configuration in [[https://github.com/OpenSC/OpenSC/wiki/GnuPG-and-OpenSC][OpenSC/OpenSC/wiki/GnuPG-and-OpenSC]]
+  - this uses OpenSC instead of SCDaemon
++ Wiki pages: [[https://github.com/OpenSC/OpenSC/wiki/Using-OpenSC][Using OpenSC]], [[https://github.com/OpenSC/OpenSC/wiki/Using-OpenSC][Overview]]
+
+
+*** Kleopatra
+
++ [[https://www.reddit.com/r/yubikey/comments/p1zvac/signature_public_key_not_found_locally/][Signature Public Key not found locally]] for me, it's my encryption
+  key. Everything seems normal in =gpg --card-status= and =gpg-card=. However,
+  =gpg -d= always iterates through subkeys when it decrypts, which i suspect
+  may be the issue.
+
+*** Emacs
++ [[https://www.gnu.org/software/emacs/manual/html_mono/auth.html][auth-source]]
+
+Emacs Wiki ([[https://www.emacswiki.org/emacs/Using_GPG][GPG topic]])
+
++ [[https://www.emacswiki.org/emacs/Gmail%2c_Gnus_and_GPG][Gmail, Gnus and GPG]]
++ [[https://www.emacswiki.org/emacs/GnuPG][Gnu PG]]
++ [[https://www.emacswiki.org/emacs/AutoEncryption][Auto Encryption]]
+
+Mastering Emacs
+
++ [[https://www.masteringemacs.org/article/keeping-secrets-in-emacs-gnupg-auth-sources][Keeping Secrets in Emacs with GnuPG and Auth Sources]]
+
+*** Forwarding
++ [[https://rabbithole.wwwdotorg.org/2021/03/03/gpg-agent-fwding-over-ssh.html][GPG Agent Forwarding via SSH]]
+
+*** Thunderbird
++ [[https://support.mozilla.org/en-US/kb/openpgp-thunderbird-howto-and-faq][OpenPGP in Thunderbird: How To and FAQ]]
++ [[https://wiki.mozilla.org/Thunderbird:OpenPGP:Smartcards][Thunderbird, OpenPGP and Smartcards]]
+
+*** KDE
++ [[https://ebzzry.com/en/gsk/][Setting up GPG and SSH in KDE]]
+
+*** Scripting
++ The s/o answers for [[https://unix.stackexchange.com/questions/60213/gpg-asks-for-password-even-with-passphrase][gpg asks for password even with --passphrase]] describe
+  using =--batch --passphrase-fd= to get a passphrase from a file descriptor
+  =<(pass --command)=
+
+
+* Topics
+* Issues
+
+* Old Dotfiles
+:PROPERTIES:
+:header-args+:            :tangle-mode (identity #o400) :mkdirp yes
+:header-args:conf+:       :tangle-mode (identity #o400) :mkdirp yes
+:header-args:sh+:         :tangle-mode (identity #o500) :mkdirp yes
+:header-args:bash+:       :tangle-mode (identity #o500) :mkdirp yes
+:header-args:scheme+:     :tangle-mode (identity #o700) :mkdirp yes
+:header-args:emacs-lisp+: :tangle-mode (identity #o600) :mkdirp yes
+:END:
