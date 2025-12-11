@@ -1,0 +1,131 @@
+:PROPERTIES:
+:ID:       a5f07a7f-bb06-426d-a76a-ccfd3e6f5a50
+:END:
+#+TITLE: Hyprland: Developing a Client App
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:bc406527-0255-4d70-b620-82495ac5c8fe][Hyprland]]
+
+* Resources
+
+* Hyprwire
+
+Hyprwire's interesting.
+
++ You can broadcast interactions to/from multiple clients and synchronize state
+  between them: shared pointer owned by the server)
+
+TL;DR, it's useful if you want a simple way to expose bits of information from
+hyprland to various applications or services.
+
+** D-Bus and Wayland Protocols
+
+Hyprwire sidesteps D-Bus neverland & wayland protocol /pol. That's a bit
+pejorative and I'm probably wrong. Anyways
+
++ D-Bus is hard.
+  - Can't extend the server without replacing it on the system (not 100% true).
+  - The D-Bus server must rely on precisely /zero/ dependencies.
+  - The server needs to be fast and updates are hard.
+  - Pretty much everything's a client.
+  - Backwards-compatible interfaces that avoid framework/deskenv specificity.
+    - Find a dbus v3 protocol? maybe that's not hard idk.
++ Wayland protocol arguments are hills to die on, slowly (or so i've heard).
+  - Until there's a protocol, clients can't really use it. The protocol is
+    outside of the problem domain it's meant to resolve. (Stability and
+    generality are features here)
+  - Divergence in wayland protocol specifications are problematic for developers
+    & users.
+
+That's all harsh (and not really serious), but the real issue: you can't
+incrementally experiment with new functionality.
+
+Tiling window managers don't have a great way to interface with system state.
+Look at scripts for waybar or dmenu.
+
++ These are usually one-off bash scripts. There are a few options. Bash isn't
+  that bad, but idk if dbus is really kosher there.
++ Bash is alright for dmenu, but for waybar, you need to poll or setup a socket.
+  Managing that socket & assoc. service can be small PITA.
++ Sharing code is harder, though bash scripts & configs are lightweight.
+
+... but if you want to extend your desktop with a few lightweight applications
+that are on the same page, it doesn't get any better with Python or even
+compiled languages.
+
+* IDEA Simple latch/lock tracker for modifiers
+
+** Implementing a hyprland wayland client
+
++ [[https://github.com/hyprwm/Hyprland/blob/2b0fd417d32278159d0ca1d23fb997588c37995b/protocols/input-method-unstable-v2.xml#L430][input-method-unstable-v2]] hyprland wayland protocols expose modifier state
++ track this and make it available to waybar/etc
+
+** Hyprwire Server/Clients
+
+An actual hyprland client seems like overkill, but hyprwire needs:
+
++ a server & client (like two files, probably)
+  - setup/teardown. see the manager & pointer thingies in [[https://github.com/hyprwm/hyprwire/blob/main/tests/Server.cpp][hyprwm/hyprwire
+    tests/Server.cpp]] (C/C++ scares me a bit)
+  - some error & state handling
++ a service , some initialization logic and a socket
++ and an unfortunate nix flake: I say that because it really needs to depend on
+  hyprland's flakes at least by default... probably just going to put the C++ in
+  my dotfiles and call it a day.
+
+So maybe hyprwire is overkill
+
+* Example
+
+This yubikey right here sometimes don't work right. I might want an Eww widget,
+but I don't want it to poll with bash scripts. It has limited d-bus integration.
+I also don't want this widget to manage a socket.
+
+I can consolidate that logic in one place, making the server app a source-only
+for multiple sinks that only listen for information. They don't need to know
+about GPG or SCD or PCSCD or CCID, nor do they need to build in those
+dependencies. The clients just share a piece of RAM with the server.
+
+They don't need to know how I've configured my system, etc. They don't even get
+to talk to anything sensitive (here, the source-to-sync needs to be one-way
+only)
+
+I just want a widget with some indicators, where I can push some buttons
+
++ shows current cards & active apps
++ some passive scanning that indicates service state (gpg, scdaemon)
++ =gpg-connect-agent 'scd serialno' 'learn --force' /bye=
++ teardown service + systemd sockets. refresh state.
+
+And a toggle that allows me to lock the laptop by pulling out the key. It's on
+by default, but I can temporarily disable for some variable amount of time if I
+need to (without changing a config file or systemd templates). The key wouldn't
+be needed for login, but it's easy to remember like locking your car. Trying to
+get systemd to do this did not go down the way I thought it would (probable
+skills issue: but you can easily step away from the laptop for longer than
+intended.)
+
+IDK if it would work out. But a similar interface can support simple
+functionality rendered in multiple places (like lockscreen widgets)... while
+making it simpler to customize how your system presents the data to you. For
+less security-focused use-cases, other developers can add on to a desktop
+experience without so much bureacracy or bash scripts... maybe, idk.
+
+#+begin_quote
+A timed screenlocker is a PITA if you regularly use multiple computers
+simultaneously, which is somewhat useful.
+
+Coordinating state across multiple terminals is not easy to resolve without
+networking services. It's also maybe a problem to resolve for VR/AR and IoT
+depending on
+
++ how identity/authorization are coordinated b/w "multi-seat" computers
++ that require distributed application state (low-latency; graphical)
+
+e.g. group VR/AR telepresence. or apps that need a "roaming profile" of like
+data artifacts for concurrent processes supporting user interactions (like
+sensor fusion + ML that requires an individual's physical data)
+#+end_quote
+

@@ -116,6 +116,57 @@ Examples:  [[https://git.kernel.org/pub/scm/git/git-manpages.git/tree/man1][man1
 
 *** Index
 
+**** Listing Pages
+
+There are other prefixes: =$n.xz=, =$n=, =${n}ssl=, ...
+
+#+begin_src shell
+q=guix
+man --where --regex --names-only --global-apropos -- "$q" \
+    | sed -e 's/^.*\///g' \
+    | rev | cut -f2- -d'.' | rev \
+    | sed -E 's/(.*)\.([0-9])(ssl\.gz|\.gz|\.xz)$/\1 \2/g'
+#+end_src
+
+***** Build a graph from "See Also"
+
+Run =env MANWIDTH=100000000 man --pager=cat $page= and =man= will drop =COLUMN= to
+only display a single word.
+
+#+name: awkManSeeAlso
+#+begin_example awk
+BEGIN { atSee=0; atSeeAlso=0; }
+($0 ~ /SEE$/) { atSee=1; next; }
+($0 ~ /ALSO$/) { atSeeAlso=1; next; }
+(atSee) && (atSeeAlso) && ($0 ~ /^$/) { exit; }
+(atSee) && (atSeeAlso) { print $1; next; }
+#+end_example
+
+#+name: manSeeAlso
+#+headers: :var awkProg=awkManSeeAlso page="ossl-guide-libraries-introduction"
+#+begin_src shell :results output code :wrap example
+# yayyy... ${page%%.7ssl.gz}
+
+env MANWIDTH=100000000 man --pager=cat "$page" | awk "$awkProg"
+#+end_src
+
+#+RESULTS: manSeeAlso
+#+begin_example
+openssl(1),
+ssl(7),
+evp(7),
+OSSL_LIB_CTX(3),
+openssl-threads(7),
+property(7),
+OSSL_PROVIDER-default(7),
+OSSL_PROVIDER-base(7),
+OSSL_PROVIDER-FIPS(7),
+OSSL_PROVIDER-legacy(7),
+OSSL_PROVIDER-null(7),
+openssl-glossary(7),
+provider(7)
+#+end_example
+
 **** Stats
 
 + man -k . | wc -l :: count all manpages indexed

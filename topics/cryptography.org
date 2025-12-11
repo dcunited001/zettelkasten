@@ -383,7 +383,6 @@ Not all daemons support all algorithms, not all clients are built with all key e
 #+begin_src ssh-config
 KexAlgorithms foobar-123, ... # in order of priority
 #+end_src
-
 * GPG
 
 ** Docs
@@ -394,6 +393,263 @@ KexAlgorithms foobar-123, ... # in order of priority
 
 ** Issues
 
+
+* TLS
+
+** Resources
++ [[https://www.gabriel.urdhr.fr/2021/11/30/tls1.2-intro/][Introduction to TLS v1.2]] diagrams describing session setup for DH. Summary of
+  TLS setup messages from that article below
++ [[https://tls12.xargs.org/][Illustrated TLS1.2 Connection]] detailed walkthrough providing:
+  - bash scripts demonstrating crypto and message construction in detail
+  - explains pretty much everything
++ [[https://x25519.xargs.org/][Hands-on: X25519 Key Exchange]] explains X25519 method of key exchange.
+
+|-------------------+----------------+--------------------|
+| *From Client*       | *Phase*          | *From Server*        |
+|-------------------+----------------+--------------------|
+|                   | *TCP Setup*      |                    |
+|-------------------+----------------+--------------------|
+| SYN               |                |                    |
+|                   |                | ACK                |
+| SYNACK            |                |                    |
+|-------------------+----------------+--------------------|
+|                   | *Hello*          |                    |
+|-------------------+----------------+--------------------|
+| ClientHello       |                |                    |
+|                   |                | ServerHello        |
+| Certificate       |                | Certificate        |
+|                   |                | ServerKeyExchange  |
+|                   |                | CertificateRequest |
+|                   |                | ServerHelloDone    |
+|-------------------+----------------+--------------------|
+|                   | *KEX*            |                    |
+|-------------------+----------------+--------------------|
+| ClientKeyExchange |                |                    |
+| CertificateVerify |                |                    |
+|                   |                |                    |
+|-------------------+----------------+--------------------|
+|                   | *CipherSpec*     |                    |
+|-------------------+----------------+--------------------|
+|                   |                | ChangeCipherSpec   |
+| ChangeCipherSpec  |                |                    |
+|-------------------+----------------+--------------------|
+|                   | *Finish*         |                    |
+|-------------------+----------------+--------------------|
+| Finished          |                |                    |
+|                   |                | Finished           |
+|-------------------+----------------+--------------------|
+|                   | *Session Resume* | NewSessionTicket   |
+|-------------------+----------------+--------------------|
+
++ Server-side KEX takes place after it's responded with =ServerHello=. Several
+  messages are assembled, including: KEX key calculation, certificate
+  transmission, mTLS check
++ Server sends first =ChangeCipherSpec= (I think? may be simultaneous)
+
+** Topics
+
+** Issues
+
+*** Compatibility in Session Negotiation
+
+I'm confused as to the specificity of KEX algorithms or other features. It's
+pretty clear the algorithms need to be the same (not RSA/X25519).
+
++ Github has some MAC/Cipher/KEX offers that my clients accept
+  - Using SSH-via-GPG with X25519 authentication subkey on yubikey openpgp
++ Yet, my =~/.ssh/config='s entry from my laptop to my desktop can't complete.
+  - It gets rejected right as =scdaemon= goes to ask the key to sign. I'm not sure
+    it's =scdaemon= or =pscsd= though.
+  - It's not something that =ssh= or =gpg-agent= catches in validation
+  - pinentry doesn't show for that server
+
+I've checked basic compatibility. There are a few additional algo's I enabled
+for Github and other forges when I encountered a similar issue ... Probably the
+last time i rotated keys? Or maybe after a reinstall.
+
++ ..... and for some reason now it works from NixOS -> Omarchy, but not the
+  other way.
+
+**** GPG and SSH Config
+
+Used drduh's guide to configure the key. There are new subkeys on the card.
+
++ Systemd initializes GPG.
++ =pinentry-qt= always pops up for decrypt and sign. PIN cache doesn't seem to
+  affect the functionality. pinentry shows for auth key when connecting to
+  github
+
+#+begin_src shell
+gpg -K
+#+end_src
+
+#+begin_example
+sec#  nistp384/0x9FCE9B3064CED760 2022-08-08 [C]
+      Key fingerprint = 9E01 3E94 5908 1C7D 2C10  DEB6 9FCE 9B30 64CE D760
+uid                   [ultimate] David Conner <aionfork@gmail.com>
+uid                   [ultimate] David Conner <dconner.pro@gmail.com>
+ssb>  ed25519/0xEBB35865F2A8536A 2025-12-02 [S] [expires: 2027-12-02]
+ssb>  ed25519/0xEB6D4B2FBECF991C 2025-12-02 [A] [expires: 2027-12-02]
+ssb>  rsa4096/0x3D392C14EA0A43B4 2025-12-02 [E] [expires: 2027-12-02]
+#+end_example
+
+**** Checking SSH Configs
+
+#+begin_src shell
+alias sshServerConfAll="sshd -T" # with sudo
+alias sshServerConf="sshd -G"
+alias sshHostConf="ssh -G" # $host
+alias sshCaps='for q in cipher cipher-auth mac kex key key-ca-sign key-cert key-plain protocol-version sig; do echo; echo "### $q"; echo; ssh -Q $q | sort; done'
+#+end_src
+
++ Tried checking client caps... they're the same.
++ The NixOS system supports sets =gssapi= off for host configs by default. They're
+  otherwise the same.
++ Arch has kerberos/gssapi settings in sshd, but most other configs are the same
++ Only key difference (no punning around) was the lack of an
+  =/etc/ssh/ssh_host_ecdsa= on my desktop... but it's never been there.
+
++ on the laptop: pcscd shows =LIBUSB_ERROR_NO_DEVICE= when using the yubikey 5ci
+  that has the new subkeys (this may be when I pull the device out)
++ both yubikeys have firmware 5.4.2. =dmesg= seems normal when I plug them in.x
++ pcscd version: desktop 2.3.0, laptop 2.4.0. This may be the issue ...
+
+To grok =APDU= and =SW= responses for OpenPGP, see 7.1 and 7.9 of
+[[https://gnupg.org/ftp/specs/OpenPGP-smart-card-application-3.4.1.pdf][openpgp-card-3.4.1.pdf]]
+
+**** Checking =pcscd= logs
+
+The only difference for APDUs in the the server I can connect to (github) are
+the following. Everything leading up to that is the same. It's like =pscsd= (or
+=scdaemon= driving it) get ready to ask for the pin, but never do (APDU 00 20)
+
+With this command...
+
+#+begin_src shell
+diff <(cat $d/sshgithub.txt | grep -E '[\[0-9\]{16}].*(APDU: 00) ' | sed 's/.*APDU/APDU/') \
+    <(cat $d/sshmyhost.txt | grep -E '[\[0-9\]{16}].*(APDU: 00) ' | sed 's/.*APDU/APDU/')
+#+end_src
+
+I'm seeing the same APDUs up to here.
+
+=APDU: 00 A4 04 00 06 <openpgp>= is preceded by some of the same, but these may be
+extended APDUs.
+
+#+begin_example
++ APDU: 00 A4 04 00 06 <openpgp>
++ APDU: 00 CA 00 C4 00
++ APDU: 00 CA 00 65 00
++ APDU: 00 CA 00 F9 00
++ APDU: 00 20 00 82 20 <pin>
++ APDU: 00 20 00 81 20 <pin>
++ APDU: 00 88 00 00 1A <authinput>
++ APDU: 00 C0 00 00 35
+#+end_example
+
+I considered submitting a bug to =pcsclite= but it requires uploading full logs.
+
++ if the pcscd version is the issue then interactions using the same firmware
+  version should proceed normally
+  - unless 2.4.0 =APDU= messages are calling some functionality the card doesn't
+    implement (or if there are other issues, but these should exhibit)
+  - if pcscd 2.4.0 uses different methods to assemble its encoded commands to
+    the device (APU stuff; and it does), then maybe this change doesn't break
+    utilization of smartcard OpenPGP app for RSA ... but does for ed25519.
+  - Nixos may have rolled back bc pcscd 2.5.0 was definitely not going to work
+    with =step-kms= _IF_ I ran it inside a =guix-shell=. (holy fuck so confusing)
+
+**** Checking scdaemon logs
+
+I've tried everything up to =scdaemon --debug-all= I haven't tried debugging
+=gpg-agent= yet. =scdaemon= shows basically the same info as =pcscd=
+
+***** Journal Logs
+
+I noticed this in my logs
+
+#+begin_example log
+gpg-agent[391196]: gpg-agent (GnuPG) 2.4.8 starting in supervised mode.
+gpg-agent[391196]: using fd 3 for browser socket (/run/user/1000/gnupg/S.gpg-agent.browser)
+gpg-agent[391196]: using fd 4 for extra socket (/run/user/1000/gnupg/S.gpg-agent.extra)
+gpg-agent[391196]: using fd 5 for ssh socket (/run/user/1000/gnupg/S.gpg-agent.ssh)
+gpg-agent[391196]: using fd 6 for std socket (/run/user/1000/gnupg/S.gpg-agent)
+gpg-agent[391196]: listening on: std=6 extra=4 browser=3 ssh=5
+gpg-agent[391198]: scdaemon[391198]: enabled debug flags: mpi crypto memory cache memstat hashing ipc card cardio reader app
+gpg-agent[391196]: smartcard signing failed: General error
+gpg-agent[391196]: ssh sign request failed: General error <GPG Agent>
+#+end_example
+
+Neither =scdaemon= nor =pcscd= note that an error is occurring. Here, only gpg-agent
+seems to be aware.
+
+**** Host Keys
+
+Discovered one issue via SSH from =laptop -> itself=. something was silently
+rejecting the host key.
+
++ The old entry was =ssh-ed25519=. I deleted it. Couldn't SSH before.
++ There are many entries for this key's fingerprint in =~/.ssh/known_hosts=
++ Then SSH could connect. Omarchy selects a =ecdsa-sha2-nistp256=, which is
+  appended to =known_hosts=, but no other entries have that fingerprint.
++ This didn't seem to fix =laptop -> desktop= though....
+
+**** Key Exchange
+
++ Github is selecting =kex: host key algorithm: ecdsa-sha2-nistp256=
++ Laptop (to itself): =kex: host key algorithm: ecdsa-sha2-nistp256=
++ My desktop is selecting =kex: host key algorithm: rsa-sha2-512=
+  - ECDSA server keys aren't available. this is more of a host keys thing...
+
+**** Host Keys (again)
+
++ I needed to be pedantic when specifying algorithms in =~/.ssh/config.any= ...
+  but I didn't recognize =ed25519=, so I left it out of =HostKeyAlgorithms=
++ I did something similar in =/etc/ssh/sshd_config= for nixos, so this needed to
+  be fixed in both places (=ed25519= was in =/etc/ssh/sshd_config= on omarchy)
+
+Priorities in =sshd_config= (and =ssh_config= for my systems)
+
+|-------------------------------+-------------------------------+-------------------------------|
+| old nixos                     | new nixos                     | defaults                      |
+|-------------------------------+-------------------------------+-------------------------------|
+| rsa > ecdsa                   | ed25519 > rsa > ecdsa         | ecdsa > ed25519 > rsa         |
+| key > sk-key > cert > sk-cert | cert > sk-cert > key > sk-key | cert > sk-cert > key > sk-key |
+|-------------------------------+-------------------------------+-------------------------------|
+So then, after fixing that, it works, but the defaults for arch =sshd= aren't
+great. noticiing was how I go went down this road.
+
+Changing the order in =sshd= changes algorithm selection when connecting
+
++ Notice how this almost _never_ changes for most services. may be
+  confirmation-bias from lack of experience.
+  - though for cert-based auth, it's less of a problem? idk
+  - if the =VerifyHostKeyDNS= is set or if cert-based auth matches, I think it
+    updates trust.
++ coordinating this requires precision. Otherwise, automation *breaks* and you log
+  in on weekends or whatever.
+
+#+begin_quote
+NO ONE I KNOW EVER TALKS ABOUT IT. Of course, I never sit down at a computer
+with anyone else. For homelab stuff, this just doesn't come up. It's relevant
+once:
+
++ your networks' scale induces an annoying coordination problem that forces you
+  to question whether it's the actual host
++ your automations fail when you swapped out VM Hosts
++ "It actually was DNS." which shouldn't be too much of a problem. if there's
+  load-balancing on ssh (?) maybe.
++ you're using cloud-config (and probably not with AWS/GCP/Azure: that's someone
+  else's job)
+
+in my life people have only rarely hinted at these =known_hosts= issues bc it
+implies experience -- or total lack thereof. It's a reasonable litmus ... but
+yeh. chances are that someone points this out while you're in college, but 95%
+of the time, you won't appreciate it until later. my family's idea that i'm
+lacking a college degree is infuriating. i lack a society that is anything other
+than effectively hostile. no? how much time have I spent in the last 10 years
+looking at someone else's screen while they program. probably like < 5 hours,
+even when working at "jobs" on "teams"
+#+end_quote
 
 * PKI
 
@@ -511,7 +767,7 @@ From Illustrated [[https://darutk.medium.com/illustrated-x-509-certificate-84aec
 
 *** ITU Standards
 
-+ X.509: 
++ X.509:
 + [[https://www.itu.int/ITU-T/recommendations/rec.aspx?rec=9604][X.680]]: ASN.1 notation, which defines the format of x509 records are defined.
 + [[https://www.itu.int/ITU-T/recommendations/rec.aspx?rec=9605][X.681]]: OID, which defines an address for standardized data types used in ASN.1
 + [[https://www.itu.int/ITU-T/recommendations/rec.aspx?rec=3061][X.722]]: GDMO -- Guidelines For the Definition of Managed Objects
@@ -703,5 +959,3 @@ pure python implementation of ECDSA
 
 + [[https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/ecdsa.py][ecdsa.py]]
 + [[https://github.com/tlsfuzzer/python-ecdsa/blob/master/src/ecdsa/test_ecdsa.py][test_ecdsa.py]]
-
-
