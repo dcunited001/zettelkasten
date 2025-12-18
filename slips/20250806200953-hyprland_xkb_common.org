@@ -124,9 +124,74 @@ relative symmetry with functionality.
 
 ** =ISO_LEVELX_{SHIFT,LATCH,LOCK}=
 
-From [[https://unix.stackexchange.com/questions/302163/how-to-make-a-iso-level4-shift-and-lock-in-xkb][How to make a ISO_Level4_Shift and Lock in xkb?]]
+*** XDB Types
+From xkeyboard-config:
 
-*** First Example
++ [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/blob/master/symbols/ru#L983-1059][symbols/ru: xkb_symbols "prxn"]], a keyboard for /reactionaries/, which I'm
+  assuming contains the missing cyrillic chars & greek-derived numerals
++ symbols/de: [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/blob/master/symbols/de#L390-394]["neo_base"]] and [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/blob/master/symbols/de#L1111-1182]["neo_qwertz"]]
+
+  From [[https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config/-/blob/master/types/level5#L1][xkb-config types/level5]] (included in types/{default,complete})
+
+#+begin_src  xkb
+default partial xkb_types "default" {
+    virtual_modifiers  LevelThree, LevelFive, NumLock;
+    // overview of types in table below
+    type "$TYPE_NAME" {
+        // modifiers = $SHIFT + $LOCK + $LVL3 + $LEVEL5;
+        modifiers = Shift + Lock + LevelThree + LevelFive;
+
+        // mappings...
+
+        // level names...
+    }
+}
+#+end_src
+
+I'm not quite sure what =preserve[...]= does in =xkb_types=
+
+|-----------------------------------------+-------+------+------------+-----------+---------+--------------------------------|
+| type name                               | L1    |      | L3         | L5        |         |                                |
+|-----------------------------------------+-------+------+------------+-----------+---------+--------------------------------|
+| EIGHT_LEVEL                             | Shift |      | LevelThree | LevelFive |         | shift up, no lock              |
+| EIGHT_LEVEL_ALPHABETIC                  | Shift | Lock | LevelThree | LevelFive |         | shift up, lock+shift down      |
+| EIGHT_LEVEL_SEMIALPHABETIC              | Shift | Lock | LevelThree | LevelFive |         | shift up, lock+shift down      |
+| EIGHT_LEVEL_WITH_LEVEL5_LOCK            | Shift |      | LevelThree | LevelFive | NumLock | numlock 5drop                  |
+| EIGHT_LEVEL_ALPHABETIC_WITH_LEVEL5_LOCK | Shift | Lock | LevelThree | LevelFive | NumLock | numlock 5drop+interchange      |
+| EIGHT_LEVEL_BY_CTRL                     | Shift | Lock | LevelThree | Control   |         | saves RCTL by eating both CTL? |
+|-----------------------------------------+-------+------+------------+-----------+---------+--------------------------------|
+The XKB parser has a state-machine (i guess) and it seems =key.type[GroupN]=
+alters the current =type= that some directives are processed with. It would be
+less confusing with the keyboard preview app that's based on xkb-geometry
+
+#+begin_example xkb
+default partial alphanumeric_keys # + modifier_keys if altering those
+xkb_symbols "ioneo" {
+    name[Group1]="Level7-se";
+        key.type[Group1] = "EIGHT_LEVEL";
+
+        // Modifier keys only have one level
+        key.type[Group1] = "ONE_LEVEL";
+        // key <MODK> ...
+
+        key <AE02> {
+            type= "EIGHT_LEVEL", // or apparently define them here. make shit up idk
+            symbols[Group1]= [ 2, at, twosuperior, dead_doubleacute, ISO_Level2_Latch, X, z, Z ]
+        };
+    }
+}
+#+end_example
+
+Alphanumeric insertion is fundamentally different, at least it definitely is in
+Emacs. I'm guessing that =hyprland= will still recognize keybinds, since =emacs=
+will self-insert unless there's a =bindd= on that key.
+
+
+*** From Stack Overflow
+
+From [[https://unix.stackexchange.com/questions/302163/how-to-make-a-iso-level4-shift-and-lock-in-xkb][How to make a ISO_Level4_Shift and Lock in xkb?]].
+
+**** First Example
 
 https://unix.stackexchange.com/questions/302163/how-to-make-a-iso-level4-shift-and-lock-in-xkb
 
@@ -175,7 +240,7 @@ xkb_compatibility "complete+ledcaps(shift_lock)" {
 
 #+end_src
 
-From 
+From
 
 #+begin_src c++
 //....in xkbcommon/xkbcommon-keysyms.h:
@@ -191,7 +256,7 @@ From
 
 with =setxkbmap -print=:
 
-#+begin_src text
+#+begin_src xkb
 xkb_keymap {
     xkb_keycodes  { include "evdev+aliases(qwerty)" };
     xkb_types     { include "complete"  };
@@ -217,8 +282,8 @@ yes. the dots are necessary................................
 xkb_keymap {
     xkb_keycodes  { include "evdev+aliases(qwerty)" };
     xkb_types     { include "complete"      };
-    xkb_compat    { 
-        include "complete"      
+    xkb_compat    {
+        include "complete"
 
         // add in interpretations
         // ISO_Level3_Latch includes a +AnyOf stanza and a +AnyOfOrNone stanza (same for ISO_Level5_Latch)
@@ -240,7 +305,7 @@ xkb_keymap {
             action= LatchMods(modifiers=Shift+LevelThree,clearLocks,latchToLock);
         };
     };
-    xkb_symbols   { 
+    xkb_symbols   {
         include "pc"
         include "us(altgr-intl)"
         include "inet(evdev)"
@@ -288,7 +353,7 @@ xkb_keymap {
         // ISO_Level3_Shift on Right Alt
         include "level3(ralt_switch)"
         // ISO_Level5_Shift on Right Ctrl
-        include "level5(rctrl_switch)"  
+        include "level5(rctrl_switch)"
     };
     xkb_geometry  { include "pc(pc105)"     };
 };
@@ -305,7 +370,7 @@ I've seen one twice. There's no grey-market for hobbyist or specialist tools
 like that in Roanoke, so it's like quadruple-jeopardy.
 #+end_quote
 
-*** Example: create a =type=
+**** Example: create a =type=
 
 https://unix.stackexchange.com/a/768054
 
@@ -356,14 +421,14 @@ Then apply the type here.
 default partial alphanumeric_keys
 xkb_symbols "level7se" {
     // Include your favourite symbols
-    include "se" 
+    include "se"
 
     name[Group1]="Level7-se";
     key.type[Group1] = "EIGHT_LEVEL_HYPER";
 
     // Copy in the lines from the symbols file of your choice and make
     // your edits, here just the button A
-    key <AC01>  { [ a, A, b, B, c, C, d, D ]}; 
+    key <AC01>  { [ a, A, b, B, c, C, d, D ]};
 
     // Modifier keys only have one level
     key.type[Group1] = "ONE_LEVEL";
@@ -371,18 +436,18 @@ xkb_symbols "level7se" {
     // Right Alt gives level 3
     key <RALT> {[ ISO_Level3_Shift ]};
 
-    // Left Win key gives level 5 
+    // Left Win key gives level 5
     key <LWIN> {[ ISO_Level5_Shift ]};
 
-    // The button to the left of the number line (paragraph on Swedish 
+    // The button to the left of the number line (paragraph on Swedish
     // keyboards. Tilde on some others?) gives level 7.
-    key <TLDE> {[ Hyper_R ]};    
+    key <TLDE> {[ Hyper_R ]};
 };
 #+end_src
 
 Then load with =setxkbmap -types complete+level7_hyper level7se=
 
-*** Seriously
+**** Seriously
 
 Where the fuck was this on the internet the entire fucking time goddamit
 
@@ -623,6 +688,178 @@ hyprctl binds -j | jq '. | map(select('"$select .modmask == $modmask"'))'
 
 # | select(.submap == "" and .modmask == 0) '
 #+end_src
+
+* IO Layout
+
+** IO Neo
+
+
+** German Neo Keyboard
+
+#+begin_quote
+Descriptions and maps are from =xkb_symbols "neo_base"=
+#+end_quote
+
+
+|--------+-----------------------+--------------+---------------------------------------------------------------------|
+| Xorg   | Access key            | Neo          |                                                                     |
+|--------+-----------------------+--------------+---------------------------------------------------------------------|
+| Level1 | none                  | Ebene1       | Ebene 1: normal                                                     |
+| Level2 | Shift                 | Ebene2       | Ebene 2: Shift                                                      |
+| Level3 | Caps/Bksl             | Ebene3       | Ebene 3: Caps or Bksl ("Mod three")                                 |
+| Level4 | Shift + Caps/Bksl     | Ebene5       | Ebene 5: Shift + Caps/Bksl                                          |
+| Level5 | Lsgt/RAlt             | Ebene4       | Ebene 4: Lsgt or RAlt ("Mod four")  (for selecting, use also Shift) |
+| Level6 | Shift + Lsgt/RAlt     | Pseudo-Ebene | Ebene 6: Caps/Bksl + Lsgt/RAlt                                      |
+| Level7 | Caps/Bksl + Lsgt/RAlt | Ebene6       | Locking uppercase: left Shift + right Shift                         |
+| Level8 |                       |              | Locking Ebene 4: Shift + Caps + Tab, or Lsgt + RAlt                 |
+|--------+-----------------------+--------------+---------------------------------------------------------------------|
+
+=key.type= is abbreviated below, removed =EIGHT_LEVEL= and
+
++ +L5_LK :: EIGHT_LEVEL_WITH_LEVEL5_LOCK
++ +AZ_L5_LK :: EIGHT_LEVEL_WITH_ALPHANUMERIC_LEVEL5_LOCK
+
+*** Neo Base
+
+Just the base (only interested in reasonable querty keyboard)
+
+|--------+----------+-------+------+-----------------+--------------+-----------+-----------------+---------------+--------------------+---------------+-----------------|
+|        | key.type | neo_q | key  | Level1          | Level2       | Level3    | Level4          | Level5        | Level6             | Level7        | Level8          |
+|--------+----------+-------+------+-----------------+--------------+-----------+-----------------+---------------+--------------------+---------------+-----------------|
+| Group1 | +L5 LK   |       | TAB  | Tab             | ISO_Left_Tab | Multi_key | ISO_Level5_Lock | ~∅~             | ~∅~                  | ~∅~             | ISO_Level5_Lock |
+| Group1 | +L5 LK   |       | TLDE | dead_circumflex | dead_caron   | U21BB     | U02DE           | dead_abovedot | Pointer_EnableKeys | dead_belowdot | ~∅~               |
+|--------+----------+-------+------+-----------------+--------------+-----------+-----------------+---------------+--------------------+---------------+-----------------|
+Numeral Row =AE=
+
+|--------+--------+---+------+------------+----------------------+----------------------+----------------+----------------+--------------+-------------+---|
+| Group1 | +L5 LK |   | AE01 |          1 | degree               | onesuperior          | onesubscript   | ordfeminine    | ~∅~            | notsign     | ~∅~ |
+| Group1 | +L5 LK |   | AE02 |          2 | section              | twosuperior          | twosubscript   | masculine      | ~∅~            | logicalor   | ~∅~ |
+| Group1 | +L5 LK |   | AE03 |          3 | U2113                | threesuperior        | threesubscript | numerosign     | ~∅~            | logicaland  | ~∅~ |
+| Group1 | +L5 LK |   | AE04 |          4 | guillemotright       | U203A                | femalesymbol   | ~∅~              | ~∅~            | U22A5       | ~∅~ |
+| Group1 | +L5 LK |   | AE05 |          5 | guillemotleft        | U2039                | malesymbol     | periodcentered | ~∅~            | U2221       | ~∅~ |
+| Group1 | +L5 LK |   | AE06 |          6 | dollar               | cent                 | U26A5          | sterling       | ~∅~            | U2225       | ~∅~ |
+| Group1 | +L5 LK |   | AE07 |          7 | EuroSign             | yen                  | U03F0          | currency       | ~∅~            | rightarrow  | ~∅~ |
+| Group1 | +L5 LK |   | AE08 |          8 | doublelowquotemark   | singlelowquotemark   | U27E8          | Tab            | ISO_Left_Tab | U221E       | ~∅~ |
+| Group1 | +L5 LK |   | AE09 |          9 | leftdoublequotemark  | leftsinglequotemark  | U27E9          | KP_Divide      | KP_Divide    | variation   | ~∅~ |
+| Group1 | +L5 LK |   | AE10 |          0 | rightdoublequotemark | rightsinglequotemark | zerosubscript  | KP_Multiply    | KP_Multiply  | emptyset    | ~∅~ |
+| Group1 | +L5 LK |   | AE11 |      minus | emdash               | ~∅~                    | U2011          | KP_Subtract    | KP_Subtract  | hyphen      | ~∅~ |
+| Group1 | +L5 LK |   | AE12 | dead_grave | dead_cedilla         | dead_abovering       | dead_dasia     | dead_diaeresis | ~∅~            | dead_macron | ~∅~ |
+|--------+--------+---+------+------------+----------------------+----------------------+----------------+----------------+--------------+-------------+---|
+Top Row =AD=
+
+|--------+-----------+-------+------+------------+--------------------+--------------+-----------------------+------------------+------------+-------------------+---|
+| Group1 | +AZ L5 LK | q     | AD01 | x          | X                  | ellipsis     | Greek_xi              | Prior            | Prior      | Greek_XI          | ~∅~ |
+| Group1 | +AZ L5 LK | w     | AD02 | v          | V                  | underscore   | ~∅~                     | BackSpace        | BackSpace  | radical           | ~∅~ |
+| Group1 | +AZ L5 LK | e     | AD03 | l          | L                  | bracketleft  | Greek_lambda          | Up               | Up         | Greek_LAMBDA      | ~∅~ |
+| Group1 | +AZ L5 LK | r     | AD04 | c          | C                  | bracketright | Greek_chi             | Delete           | Delete     | U2102             | ~∅~ |
+| Group1 | +AZ L5 LK | t     | AD05 | w          | W                  | asciicircum  | Greek_omega           | Next             | Next       | Greek_OMEGA       | ~∅~ |
+| Group1 | +AZ L5 LK | z     | AD06 | k          | K                  | exclam       | Greek_kappa           | exclamdown       | ~∅~          | multiply          | ~∅~ |
+| Group1 | +AZ L5 LK | u (u) | AD07 | h          | H                  | less         | Greek_psi             | KP_7             | KP_7       | Greek_PSI         | ~∅~ |
+| Group1 | +AZ L5 LK | i     | AD08 | g          | G                  | greater      | Greek_gamma           | KP_8             | KP_8       | Greek_GAMMA       | ~∅~ |
+| Group1 | +AZ L5 LK | o     | AD09 | f          | F                  | equal        | Greek_phi             | KP_9             | KP_9       | Greek_PHI         | ~∅~ |
+| Group1 | +AZ L5 LK | p     | AD10 | q          | Q                  | ampersand    | U03D5                 | KP_Add           | KP_Add     | U211A             | ~∅~ |
+| Group1 | +AZ L5 LK |       | AD11 | ssharp     | U1E9E              | U017F        | Greek_finalsmallsigma | U2212            | ~∅~          | jot               | ~∅~ |
+|--------+-----------+-------+------+------------+--------------------+--------------+-----------------------+------------------+------------+-------------------+---|
+| Group1 | +L5 LK    |       | AD12 | dead_acute | dead_tilde         | dead_stroke  | dead_psili            | dead_doubleacute | ~∅~          | dead_breve        | ~∅~ |
+|--------+-----------+-------+------+------------+--------------------+--------------+-----------------------+------------------+------------+-------------------+---|
+| Group1 | +AZ L5 LK | a     | AC01 | u          | U                  | backslash    | ~∅~                     | Home             | Home       | includedin        | ~∅~ |
+| Group1 | +AZ L5 LK | s     | AC02 | i          | I                  | slash        | Greek_iota            | Left             | Left       | integral          | ~∅~ |
+| Group1 | +AZ L5 LK | d     | AC03 | a          | A                  | braceleft    | Greek_alpha           | Down             | Down       | U2200             | ~∅~ |
+| Group1 | +AZ L5 LK | f     | AC04 | e          | E                  | braceright   | Greek_epsilon         | Right            | Right      | U2203             | ~∅~ |
+| Group1 | +AZ L5 LK | g     | AC05 | o          | O                  | asterisk     | Greek_omicron         | End              | End        | elementof         | ~∅~ |
+| Group1 | +AZ L5 LK | h     | AC06 | s          | S                  | question     | Greek_sigma           | questiondown     | ~∅~          | Greek_SIGMA       | ~∅~ |
+| Group1 | +AZ L5 LK | j     | AC07 | n          | N                  | parenleft    | Greek_nu              | KP_4             | KP_4       | U2115             | ~∅~ |
+| Group1 | +AZ L5 LK | k     | AC08 | r          | R                  | parenright   | Greek_rho             | KP_5             | KP_5       | U211D             | ~∅~ |
+| Group1 | +AZ L5 LK | l     | AC09 | t          | T                  | minus        | Greek_tau             | KP_6             | KP_6       | partialderivative | ~∅~ |
+| Group1 | +AZ L5 LK |       | AC10 | d          | D                  | colon        | Greek_delta           | KP_Separator     | comma      | Greek_DELTA       | ~∅~ |
+| Group1 | +AZ L5 LK |       | AC11 | y          | Y                  | at           | Greek_upsilon         | period           | KP_Decimal | nabla             | ~∅~ |
+|--------+-----------+-------+------+------------+--------------------+--------------+-----------------------+------------------+------------+-------------------+---|
+| Group1 | +AZ L5 LK | y (u) | AB01 | *ü*          | *Ü*                  | numbersign   | ~∅~                     | Escape           | Escape     | union             | ~∅~ |
+| Group1 | +AZ L5 LK | x     | AB02 | *ö*          | *Ö*                  | dollar       | U03F5                 | Tab              | Tab        | intersection      | ~∅~ |
+| Group1 | +AZ L5 LK | c     | AB03 | *ä*          | *Ä*                  | bar          | Greek_eta             | Insert           | Insert     | U2135             | ~∅~ |
+| Group1 | +AZ L5 LK | v     | AB04 | p          | P                  | asciitilde   | Greek_pi              | Return           | Return     | Greek_PI          | ~∅~ |
+| Group1 | +AZ L5 LK | b     | AB05 | z          | Z                  | grave        | Greek_zeta            | Undo             | Redo       | U2124             | ~∅~ |
+| Group1 | +AZ L5 LK | n     | AB06 | b          | B                  | plus         | Greek_beta            | colon            | ~∅~          | U21D0             | ~∅~ |
+| Group1 | +AZ L5 LK | m     | AB07 | m          | M                  | percent      | Greek_mu              | KP_1             | KP_1       | ifonlyif          | ~∅~ |
+|--------+-----------+-------+------+------------+--------------------+--------------+-----------------------+------------------+------------+-------------------+---|
+| Group1 | +L5 LK    |       | AB08 | comma      | endash             | quotedbl     | U03F1                 | KP_2             | KP_2       | U21D2             | ~∅~ |
+| Group1 | +L5 LK    |       | AB09 | period     | enfilledcircbullet | apostrophe   | U03D1                 | KP_3             | KP_3       | U21A6             | ~∅~ |
+|--------+-----------+-------+------+------------+--------------------+--------------+-----------------------+------------------+------------+-------------------+---|
+| Group1 | +AZ L5 LK |       | AB10 | j          | J                  | semicolon    | Greek_theta           | semicolon        | ~∅~          | Greek_THETA       | ~∅~ |
+|--------+-----------+-------+------+------------+--------------------+--------------+-----------------------+------------------+------------+-------------------+---|
+
+|--------+--------+---+------+--------------+--------------+------------+------------------+-----------+--------------------+-----------+---|
+| Group1 | +L5 LK |   | SPCE | space        | space        | space      | nobreakspace     | KP_0      | KP_0               | U202F     | ~∅~ |
+| Group1 | +L5 LK |   | NMLK | Tab          | ISO_Left_Tab | equal      | approxeq         | notequal  | Pointer_EnableKeys | identical | ~∅~ |
+| Group1 | +L5 LK |   | KPDV | KP_Divide    | KP_Divide    | division   | U2300            | U2044     | ~∅~                  | U2223     | ~∅~ |
+| Group1 | +L5 LK |   | KPMU | KP_Multiply  | KP_Multiply  | U22C5      | U2299            | multiply  | ~∅~                  | U2297     | ~∅~ |
+| Group1 | +L5 LK |   | KPSU | KP_Subtract  | KP_Subtract  | U2212      | U2296            | U2216     | ~∅~                  | U2238     | ~∅~ |
+| Group1 | +L5 LK |   | KP7  | KP_7         | U2714        | U2195      | U226A            | KP_Home   | KP_Home            | upstile   | ~∅~ |
+| Group1 | +L5 LK |   | KP8  | KP_8         | U2718        | uparrow    | intersection     | KP_Up     | KP_Up              | U22C2     | ~∅~ |
+| Group1 | +L5 LK |   | KP9  | KP_9         | dagger       | U20D7      | U226B            | KP_Prior  | KP_Prior           | U2309     | ~∅~ |
+| Group1 | +L5 LK |   | KPAD | KP_Add       | KP_Add       | plusminus  | U2295            | U2213     | ~∅~                  | U2214     | ~∅~ |
+| Group1 | +L5 LK |   | KP4  | KP_4         | club         | leftarrow  | includedin       | KP_Left   | KP_Left            | U2286     | ~∅~ |
+| Group1 | +L5 LK |   | KP5  | KP_5         | EuroSign     | colon      | U22B6            | KP_Begin  | KP_Begin           | U22B7     | ~∅~ |
+| Group1 | +L5 LK |   | KP6  | KP_6         | U2023        | rightarrow | includes         | KP_Right  | KP_Right           | U2287     | ~∅~ |
+| Group1 | +L5 LK |   | KP1  | KP_1         | diamond      | U2194      | lessthanequal    | KP_End    | KP_End             | downstile | ~∅~ |
+| Group1 | +L5 LK |   | KP2  | KP_2         | heart        | downarrow  | union            | KP_Down   | KP_Down            | U22C3     | ~∅~ |
+| Group1 | +L5 LK |   | KP3  | KP_3         | U2660        | U21CC      | greaterthanequal | KP_Next   | KP_Next            | U230B     | ~∅~ |
+| Group1 | +L5 LK |   | KPEN | KP_Enter     | KP_Enter     | KP_Enter   | KP_Enter         | KP_Enter  | KP_Enter           | KP_Enter  | ~∅~ |
+| Group1 | +L5 LK |   | KPEQ | KP_Equal     | ~∅~            | ~∅~          | ~∅~                | ~∅~         | ~∅~                  | ~∅~         | ~∅~ |
+| Group1 | +L5 LK |   | KP0  | KP_0         | U2423        | percent    | permille         | KP_Insert | KP_Insert          | U25A1     | ~∅~ |
+| Group1 | +L5 LK |   | KPDL | KP_Separator | period       | comma      | minutes          | KP_Delete | KP_Delete          | seconds   | ~∅~ |
+|--------+--------+---+------+--------------+--------------+------------+------------------+-----------+--------------------+-----------+---|
+*** Neo Quertz Base
+
++ The =neo_querty= keyboard layout only switches =y= and =y= from =neo_qwertz=
+  - locking is the same. there are many less symbols mapped though it seems that
+    =NoSymbol= (below, =∅=) just doesn't layer anything on top
+  - hard to tell if xkb changes reset numlock to on by default. then lvl5 is
+    stuck on. i also don't have LSGT.
+
+
+|--------+-----------+------+--------+--------------------+---+-----------------------+---+---+--------+---|
+| Group1 | +L5 LK    | AB08 | comma  | endash             | ~∅~ | U03F1                 | ~∅~ | ~∅~ | U21D2  | ~∅~ |
+| Group1 | +L5 LK    | AB09 | period | enfilledcircbullet | ~∅~ | U03D1                 | ~∅~ | ~∅~ | U21A6  | ~∅~ |
+| Group1 | +L5 LK    | AB10 | minus  | emdash             | ~∅~ | U2011                 | ~∅~ | ~∅~ | hyphen | ~∅~ |
+|--------+-----------+------+--------+--------------------+---+-----------------------+---+---+--------+---|
+| Group1 | +AZ L5 LK | AE11 | ssharp | U1E9E              | ~∅~ | Greek_finalsmallsigma | ~∅~ | ~∅~ | jot    | ~∅~ |
+|--------+-----------+------+--------+--------------------+---+-----------------------+---+---+--------+---|
+
+|--------+-----------+------+---+---+---+---------------+---+---+-------------------+---|
+| Group1 | +AZ L5 LK | AD01 | q | Q | ~∅~ | U03D5         | ~∅~ | ~∅~ | U211A             | ~∅~ |
+| Group1 | +AZ L5 LK | AD02 | w | W | ~∅~ | Greek_omega   | ~∅~ | ~∅~ | Greek_OMEGA       | ~∅~ |
+| Group1 | +AZ L5 LK | AD03 | e | E | ~∅~ | Greek_epsilon | ~∅~ | ~∅~ | U2203             | ~∅~ |
+| Group1 | +AZ L5 LK | AD04 | r | R | ~∅~ | Greek_rho     | ~∅~ | ~∅~ | U211D             | ~∅~ |
+| Group1 | +AZ L5 LK | AD05 | t | T | ~∅~ | Greek_tau     | ~∅~ | ~∅~ | partialderivative | ~∅~ |
+| Group1 | +AZ L5 LK | AD06 | z | Z | ~∅~ | Greek_zeta    | ~∅~ | ~∅~ | U2124             | ~∅~ |
+| Group1 | +AZ L5 LK | AD07 | u | U | ~∅~ | ~∅~             | ~∅~ | ~∅~ | includedin        | ~∅~ |
+| Group1 | +AZ L5 LK | AD08 | i | I | ~∅~ | Greek_iota    | ~∅~ | ~∅~ | integral          | ~∅~ |
+| Group1 | +AZ L5 LK | AD09 | o | O | ~∅~ | Greek_omicron | ~∅~ | ~∅~ | elementof         | ~∅~ |
+| Group1 | +AZ L5 LK | AD10 | p | P | ~∅~ | Greek_pi      | ~∅~ | ~∅~ | Greek_PI          | ~∅~ |
+| Group1 | +AZ L5 LK | AD11 | *ü* | *Ü* | ~∅~ | ~∅~             | ~∅~ | ~∅~ | union             | ~∅~ |
+|--------+-----------+------+---+---+---+---------------+---+---+-------------------+---|
+| Group1 | +AZ L5 LK | AC01 | a | A | ~∅~ | Greek_alpha   | ~∅~ | ~∅~ | U2200             | ~∅~ |
+| Group1 | +AZ L5 LK | AC02 | s | S | ~∅~ | Greek_sigma   | ~∅~ | ~∅~ | Greek_SIGMA       | ~∅~ |
+| Group1 | +AZ L5 LK | AC03 | d | D | ~∅~ | Greek_delta   | ~∅~ | ~∅~ | Greek_DELTA       | ~∅~ |
+| Group1 | +AZ L5 LK | AC04 | f | F | ~∅~ | Greek_phi     | ~∅~ | ~∅~ | Greek_PHI         | ~∅~ |
+| Group1 | +AZ L5 LK | AC05 | g | G | ~∅~ | Greek_gamma   | ~∅~ | ~∅~ | Greek_GAMMA       | ~∅~ |
+| Group1 | +AZ L5 LK | AC06 | h | H | ~∅~ | Greek_psi     | ~∅~ | ~∅~ | Greek_PSI         | ~∅~ |
+| Group1 | +AZ L5 LK | AC07 | j | J | ~∅~ | Greek_theta   | ~∅~ | ~∅~ | Greek_THETA       | ~∅~ |
+| Group1 | +AZ L5 LK | AC08 | k | K | ~∅~ | Greek_kappa   | ~∅~ | ~∅~ | multiply          | ~∅~ |
+| Group1 | +AZ L5 LK | AC09 | l | L | ~∅~ | Greek_lambda  | ~∅~ | ~∅~ | Greek_LAMBDA      | ~∅~ |
+| Group1 | +AZ L5 LK | AC10 | *ö* | *Ö* | ~∅~ | U03F5         | ~∅~ | ~∅~ | intersection      | ~∅~ |
+| Group1 | +AZ L5 LK | AC11 | *ä* | *Ä* | ~∅~ | Greek_eta     | ~∅~ | ~∅~ | U2135             | ~∅~ |
+|--------+-----------+------+---+---+---+---------------+---+---+-------------------+---|
+| Group1 | +AZ L5 LK | AB01 | y | Y | ~∅~ | Greek_upsilon | ~∅~ | ~∅~ | nabla             | ~∅~ |
+| Group1 | +AZ L5 LK | AB02 | x | X | ~∅~ | Greek_xi      | ~∅~ | ~∅~ | Greek_XI          | ~∅~ |
+| Group1 | +AZ L5 LK | AB03 | c | C | ~∅~ | Greek_chi     | ~∅~ | ~∅~ | U2102             | ~∅~ |
+| Group1 | +AZ L5 LK | AB04 | v | V | ~∅~ | ~∅~             | ~∅~ | ~∅~ | radical           | ~∅~ |
+| Group1 | +AZ L5 LK | AB05 | b | B | ~∅~ | Greek_beta    | ~∅~ | ~∅~ | U21D0             | ~∅~ |
+| Group1 | +AZ L5 LK | AB06 | n | N | ~∅~ | Greek_nu      | ~∅~ | ~∅~ | U2115             | ~∅~ |
+| Group1 | +AZ L5 LK | AB07 | m | M | ~∅~ | Greek_mu      | ~∅~ | ~∅~ | ifonlyif          | ~∅~ |
+|--------+-----------+------+---+---+---+---------------+---+---+-------------------+---|
+
 * ...
 
 Needlessly depressing overview ...

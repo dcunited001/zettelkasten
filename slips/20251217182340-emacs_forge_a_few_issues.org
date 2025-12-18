@@ -1,0 +1,92 @@
+:PROPERTIES:
+:ID:       7ec1d964-1255-4110-a14a-61ad913b00ae
+:END:
+#+TITLE: Emacs Forge: A few issues
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:53fc747a-3f12-411a-976a-345bb1924e2d][VCS Version Control]]
++ [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]
++ [[id:aeff1aef-4321-4666-8a70-a81025c5c01b][Lisp]] (bc EIEIO and heavy =cl-lib= usage)
+
+* Notes
+
+* Issues
+
+When I choose to load less content, it seems to crash less. Those properties are
+tough to fix in the SQLite, which I think needs to be done from within Forge's
+interface.
+
+
+
+** Problematic Forge Pull Leaves Magit Unusable
+
+Backtrace was deep in the magit code. I think bc I had updated Doom Emacs (and
+rebuilt) without necessarily having reloaded Emacs ... or something. Either:
+
++ Some code was loaded that was incompatible with elisp that had already loaded
++ Or the code then running was incompatible with SQL migrations that had run
+
+** Error during pagination while cloning discussions
+
+*** Max Lisp Eval Depth
+
+Getting this one first when pulling new repositories. The IDs seem to be the
+same. This happens after on several rounds of pagination, but after it begins
+iterating discussions.
+
+#+begin_example
+error in process filter: gsexp--encode-field: Lisp nesting exceeds ‘max-lisp-eval-depth’
+error in process filter: Lisp nesting exceeds ‘max-lisp-eval-depth’
+#+end_example
+
+And the backtrace
+
+#+begin_example
+gsexp--encode-field((nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body)))))
+
+;;;.. repeats 1585 times
+
+gsexp--encode-field((nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body)))))
+mapconcat(gsexp--encode-field (id (nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))))) "\n")
+gsexp--encode-field((discussion [(number "D_kwDOLc0Ozs4AZ_XA")] id (nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))))))
+mapconcat(gsexp--encode-field ((discussion [(number "D_kwDOLc0Ozs4AZ_XA")] id (nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body)))))) "\n")
+gsexp--encode-field((repository [(owner $owner) (name $name)] (discussion [(number "D_kwDOLc0Ozs4AZ_XA")] id (nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body)))))))
+mapconcat(gsexp--encode-field ((repository [(owner $owner) (name $name)] (discussion [(number "D_kwDOLc0Ozs4AZ_XA")] id (nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId ... createdAt updatedAt body))))))) "\n")
+gsexp--encode-field((query [($owner String!) ($name String!)] (repository [(owner $owner) (name $name)] (discussion [(number "D_kwDOLc0Ozs4AZ_XA")] id (nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId ... createdAt updatedAt body))))))))
+gsexp-encode((query [($owner String!) ($name String!)] (repository [(owner $owner) (name $name)] (discussion [(number "D_kwDOLc0Ozs4AZ_XA")] id (nil [(nil "DC_kwDOLc0Ozs4AlNiL")] id (replies [(first 20) (after "Y3Vyc29yOnYyOpHOANnfjg==")] (pageInfo endCursor hasNextPage) (edges (node id databaseId ... createdAt updatedAt body))))))))
+ghub--graphql-retrieve(#s(ghub--graphql-req :url ... :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe15cc4bdb52606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror nil :reader nil :buffer #<buffer *magit: ~/forge/walker/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x3c34c73044361f9>) :errorback nil :value ... ...) (repository discussions ... comments ... replies) "Y3Vyc29yOnYyOpHOANnfjg==")
+ghub--graphql-walk-response(#s(ghub--graphql-req :url ... :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe15cc4bdb52606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror nil :reader nil :buffer #<buffer *magit: ~/forge/walker/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x3c34c73044361f9>) :errorback nil :value ... ...) (data ...))
+ghub--graphql-handle-response((:peer ...) #s(ghub--graphql-req :url ... :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe15cc4bdb52606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror nil :reader nil :buffer #<buffer *magit: ~/forge/walker/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x3c34c73044361f9>) :errorback nil :value ... ...))
+url-http-activate-callback()
+url-http-chunked-encoding-after-change-function(25999 27040 1041)
+url-http-generic-filter(#<process api.github.com> .......)
+#+end_example
+
+*** 502 Gateway
+
+Then this one randomly. Both take awhile, but show different stack traces
+reported in the messages.
+
+#+begin_example
+signal(ghub-http-error (502 "Bad gateway" nil nil))
+ghub--signal-error((error http 502))
+ghub--graphql-handle-failure(#s(ghub--graphql-req :url ... :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe15cc4bdb52606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror nil :reader nil :buffer #<buffer *magit: ~/forge/walker/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x3c34c73044361f9>) :errorback nil :value ... ...) (error http 502) (... ... ... ... ... ...) (:error ... :peer ...))
+ghub--graphql-handle-response((:error (error http 502) :peer (:certificates ... :certificate ... :key-exchange "ECDHE-RSA" :protocol "TLS1.3" :cipher "AES-128-GCM" :mac "AEAD" :encrypt-then-mac nil)) #s(ghub--graphql-req :url #s(url :type "https" :user nil :password nil :host "api.github.com" :portspec nil :filename "/graphql" :target nil :attributes nil :fullness t :silent nil :use-cookies t :asynchronous t) :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe15cc4bdb52606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror nil :reader nil :buffer #<buffer *magit: ~/forge/walker/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x3c34c73044361f9>) :errorback nil :value (error http 502) :extra nil :query (query ...) :query-str "query ($owner: String!,$name: String!) {\n  repository (owner: $owner,name: $name) {\n    name\n    id\n    createdAt\n    updatedAt\n    nameWithOwner\n    parent {\n      nameWithOwner\n    }\n    description\n    homepageUrl\n    defaultBranchRef {\n      name\n    }\n    isArchived\n    isFork\n    isLocked\n    isMirror\n    isPrivate\n    hasDiscussionsEnabled\n    hasIssuesEnabled\n    hasWikiEnabled\n    licenseInfo {\n      name\n    }\n    stargazers {\n      totalCount\n    }\n    watchers {\n      totalCount\n    }\n    assignableUsers (first: 50) {\n      pageInfo {\n        endCursor\n        hasNextPage\n      }\n      edges {\n        node {\n          id\n          login\n          name\n        }\n      }\n    }\n    discussionCategories (first: 50) {\n      pageInfo {\n        endCursor\n        hasNextPage\n      }\n      edges {\n        node {\n          id\n          name\n          emoji\n          isAnswerable\n          description\n        }\n      }\n    }\n    discussions (first: 50,orderBy: {field: UPDATED_AT, direction: DESC}) {\n      pageInfo {\n        endCursor\n        hasNextPage\n      }\n      edges {\n        node {\n          id\n          databaseId\n          number\n          url\n          stateReason\n          answer {\n            id\n          }\n          author {\n            login\n          }\n          title\n          createdAt\n          updatedAt\n          closedAt\n          locked\n          category {\n            id\n          }\n          body\n          comments (first: 50) {\n            pageInfo {\n              endCursor\n              hasNextPage\n            }\n            edges {\n              node {\n                id\n                databaseId\n                author {\n                  login\n                }\n                createdAt\n                updatedAt\n                body\n                replies (first: 20) {\n                  pageInfo {\n                    endCursor\n                    hasNextPage\n                  }\n                  edges {\n                    node {\n                      id\n                      databaseId\n                      author {\n                        login\n                      }\n                      createdAt\n                      updatedAt\n                      body\n                    }\n                  }\n                }\n              }\n            }\n          }\n          labels (first: 50) {\n            pageInfo {\n              endCursor\n              hasNextPage\n            }\n            edges {\n              node {\n                id\n              }\n            }\n          }\n        }\n      }\n    }\n    issues (first: 50,orderBy: {field: UPDATED_AT, direction: DESC}) {\n      pageInfo {\n        endCursor\n        hasNextPage\n      }\n      edges {\n        node {\n          number\n          id\n          state\n          s..." :variables (... ...) :until (... ... ...) :pages 1 ...))
+url-http-activate-callback()
+url-http-content-length-after-change-function(229 380 151)
+url-http-wait-for-headers-change-function(1 388 387)
+url-http-generic-filter(#<process api.github.com> "HTTP/1.1 502 Bad Gateway\15\nDate: Wed, 17 Dec 2025 23:06:23 GMT\15\nContent-Type: text/html\15\nContent-Length: 150\15\nVary: Accept-Encoding, Accept, X-Requested-With\15\nX-GitHub-Request-Id: C596:26FC8C:31E02E:DA9B08:69433765\15\nServer: github.com\15\n\15\n<html>\15\n<head><title>502 Bad Gateway</title></head>\15\n<body>\15\n<center><h1>502 Bad Gateway</h1></center>\15\n<hr><center>nginx</center>\15\n</body>\15\n</html>\15\n")
+#+end_example
+
+*** On another repo
+
+Same error twice in a row
+
+#+begin_example
+error in process filter: ghub--signal-error: GraphQL Error: ((path "query" "repository" "discussion" "number") (extensions (code . "argumentLiteralsIncompatible") (typeName . "Field") (argumentName . "number")) (locations ((line . 3) (column . 5))) (message . "Argument 'number' on Field 'discussion' has an invalid value (\"D_kwDOO0Cobs4AhvvN\"). Expected type 'Int!'."))
+error in process filter: GraphQL Error: ((path "query" "repository" "discussion" "number") (extensions (code . "argumentLiteralsIncompatible") (typeName . "Field") (argumentName . "number")) (locations ((line . 3) (column . 5))) (message . "Argument 'number' on Field 'discussion' has an invalid value (\"D_kwDOO0Cobs4AhvvN\"). Expected type 'Int!'."))
+#+end_example
+
