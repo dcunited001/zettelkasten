@@ -1,0 +1,130 @@
+:PROPERTIES:
+:ID:       6d5da499-9fe2-4936-93a2-a0650d3386c1
+:END:
+#+TITLE: NixOS: UV in Docker With AMD GPU
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
++ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+
+* Resources
++ [[https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html][AMD Compatibility Matrix]]
+  
+* Notes
+:PROPERTIES:
+:header-args+: :var uvAmdTest=(or (bound-and-true-p ob@nixos_uv_in_docker_with_amd_gpu) (setq ob@nixos_uv_in_docker_with_amd_gpu "/data/ml/uv-amd-test"))
+:header-args+: :dir (identity ob@nixos_uv_in_docker_with_amd_gpu)
+:END:
+
+** JAX ROCm Test
+
+#+begin_src shell
+sudo podman run -it --network=host \
+    --device=/dev/kfd --device=/dev/dri \
+    --ipc=host --shm-size 16G --group-add video -\
+    -cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+    -w /root jax-rocm:0.6.0
+
+sudo podman run -it --device=/dev/kfd --device=/dev/dri \
+     --volume=${PWD}/v:/workspace \
+     -e 'HSA_OVERRIDE_GFX_VERSION=10.3.0' \
+     --entrypoint "/bin/bash" jax-rocm:0.6.0
+#     --security-opt seccomp=unconfined --group-add video \
+     #+end_src
+
+** Podman
+
+Just go ahead and sudo. Wtf is the point of tracing it out if it doesn't work?
+
+#+begin_src shell
+podman pull ghcr.io/astral-sh/uv:debian 
+podman run --rm -it ghcr.io/astral-sh/uv:debian 
+#+end_src
+
+*** Compose and Volumes
+
+#+begin_src shell
+echo $(pwd)
+#+end_src
+
+
+
+#+begin_src yaml :tangle (expand-file-name "compose.yml" ob@nixos_uv_in_docker_with_amd_gpu) 
+version: "3"
+services:
+  uv:
+    image: ghcr.io/astral-sh/uv:debian
+    container_name: uvamdtest
+    ports:
+      - "8080:80"
+    environment:
+      - "CUPY_INSTALL_USE_HIP=1"
+      - "ROCM_HOME=/opt/rocm"
+      - "HCC_AMDGPU_TARGET=gfx906"
+      - "HSA_OVERRIDE_GFX_VERSION=10.3.0"
+
+    volumes:
+      - ./v:/root/v
+#+end_src
+
+
+#+begin_src toml :tangle (expand-file-name "v/pyproject.toml" ob@nixos_uv_in_docker_with_amd_gpu) 
+[project]
+name = "project"
+version = "0.1.0"
+requires-python = ">=3.12.0"
+dependencies = [
+  "torch>=2.7.0",
+  "torchvision>=0.22.0",
+  "pytorch-triton-rocm>=3.3.0 ; sys_platform == 'linux'",
+]
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+  { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
+]
+pytorch-triton-rocm = [
+  { index = "pytorch-rocm", marker = "sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.3"
+explicit = true
+#+end_src
+
+* ....
+
+Not even a keychain?
+
+**** fucking stupid
+
+#+begin_src shell
+gpg | podman login docker.io -u me --password-stdin
+
+podman login docker.io -u myuser --authfile=<(gpg -d umwhynot.gpg)
+env REGISTRY_AUTH_FILE=<(gpg -d muhcontainers.auth.jaysawn.gpg && echo '') \
+    podman login docker.io -u myuser --verbose
+
+# DOESN"T FUCKING WORK. Fucking XDG_RUNTIME_DIR? I don't trust my user.
+#+end_src
+
+... hmmm maybe i'm wrong [[https://docs.podman.io/en/v5.1.0/markdown/podman-secret-create.1.html#pass][Secret Drivers: Pass]]
+
+#+begin_src shell
+gpgfile=foob.gpg
+podman secret create --driver pass dockerio $gpgfile
+#+end_src
+
+and my fucking GPG key is expired, so i can't use it: you must create the secret
+when enrolling it... or create a custom enrollment method which likely requires
+that you use that custom method every time. Nowhere do these secrets allow you
+to use =<(procsub)= because the windows virus spread its STDs everywhere and
+nothing is unix-y by default. Thanks for ruining a decade of CLI's Microsoft.
+YTF don't you take your =node.ts= and go home.
+
