@@ -147,6 +147,34 @@ csplit -f splitprefix- some-app-output.20240716.log "/=======/" "{*}"
   predict output (to sort files)
 + then =comm= and/or =diff= on sequential =csplit= output files
 
+*** Procsub over =ssh=
+
+[[https://www.youtube.com/watch?v=2A4bs40scSo][Extremely Cool Shell Trick]] has good explanations on what procsub is doing.
+Apparently =ls -l >(cat)= will show a link. It illustrates why this works (bc it
+creates a file descriptor in the =/proc= tree)
+
+#+begin_src shell
+tar cf - directory \
+    | tee >(ssh thisserver tar xf -) \
+    | tee >(ssh andthatserver tar xf -) > /dev/null
+#+end_src
+
+Also another useful trick to =tail= and store store logs
+
+#+begin_src shell
+tmp=$(mktemp); # this is now less necessary
+debug_some_service > >(less) 2>(tee $tmp)
+#+end_src
+
+And possible to procsub into editor:
+
+#+begin_src shell
+# run `:w !cat > /dev/stdout` # ... not the same terminals for processes
+vim -f --not-a-term <(echo $(date +%s | sha256sum)) | cat # >(cat)
+# nothing quite worked though. the -f option sounded close, but vim's not
+# expecting to write to /dev/stdout ... still useful though
+#+end_src
+
 *** Redirection
 
 **** Fan in, Fan Out
@@ -272,8 +300,6 @@ something.
 + Managing these with some idempotentence or immutability would be helpful. It's
   not such a great fit for Ansible though (too much custom config, hard to keep
   in git)
-
-
 *** System  Calls
 **** Comparing =Bash= and =ShinyMcLang=
 

@@ -19,7 +19,10 @@ When I choose to load less content, it seems to crash less. Those properties are
 tough to fix in the SQLite, which I think needs to be done from within Forge's
 interface.
 
-
+#+begin_quote
+and now I know what it means when it says forge "washes" the content, which is a
+reference to how =gnus= cleans emails.
+#+end_quote
 
 ** Problematic Forge Pull Leaves Magit Unusable
 
@@ -88,5 +91,315 @@ Same error twice in a row
 #+begin_example
 error in process filter: ghub--signal-error: GraphQL Error: ((path "query" "repository" "discussion" "number") (extensions (code . "argumentLiteralsIncompatible") (typeName . "Field") (argumentName . "number")) (locations ((line . 3) (column . 5))) (message . "Argument 'number' on Field 'discussion' has an invalid value (\"D_kwDOO0Cobs4AhvvN\"). Expected type 'Int!'."))
 error in process filter: GraphQL Error: ((path "query" "repository" "discussion" "number") (extensions (code . "argumentLiteralsIncompatible") (typeName . "Field") (argumentName . "number")) (locations ((line . 3) (column . 5))) (message . "Argument 'number' on Field 'discussion' has an invalid value (\"D_kwDOO0Cobs4AhvvN\"). Expected type 'Int!'."))
+#+end_example
+
+* Topics
+
+** Forge notes
+
+#+begin_src emacs-lisp
+;; (setq restclient-enable-eval t)
+#+end_src
+
+*** Forge =id= fields
+
+These share the base64 encoding for =node_id= obtained from =github=
+
+#+begin_src bash
+repository_id='Z2l0aHViLmNvbTowMTA6UmVwb3NpdG9yeTE0MTM3ODE5NA=='
+repository_forge_id='MDEwOlJlcG9zaXRvcnkxNDEzNzgxOTQ='
+
+echo "$repository_id" | base64 --decode && echo
+echo "$repository_forge_id" | base64 --decode && echo
+#+end_src
+
+#+RESULTS:
+| github.com:010:Repository141378194 |
+| 010:Repository141378194            |
+
+*** Github GraphQL =node_id=
+
+There's some kinda =base64= encoding for =node_id=, which is nice to know, since
+=forge= SQL id's are similar
+
+#+begin_src jq :in-file "/tmp/tmp.K0tUua2GmR/gh-pulls-for-repo.json"
+. as $data
+  | [ path(..| select(objects) | select(has("node_id"))) ]
+  | map(. += ["node_id"])
+  | map({ (.|join(".")): (. as $path | .=$data | getpath($path) | @base64d) })
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[
+  {
+    "0.node_id": "011:PullRequest1"
+  },
+  {
+    "0.user.node_id": "04:User1"
+  },
+  {
+    "0.labels.0.node_id": "05:Label208045946"
+  },
+  {
+    "0.milestone.node_id": "09:Milestone1002604"
+  },
+  {
+    "0.milestone.creator.node_id": "04:User1"
+  },
+  {
+    "0.assignee.node_id": "04:User1"
+  },
+  {
+    "0.assignees.0.node_id": "04:User1"
+  },
+  {
+    "0.assignees.1.node_id": "04:User1"
+  },
+  {
+    "0.requested_reviewers.0.node_id": "04:User1"
+  },
+  {
+    "0.requested_teams.0.node_id": "04:Team1"
+  },
+  {
+    "0.head.user.node_id": "04:User1"
+  },
+  {
+    "0.head.repo.node_id": "010:Repository1296269"
+  },
+  {
+    "0.head.repo.owner.node_id": "04:User1"
+  },
+  {
+    "0.head.repo.license.node_id": "07:Licensemit"
+  },
+  {
+    "0.base.user.node_id": "04:User1"
+  },
+  {
+    "0.base.repo.node_id": "010:Repository1296269"
+  },
+  {
+    "0.base.repo.owner.node_id": "04:User1"
+  },
+  {
+    "0.base.repo.license.node_id": "07:Licensemit"
+  }
+]
+#+end_example
+
+** Pulling topics individually
+:PROPERTIES:
+:header-args+: :var gh-org="basecamp" gh-repo="omarchy"
+:END:
+
+All we need are a list of issues that aren't already in the Forge database. Then
+we can iterate through the IDs and add them to the database. We want to use
+native Forge functionality for this, so everything proceeds through its
+validation mechanisms and corresponds to the current Forge version/schema that
+your emacs thinks it has loaded.
+
++ Issues and PR's have corresponding REST API endpoints
++ Discussions do not. These require GraphQL
+
+#+begin_quote
+Please note that running these blocks, including =restclient= or =emacs-lisp=, can
+leave traces of your GH tokens on your file system. You should *NOT* use your
+=forge.el= token for this and instead create a read-only graphql token.
+
+Please refer to section [[https://docs.magit.vc/ghub/Creating-and-Storing-a-Token.html][2.3]] in the [[https://docs.magit.vc/ghub][ghub.el manual]] for doing so.
+#+end_quote
+
+*** Emacs =restclient= and =ghub=
+
+
+*** Issues
+
+Test =jq= on =repos/:gh-org/:gh-repo/issues?sort=created= results
+
+#+begin_src jq :in-file "/tmp/tmp.K0tUua2GmR/gh-issues-for-repo.json"
+sort_by(.created_at) | map([ (.repository_url | split("/") | .[-2]),
+      (.repository_url | split("/") | .[-1]),
+      .number,
+      .created_at,
+      .updated_at,
+      .closed_at ])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[
+  [
+    "octocat",
+    "Hello-World",
+    1347,
+    "2011-04-22T13:33:48Z",
+    "2011-04-22T13:33:48Z",
+    null
+  ]
+]
+#+end_example
+
+#+name: forgeIssuesFor
+#+headers: :jq-args "--raw-output" :eval query :results table
+#+begin_src restclient :jq "sort_by(.created_at) | map([ (.repository_url | split(\"/\") | .[-2]), (.repository_url | split(\"/\") | .[-1]), .number, .created_at, .updated_at, .closed_at ])[] | @csv"
+:gh-graphql-url = https://api.github.com/graphql
+:gh-url-base = https://api.github.com
+:gh-url-path = repos/:gh-org/:gh-repo/issues
+:gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+
+:headers = <<
+Accept: application/vnd.github+json
+Authorization: Bearer :gh-token
+X-GitHub-Api-Version: 2022-11-28
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:138.0) Gecko/20100101 Firefox/138.0
+# terminating with a comment is necessary
+
+GET :gh-url-base/:gh-url-path?sort=created
+:headers
+#+end_src
+
+#+RESULTS: forgeIssuesFor
+| basecamp | omarchy | 3882 | 2025-12-15T16:18:10Z | 2025-12-18T22:29:44Z |   |
+| basecamp | omarchy | 3883 | 2025-12-15T17:25:44Z | 2025-12-15T21:13:53Z |   |
+| basecamp | omarchy | 3891 | 2025-12-16T07:01:07Z | 2025-12-18T14:15:11Z |   |
+| basecamp | omarchy | 3893 | 2025-12-16T09:48:43Z | 2025-12-16T12:34:32Z |   |
+| basecamp | omarchy | 3898 | 2025-12-16T13:26:40Z | 2025-12-20T10:16:51Z |   |
+| basecamp | omarchy | 3899 | 2025-12-16T13:39:31Z | 2025-12-21T19:24:15Z |   |
+| basecamp | omarchy | 3900 | 2025-12-16T16:28:34Z | 2025-12-21T16:07:59Z |   |
+| basecamp | omarchy | 3906 | 2025-12-16T18:44:41Z | 2025-12-16T19:00:25Z |   |
+| basecamp | omarchy | 3908 | 2025-12-16T19:58:41Z | 2025-12-16T19:58:41Z |   |
+| basecamp | omarchy | 3912 | 2025-12-17T01:13:18Z | 2025-12-20T03:46:30Z |   |
+| basecamp | omarchy | 3914 | 2025-12-17T08:32:40Z | 2025-12-17T18:47:07Z |   |
+| basecamp | omarchy | 3915 | 2025-12-17T10:01:09Z | 2025-12-17T11:07:55Z |   |
+| basecamp | omarchy | 3916 | 2025-12-17T11:19:39Z | 2025-12-17T11:19:39Z |   |
+| basecamp | omarchy | 3917 | 2025-12-17T13:42:50Z | 2025-12-21T15:37:41Z |   |
+| basecamp | omarchy | 3918 | 2025-12-17T14:38:40Z | 2025-12-19T09:06:09Z |   |
+| basecamp | omarchy | 3921 | 2025-12-17T18:48:29Z | 2025-12-17T18:48:29Z |   |
+| basecamp | omarchy | 3924 | 2025-12-17T21:24:21Z | 2025-12-20T22:16:49Z |   |
+| basecamp | omarchy | 3926 | 2025-12-17T23:45:04Z | 2025-12-18T22:01:25Z |   |
+| basecamp | omarchy | 3930 | 2025-12-18T04:43:43Z | 2025-12-18T15:53:06Z |   |
+| basecamp | omarchy | 3936 | 2025-12-18T16:19:29Z | 2025-12-18T22:49:03Z |   |
+| basecamp | omarchy | 3938 | 2025-12-18T17:23:50Z | 2025-12-18T17:23:50Z |   |
+| basecamp | omarchy | 3941 | 2025-12-19T12:55:46Z | 2025-12-19T12:58:23Z |   |
+| basecamp | omarchy | 3942 | 2025-12-19T15:24:25Z | 2025-12-19T15:24:25Z |   |
+| basecamp | omarchy | 3945 | 2025-12-19T19:25:26Z | 2025-12-21T19:05:02Z |   |
+| basecamp | omarchy | 3947 | 2025-12-20T03:34:13Z | 2025-12-20T13:57:40Z |   |
+| basecamp | omarchy | 3948 | 2025-12-20T04:03:34Z | 2025-12-20T04:16:46Z |   |
+| basecamp | omarchy | 3954 | 2025-12-21T10:51:04Z | 2025-12-21T10:54:53Z |   |
+| basecamp | omarchy | 3955 | 2025-12-21T15:33:32Z | 2025-12-21T16:42:25Z |   |
+| basecamp | omarchy | 3956 | 2025-12-21T16:27:55Z | 2025-12-21T16:35:53Z |   |
+| basecamp | omarchy | 3957 | 2025-12-21T17:29:13Z | 2025-12-21T20:16:56Z |   |
+
+*** Pull Requests
+
+Test =jq= on =repos/:gh-org/:gh-repo/pulls?sort=created= results
+
+#+begin_src jq :in-file "/tmp/tmp.K0tUua2GmR/gh-pulls-for-repo.json"
+sort_by(.created_at) |
+  map([ (.html_url | split("/") | .[-4]),
+        (.html_url | split("/") | .[-3]),
+        .number,
+        .created_at,
+        .updated_at,
+      .closed_at ])
+#+end_src
+
+#+RESULTS:
+#+begin_example
+[
+  [
+    "octocat",
+    "Hello-World",
+    1347,
+    "2011-01-26T19:01:12Z",
+    "2011-01-26T19:01:12Z",
+    "2011-01-26T19:01:12Z"
+  ]
+]
+#+end_example
+
+#+name: forgePullsFor
+#+headers: :jq-args "--raw-output" :eval query :results table
+#+begin_src restclient :jq "."
+# "sort_by(.created_at) | map([ (.html_url | split(\"/\") | .[-4]), (.html_url | split(\"/\") | .[-3]), .number, .created_at, .updated_at, .closed_at ])[] | @csv"
+:gh-graphql-url = https://api.github.com/graphql
+:gh-url-base = https://api.github.com
+:gh-url-path = repos/:gh-org/:gh-repo
+:gh-token := (auth-source-pass-get 'secret "api.github.com/dcunited001^ghub")
+
+:headers = <<
+Accept: application/vnd.github+json
+Authorization: Bearer :gh-token
+X-GitHub-Api-Version: 2022-11-28
+User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:138.0) Gecko/20100101 Firefox/138.0
+# terminating with a comment is necessary
+
+GET :gh-url-base/:gh-url-path/pulls?sort=created&direction=desc
+:headers
+#+end_src
+
+#+RESULTS: forgePullsFor
+| jq: parse error: Invalid escape at line 9470 | column 2513 |
+
+**** Problem
+
+Some of these responses are returning invalid JSON, at least as parsed by =jq=,
+(both in the file with the raw response JSON and when forwarded to the =jq= query)
+
+#+begin_example json
+{
+  "body": "## Summary\r\nI love the omarchy logo, so I added it to the font to use in places where it's not possible to use vector graphics, like Waybar. The logo can also be used in other places throughout the system.\r\n\r\n## Changes\r\n- Updated \\`omarchy.ttf\\` with the new logo glyph\r\n- Added \\`omarchy.woff\\` for web font support (better browser compatibility)\r\n- Font version updated to 2.0\r\n\r\n## Glyphs\r\n| Glyph | Code | Description |\r\n|-------|------|-------------|\r\n|  | \\\\\ | Omarchy icon |\r\n|  | \\\\\ | Omarchy logo (new) |\r\n\r\n<img width=\"289\" height=\"122\" alt=\"screenshot-2025-12-01_23-43-30\" src=\"https://github.com/user-attachments/assets/baf0857b-3197-414a-a318-9610c17716d9\" />\r\n<img width=\"275\" height=\"137\" alt=\"screenshot-2025-12-01_23-45-24\" src=\"https://github.com/user-attachments/assets/0f6bfc47-1f47-494b-a846-dca738f99da0\" />\r\n<img width=\"240\" height=\"123\" alt=\"screenshot-2025-12-01_23-44-57\" src=\"https://github.com/user-attachments/assets/e1ffb0a5-90fe-40a3-832d-03c611640b0e\" />\r\n<img width=\"245\" height=\"126\" alt=\"screenshot-2025-12-01_23-50-01\" src=\"https://github.com/user-attachments/assets/7f56b82a-553f-4404-b6d9-9ede3dda75c3\" />\r\n\r\n## Font Drop\r\n<img width=\"1896\" height=\"1030\" alt=\"screenshot-2025-12-02_00-02-12\" src=\"https://github.com/user-attachments/assets/d73c7a12-6cf0-4c7e-8e28-6ef60ee0e37a\" />\r\n\r\n\r\n## Usage Example\r\n\r\n```jsonc\r\n// config/waybar/config.jsonc\r\n\"custom/omarchy\": {\r\n  \"format\": \"<span font='omarchy'>\</span>\",\r\n  ...\r\n}\r\n```\r\n\r\n## Pros\r\n- **Works where vectors don't**: Waybar, Rofi, notifications, and other GTK/Qt apps don't support inline SVGs\r\n- **Brand consistency**: The omarchy logo can now be used as a font glyph throughout the interface\r\n- **Scalability**: Vector-based glyph scales perfectly at any size without quality loss\r\n- **Single resource**: One font file serves all sizes, no need for multiple image assets\r\n- **Performance**: Font glyphs are cached and rendered efficiently by the system\r\n- **Inline with text**: Can be placed directly in text strings without complex markup\r\n- **CSS styling**: Change color, size, shadows, and effects with simple CSS properties\r\n- **Web resource**: WOFF format can be used as a web resource for omarchy references on websites and documentation\r\n- **Cross-platform**: Works in any application that supports custom fonts (GTK, Qt, web browsers, terminals)"
+}
+#+end_example
+
+For forge, =M-x forge-pull-topic 3729= succeeds.
+
+** Collecting Discussion IDs
+
+... like a caveman
+
+An alternate approach, while hacky, is to extract the IDs from the web
+interface. While IDK how to do fancy things like =--remote-debugging-port=9222=
+with Emacs and org-babel, i do happen have this ever-useful "copy and paste".
+Forgive me for being a bit neanderthal in my approach, but it works.
+
+#+begin_src javascript
+let links = Array.from(document.querySelectorAll('a[href^="/basecamp/omarchy/discussions/"]'))
+let rx = new RegExp(".*/[0-9]+$")
+let linkSet = new Set(links.filter(el => el.href.match(rx)).map(el => el.href));
+discussions = Array.from(linkSet).
+  map(el => el.split('/').
+      slice(-1)[0]).
+  join('\n')
+#+end_src
+
+
+*** Bug on discussion 173
+
+This is giving me an ID like above
+
+#+begin_example
+error("BUG: Failed to narrow query")
+ghub--graphql-narrow-query(((pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body (replies [(first 20)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body)))))) (replies) "Y3Vyc29yOnYyOpHOAOf8GA==")
+ghub--graphql-narrow-query((comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body (replies [(first 20)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body)))))) ((id . "DC_kwDOO0Cobs4A0d-5") replies) "Y3Vyc29yOnYyOpHOAOf8GA==")
+ghub--graphql-narrow-query((discussion [(number 176)] id databaseId number url stateReason (answer id) (author login) title createdAt updatedAt closedAt locked (category id) body (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body (replies [(first 20)] (pageInfo endCursor hasNextPage) (edges (node id databaseId ... createdAt updatedAt body)))))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))) (comments (id . "DC_kwDOO0Cobs4A0d-5") replies) "Y3Vyc29yOnYyOpHOAOf8GA==")
+ghub--graphql-narrow-query((repository [(owner $owner) (name $name)] (discussion [(number 176)] id databaseId number url stateReason (answer id) (author login) title createdAt updatedAt closedAt locked (category id) body (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body (replies [...] (pageInfo endCursor hasNextPage) (edges ...))))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))) (issue [(number 176)] number id state stateReason isReadByViewer (author login) title createdAt updatedAt closedAt locked (milestone id) body (assignees [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id))) (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))) (pullRequest [(number 176)] number id state isReadByViewer (author login) title createdAt updatedAt closedAt mergedAt isDraft locked maintainerCanModify isCrossRepository (milestone id) body (baseRef name (repository nameWithOwner)) baseRefOid (headRef name (repository (owner login) nameWithOwner)) headRefOid (assignees [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id))) (reviewRequests [(first 50)] (pageInfo endCursor hasNextPage) (edges (node (requestedReviewer "... on User { id }\n")))) (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id))))) (discussion comments (id . "DC_kwDOO0Cobs4A0d-5") replies) "Y3Vyc29yOnYyOpHOAOf8GA==")
+ghub--graphql-narrow-query((query [($owner String!) ($name String!)] (repository [(owner $owner) (name $name)] (discussion [(number 176)] id databaseId number url stateReason (answer id) (author login) title createdAt updatedAt closedAt locked (category id) body (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body (replies ... ... ...)))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))) (issue [(number 176)] number id state stateReason isReadByViewer (author login) title createdAt updatedAt closedAt locked (milestone id) body (assignees [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id))) (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))) (pullRequest [(number 176)] number id state isReadByViewer (author login) title createdAt updatedAt closedAt mergedAt isDraft locked maintainerCanModify isCrossRepository (milestone id) body (baseRef name (repository nameWithOwner)) baseRefOid (headRef name (repository (owner login) nameWithOwner)) headRefOid (assignees [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id))) (reviewRequests [(first 50)] (pageInfo endCursor hasNextPage) (edges (node (requestedReviewer "... on User { id }\n")))) (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))))) (repository discussion comments (id . "DC_kwDOO0Cobs4A0d-5") replies) "Y3Vyc29yOnYyOpHOAOf8GA==")
+ghub--graphql-prepare-query((query [($owner String!) ($name String!)] (repository [(owner $owner) (name $name)] (discussion [(number 176)] id databaseId number url stateReason (answer id) (author login) title createdAt updatedAt closedAt locked (category id) body (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body (replies ... ... ...)))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))) (issue [(number 176)] number id state stateReason isReadByViewer (author login) title createdAt updatedAt closedAt locked (milestone id) body (assignees [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id))) (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))) (pullRequest [(number 176)] number id state isReadByViewer (author login) title createdAt updatedAt closedAt mergedAt isDraft locked maintainerCanModify isCrossRepository (milestone id) body (baseRef name (repository nameWithOwner)) baseRefOid (headRef name (repository (owner login) nameWithOwner)) headRefOid (assignees [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id))) (reviewRequests [(first 50)] (pageInfo endCursor hasNextPage) (edges (node (requestedReviewer "... on User { id }\n")))) (comments [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id databaseId (author login) createdAt updatedAt body))) (labels [(first 50)] (pageInfo endCursor hasNextPage) (edges (node id)))))) (repository discussion comments (id . "DC_kwDOO0Cobs4A0d-5") replies) "Y3Vyc29yOnYyOpHOAOf8GA==")
+ghub--graphql-retrieve(#s(ghub--graphql-req :url ... :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe76f4199fcd606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror t :reader nil :buffer #<buffer *magit: ~/forge/omarchy/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x1aaf096a24aafd4d>) :errorback nil :value ... ...) (repository discussion comments ... replies) "Y3Vyc29yOnYyOpHOAOf8GA==")
+ghub--graphql-walk-response(#s(ghub--graphql-req :url ... :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe76f4199fcd606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror t :reader nil :buffer #<buffer *magit: ~/forge/omarchy/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x1aaf096a24aafd4d>) :errorback nil :value ... ...) (data ...))
+ghub--graphql-handle-response((:peer ...) #s(ghub--graphql-req :url ... :forge nil :silent nil :method "POST" :headers #f(compiled-function () #<bytecode 0xe76f4199fcd606b>) :handler ghub--graphql-handle-response :unpaginate nil :noerror t :reader nil :buffer #<buffer *magit: ~/forge/omarchy/*> :synchronous nil :callback #f(compiled-function (data) #<bytecode -0x1aaf096a24aafd4d>) :errorback nil :value ... ...))
+url-http-activate-callback()
+url-http-chunked-encoding-after-change-function(13669 14676 1007)
+url-http-generic-filter(#<process api.github.com>)
+#+end_example
+
+But this one gets caught with the following message
+
+#+begin_example
+error in process filter: ghub--graphql-narrow-query: BUG: Failed to narrow query
+error in process filter: BUG: Failed to narrow query
 #+end_example
 
