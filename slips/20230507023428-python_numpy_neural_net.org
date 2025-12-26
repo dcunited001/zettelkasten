@@ -1,0 +1,96 @@
+:PROPERTIES:
+:ID:       07c6e3c1-313a-4770-8e20-5c70a1906aa7
+:END:
+#+TITLE: Python: numpy neural net
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
+
+
+* Notes
+
+An interesting snippet that was posted in discord for a neural net in raw numpy.
+
+#+begin_src python
+import numpy as np
+import matplotlib.pyplot as plt
+
+class NeuralNetwork:
+    def __init__(self, layers, lr, epoch, X, t):
+        self.lr = lr
+        self.epoch = epoch
+        self.layers = layers
+        self.X = X
+        self.t = t
+        self.weights = {layer_idx: np.random.randn(layers[layer_idx + 1], layers[layer_idx]) / 5 for layer_idx in
+                        range(len(layers) - 1)}
+        self.bias = np.random.randn((len(layers) - 1), 1) / 5
+        self.z_dict = {i: np.zeros((layers[i])) for i in range(len(layers))}
+        self.z_dict[0] = X[0].flatten()
+        delta_3 = (self.z_dict[2][0] - t[0]) * (self.z_dict[2][0] * (1 - self.z_dict[2][0]))
+        delta_4 = (self.z_dict[2][1] - t[1]) * (self.z_dict[2][1] * (1 - self.z_dict[2][1]))
+        self.delta = np.array([delta_3, delta_4])
+        self.plot_data = []
+
+    def forward(self):
+        for z in X:
+            z = z.reshape(-1, 1)
+            for layer_idx in range(1, (len(layers))):
+                a = np.matmul(self.weights[(layer_idx - 1)], z) + self.bias[(layer_idx - 1)]
+                z = 1 / (1 + np.exp(-a))
+                self.z_dict[layer_idx] = z.flatten()
+            error = 0.5 * (z.flatten() - t) ** 2
+        total_error = np.sum(error)
+        return total_error
+
+    def sigmoid(self, z):
+        return z * (1 - z)
+
+    def backward(self):
+        for l in reversed(range(len(self.weights))):
+            diag = np.diag(self.delta)
+            arr = np.array([self.z_dict[l], self.z_dict[l]])
+            new_derivatives = np.matmul(diag, arr)
+            self.weights[l] = self.weights[l] - (self.lr * new_derivatives)
+            self.bias[l] = sum(self.delta)
+            sigmoid_arr = np.diag(self.sigmoid(self.z_dict[l]))
+            self.delta = np.matmul(sigmoid_arr, np.matmul(self.weights[l].T, self.delta))
+        return self.weights, self.bias
+
+    def train(self):
+        for e in range(self.epoch):
+            total_error = self.forward()
+            self.plot_data.append([e, total_error])
+            self.backward()
+            print(f"{e}: {total_error}")
+        return self.weights, self.bias,
+
+    def predict(self):
+        return self.z_dict[2]
+
+    def plot(self):
+        data = np.array(self.plot_data)
+        plt.scatter(data[:, 0], data[:, 1])
+        print(data[:, 0])
+        print(data[:, 1])
+        plt.xlabel("Epoch")
+        plt.ylabel("Total Error")
+        plt.show()
+
+
+
+if __name__ == '__main__':
+    X = np.array([[0.05, .10]])
+    t = np.array([1.00, 3.00])
+    lr = 0.5
+    n = 2
+    H = 2
+    output = 2
+    epoch = 40000
+    layers = [n, H, output]
+    nn = NeuralNetwork(layers, lr, epoch, X, t)
+    nn.train()
+    print(nn.predict())
+    nn.plot()
+#+end_src

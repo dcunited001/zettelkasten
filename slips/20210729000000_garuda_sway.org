@@ -1,0 +1,226 @@
+:PROPERTIES:
+:ID:       18af505b-1234-1234-1234-8d8b9f97a629
+:END:
+#+title: Garuda Sway
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+#+category: slips
+
+
+* XDG
+
+  + [ ] document the XDG config that I tried
+
+* System
+
+** Setup [[https://wiki.archlinux.org/title/Pacman/Package_signing][Keyring]]
+
+Although Garuda has already done this, redo it with an HKPS keyserver
+just to be sure. Add =keyserver hkps://keyserver.ubuntu.com= to
+pacman's =/etc/pacman/gnupg/gpg.conf= and then:
+
+#+BEGIN_SRC
+sudo pacman-key --init
+sudo pacman-key --populate archlinux
+#+END_SRC
+
+The default GPG config for pacman may need some more work. Also add
+the keyserver line to your =~/.gnupg/gpg.conf=.
+
+** Pacman
+
+*** Yay
+
+    Yay is needed for =passwordsafe=, =emacs-git= and others.
+
+** Critical Tools
+
+*** PWSafe
+
+    + import the key by fingerprint
+      - go to [[https://pwsafe.org/contact.php][pwsafe.org/contact.php]] or find [[https://aur.archlinux.org/packages/passwordsafe/][passwordsafe on AUR]] to
+        locate the key fingerprint
+    + the pacman-key setup should be completed first.
+      - ensure you are using HKPS and not HKP!
+      - however, it is unclear (to me without further reflection)
+        whether importing with a =gpg= command inherits the pacman
+        config.
+        - =gpg= will start writing configs in =~/.gnupg/= if you don't
+          have them, so i'm assuming that it doesn't inherit those
+          settings.
+      - if not, there is some bad advice on the =!aur passwordsafe=
+        page. since =pacman-key= uses mostly the same syntax, the
+        =passwordsafe= author's key needs to be imported to that
+        keyring
+        - ultimately, pacman/yay will ask you to import the key into
+          pacman's ring if it has not effectively been imported yet.
+
+#+BEGIN_SRC
+sudo pacman-key --keyserver hkps://keyserver.ubuntu.com --recv-keys
+        $KEYID
+
+yay -Syu passwordsafe
+#+END_SRC
+
+
+* Dotfiles
+
+  + I want to reintegrate things into a git repo:
+    - either with submodules
+    - or with something like dotcrafter
+
+** [[https://www.gnu.org/software/stow/manual/stow.html#Terminology][Stow]]
+
+   + [ ] create a =.stowrc= (?)
+   + [ ] and a =.stow-global-ignore= set
+   + [ ] and per-package =.stow-local-ignore= files
+   + [ ] plan out how this works for:
+     - multiple WM's
+     - literate dotfiles (and their deploys)
+   + [ ] create an install script
+
+* Tools
+
+** TODO [[SystemCrafters/crafter-configs][Ranger]]
+
+Ranger is written in python. Try NNN first.
+
+  + [X] Copy ranger config: =ranger --copy-config=all= then set
+    =RANGER_LOAD_DEFAULT_RC=FALSE=
+    - ranger will no longer start from wofi
+  + [ ] Config ranger
+
+
+** [[https://github.com/jarun/nnn][NNN]]
+
+NNN is written in C++, but plugins are in shell :(
+
++ Plugins:
+  - Gutenburg (download from project gutenburg)
+
+** Ungoogled Chromium
+
+   This takes forever to build but is a program where there is *some*
+   _non-DOM_ benefit to a local build. For me, it took 12
+   hours. Chaotic AUR will simply replace this, so if you care, note
+   it in your =/etc/pacman.conf= or all that time was wasted.
+
+   If you already have a build package for your =ungoogled-chromium=
+   or another browser, then import with =sudo pacman -U
+   pkgfile.forgot.ext.name= -- firefox and its derivatives also take
+   forever...
+
+* Emacs
+
+** Building Emacs
+
+   + Install yay
+   + =yay -Syu emacs-git --editmenu=
+     - modify the =PKGBUILD= to ensure =JIT=YES=
+     - Build, then test with =emacs --
+
+   The standard emacs org-mode is alright for notetaking from here
+   until more of the system is configured.
+
+** Chemacs
+
+** Doom Emacs
+
+** Emacs Config
+
+
+* Sway
+
++ [[https://github.com/japhir/ArchConfigs][Ilja Kocker]] A system crafters community example config using Arch/Sway
++ [[https://gitlab.com/ethancedwards8/dotfiles][Ethan C Edwards]] Another Syscraft example config: multiple WM; uses sway.
+
++ [ ] Make wdisplays settings permanent (resolution/orientation)
++ [ ] Remove transparency
++ [ ] Config waybar
++ [ ] Config wofi
++ [ ] config
+
+** Floated Apps
+
++ pwsafe
++ settings apps
+
+*** TODO find out how to float specific app windows?
+
+** Config
+
+   + =/etc/sway/config= exists but isn't used unless necessary
+   + =~/.config/sway/config.d/defaults=
+     - originates from Garuda's =/etc/skel=
+
+** Sway keybindings
+
+    + Refer to [[https://github.com/swaywm/sway/wiki/Shortcut-handling][shortcut handling]] to get info on bindsyms
+    + use =wev= or =wshowkeys= to get keysyms
+
+** XKB
+
+   + Add keyboard to =/usr/share/X11/xkb/= in =./symbols/io= and
+     update =./rules/evdev=
+   + update =~/.config/sway/config.d/input= with the following and
+     restart x/wayland/sway
+
+#+BEGIN_SRC
+input type:keyboard {
+      xkb_layout "io"
+      xkb_variant "altgr-intl"
+      xkb_options "caps:hyper"
+}
+#+END_SRC
+
+*** TODO fix IO/sway layout problems
+
+    + [X] remap super+[0-9]
+    + [X] fix super+shift+[0-9]
+    + [ ] get sway to properly interpret the hyperkey
+
+*** TODO determine whether updating =./xkb/rules/evdev.xml= is necessary
+
+The =altgr-intl= variant wasn't defined in =evdev.xml= and was only
+defined in sway's configs. is updating this XML no longer necessary?
+
+*** Problems with Sway and IO layout
+
+    + Anything with a digit shortcut needs to be remapped
+      - Alt  +[0-9]
+      - Ctrl +[0-9]
+      - Super+[0-9] is sent to sway as Super+[)!@#$%^&*(]
+        - Whereas Super + shift + [0-9] is effectively processed
+          normally, since sym+shift+[0-9] is translated to [0-9] but
+          the shift key is held down. The WM thus processes it as a
+          normal Mod+Shift+[0-9]... wierd.
+
+    + This also happens in KDE & Emacs and is one tradeoff with the
+      digimon layout: you have to rework your standard hotkeys.
+      - In MacOS this can be fixed in one place, but with XKB it
+        means that you have to fix it in the receiving WM/app.
+
+** Login Manager
+
+???
+
+
+** Wofi
+
+*** NWGGrid
+
+    This is what garuda includes in addition to Wofi. Remove it for now.
+
+
+
+** Waybar
+
+
+** HTOP
+
+
+*** TODO htop is closing when opened
+
+* Annndd
+

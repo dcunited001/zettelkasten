@@ -1,0 +1,557 @@
+:PROPERTIES:
+:ID:       18af505b-0000-0000-0000-8d8b9f97a629
+:END:
+#+AUTHOR:    David Conner
+#+title: Garuda Fresh
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+#+category: slips
+
+file:///usr/share/plasma/plasmoids/org.kde.latte.containment/contents/ui/main.qml:846:5:
+LatteContainment.LayoutManager is not a type
+
+* asdf
+** Initial Post-Upgrade
+
+- setup pacman mirrors
+  - try to prioritize the selected mirrors, instead of replacing the entire list.
+  - the cmdline tool may not be necessary at first
+
+**** pacman keys
+
+- glance over =/etc/pacman.conf=
+- i think this was already done:
+  - =pacman-keys --init && pacman-keys --populate archlinux=
+  - =pacman --refresh-keys=
+  - sudo echo "keyserver hkps://keyserver.ubuntu.com" >> /etc/pacman.d/gnupg/gpg.conf
+    - and perhaps to =~/.gnupg/gpg.com=
+
+**** Initial pacman sync
+
+- =sudo pacman -Syu=
+- =sudo pamac upgrade=
+
+**** Pamac Upkeep
+
+most =*-git= packages from =pamac= are not selected for updates.
+
+- TODO: update command, since it requires pacman hooks to fire every time
+
+#+begin_src shell
+# won
+pacman -Qsq git | grep -e "-git$" | xargs -n1 sudo pamac reinstall --no-confirm
+
+# sed just won't ... it won't
+sed -z 's/\n/ /gm' /data/dev/_notes/_pamac-git.txt | sudo pamac reinstall
+
+# it also won't `sed | echo` ... ? but it will sed | sort
+
+#
+sudo pamac reinstall $(pacman -Qsqem git | grep -e "-git$" | sed -z 's/\n/ /g')
+#+end_src
+
+**** Garuda Assistant
+
+- enable adguard/hblock
+  - add FB/Twitter to /etc/hosts
+- remove guest user
+  - (then reenable/restart) to try to diff the =.config= file structure with my old user's
+- Asian fonts
+  - =fcitx-input-support= failing (no existy)
+
+- disable =pulseaudio= and enable =pipewire= (will add user to realtime group)
+  - this creates support for wayland,
+    - req. for build of =fedora-firefox-wayland-bin=
+    - probably helpful for the build of =obs-studio-wayland-git=
+
+** Audio & Video
+
+*** [Pipewire](https://wiki.archlinux.org/index.php/PipeWire)
+
+- for bluetooth, i was running into lack of codec support.
+  - bluetooth requires =pulseeffects=, removing =pulseaudio= and installing =pipewire-pulse=
+  - also install =gst-plugins-pulseeffects-git=
+
+
+** Setup Credentials
+
+**** Password Manager
+
+- =sudo pamac install passwordsafe=
+  - and edit build files (to update the sha1sum for the key)
+  - also may need to import the keys for this repo (then =sudo pacman-key --lsign $key=)
+- configurations:
+  - pwsafe has a nasty habit of remaining open while both locked and displaying
+    a visible password in the KDE preview for its window ... which CAN'T be
+    closed until the password safe is unlocked.......
+    - SO: *ensure* pwsafe stays on top of all windows
+    - AND: *ensure* that =ESC= closes pwsafe
+  - ensure
+
+**** SSH
+
+
+**** Firefox: =fedora-firefox-wayland-bin=
+
+- and sync
+
+
+
+
+** Debloat and re/bloat
+
+- orphaned packages =pacman -Qdt=
+  - =pacman -Rns pulseaudio-alsa= (and alsa-plugins)
+
+
+
+
+** Graphics
+
+- (look at root history for =mhwd= commands)
+- remove video-linux (& nouveau/mesa/etc)
+
+**** NVidia 390xx
+
+- install nvidia-390xx-*
+  - for me, the kernel modules didn't build properly
+  - it required reinstalling from root command line after X11 gfx crash
+- ???
+
+**** Cuda 10.0 or 10.2
+
+- can install cuda 10.2, but it is likely to fail.
+  - 10.1 will force nvidia-450xx
+
+- install cuda 10.0 or 10.2
+  - 10.2 requires editing build files for gcc8 (and key config)
+    - validate sha1sum for [gcc-8.4.0](https://ftp.gnu.org/gnu/gcc/gcc-8.4.0/gcc-8.4.0.tar.xz.sig)
+  - installing with =pamac= GUI will take care of key import problems (both are needed)
+
+**** NVidia Video Codec SDK
+
+- download and install.
+
+
+
+* =/home/me=
+
+- block facebook in =/etc/hosts=
+
+** Shell
+
+*** ZSH
+
+- =sudo pacman -Syu zsh-autosuggestions zsh-syntax-highlighting zsh-history-substring-search tldr=
+
+*** Konsole
+
+- profiles & color themes in =~/.config/konsole= and =~/.local/share/konsole=
+
+*** Shell Tools
+
+- =tldr=, autocomplete tools
+
+** Dotfiles
+
+**** =~/.config=
+
+refer to the previous Garuda setup for XDG
+
+**** =~/.local=
+
+**** =~/.files=
+
+- doom emacs
+- TODO: decide on shell (fish/zsh ... no power lvl 9,000....)
+
+** Localization
+
+
+*** Fonts
+
+#+begin_src bash
+# there are other fonts on AUR as well
+sudo pacman -Syu \
+  adobe-source-han-sans-jp-fonts \
+  adobe-source-han-serif-jp-fonts \
+  otf-ipafont \
+  ttf-hanazono \
+  ttf-sazanami
+
+sudo pamac install ttf-juliamono
+#+end_src
+
+
+*** Fcitx5
+
+config is now in =~/.config/fcitx5/profile=
+
+#+begin_src bash
+# this will give you the Kana Kanji and Hangul keyboards
+sudo pacman -Syu fcitx5-im fcitx5-kkc fcitx5-hangul
+#+end_src
+
+- =fcitx5-im= the "ontology" package group via pacman which contains:
+  - =fcitx=: ding an sich
+  - =fcitx5-qt5= and =fcitx5-gtk= ... (probably don't need qt4)
+  - =fcitx5-configtool=: kde config tool (includes kcm-fcitx5)
+- =fcitx5-table-other=: LaTeX... NOPE for =fcitx5= it's simply additional CN/ZH
+  input methods
+
+- DISABLE _FCITX_ CLIPBOARD HISTORY!!
+  - also, its hotkey =C-;= conflicts with =comment-line= in emacs
+- TODO: there are other potential plugins with:
+  - keyboard conflicts
+  - potential security implications
+- also select "vertical candidate history"
+
+*** Keyboards
+
+**** X11 =xkb= Keyboard
+
+- =sudo cp ~/.config/dc/xkb/symbols/io /usr/share/X11/xkb/symbols=
+- =sudo vim /usr/share/X11/xkb/rules/evdev.xml=
+  - to add the XML from =cat ~/.config/dc/xkb/evdev.add.xml=
+
+**** =kf5= locale
+
+- =sudo cp -R ~/.config/dc/kf5/locale/countries/io /usr/share/kf5/locale/countries/=
+  - includes the laughingman flag
+
+**** =emoji= keyboard
+
+pin the app in KDE on all desktops
+
+** Analyzing Config Changes to GUI/System
+
+> i.e. for a fresh install of a new version of some Linux Distro, analyzing the
+> changes to a distro's standard configs (either to =/etc/whatever= or to
+> =/etc/skel= or =/home/user/{.local/.config}= is a good way to learn what
+> Distro's unpack during install and how they manage upgrades.
+
+**** List of Locations for Garuda:
+
+- =/etc/skel= default configs for each new user
+- =/etc/profile.d=
+-
+
+*** Reconcile old =/home/me= with the new =/home/me=
+
+- reference =/home/guest=, the new =/etc/skel=, and the old home dir
+  - file-tree diff with =diff -qry $old $new=
+  - possibly create a new users home dir.
+    - however, =/home/guest= and =/etc/skel= are identical
+
+- find XDG folders (user inherits from some system config, right?)
+
+**** Create a loop device with the old =home= backup image
+
+#+end_src shell
+# UP:
+sudo losetup /dev/loop0 /mnt/harddisk/backup.img
+sudo mkdir /mnt/$LOOP_MOUNT
+sudo mount /dev/loop0 /mnt/$LOOP_MOUNT
+
+# DOWN:
+sudo umount /mnt/$LOOP_MOUNT
+sudo rm -rf /mnt/$LOOP_MOUNT
+sudo losetup -d /dev/loop0
+#+end_src
+
+- the point is to see how the OS tries to merge new configs from =/etc/skel=
+  for a user whose home directory already exists.
+- it would seem that KDE does almost nothing to the users's existing dir
+  contents, but it's not clear whether that is:
+  - containerized on a per-app basis (i.e. merged for some apps and not for others)
+    - latte did not import anything from =/etc/skel/.config/latte=, not even
+      =lattedockrc=
+  - containerized on a per-folder basis
+  - managed on some basis in/between per-app & per-folder
+  - managed in an entirely ad-hoc basis
+  - what parts of this does KDE manage?
+    - X11?
+    - Garuda/Arch installer?
+    - User creation tools/scripts?
+    - Per-service initialization?
+
+** KDE Config
+
+**** =~/.config/kdeglobals=
+
+**** Shortcuts
+
+*** KDE Activities
+
+- TODO: determine whether there is a declarative/literate means of doing this
+
+
+*** [Kröhnkite Tiling](https://github.com/esjeon/krohnkite)
+
+configure keys (defaults are mostly fine):
+
+- meta-l, go to right tile
+  - conflicts with lock screen
+- meta-(+/-), increase/decrease master window count
+  - conflict with zoom desktop
+- cycle does pretty much the same thing as next/prev layout
+
+- TODO: set a list applications to float by default
+- TODO: link into dotfiles
+
+to get the KWin settings for krohnkite:
+
+#+begin_src shell
+mkdir -p ~/.local/share/kservices5/
+ln -s ~/.local/share/kwin/scripts/krohnkite/metadata.desktop ~/.local/share/kservices5/krohnkite.desktop
+#+end_src
+
+- to ignore: add ...
+- to float: (can always unfloat anything)
+  - systemsettings5, systemsettings
+  - dolphin
+  - konsole
+
+*** Configure Window & Application Settings
+
+- can add metadata for apps that make it easier to tile them, script them or manage activities
+
+** Text Editing
+
+**** Emacs: =emacs-native-comp-git=
+
+to install dependencies for doom emacs: =pacman -Syu emacs git rigrep fd=
+
+- home folder was already in place. run:
+  - =~/.emacs.d/bin/doom install=
+  - =~/.emacs.d/bin/doom/sync=
+  - =~/.emacs.d/bin/doom/upgrade=
+
+**** VS Code: =visual-studio-code-insiders-bin=
+
+**** Obsidian: =obsidian-insider=
+
+**** IntelliJ
+
+(wait on this one)
+
+**** Git
+
+- gitkraken, gitq
+- setup global ignore: =git config --global core.excludesfile $HOME/.gitignore_global=
+
+** Docs & Resources
+
+**** Chrome SSB's for fast app access
+
+- does Firefox support these yet?
+
+
+** Programming
+
+**** Julia
+
+
+** Misc Pamac
+
+**** Qt
+
+- qt5-doc, qt5-examples
+- qt5ct (settings)
+
+**** Zeal Docs
+
+
+
+** KDE Apps
+
+**** Programming
+
+
+- KDevelop
+- [Umbrello](https://umbrello.ude.org): UML app with code import/generation
+-  Clazy: clang linting for Qt
+- KDiff3 or kompare
+- Kile (latex frontend)
+- KSystemLog
+- Kleopatra (certificate manager)
+- Okteta (hex editor)
+- ELF Dissector (for binaries)
+- Heaptrack or KCachegrind or Massif-Visualizer
+  - profiler frontends
+- KAppTemplate (for Qt or KDE Apps, mainly)
+- Kirigami Gallery (widget browser)
+
+#+begin_src shell
+sudo pacman -Syu okteta kile kdiff3 ksystemlog kompare kleopatra kapptemplate clazy umbrello heaptrack kcachegrind massif-visualizer kirigami2 kirigami-gallery
+#+end_src
+
+to install:
+
+- [bustle](https://gitlab.freedesktop.org/bustle/bustle) record d-bus activity and produce diagrams
+
+from pamac:
+
+- Symmy (GPG frontend)
+- kdesrc-build
+- KUIViewer (qt designer ui file viewer)
+
+**** Misc
+
+#+begin_src shell
+sudo pacman -Syu kwalletmanager akregator neochat tellico pim-data-exporter
+#+end_src
+
+- KWalletManager
+- Akregator
+- NeoChat (matrix client)
+- Tellico (manage a database of collectible stuff)
+  - supports URLs, ebooks & visual novels
+- PIM Data Exporter
+- KTimeTracker
+
+from pamac:
+
+- Peruse
+- Kongress (plan a conference)
+- Spacebar (SMS App)
+
+** Multimedia
+
+**** OBS: =obs-studio-wayland=
+
+**** Krita:
+
+- with SeExpr
+
+
+** Chrome SSB's
+
+- check [this gist](https://gist.github.com/golimpio/9359041) or [this gist](https://gist.github.com/demonbane/1065791), but the methods are brittle
+- may need scripting to pull app logo's out of =chrome://app-icons/*= when
+  google or KDE don't do this for you
+
+**** To create, [follow these instructions](https://getalltech.com/how-to-create-and-open-website-in-application-mode-on-google-chrome/)
+
+- best to make chrome's home page [chrome://apps](chrome://apps)
+
+** Thunderbird
+
+#+begin_src shell
+# install thunderbird, extras and language packs
+sudo  pacman -Syu thunderbird thunderbird-extension-enigmail birdtray thunderbird-dark-reader \
+        thunderbird-i18n-en-us \
+        thunderbird-i18n-es-es \
+        thunderbird-i18n-fr \
+        thunderbird-i18n-ja \
+        thunderbird-i18n-it
+#+end_src
+
+*** Setup GMail
+
+- add email address
+  - wayyyyy too many emails!!!
+- misc settings:
+- set as default mail, reader, feed app
+
+- TODO: how to show gmail folders & restrict output
+- TODO: move mail storage
+- TODO: signing with PGP
+
+**** Gmail Folder Setup
+
+- configure folders on GMail
+  - add filters for projects/etc
+  - nest old/unused folders
+
+- how does TB handle GMail language changes?
+
+*** TB Folders
+
+**** Efficiency (space/network)
+
+- just disable old-ass folders
+
+
+*** Quick Folder Setup
+
+*** Configurations
+
+**** Security
+
+- SET A MASTER PASSWORD!!
+- SET ALLOW COOKIES TO "From Visited"
+  - Add exceptions for *addons.thunderbird.net* and *thunderbird.net*
+  - Add other exceptions AS NEEDED
+
+- Enigmail
+  - TODO: option to sign emails for specific recipients/accounts/rules?
+
+**** Chat
+
+- setup for google messenger
+- set idle time to "10 mins"
+- set "styling" to "Dark (green)"
+
+**** Presentation
+
+- show all folders (unset unified view)
+- set fonts for messages/composition
+- set fonts for latin/jp -- noto/(sans|serif|mono) in "General"
+- set font to "Noto Sans" under "HTML Style"
+
+**** Misc
+
+- set "default search" to DuckDuckGo
+- add signature (copy HTML from gmail devtools)
+- set 20 MB => 200MB for "compact all folders"
+- set "close message window/tab on move/delete"
+- set "messages read after 5 seconds"
+- set "enable DNS over HTTPS" under "Connection Settings"
+
+*** Add Ons
+
+- Dark Fox (theme)
+- Dark Reader
+- Google Calendar
+- Enigmail (see config under security)
+- Quicktext
+  - enable: "view quick-text menu on right-click"
+- Thunderbird Conversations
+  - enable: "No friendly dates" and "Hide quick reply"
+- QuickFolders
+  - enable buttons: "Folder navigation" and "Mail Folder Commands"
+- Send Later
+
+Others:
+
+- QuickFilters
+  - Quickly generate mail filters on the fly, by dragging and dropping mails and
+    analyzing their attributes.
+- ThunderHTMLedit
+- TbSync (+ provider for CalDAV + CardDAV)
+- Sieve
+- Google Calendar Tab
+- LocalFolders
+- Folder Pane View Switcher
+- DKIM Verifier
+
+Languages: en-us, es-es, fr, it, ja
+
+** KDE Office Apps
+
+*** Kontact/Kmail
+
+(i didn't have a great experience with kmail/etc, so i removed for now)
+
+#+begin_src shell
+sudo pacman -Syu kmail kontact
+
+sudo pacman -Syu pim-data-exporter ktimetracker
+#+end_src
+
+- [overview of KDE productivity app ecosystem](https://en.wikipedia.org/wiki/Kontact)
+- [old post on configuring KMail](http://www.slackermedia.info/kontact/index.html)
+
+- TODO: configure RSS reader
+- TODO:
