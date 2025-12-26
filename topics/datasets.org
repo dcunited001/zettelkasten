@@ -239,3 +239,87 @@ Mainly because i hate the browser, but also because it's faster.
 *** Fiscal Service Data Registry
 
 + Links to [[https://fiscal.treasury.gov/data-registry/index.html][Data]]
+
+*** Personal Data
+
+**** LinkedIn
+
+You can download everything afaik -- EXCEPT your "articles" (posts AND comments
+on them!)
+
+**** Google
+
+| bond             | drive          | feedback        | gtrans        | news             | save                 |
+| alerts           | embark         | google_finance  | google_wallet | personal_safety  | search_ugc           |
+| checkin          | fit            | support_content | groups        | assisted_calling | search_notifications |
+| arts_and_culture | fitbit         | meet            | home_graph    | backlight        | streetview           |
+| course_kit       | gemini         | google_one      | keep          | pixel_telemetry  | tasks                |
+| blogger          | google_account | google_pay      | gmail         | profile          | location_history     |
+| calendar         | google_ads     | photos          | maps          | my_orders        | voice                |
+| chrome           | my_business    | books           | local_actions | recorder         | youtube              |
+| contacts         | hangouts_chat  | podcasts        | messages      | mymaps           |                      |
+| discover         | earth          | shopping        | my_activity   | reminders        |                      |
+
+
+cloud/etc
+
+| firebase_dynamic_links | developer_platform |
+| google_cloud_search    | workflows          |
+
+android
+
+| play_console | play_games_services | play_movies | play | apps_marketplace |
+
+hardware
+
+| google_store | pixel_aurelius | notebooklm | chrome_os_drawing_app_canvas | chrome_os_handwriting_app_a4 |
+
+***** meta-meta-data
+
+#+begin_src jq :stdin productsjson :results output
+map(first)
+#+end_src
+
+#+RESULTS:
+: jq: parse error: Invalid numeric literal at line 1, column 2
+
+#+name: productsall
+#+begin_src jq :stdin productsjson :results output file :file img/data/takeout.productsall.json
+map({id: first,
+     name: .[1],
+     mimes: .[-6],
+     sources: (.[3]| map({name: .[5],
+                          formats: .[6],
+                          description: .[7]})) })
+
+   # sources is jagged, but each element has the same number 
+   # map({id: first, name: .[1], mimes: .[-6], sources: (.[3] | map(length | select(. != 10))) })
+#+end_src
+
+Consolidate view
+
+#+name: productdata
+#+begin_src jq :in-file "img/data/takeout.productsall.json" :cmd-line "-rj" :results output :var productid="youtube"
+map(select(.id == $productid))[] | .sources
+  | map([$productid, .name, (.formats | first[0]) , .description])
+  | map(@csv) | join("\n")
+
+# | map($productid, .name, .formats[0], .description)
+# | map($productid, .name, .formats[0], .description)   
+# | [$productid, .name, .formats[0]]
+# | reduce .[] as $p ([]; . + [$productid, ])
+#+end_src
+
+Voice data
+
+#+call: productdata(productid="voice") :results output code :wrap example
+
+#+RESULTS:
+#+begin_example
+"voice","Call logs","HTML","All calls made, received and missed"
+"voice","Billing history","HTML","Your Google Voice account billing history"
+"voice","Greetings","MP3","Recorded voicemail greetings"
+"voice","Voicemail","MP3","Recordings of voicemail"
+"voice","Phone number","VCF","Your Google Voice phone number"
+"voice","Text messages","HTML","Your text message history"
+#+end_example
