@@ -1,0 +1,440 @@
+:PROPERTIES:
+:ID:       cf2b7175-cf30-4821-80e2-29ae256dc15e
+:END:
+:PROPERTIES:
+:ID:       18af505b-6789-4e44-8635-8d8b9f97a629
+:END:
+#+TITLE:     Krita: Dev Notes
+#+AUTHOR:    David Conner
+#+EMAIL:     noreply@te.xel.io
+#+DESCRIPTION: notes
+#+category: slips
+
+* Krita Hackage
+*** Krita Onboarding Docs
+- [[https://docs.krita.org/en/untranslatable_pages/intro_hacking_krita.html?highlight=emacs#development-philosophy][Intro to Hacking Krita]]
+- [[https://docs.krita.org/en/untranslatable_pages/quality_assurance.html][Intro to Quality Assurance]]
+- [[https://docs.krita.org/en/untranslatable_pages/triaging_bugs.html#triaging-bugs][Triaging Bugs]]
+- [[https://docs.krita.org/en/untranslatable_pages/reporting_bugs.html#ask-on-krita-s-forum-or-irc-chat-channel][Reporting Bugs]]
+
+*** Community
+- Krita IRC: =chat.freenode.com/#krita=
+- [[https://krita-artists.org/][Krita Artists Forum]]
+- [[https://krita-artists.org/t/beginner-coding-tasks-in-krita-easy-and-short-feature-requests-ready-to-implement/5851][Beginner Coding Tasks in Krita]]
+- [[https://outsideofinfinity.wordpress.com/2019/11/20/how-is-user-support-in-krita-organized/][How is User Support in Krita Organized]]
+- [[https://krita.org/en/item/the-inside-view-how-krita-is-developed/][How Krita is Developed]]
+
+*** Docs
+- [[https://api.kde.org/appscomplete-api/krita-apidocs/][Krita Docs (Doxygen)]]
+- [[https://techbase.kde.org/Development][KDE Techbase]]
+- [[https://docs.krita.org/en/untranslatable_pages/building_krita.html][Building Krita from Source]]
+- [[https://doc.qt.io/][Qt5 docs]]
+- [[http://archive.flossmanuals.net/kde-guide/][Floss Manuals KDE Guide]]
+
+*** Tools
+- [[https://invent.kde.org/graphics/krita.git][Krita Repo]]
+- [[https://bugs.kde.org][KDE Bugs]]
+- [[https://bugs.kde.org/buglist.cgi?bug_status=UNCONFIRMED&bug_status=CONFIRMED&bug_status=ASSIGNED&bug_status=REOPENED&list_id=1315444&order=changeddate%20DESC%2Cbug_status%2Cpriority%2Cassigned_to%2Cbug_id&product=krita&query_format=advanced][Krita Bugtracking]]
+- [[https://identity.kde.org][KDE Identity]]
+
+[[https://invent.kde.org/dkazakov/krita-docker-env][Krita Docker Env]]???
+
+*** Krita Bug Searches
+- [[https://bugs.kde.org/buglist.cgi?bug_severity=crash&bug_status=UNCONFIRMED&bug_status=NEW&bug_status=ASSIGNED&bug_status=REOPENED&bugidtype=include&chfield=%5BBug%20creation%5D&list_id=1811851&product=krita&query_format=advanced][All Unresolves Krita Crashes]]
+
+*** Krita Bugs Categories to Focus On:
+- Usability
+
+**** TESTS
+- Unittests
+- Integration Tests?
+
+**** UI & Comprehensive
+- Dockers
+- Shortcuts & Canvas Input
+- Translation
+- Color Selector
+
+**** Resource Bundles/Management
+- File Format
+- Tagging
+
+**** Tools
+- Tools/Reference Images
+- Tool/Text
+- Tool/Assistants...
+
+**** Graphics/Backend
+- Color Model
+- Resource Management
+
+*** Journals
+- 754 Model [[https://doi.org/10.11371/tievciieej.5.2_110][Computational RYB Color Model and its Applications]]
+
+* TODO: Interface Prototyping with [[https://www.qt.io/qt-for-python][QT Python]]
+* TODO: [[https://www.doxygen.nl/index.html][Doxygen]]
+
+* KDE
+=sudo pamac install git-phab-git clang-format-linter-git arcanist-stable libphutil python-phabricator=
+
+- git phab: subcommand for phabricator
+- clang-format-linter: just for phabricator?
+- arcanist: phabricator CLI
+
+*** KDevelop
+*** QT Creator Config
+- create an extra run configuration that satisfies the build process
+  requirements of Krita
+
+* JetBrains CLion Config
+- QMake?
+- [[https://www.jetbrains.com/help/clion/clion-quick-start-guide.html#version-control][CLion quick start guide]]
+
+*** KDE Community
+- in clion settings, go to "tools/tasks/servers" and add a bugzilla server
+  - use =https://bugs.kde.org/xmlrpc.cgi= as the server URL
+  - i consulted [[https://www.jetbrains.com/help/idea/managing-tasks-and-context.html#work-with-tasks][this guide]] but couldn't get it to pull tasks from bugs.kde.org
+
+*** Plugins
+- ideolog
+- grep console
+- key promoter x
+- plantuml integration
+- QML Editor
+- QML Support
+- QT Stylesheet Highligher
+- Docker
+- Makefile support
+- Solarized Themes
+- GitToolBox (krita is too massive for this)
+
+*** Static Analysis in CLion
+**** Clang Compilation DB (JSON)
+- add =-DCMAKE_EXPORT_COMPILE_COMMANDS= to CMake profiles to generate the DB
+- this DB allows you to circumvent the need to change CMake profiles in IDE
+
+Running on one cpp file:
+
+#+begin_src sh
+clazy-standalone -checks=install-event-filter,qmap-with-pointer-key,level0 -p compile_commands.json my.file.cpp
+#+end_src
+
+Running on all cpp files:
+
+#+begin_src sh
+find . -name "*cpp" | xargs clazy-standalone -checks=level2 -p default/compile_commands.json
+#+end_src
+
+**** Configure
+[[https://www.jetbrains.com/help/clion/compilation-database.html#cmpdb_changeroot][the CLion Project Root]] to include the Compilation DB
+**** Clang-Tidy Checks
+- [[https://clang.llvm.org/extra/clang-tidy/checks/list.html][Standard Clang Checks]]
+- [[][Clang Diagnostic Flags]]
+- [[https://doc.qt.io/qtcreator/creator-clang-tools.html][clang-tidy config in QT Creator]]
+- can also configure directory-specific checks in =.clang-tidy= files
+- [[https://confluence.jetbrains.com/display/CLION/Clang-Tidy+in+CLion%3A+default+configuration][Jetbrains Clions Clang-Tidy Default Checks]]
+
+defaults:
+
+#+begin_example
+-Wno-unused-variable
+-Wno-infinite-recursion
+-Werror=implicit-function-declaration
+-Wshadow
+-Wno-shadow-field-in-constructor-modified
+-Wno-shadow-ivar
+-Wuninitialized
+-Wunused-label
+-Wunused-lambda-capture
+#+end_example
+
+misc:
+
+#+begin_example
+-Wnullability.NullableDereferenced
+#+end_example
+
+**** QT Clang Tidy Checks (with clazy)
+=sudo pacman -Syu clazy= for QT checks
+
+- add an extra CMake runtime for clazy, perhaps with an extra
+  =./kritadev/build-clazy= and =./kritadev/install-clazy= directorys (though this
+  will conflict with the existing build/run configs)
+
+- [[https://www.kdab.com/uncovering-32-qt-best-practices-compile-time-clazy/][Uncovering 32 QT Best Practices with Clang-Tidy]]
+
+  - Connects: =old-style-connect connect-non-signal lambda-in-connect
+    incorrect-emit=
+  - Containers: =container-anti-pattern mutable-container-key temporary-iterator
+    detaching-temporary reserve-candidates qdeleteall inefficient-qlist
+    inefficient-qlist-soft range-loop foreach=
+  - Misc Perf: =qdatetime-utc qfileinfo-exists qgetenv function-args-by-ref=
+  - Misc Qt: =qt-macros post-event missing-qobject-macro base-class-event
+    child-event-qubject-cast qenums non-pod-globalstatic wrong-qglobalstatic=
+  - QString: =qlatin-string-non-ascii qstring-left qstring-arg
+    qstring-insensitive-allocation qstring-ref auto-unexpected-qstringbuilder=
+  - [[https://github.com/KDE/clazy][these QT checks all require =clazy=]]
+
+*** Dynamic Analysis in CLion
+install packages:
+
+- =sudo pacman -Syu valgrind massif-visualizer # kdevelop-valgrind-git=
+
+- =sudo pacman -Syu kcachegrid=
+
+- [[https://github.com/google/sanitizers/wiki][Google Sanitizers]]
+
+- Google's AddressSanitizer is part of LLVM (>= 3.1) and GCC (>= 4.8)
+
+**** Valgrind Integration
+**** KCachegrind
+*** Running Krita
+krita needs to be built from the =../build= folder and run from the generated
+=../install/bin/krita= binary. thus, CLion needs to configured so that it
+replicates this process
+
+Open the settings and navigate to "CMake" under "Build, Execution & Deployment".
+Then, select the "Debug" profile. These profiles are partial configs that are
+applied against a tuple of (CMake build task, CLion run config)
+
+- here, ensure that the CLion config option "build directory" is set, along with
+  the appropriate CMake options. The =-DCMAKE_BUILD_TYPE= option can be set here
+  or, equivalently, above in the CLion "Build Type" textbox.
+- optionally, set the CMake (or make) option for parallel builds in "Build
+  Options" with =-jn= or =-- -jn= ... either way, CMake will pass these options to
+  make. =n= should be the number of processors.
+
+Then, in the CLion settings, either click "Run > Edit Configurations" and then
+find krita -- or find the "krita" CMake target in the run configurations
+dropdown, then click "Edit Configurations" to navigate right to it.
+
+- here, you'll need to set the "Working Directory" and the "Executable". You
+  should duplicate the "Krita" target to fill in the new config details.
+  Duplicated again and remove "Build" from "Before Launch" in order to run/debug
+  the application without building.
+
+* PlantUML
+- install dependencies: =sudo pacman -Syu graphviz plantuml=
+- use hpp2plantuml to generate plant UML from headers: =pip install hpp2plantuml=
+- [[https://hpp2plantuml.readthedocs.io/en/latest/][hpp2plantuml docs]]
+
+#+begin_example
+hpp2plantuml -i libs/ui/dialogs/kis_dlg_preferences.h -o ../plantuml/kis_dlg_preferences.h.puml
+plantuml -t png -I ../plantuml/kis_dlg_preferences.h.puml
+#+end_example
+
+* Building Krita
+run from =$KRITADEV/build= ... and to clean, delete/recreate the =./build= folder
+
+#+begin_example
+cmake ../krita \
+        -DCMAKE_INSTALL_PREFIX=/data/dev/kritadev/install  \
+        -DCMAKE_BUILD_TYPE=Debug \
+        -DKRITA_DEVS=ON \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=1 \
+        -DBUILD_KRITA_QT_DESIGNER_PLUGINS=ON \
+
+        #-DKRITA_ENABLE_BROKEN_TESTS=ON \
+#+end_example
+
+then =make --build . --parallel 6=
+
+*** Dependencies:
+Optional Package for SeExpr2 can be installed with =sudo pacman -Syu seexpr-krita=
+
+**** Runtime Dependencies
+- Qt5 SQLite database driver (CMake will not warn). this can be installed with
+  =sudo pacman -Syu qt5-base= which includes the following QT5 database drivers:
+
+#+begin_src sh
+qt5-base usr/lib/qt/plugins/sqldrivers/ qt5-base
+usr/lib/qt/plugins/sqldrivers/libqsqlibase.so qt5-base
+usr/lib/qt/plugins/sqldrivers/libqsqlite.so qt5-base
+usr/lib/qt/plugins/sqldrivers/libqsqlmysql.so qt5-base
+usr/lib/qt/plugins/sqldrivers/libqsqlodbc.so qt5-base
+usr/lib/qt/plugins/sqldrivers/libqsqlpsql.so qt5-base
+usr/lib/qt/plugins/sqldrivers/libqsqltds.so
+#+end_src
+
+* Krita Dev with Docker
+[[https://invent.kde.org/dkazakov/krita-docker-env][Dmitry's docker image]] is used for the building packages AppImage
+
+- =sudo pacman -Syu docker=
+
+**** Optional Packages
+Found:
+
+#+begin_src org
+ * PythonLibrary (required version >= 3.0), Python Library, <https://www.python.org>
+   Required by the Krita PyQt plugin
+ * Qt5Multimedia (required version >= 5.9.0), Qt multimedia integration, <https://www.qt.io/>
+   Optionally used to provide sound support for animations
+ * Qt5Qml (required version >= 5.15.1)
+ * Qt5QmlModels (required version >= 5.15.1)
+ * Qt5Quick (required version >= 5.9.0), QtQuick, <https://www.qt.io/>
+   Optionally used for the touch gui for Krita
+ * Qt5QuickWidgets (required version >= 5.9.0), QtQuickWidgets, <https://www.qt.io/>
+   Optionally used for the touch gui for Krita
+ * Qt5DBus (required version >= 5.9.0), Qt DBUS integration, <https://www.qt.io/>
+   Optionally used to provide a dbus api on Linux
+ * KF5Crash (required version >= 5.44.0), KDE's Crash Handler, <https://api.kde.org/frameworks-api/frameworks5-apidocs/kcrash/html/index.html>
+   Optionally used to provide crash reporting on Linux
+ * OpenEXR, High dynamic-range (HDR) image file format, <https://www.openexr.com>
+   Required by the Krita OpenEXR filter
+ * TIFF, TIFF Library and Utilities, <http://www.libtiff.org>
+   Required by the Krita TIFF filter
+ * JPEG, Free library for JPEG image compression. Note: libjpeg8 is NOT supported., <https://www.libjpeg-turbo.org>
+   Required by the Krita JPEG filter
+ * GIF, Library for loading and saving gif files., <http://giflib.sourceforge.net/>
+   Required by the Krita GIF filter
+ * HEIF (required version >= 1.3.0), Library for loading and saving heif files., <https://github.com/strukturag/libheif>
+   Required by the Krita HEIF filter
+ * OpenJPEG (required version >= 2.3.0), Library for loading and saving jp2000 files., <https://www.openjpeg.org/>
+   Required by the Krita JP2000 filter
+ * LibRaw (required version >= 0.16), Library to decode RAW images, <https://www.libraw.org/>
+   Required to build the raw import plugin
+ * FFTW3, A fast, free C FFT library, <http://www.fftw.org/>
+   Required by the Krita for fast convolution operators and some G'Mic features
+ * OCIO, The OpenColorIO Library, <https://www.opencolorio.org>
+   Required by the Krita LUT docker
+ * SIP (required version >= 4.19.13), Support for generating SIP Python bindings, <https://www.riverbankcomputing.com/software/sip/download>
+   Required by the Krita PyQt plugin
+ * PyQt5 (required version >= 5.6.0), Python bindings for Qt5., <https://www.riverbankcomputing.com/software/pyqt/download5>
+   Required by the Krita PyQt plugin
+ * Vc (required version >= 1.1.0), Portable, zero-overhead SIMD library for C++, <https://github.com/VcDevel/Vc>
+   Required by the Krita for vectorization
+ * PkgConfig
+ * Poppler, A PDF rendering library, <https://poppler.freedesktop.org/>
+   Required by the Krita PDF filter.
+#+end_src
+
+Not Found:
+
+#+begin_src org
+ * SeExpr2, <https://invent.kde.org/graphics/seexpr>
+   Required by the SeExpr generator layer
+#+end_src
+
+**** Recommended Packages
+#+begin_src org
+  * GSL, <https://www.gnu.org/software/gsl>
+    Required by Krita's Transform tool.
+#+end_src
+
+**** Required Packages:
+#+begin_src org
+ * PythonInterp (required version >= 3.0)
+ * ECM (required version >= 5.22)
+ * KF5Config (required version >= 5.44.0)
+ * KF5WidgetsAddons (required version >= 5.44.0)
+ * KF5Completion (required version >= 5.44.0)
+ * KF5CoreAddons (required version >= 5.44.0)
+ * KF5GuiAddons (required version >= 5.44.0)
+ * Gettext
+ * KF5I18n (required version >= 5.44.0)
+ * KF5ItemModels (required version >= 5.44.0)
+ * KF5ItemViews (required version >= 5.44.0)
+ * KF5WindowSystem (required version >= 5.44.0)
+ * KF5 (required version >= 5.44.0)
+ * Qt5Gui
+ * Qt5Widgets
+ * Qt5Xml
+ * Qt5Network
+ * Qt5PrintSupport
+ * Qt5Svg
+ * Qt5Test
+ * Qt5Concurrent
+ * Qt5Sql
+ * Qt5X11Extras
+ * X11
+ * PNG
+ * boost_headers (required version == 1.72.0)
+ * boost_system (required version == 1.72.0)
+ * Boost (required version >= 1.55)
+ * Eigen3 (required version >= 3.0), C++ template library for linear algebra, <http://eigen.tuxfamily.org>
+ * LibExiv2 (required version >= 0.16), Image metadata support, <http://www.exiv2.org>
+ * LCMS2 (required version >= 2.4), LittleCMS Color management engine, <http://www.littlecms.com>
+   Will be used for color management and is necessary for Krita
+ * ZLIB, Compression library, <https://www.zlib.net/>
+   Optionally used by the G'Mic and the PSD plugins
+ * Qt5Core
+ * Qt5
+ * QuaZip (required version >= 0.6), A library for reading and writing zip files, <https://stachenov.github.io/quazip/>
+   Needed for reading and writing KRA and ORA files
+ * Threads
+#+end_src
+
+**** Features
+Enabled
+
+#+begin_src org
+ * Hide safe asserts, Don't show message box for "safe" asserts, just ignore them automatically and dump a message to the terminal.
+ * Lock free hash table, Use lock free hash table instead of blocking.
+ * Limit long tests, Run long running unittests in a limited quick mode
+ * Enable updaters, Enable updaters/update notifications.
+#+end_src
+
+Disabled
+
+#+begin_src org
+ * Crash on safe asserts, Crash unconditionally whenever a "safe" assert happens. Useful for running unittests
+ * Foundation Build, A Foundation build is a binary release build that can package some extra things like color themes. Linux distributions that build and install Krita into a default system location should not define this option to true.
+ * Enable Broken Tests, Runs broken test when "make test" is invoked (use -DKRITA_ENABLE_BROKEN_TESTS=ON to enable).
+ * Build Qt Designer plugins, Builds Qt Designer plugins for Krita widgets (use -DBUILD_KRITA_QT_DESIGNER_PLUGINS=ON to enable).
+#+end_src
+
+**** Broken Tests
+#+begin_example text
+ * libs-flake-TestPointMergeCommand
+ * libs-flake-TestSvgText
+ * libs-flake-TestSvgTextCloned
+ * libs-flake-TestSvgTextRoundTrip
+ * libs-image-kis_transform_mask_test
+ * libs-image-kis_perspective_transform_worker_test
+ * libs-ui-KisPaintingAssistantsDecorationTest
+ * libs-ui-KisExiv2Test
+ * libs-ui-KisClipboardTest
+ * libs-ui-FreehandStrokeTest
+ * libs-ui-FreehandStrokeBenchmark
+ * libs-ui-KisPaintOnTransparencyMaskTest
+ * libs-ui-FillProcessingVisitorTest
+ * libs-ui-FilterStrokeTest
+ * libs-ui-KisSelectionManagerTest
+ * libs-ui-KisNodeManagerTest
+ * libs-ui-KisZoomAndPanTest
+ * libs-ui-KisActionManagerTest
+ * libs-ui-KisCategoriesMapperTest
+ * plugins-dockers-lut-KisOcioDisplayFilterTest
+ * krita-filters-kis_all_filter_test.cpp
+ * krita-filters-kis_crash_filter_test.cpp
+ * plugins-impex-kis_png_test
+ * plugins-impex-kis_csv_test
+ * plugins-impex-KisJP2Test
+ * plugins-impex-KisSvgTest
+ * plugins-impex-KisOraTest
+ * plugins-impex-psd-kis_psd_test
+ * plugins-libpaintop-kis_embedded_pattern_manager_test
+ * plugins-defaultpaintops-KisBrushOpTest
+ * plugins-tools-basictools-MoveStrokeTest
+#+end_example
+
+* Emacs for C++ Projects
+- [[https://www.youtube.com/watch?v=Rx3wRl5d-J0&feature=emb_title][Using
+  projectile with Doom Emacs]]
+- [[https://noelwelsh.com/posts/2019-01-10-doom-emacs.html][Doom Emacs
+  Workflows]] (more info on projectile/persp-mode)
+
+*** Irony Mode & RTags
+[[http://blog.lujun9972.win/emacs-document/blog/2018/03/22/emacs-as-a-c++-ide/index.html#compilation-database][See
+this post]] on using either =irony-mode= or =rtags=.
+
+- it looks like [[https://github.com/Sarcasm/irony-mode][irony-mode]] is
+  this reality's winner.
+
+* Misc
+** Ideas
+** Performance Issues
+** Bugs
+*** Crash on Small Color Changer Resize (428-256)
+** Features
+*** Complementary(RYB) Color Wheel (393-477, Possible-422)
