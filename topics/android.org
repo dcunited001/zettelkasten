@@ -5,12 +5,113 @@
 #+DESCRIPTION: The mobile os
 #+TAGS:
 
+* Roam
++ [[id:b6ae489c-ed0c-4fb4-ba17-512d4e459956][Mobile Platforms: iOS and Android]]
+
 * Docs
 
 * Resources
 
 * Topics
-
 * Issues
 
-* Roam
+* Waydroid
+** Docs
+[[https://wiki.archlinux.org/title/Waydroid][ArchWiki]]
+
+*** Waydroid
++ [[https://docs.waydro.id/usage/install-on-desktops][Install Instructions]]
++ [[https://docs.waydro.id/usage/install-and-run-android-applications][Install & Run Android Apps]]
++ [[https://docs.waydro.id/usage/waydroid-command-line-options][Waydroid CLI]] and [[https://docs.waydro.id/usage/waydroid-prop-options][Props]]
++ [[https://docs.waydro.id/debugging/networking-issues][Debugging: Networking Issues]]
+
+** Resources
+
+** Topics
+*** On Arch
+
+According to archwiki
+
+#+begin_src shell
+yay -Syu waydroid
+
+# init a waydroid container with GAPPS support
+waydroid init -s GAPPS # requires root
+
+# start the container service or enable it
+systemctl --user start waydroid-container.service # runs as root...
+#+end_src
+
+CLI Basics
+
+| waydroid session start       | start a session |
+| waydroid show-full-ui        | show the UI     |
+| waydroid shell               | launch a shell  |
+| waydroid app install $apk    | install app     |
+| waydroid app list            |                 |
+| waydroid app launch $pkgName | launch an app   |
+
+**** Security
+
++ Requires root, unsure why. Probably namespacing/containerization
+
+***** D-Bus
+
++ Also has system dbus-activation for the systemd service. This starts the
+  container & the container service.
+  - so I'm removing =waydroid= for now. I may try again on NixOS
+  - =/usr/bin/waydroid -w container start= this is the container startup ... the
+    =-h= doesn't convey what the =-w= flag does... but i hope this does NOT start a
+    root-owned waydroid container
+
+#+begin_src conf
+[D-BUS Service]
+Name=id.waydro.Container
+Exec=/usr/bin/waydroid -w container start
+User=root
+SystemdService=waydroid-container.service
+#+end_src
+
+*** Networking
+
+Interface:
+
++ gets an ip address (how?)
++ on the initial start, the container was displaying more 
+
+**** UFW
+
+These rules need some work
+
+#+begin_src shell
+sudo ufw allow 53
+sudo ufw allow 67
+sudo ufw default allow FORWARD
+#+end_src
+
+*** Window manager
+
+To integrate with the window manager
+
+#+begin_src shell
+waydroid session start
+
+# prevents fullscreen waydroid & launches apps in their own windows
+waydroid prop set persist.waydroid.multi_windows true
+
+# sets window dims
+waydroid prop set persist.waydroid.width 576
+waydroid prop set persist.waydroid.height 1024
+
+waydroid session stop
+waydroid session start # restart
+#+end_src
+** Issues
+
+*** Root/Unroot
+
++ ArchWiki: [[https://wiki.archlinux.org/title/Waydroid#Application_need_unroot_device][Waydroid: Application_need_unroot_device]]
++ Seems likely to break unless =waydroid upgrade --ofline=
+
+
+

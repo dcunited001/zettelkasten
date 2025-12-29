@@ -1,1 +1,0 @@
-/home/saikoupomp/.doom.d
