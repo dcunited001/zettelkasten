@@ -625,8 +625,67 @@ Now nix should build and =direnv allow= should run flakes right.
 ** AMD Rocm
 See [[https://github.com/nixos-rocm/nixos-rocm][nixos-rocm/nixos-rocm]]
 
++ [[https://wiki.nixos.org/wiki/AMD_GPU][NixOS Wiki: AMD_GPU]]
++ [[https://github.com/Naxdy/nix-flake-templates/blob/main/python-nn/flake.nix][Flake Template for python + uv + jax (nvidia)]]
++ [[https://forum.level1techs.com/t/bedhedds-dip-into-nixos/228975/10?page=2][bedHedd's dip into NixOS]] no idea whether successful
 
+*** Containers
 
+A pretty safe bet is to use a container, provided the underlying system has the
+drivers and forwards device access into the container
+
++ Source from a =ROCm= container and add a build layer to copy =uv= binaries, as in
+  [[https://docs.astral.sh/uv/guides/integration/docker/][Using uv in Docker]]. See [[https://www.amd.com/en/developer/resources/technical-articles/2025/pytorch-2-9-wheel-variant-support-expands-to-rocm.html][PyTorch 2.9 Wheel Variant Support Expands to ROCm]]
+
+*** Configs
+**** rocmblas overlay
+
+An example of an configuration with overlay for ROCm via [[https://www.reddit.com/r/NixOS/comments/1i5l0kg/rocm_and_amd_radeon_7900xt/][this thread on r/nixos]]
+
+#+begin_src nix
+nixosConfigurations.nixos = nixpkgs.lib.nixosSystem {
+  inherit system;
+  specialArgs = {
+    inherit inputs;
+    unstable = import nixpkgs-unstable {
+      inherit system;
+      overlays = [
+        (final: prev: {
+          rocmPackages = prev.rocmPackages // rec {
+            clr = (prev.rocmPackages.clr.override {
+              localGpuTargets = [ "gfx1201" ];
+            }).overrideAttrs (oldAttrs: {
+              passthru = oldAttrs.passthru // {
+                gpuTargets = oldAttrs.passthru.gpuTargets ++ [ "gfx1201" ];
+              };
+            });
+
+            rocminfo = (prev.rocmPackages.rocminfo.override {
+              clr = clr;
+            });
+
+            rocblas = (prev.rocmPackages.rocblas.override {
+              clr = clr;
+            });
+
+            rocsparse = (prev.rocmPackages.rocsparse.override {
+              clr = clr;
+            });
+
+            rocsolver = (prev.rocmPackages.rocsolver.override {
+              clr = clr;
+            });
+          };
+        })
+      ];
+      config.allowUnfree = true;
+    };
+  };
+  modules = [
+    ./configuration.nix
+  ];
+};
+#+end_src
 *** JAX
 
 JAX and AMDGPU compatibility: [[https://discourse.nixos.org/t/rocm-package-caches/52167][Discourse On AMDGPU.jl + Jax]] (may still require
