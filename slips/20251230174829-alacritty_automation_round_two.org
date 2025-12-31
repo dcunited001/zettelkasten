@@ -1,0 +1,116 @@
+:PROPERTIES:
+:ID:       ad6aa2f8-ff6e-4438-8b24-46b714a803d4
+:END:
+#+TITLE: Alacritty: Automation Round Two
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:dae42c2e-aba7-4c9c-9878-b9665befe205][IPC And Sockets]]
++ [[id:598b9106-b509-40df-9dba-33e992e56b15][Alacritty: Automation of Interactive Tests]] originally from here
+
+
+* Alacritty Bot
+:PROPERTIES:
+:header-args+: :var obtmp=(or (bound-and-true-p ob@uv_cheatsheet) (setq ob@uv_cheatsheet (make-temp-file "roam-" t)))
+:END:
+
+I need an interactive env, but it needs to be current/correct
+
++ =echo "$PS1 "= can't use PS1
++ I guess I can use =ALACRITTY_SOCKET=, but i hate to adhoc these things
+
+** Babel Setup
+
+Setting =:PROPERTIES:= to
+
+=:header-args+: :var obtmp=(or (bound-and-true-p ob@uv_cheatsheet) (setq ob@uv_cheatsheet (make-temp-file "roam-" t)))=
+
+So I get a temp path. It's global
+
+#+begin_src shell
+file $obtmp && echo $obtmp | wl-copy
+#+end_src
+
+#+RESULTS:
+: /tmp/roam-rRu8il: directory
+
+To grab the most recent socket ... not putting this into the org doc
+
+#+begin_src shell
+ls -t $XDG_RUNTIME_DIR | grep Alac | head -n1 \
+    | tee -a >(echo -n $XDG_RUNTIME_DIR/) | wl-copy
+#+end_src
+
+Then
+
+#+begin_src emacs-lisp
+(setq-local ob@uv_cheatsheet-alacritty-socket "fdsa"
+            ;; active window (doesn't work)
+            ob@uv_cheatsheet-alacritty-socket-live "fdsa")
+;; ob@uv_cheatsheet-alacritty-socket-emacs "fdsa"
+#+end_src
+
+when starting from emacs, this value gets set by caching babel evalution and
+interactions are controlled by the :session.
+
+#+begin_quote
+since =alacritty --daemon &= starts a background process this unlocks a gold-level
+acheivement and your salary increases by =$%=, but only if you can exit the
+*sub*-process or avoid zombies. otherwise, is =trap= and you haven't done IPC.
+
+idk that it's "as relevant" anymore until it is.
+#+end_quote
+
+** Connecting to an existing =alacritty= terminal
+
+#+begin_quote
+NOTE: this doesn't work... a daemon and window spawning is required
+
+[0.000310256s] [WARN ] [alacritty] Unable to create socket: Os { code: 98, kind: AddrInUse, message: "Address already in use" }
+#+end_quote
+
+This will hold the window open
+
+#+begin_src shell :results output silent :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
+alacritty --socket $alasock -e /bin/sh -c "sleep 5; hyprctl activewindow -j | jq \"\\(.title) \\(.pid)\" | wl-copy; sleep 1"
+#+end_src
+
+** With =alacritty --daemon=
+
+pass vars from babel
+
+#+begin_src shell :results output verbatim :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
+# echo "obtmp=$obtmp; alasock=$alasock"
+alacritty --socket $alasock -e "notify-send" 'alacritty' "'alasock=$alasock; obtmp=$obtmp'"
+#+end_src
+
+alacritty strips vars
+
+#+begin_src shell :results output silent :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
+alacritty --socket $alasock -e "notify-send" 'alacritty' '$(echo ALACRITTY_SOCKET)'
+#+end_src
+
+unless =/bin/sh -c=
+
+#+begin_src shell :results output silent :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
+alacritty --socket $alasock -e /bin/sh -c 'notify-send "alacritty" "$ALACRITTY_SOCKET"'
+#+end_src
+
+Hyprland flickers when sending to an extant alacritty socket
+
+
+*** Start daemon from =alacritty=
+
+
+
+alacritty --socket $alasock -e /bin/sh -c "declare -p -f _uv > $obtmp/compgen"
+
+
+*** Start daemon inside =emacs=
+
+
+
+#+begin_src emacs-lisp
+
+#+end_src
