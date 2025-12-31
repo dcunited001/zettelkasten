@@ -12,7 +12,7 @@
 
 * Alacritty Bot
 :PROPERTIES:
-:header-args+: :var obtmp=(or (bound-and-true-p ob@uv_cheatsheet) (setq ob@uv_cheatsheet (make-temp-file "roam-" t)))
+:header-args+: :var obtmp=(or (bound-and-true-p ob@alacritty_auto) (setq ob@alacritty_auto (make-temp-file "roam-" t)))
 :END:
 
 I need an interactive env, but it needs to be current/correct
@@ -24,7 +24,7 @@ I need an interactive env, but it needs to be current/correct
 
 Setting =:PROPERTIES:= to
 
-=:header-args+: :var obtmp=(or (bound-and-true-p ob@uv_cheatsheet) (setq ob@uv_cheatsheet (make-temp-file "roam-" t)))=
+=:header-args+: :var obtmp=(or (bound-and-true-p ob@alacritty_auto) (setq ob@alacritty_auto (make-temp-file "roam-" t)))=
 
 So I get a temp path. It's global
 
@@ -45,10 +45,10 @@ ls -t $XDG_RUNTIME_DIR | grep Alac | head -n1 \
 Then
 
 #+begin_src emacs-lisp
-(setq-local ob@uv_cheatsheet-alacritty-socket "fdsa"
+(setq-local ob@alacritty_auto-alacritty-socket "fdsa"
             ;; active window (doesn't work)
-            ob@uv_cheatsheet-alacritty-socket-live "fdsa")
-;; ob@uv_cheatsheet-alacritty-socket-emacs "fdsa"
+            ob@alacritty_auto-alacritty-socket-live "fdsa")
+;; ob@alacritty_auto-alacritty-socket-emacs "fdsa"
 #+end_src
 
 when starting from emacs, this value gets set by caching babel evalution and
@@ -96,45 +96,133 @@ NOTE: this doesn't work... a daemon and window spawning is required
 
 This will hold the window open
 
-#+begin_src shell :results output silent :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
+#+begin_src shell :results output silent :var alasock=(identity ob@alacritty_auto-alacritty-socket-live)
 alacritty --socket $alasock -e /bin/sh -c "sleep 5; hyprctl activewindow -j | jq \"\\(.title) \\(.pid)\" | wl-copy; sleep 1"
 #+end_src
+
+Hyprland windows otherwise flickers since alacritty is spawns windows unless you
+use =alacritty msg create-window=
+
+I could just write to a =pty= (as above in the =socat= example)
 
 ** With =alacritty --daemon=
 
 pass vars from babel
 
-#+begin_src shell :results output verbatim :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
+#+begin_src shell :results output verbatim :var alasock=(identity ob@alacritty_auto-alacritty-socket)
 # echo "obtmp=$obtmp; alasock=$alasock"
 alacritty --socket $alasock -e "notify-send" 'alacritty' "'alasock=$alasock; obtmp=$obtmp'"
 #+end_src
 
-alacritty strips vars
+alacritty or org-babel strips vars
 
-#+begin_src shell :results output silent :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
-alacritty --socket $alasock -e "notify-send" 'alacritty' '$(echo ALACRITTY_SOCKET)'
+#+name: alacrittyTestNotify1
+#+begin_src shell :results output silent :var alasock=(identity ob@alacritty_auto-alacritty-socket)
 #+end_src
 
 unless =/bin/sh -c=
 
-#+begin_src shell :results output silent :var alasock=(identity ob@uv_cheatsheet-alacritty-socket)
+#+begin_src shell :results output silent :var alasock=(identity ob@alacritty_auto-alacritty-socket)
+# alacritty --socket $alasock -e "notify-send" 'alacritty' '$(echo $ALACRITTY_SOCKET)'
 alacritty --socket $alasock -e /bin/sh -c 'notify-send "alacritty" "$ALACRITTY_SOCKET"'
 #+end_src
 
-Hyprland flickers when sending to an extant alacritty socket
-
-
 *** Start daemon from =alacritty=
 
-
-
-alacritty --socket $alasock -e /bin/sh -c "declare -p -f _uv > $obtmp/compgen"
-
+it is possible
 
 *** Start daemon inside =emacs=
 
+#+name: alacrittySession
+#+begin_src bash :session *alacritty-daemon* :results output verbatim :cache yes :async yes
+alasock=$obtmp/alacritty.sock
+rm -f $alasock
+alacritty --socket=$alasock --daemon &
+#+end_src
+
+#+RESULTS[91879f4d2aff5ddef5690eadd84412b949ca2a49]: alacrittySession
+: [1]+  Terminated                 alacritty --socket=$alasock --daemon
+: [1] 2390089
+
+#+begin_src bash :results output silent
+alasock=$obtmp/alacritty.sock
+# use --hold to force 
+alacritty msg --socket $alasock create-window -e /bin/sh -c 'notify-send "alacritty" "$ALACRITTY_SOCKET"'
+# alacritty msg --socket $alasock create-window -e /bin/sh -c 'notify-send "alacritty" "\\$ALACRITTY_SOCKET"'
+#+end_src
+
+Succeeds from org-babel, but vars like =ALACRITTY_SOCKET= don't get subbed once
+passed to =notify-send= directly. Requires =/bin/sh= 
+
+#+begin_src bash :results output silent
+alasock=$obtmp/alacritty.sock
+alacritty msg --socket $alasock create-window -e "notify-send" 'alacritty' "\"$(echo $alasock)\""
+# alacritty msg --socket $alasock create-window -e "notify-send" 'alacritty' '"$(echo $ALACRITTY_SOCKET)"'
+#+end_src
+
+Using =--hold= to check socket, the invoked window shares the socket
+
+#+begin_src bash :results output silent
+alasock=$obtmp/alacritty.sock
+alacritty msg --socket $alasock create-window --hold -e /bin/sh -c 'env | grep ALACRITTY'
+#+end_src
+
+Get an interactive shell, it loads =mise=, but for some tools like =uv=, =mise= doesn't load some
+functionality. =which uv= is correct, but that's =mise= has modified its path
+
+#+begin_src shell :results output verbatim
+alasock=$obtmp/alacritty.sock
+cmd="declare -p -f >$obtmp/compgen"
+alacritty msg --socket $alasock create-window -e /usr/bin/env bash -i -c "$cmd"
+#+end_src
+
+Generate it anyways...
+
+#+begin_src shell :results output verbatim
+alasock=$obtmp/alacritty.sock
+cmd="uv generate-shell-completion bash > $obtmp/compgen"
+alacritty msg --socket $alasock create-window -e /usr/bin/env bash -i -c "$cmd"
+#+end_src
+
+From here, there are a few options:
+
++ parse =uv()= completion function. easier than it sounds, as it's autogenerated
+  - dump the keys from the first =case= on =COMP_CWORD=
+  - select the set of interesting keys
+  - use =csplit= or =awk= to split the remaining =_uv()= cases into files, in order
+  - loop over the =csplit= files, run =head -n1=, extract the key, rename the file
+  - =sed -E "s/\n +;;//g"=
++ change =_uv()= to interactively set global state
+  - duplicate all lines setting =COMPREPLY=, change the second setter to modify
+    global variable =__COMPREPLY=. Source the modified function, then run =complete=,
+    manually reset state as needed.
++ ride the =PS4= wave ... nope
++ just use =script= ... which I forgot about. this still requires collecting
+  enough metadata to query it
++ figure out how to query =fzf='s interface.
+  - i always forget to check this
+
+One problem: =uv generate-shell-completion bash= does not generate exactly what
+=declare -p -f _uv= shows. it's harder to parse.
+
+***** misc
+
+#+begin_src shell :results output verbatim
+alasock=$obtmp/alacritty.sock
+# alacritty msg --socket $alasock create-window -e /bin/sh -c "declare -p -f _uv > $obtmp/compgen"
+# alacritty msg --socket $alasock create-window -e /usr/bin/env bash -i -l -c "echo fdsa; declare -p -f _uv 2>&1 >$obtmp/compgen"
+# alacritty msg --socket $alasock create-window -e /bin/sh -i -c "declare -p -f _uv 2>&1 >>$obtmp/compgen"
+
+# cmd="source ~/.bashrc; declare -p -f _uv 2>&1 >>$obtmp/compgen"
+# cmd="source ~/.bashrc; declare -p -f 2>&1 >>$obtmp/compgen"
+# alacritty msg --socket $alasock create-window -e /bin/sh -l -c "$cmd"
+# head -n20 "$obtmp/compgen"
+#+end_src
 
 
-#+begin_src emacs-lisp
-
+#+begin_src shell
+declare -p -f _uv \
+    | grep --no-group-separator -A1 -E '^        [a-zA-Z0-9_]+)' \
+    | sed -E 's/  +//g' \
+    | tr ' ' '\n'
 #+end_src
