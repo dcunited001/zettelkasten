@@ -1,7 +1,7 @@
 :PROPERTIES:
 :ID:       36f12cfc-408b-4c63-90a5-b443838367b4
 :END:
-#+TITLE: Mise, UV, Jupyter and Kernels
+#+TITLE: Python: Mise, UV, Jupyter and Kernels
 #+CATEGORY: slips
 #+TAGS:
 * Roam
@@ -9,11 +9,41 @@
 + [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
 + [[id:cf847bc5-31f7-4bb8-8324-7680a8f2953d][Shell]]
 
-* Notes
+* Resources
 
+** Cookiecutter
 + [[https://github.com/fpgmaas/cookiecutter-uv][fpgmaas/cookiecutter-uv]]
 + [[https://cookiecutter.readthedocs.io/en/stable/][cookiecutter docs]]
 
+
+** tweag/jupyenv
+
+Examples in [[https://github.com/tweag/jupyenv/tree/main/examples][examples/$lang]]
+
++ [[https://github.com/tweag/jupyenv/blob/main/modules/default.nix#L15-L60][Options for =jupyterlab= modules/default.nix]]
++ [[https://github.com/tweag/jupyenv/blob/main/modules/kernel.nix#L12-L84][Options for =kernel.*= and =kernel.python= modules/kernel.nix]]
++ [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/haskell/default.nix#L63-L100][Options for =kernel.haskell= modules/kernels/haskell/default.nix]]
++ [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/julia/default.nix#L73-L104][Options for =kernel.julia= modules/kernels/julia/default.nix]]
+  
+| bash       | minimal |         |         |        |
+| c          | minimal |         |         |        |
+| dotnet     | csharp  | fsharp} |         |        |
+| elm        | minimal |         |         |        |
+| go         | minimal |         |         |        |
+| haskell    | minimal |         |         |        |
+| javascript | minimal |         |         |        |
+| julia      | minimal |         |         |        |
+| nix        | minimal |         |         |        |
+| ocaml      | minimal |         |         |        |
+| postgres   | minimal |         |         |        |
+| python     | minimal | native  | science | stable |
+| r          | minimal |         |         |        |
+| rust       | minimal |         |         |        |
+| scala      | minimal |         |         |        |
+| typescript | minimal |         |         |        |
+| zsh        | minimal |         |         |        |
+
+* Notes
 ** Setup
 *** Omarchy
 
@@ -35,6 +65,7 @@ uv add --dev ipykernel
 
 
 ** Layout
+
 #+begin_example
 /data/lang/python/kernels
 /data/lang/python/kernels/k1/.venv
@@ -92,3 +123,103 @@ uv add --dev ipykernel
                 └── jupyter
                     └── kernels
 #+end_example
+
+* Jupyenv
+
+** Quick Start
+
+#+begin_src shell
+d=$(mktemp -d)
+nix flake init --template github:tweag/jupyenv
+#+end_src
+
+This generates the following flake
+
+#+begin_src nix
+{
+  description = "Your jupyenv project";
+
+  nixConfig.extra-substituters = [
+    "https://tweag-jupyter.cachix.org"
+  ];
+  nixConfig.extra-trusted-public-keys = [
+    "tweag-jupyter.cachix.org-1:UtNH4Zs6hVUFpFBTLaA4ejYavPo5EFFqgd7G7FxGW9g="
+  ];
+
+  inputs.flake-compat.url = "github:edolstra/flake-compat";
+  inputs.flake-compat.flake = false;
+  inputs.flake-utils.url = "github:numtide/flake-utils";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  inputs.jupyenv.url = "github:tweag/jupyenv";
+
+  outputs = {
+    self,
+    flake-compat,
+    flake-utils,
+    nixpkgs,
+    jupyenv,
+    ...
+  } @ inputs:
+    flake-utils.lib.eachSystem
+    [
+      flake-utils.lib.system.x86_64-linux
+    ]
+    (
+      system: let
+        inherit (jupyenv.lib.${system}) mkJupyterlabNew;
+        jupyterlab = mkJupyterlabNew ({...}: {
+          nixpkgs = inputs.nixpkgs;
+          imports = [(import ./kernels.nix)];
+        });
+      in rec {
+        packages = {inherit jupyterlab;};
+        packages.default = jupyterlab;
+        apps.default.program = "${jupyterlab}/bin/jupyter-lab";
+        apps.default.type = "app";
+      }
+    );
+}
+#+end_src
+
+Then edit =kernels.nix=, so
+
+#+begin_src nix
+{ pkgs, ... }:
+{
+  kernel.python.basic = {
+    enable = true;
+    runtimePackages = [
+      pkgs.coreutils
+    ];
+    env = pkgs.python3.withPackages (
+      ps: with ps; [
+        ps.ipykernel
+        ps.numpy
+        ps.scipy
+        ps.matplotlib
+      ]
+    );
+  };
+}
+#+end_src
+
+It looks like it works for simple things. For more advanced scenarios, it would
+require a lot of overrides. The =pyproject= kernel works for more native deps, I think
+
+But for now, I'm getting this error, which has been unaddressed for a while,
+probably bc it's more difficult than it looks ... which is sad.
+
+#+begin_example
+… while calling the 'throw' builtin
+  at /nix/store/lv4kcr2y4b9k4ynhkga157507zxf372b-source/pkgs/development/compilers/rust/make-rust-platform.nix:84:23:
+    83|   # Added in 25.05.
+    84|   fetchCargoTarball = throw "`rustPlatform.fetchCargoTarball` has been removed in 25.05, use `rustPlatform.fetchCargoVendor` instead";
+      |                       ^
+    85| }
+    
+error `rustPlatform.fetchCargoTarball` has been removed in 25.05, use `rustPlatform.fetchCargoVendor` instead
+#+end_example
+
+** Advanced
+
+*** AMD
