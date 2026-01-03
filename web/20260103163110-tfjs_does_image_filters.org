@@ -1,0 +1,200 @@
+:PROPERTIES:
+:ID:       7b89f91a-7b79-4ec4-898e-802804e2ed02
+:header-args+: :dir "./tfjs-does-image-filters" :var ob@tfjsBuild="./tfjs-does-image-filters"
+:END:
+#+TITLE: TFJS Does Image Filters
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:fbf026c8-6c89-4ad3-a72e-2d693371c76a][Machine Learning]]
++ [[id:4c629c53-91b5-45eb-bb45-7dd0aca51123][Tensorflow]]
++ [[id:4ab045b9-ea4b-489d-b49e-8431b70dd0a5][Data Science]]
+
+* Resources
++ [[https://webgpufundamentals.org/][WebGPU Fundamentals]]
+
+* Overview :noexport:
+
+The goal here is to create an isolated applet with pinned dependences that can
+be fetched remotely (... or built into an =application.js= if needed.)
+
+*** Dependencies
+
+|   |
+
+The page should be one that could easily be embeded into a page online
+
+*** Chromium or Electron app
+
+I may build it into a chromium app. Whether it becomes a chromium app mainly
+depends on the value added by doing so: i.e. do i need to screw with getting
+WebGPU working without permanently enabling it?
+
+IDK if Electron really supports WebGPU. I imagine that it does not, since the
+security concerns for WebGPU are absolutely significant.
+
+** WebGPU
+
+Find a project that has a decent set of WebGPU capabilities and test that.
+
+*** Security
+
+There are security concerns running WebGPU
+
++ These are at the level of the [[https://www.w3.org/TR/webgpu/#security-considerations][WC3 specification]]. They are unlikely to ever be
+  fixed. Not in entirety. Doing so requires the browser developers to provide
+  fixes, though to some extent they share code for stuff like this. Probably not
+  true for firefox though.
++ ... So _always_ reset the configuration (a pain)
+
+*** Benefits
+
+Using its Vulkan-like API offers significant benefits to using its GL-like
+syntax for actual compute. Things like e.g.
+
++ you don't necessarily _need_ a vertex shader for your compute shader IIRC
++ you can get more granular with the data that's processed
++ there are likely other functions for fast normals computation
++ you also still have vertex/fragment shaders
+
+There are a few limitations:
+
++ device-vendor specific idiosyncracies
++ More restricted texture support
+
+*** Browser
+
+Install Chromium Canary and/or Firefox Nightly, but do not set them to your
+default browser.
+
++ Hardware capabilities are shared across chromium instances/profiles running
+  from the same binary source (it normally has one governing process).
++ Normally, splitting this out without Canary is a PITA. Using the developer
+  builds circumvents this. Extensions should require being installed into both
+  the profile _and_ the canary build.
+
+**** WebGPU Inspector
+
+Install [[https://github.com/brendan-duncan/webgpu_inspector?tab=readme-ov-file][WebGPU Inspector]]. You're going to need it... It's available on [[https://chromewebstore.google.com/detail/webgpu-inspector/holcbbnljhkpkjkhgkagjkhhpeochfal?hl=en-US&pli=1][Chrome]]
+and [[https://addons.mozilla.org/en-US/firefox/addon/webgpu-inspector/][Firefox]].
+
+For me, I'm using chromium. I quickly gave up on firefox.
+
+This will show WebGPU API errors more clearly, so you can identify problems
+without scrolling through the console. Later, it will also:
+
++ show you the data that's being processed at each step
+  - what uniforms are set?
+  - what texture descriptors are set?
+  - what does that texture actually look like?
+  - what encoded command calls are open?
++ freeze and step through the rendering process
+
+**** Firefox
+
+Open =about:config=. Set these
+
+| dom.webgpu         | enabled                   | true |
+| dom.webgpu         | external-textures.enabled | true |
+| layers.gpu-process | force-enabled             | true |
+
+Restart firefox.
+
+**** Chrome
+
+Open =chrome://chrome= and find =chrome://flags=
+
+
+** Setup
+
+The build directory
+
+#+name: ob@tfjsBuild
+#+begin_src emacs-lisp
+(org-roam-node-slug (org-roam-node-at-point))
+#+end_src
+
+#+RESULTS: ob@tfjsBuild
+: tfjs_does_image_filters
+
+Specifying a file to tangle into. The block is named german =bau= because it's
+unique, short and related to construction. =#+call: bau(f​=​"fdsa.js")= will return
+the filename so typing out portable destinations to tangle into isn't excruciating
+
+#+name: bau
+#+headers: :var f=""
+#+begin_src emacs-lisp :sync yes
+(if (string-empty-p f)
+    (org-roam-node-slug (org-roam-node-at-point))
+  ;; i just don't want the full path in output
+  ;; (expand-file-name f (org-roam-node-slug (org-roam-node-at-point)))
+  (format "./%s/%s" (org-roam-node-slug (org-roam-node-at-point)) f))
+#+end_src
+
+#+RESULTS: bau
+: tfjs_does_image_filters
+
+#+call: bau(f="asdf.js")
+
+#+RESULTS:
+: ./tfjs_does_image_filters/asdf.js
+
+*** Files
+
+These need to be tangled once into the =./tfjs-does-image-filters= directory.
+However, I will be _weaving_ the files, since I want nice features like completion
+where possible. Detangling the files is primarily intended to provide some
+documentation of what I did.
+
+|------------------+---------+-------------------------------------------------------|
+| File             | Type    | Purpose                                               |
+|------------------+---------+-------------------------------------------------------|
+| network.ipynb    | jupyter | Builds one or more networks                           |
+| network.h5       | ??      | Contains state for the network/model                  |
+| erode.webgpu.js  | js      | The =erode= operation as a custom WebGPU compute shader |
+| dilate.webgpu.js | js      | The =dilate= operation                                  |
+| index.js         | js      | The main javascript                                   |
+| ../obreset.css   | css     |                                                       |
+| index.css        | css     | Resets for org-babel's css and the site's css         |
+| index.html       | html    | The page and canvas layout                            |
+|------------------+---------+-------------------------------------------------------|
+
+It's possible that I would 
+
+#+name: index.html
+#+begin_src html :tangle (org-sbe bau (f $"index.html")) :comments link
+<html>
+  <head>
+    <!-- Load TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs/dist/tf.min.js"> </script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgpu/dist/tf-backend-webgpu.js"></script>
+  </head>
+
+  <body>
+#+end_src
+
+#+begin_src html :tangle (org-sbe bau (f $"index.html")) :comments link
+  <!-- Place your code in the script tag below. You can also use an external .js file -->
+  <script>
+    // Define a model for linear regression.
+    const model = tf.sequential();
+    model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+
+    // Prepare the model for training: Specify the loss and the optimizer.
+    model.compile({loss: 'meanSquaredError', optimizer: 'sgd'});
+
+    // Generate some synthetic data for training.
+    const xs = tf.tensor2d([1, 2, 3, 4], [4, 1]);
+    const ys = tf.tensor2d([1, 3, 5, 7], [4, 1]);
+
+    // Train the model using the data.
+    model.fit(xs, ys).then(() => {
+      // Use the model to do inference on a data point the model hasn't seen before:
+      // Open the browser devtools to see the output
+      model.predict(tf.tensor2d([5], [1, 1])).print();
+    });
+  </script>
+</body>
+</html>
+#+end_src
