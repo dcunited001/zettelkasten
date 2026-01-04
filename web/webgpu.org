@@ -1,0 +1,156 @@
+:PROPERTIES:
+:ID:       7b89f91a-7b79-4321-898e-802804e2ed02
+:END:
+#+TITLE: WebGPU
+#+CATEGORY: web
+#+TAGS:
+
+* Roam
++ [[id:fbf026c8-6c89-4ad3-a72e-2d693371c76a][Machine Learning]]
++ [[id:4c629c53-91b5-45eb-bb45-7dd0aca51123][Tensorflow]]
++ [[id:4ab045b9-ea4b-489d-b49e-8431b70dd0a5][Data Science]]
+* Resources
+
+** WebGPU Fundamentals
++ Code: [[https://github.com/webgpu/webgpufundamentals/tree/main/webgpu][webgpu/webgpufundamentals]]
++ Site: [[https://webgpufundamentals.org/][WebGPU Fundamentals]]
+
++ WebGPU Compute Shader for histogram computation ([[https://webgpufundamentals.org/webgpu/lessons/webgpu-compute-shaders-histogram.html][part1]] and [[https://webgpufundamentals.org/webgpu/lessons/webgpu-compute-shaders-histogram-part-2.html][part2]]). Computing
+  a histogram is necessary for finding max/min of a function (with finite
+  range). They use the "reduce" method, which I also implemented with WebGL
+  mipmaps, but it was difficult to get around WebGL API limitations
++ The code's available at
+
+** WebGPU Samples
++ Code: [[https://github.com/webgpu/webgpu-samples][webgpu/webgpu-samples]]
+
+Most of the examples are way slower than I would expect.
+
++ My system has a large amount of memory usage just for workspaces/monitors...
+  but GPUViewer doesn't show active GPU usage
++ Tried disabling the WebGPU inspector. Clicking links doesn't change the page,
+  so WebGPU inspector doesn't necessarily update its awareness of objects (i
+  think?)
++ The applications that run the slowest show the least GPU usage in =radeontop=. I
+  think i need to set up AMD/Vulkan on NixOS
+
+*** Interesting
++ [[https://webgpu.github.io/webgpu-samples/?sample=volumeRenderingTexture3D][Volume Rendering]], data for a simulated brain create via [[https://github.com/webgpu/webgpu-samples/tree/main/public/assets/img/volume/t1_icbm_normal_1mm_pn0_rf0.py][custom python script]]
++ [[https://webgpu.github.io/webgpu-samples/?sample=multipleCanvases][Multiple Canvases]] This is kinda close to what I need.
++ GPGPU: [[https://webgpu.github.io/webgpu-samples/?sample=bitonicSort][bitonicSort]] (map reduce), [[https://webgpu.github.io/webgpu-samples/?sample=computeBoids][computeBoids]] (mesh instancing)
+
+*** Performance Issues
++ Metaballs (FPS 10)
+  - This initially shows almost zero usage in =radeontop=, but then sits between
+    =3-5%=. Regardless of what the settings are, they don't affect FPS
++ [[https://webgpu.github.io/webgpu-samples/?sample=clusteredShading][Clustered Shading]] (FPS 5-8)
++ [[https://webgpu.github.io/webgpu-samples/?sample=marchingCubes][Marching Cubes]] (FPS 2)
++ [[https://webgpu.github.io/webgpu-samples/?sample=particleLife][Particle Life]] (FPS 5) doesn't run on N^2
++ [[https://webgpu.github.io/webgpu-samples/?sample=animometer][Aninometer]] (FPS 4-5)
+*** Problems
++ [[https://webgpu.github.io/webgpu-samples/?sample=primitivePicking][primitivePicking]]: This sample requires the 'primitive-index' feature, which is
+  not supported by this system.
++ [[https://webgpu.github.io/webgpu-samples/?sample=textRenderingMsdf][Text Rendering]]: unhandled promise rejection, please report a bug!
++ [[https://toji.github.io/webgpu-bundle-culling/][Bundle Culling]]: very slow (0 FPS)
+
+* Overview
+
+** NixOS
+** Goals
+
+The goal here is to create isolated applets with pinned dependences that can
+be fetched remotely (... or built into an =application.js= if needed.)
+
+*** Dependencies
+
+|   |
+
+The page should be one that could easily be embeded into a page online
+
+*** Chromium or Electron app
+
+I may build these into chromium apps. Whether it becomes a chromium app mainly
+depends on the value added by doing so: i.e. do i need to screw with getting
+WebGPU working without permanently enabling it?
+
+IDK if Electron really supports WebGPU. I imagine that it does not, since the
+security concerns for WebGPU are absolutely significant.
+
+** WebGPU
+
+Find a project that has a decent set of WebGPU capabilities and test that.
+
+*** Security
+
+There are security concerns running WebGPU
+
++ These are at the level of the [[https://www.w3.org/TR/webgpu/#security-considerations][WC3 specification]]. They are unlikely to ever be
+  fixed. Not in entirety. Doing so requires the browser developers to provide
+  fixes, though to some extent they share code for stuff like this. Probably not
+  true for firefox though.
++ ... So _always_ reset the configuration (a pain)
+
+*** Benefits
+
+Using its Vulkan-like API offers significant benefits to using its GL-like
+syntax for actual compute. Things like e.g.
+
++ you don't necessarily _need_ a vertex shader for your compute shader IIRC
++ you can get more granular with the data that's processed
++ there are likely other functions for fast normals computation
++ you also still have vertex/fragment shaders
+
+There are a few limitations:
+
++ device-vendor specific idiosyncracies
++ More restricted texture support
+
+*** Browser
+
+Install Chromium Canary and/or Firefox Nightly, but do not set them to your
+default browser.
+
++ Hardware capabilities are shared across chromium instances/profiles running
+  from the same binary source (it normally has one governing process).
++ Normally, splitting this out without Canary is a PITA. Using the developer
+  builds circumvents this. Extensions should require being installed into both
+  the profile _and_ the canary build.
++ On NixOS, i'll run this using =nix shell= or =nix develop=, so i don't have to
+  worry about the order of components in my =PATH= which would screw up launching
+  certain chrome apps.
+  - I'm using =programs.chromium.enable= to install chrome, and I can't guarantee
+    the path ends up right (whether system pkgs, user pkgs, whatever)
+  - I guess i need =ungoogled-chromium= for this......... which does _not_ run
+    separately from the existing [[https://chromium.googlesource.com/chromium/src/+/refs/tags/133.0.6846.2/docs/design/startup.md][Chromium Broker Process]].... which manages init
+    that manages sandboxes
+
+**** WebGPU Inspector
+
+Install [[https://github.com/brendan-duncan/webgpu_inspector?tab=readme-ov-file][WebGPU Inspector]]. You're going to need it... It's available on [[https://chromewebstore.google.com/detail/webgpu-inspector/holcbbnljhkpkjkhgkagjkhhpeochfal?hl=en-US&pli=1][Chrome]]
+and [[https://addons.mozilla.org/en-US/firefox/addon/webgpu-inspector/][Firefox]].
+
+For me, I'm using chromium. I quickly gave up on firefox.
+
+This will show WebGPU API errors more clearly, so you can identify problems
+without scrolling through the console. Later, it will also:
+
++ show you the data that's being processed at each step
+  - what uniforms are set?
+  - what texture descriptors are set?
+  - what does that texture actually look like?
+  - what encoded command calls are open?
++ freeze and step through the rendering process
+
+**** Firefox
+
+Open =about:config=. Set these
+
+| dom.webgpu         | enabled                   | true |
+| dom.webgpu         | external-textures.enabled | true |
+| layers.gpu-process | force-enabled             | true |
+
+Restart firefox.
+
+**** Chrome
+
+Open =chrome://chrome= and find =chrome://flags=
