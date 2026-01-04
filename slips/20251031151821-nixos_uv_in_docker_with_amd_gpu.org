@@ -11,6 +11,46 @@
 
 * Resources
 + [[https://rocm.docs.amd.com/en/latest/compatibility/compatibility-matrix.html][AMD Compatibility Matrix]]
++ Current AMD settings here: [[https://github.com/dcunited001/ellipsis/blob/170a3e726880cfa7e5c1974f52335b84310f6f44/nixos/hosts/kratos/amdgpu.nix][nixos/hosts/kratos/amdgpu.nix]]
+
+** Nixos
+nixpkgs docs describe options: [[https://github.com/NixOS/nixpkgs/blob/fba245c24ffe3733ad7ccc1e377f6c0e39b8b3e1/doc/packages/uv.section.md?plain=1#L10][doc/packages/uv.section.md]]
+
++ Handle in =uv= python:
+  - set =UV_PYTHON= or =--python= to a statically linked =python=, preferably from
+    nixpkgs. can also set =UV_PYTHON_DOWNLOADS=never= or =--no-python-downloads=
+  - the env vars can be set in =shell.nix= or =.env= files
++ Use =nix-ld=:
+  - requires adding dynamically linked executables to =programs.nix-ld.libraries=.
+    see the default libraries [[https://github.com/NixOS/nixpkgs/blob/nixos-unstable/nixos/modules/programs/nix-ld.nix#L49-L64][here]].
+  - this is necessarily a system-wide solution (unless running it in a nixos
+    container, as is effectively done in
+    [[https://github.com/dcunited001/ellipsis/blob/master/nixos/modules/nixos/programs/vscode.nix#L101][nixos/modules/nixos/programs/vscode.nix]])
+  - for most cases, =nix-ld= is fine, but everything can only fall-through to one
+    =*.so= target (so =readelf -ha= for each =*.so= needs to be consistent)
+  - you then need to set =LD_LIBRARY_PATH=$NIX_LD_LIBRARY_PATH=
++ Handle in =shell.nix= (if not using =nix-ld=)
+  - =LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.openssl pkgs.zlib pkgs.curl ]=
+    in a derivation.
+
+*** Yikes
+
+some python wheels downloaded would need to be rewired, regardless of whichever
+solution you go with. the real problem here is that there still is NOT one
+"12-factor environment setup shim" that resolves your problems. your projects
+can't be set up so others can use them without customization. worse: /your own
+projects/ need duplicate state rendered across multiple workstations. that state
+doesn't fit neatly into a git repository (which usually just needs an example
+anyways, since most devs effectively have different setup needs)
+
+"worse" of course, depends on your viewpoint: is the impaired socialization of
+code worse than the friction of: "worked on my desktop machine, but when going
+out with my laptop, I'm always frantically trying to get it to work on my other
+non-(n|gui)ix laptop machine"
+
+Even without AMDGPU, you still have some of these problems. But getting from =git
+clone= and =mydeps install= to =hello GL Triangle= and =wrote 1 sloc= is at least a
+shorter feedback loop.
 
 * Notes
 :PROPERTIES:
