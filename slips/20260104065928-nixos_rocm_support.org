@@ -1,0 +1,2757 @@
+:PROPERTIES:
+:ID:       ae2d42cf-21c4-45ff-9d52-6fb65e1ad7b6
+:END:
+#+TITLE: NixOS: ROCm Support
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
+
+* Notes
+
+Reorganized/archived projects
+
+| hipcc               | moved to AMD fork of LLVM |
+| rocm-opencl-runtime |                           |
+
+* TinyGrad
+
+IDK whether this is an easy fix and I haven't thought about hacking on a local
+checkout of nixpkgs yet.
+
+** Substitutions
+
+Tinygrad replaced =compiler_(hip).py= with =amd= and now contains these references
+
+#+begin_src grep
+tinygrad/runtime/autogen/__init__.py:90:    case "hip": return load("hip", "os.getenv('ROCM_PATH', '/opt/rocm')+'/lib/libamdhip64.so'", ["/opt/rocm/include/hip/hip_ext.h",
+tinygrad/runtime/autogen/__init__.py:91:                            "/opt/rocm/include/hip/hiprtc.h", "/opt/rocm/include/hip/hip_runtime_api.h", "/opt/rocm/include/hip/driver_types.h"],
+tinygrad/runtime/autogen/__init__.py:92:                            args=["-D__HIP_PLATFORM_AMD__", "-I/opt/rocm/include", "-x", "c++"], prolog=["import os"])
+tinygrad/runtime/autogen/__init__.py:94:      return load("comgr_3" if nm == "comgr_3" else "comgr", "[os.getenv('ROCM_PATH', '/opt/rocm')+'/lib/libamd_comgr.so', 'amd_comgr']",
+tinygrad/runtime/autogen/__init__.py:95:                  ["/opt/rocm/include/amd_comgr/amd_comgr.h"], args=["-D__HIP_PLATFORM_AMD__", "-I/opt/rocm/include", "-x", "c++"],
+tinygrad/runtime/autogen/__init__.py:97:    case "hsa": return load("hsa", "[os.getenv('ROCM_PATH', '/opt/rocm')+'/lib/libhsa-runtime64.so', 'hsa-runtime64']", [
+tinygrad/runtime/autogen/__init__.py:105:                                args=["-I/opt/rocm/include", "-x", "c++"])
+tinygrad/runtime/autogen/am/__init__.py:15:                                   args=["-I/opt/rocm/include", "-x", "c++"], tarball=am_src)
+tinygrad/runtime/autogen/am/__init__.py:17:                                   args=["-I/opt/rocm/include", "-x", "c++"], tarball=am_src)
+tinygrad/runtime/autogen/am/__init__.py:19:                                   args=["-I/opt/rocm/include", "-x", "c++"], tarball=am_src)
+tinygrad/runtime/autogen/comgr.py:5:dll = DLL('comgr', [os.getenv('ROCM_PATH', '/opt/rocm')+'/lib/libamd_comgr.so', 'amd_comgr'])
+tinygrad/runtime/autogen/comgr_3.py:5:dll = DLL('comgr_3', [os.getenv('ROCM_PATH', '/opt/rocm')+'/lib/libamd_comgr.so', 'amd_comgr'])
+tinygrad/runtime/autogen/hip.py:5:dll = DLL('hip', os.getenv('ROCM_PATH', '/opt/rocm')+'/lib/libamdhip64.so')
+tinygrad/runtime/autogen/hsa.py:5:dll = DLL('hsa', [os.getenv('ROCM_PATH', '/opt/rocm')+'/lib/libhsa-runtime64.so', 'hsa-runtime64'])
+tinygrad/runtime/support/compiler_amd.py:18:  for p in ['/opt/rocm/llvm/bin/llvm-objdump', 'llvm-objdump-21', 'llvm-objdump-20', 'llvm-objdump']:
+tinygrad/runtime/support/compiler_amd.py:74:      "-I/opt/rocm/include", "-Xclang -disable-llvm-passes", "-Xclang -aux-triple", "-Xclang x86_64-unknown-linux-gnu"]
+tinygrad/runtime/support/compiler_amd.py:111:                        f"--offload-arch={self.arch}", "-I/opt/rocm/include/hip", "-o", bcf.name, srcf.name] + self.extra_options, check=True)
+#+end_src
+
+* ROCm 6.4.3
+
++ [[https://rocm.docs.amd.com/en/latest/_images/hpc-stack-2024_6_20.png][Diagram of ROCm Components]]
++ [[https://rocm.docs.amd.com/projects/llvm-project/en/latest/LLVM/llvm/html/AMDGPUUsage.html#target-features][LLVM Docs for AMDGPU: see Target Triples and Target Features]]
+
+All packages with metadata concerning ROCm
+
+#+begin_src shell
+nh search -l 100 -j rocm \
+    | jq -r '.results | map(.package_attr_name) | sort | join("\n")'
+#+end_src
+
++ *aotriton*
++ *ck4inductor*
+
+** System
+
++ hsakmt :: brokers access for applications to launch computer kernels via HSA
+  ROCm Kernel agents
++ rocm-core :: technically a library, but more of a system utility (extracts
+  information about ROCm installation in a reliable way)
++ rdc :: manage deployments and rccl
++ rocm-smi, ami-smi :: SMI tools
++ rccl :: blit between GPUs faster than paxos can raft
+
+** Perf
+
+|------+--------------------------------+-------------+----------------------|
+| Perf | *rocm-bandwidth-test*            | *rocprofiler* | *rocprofiler-register* |
+|      |                                | *roctracer*   |                      |
+| Test | *rocm-tests* (nixpkg passthrour) |             |                      |
+|------+--------------------------------+-------------+----------------------|
++ [[https://rocm.docs.amd.com/en/latest/how-to/rocm-for-ai/inference-optimization/workload.html][AMD Instinct MI300X Workload Optimization]]
+ 
+** Toolchain & Development
+
+=rocmPackages.clr= seems to combine most of what's needed
+
+
+|----------+----------------+------------------+------------------+-----------------------------|
+| Category | nixpkgs.       | rocmPackages.    |                  | Notes                       |
+|----------+----------------+------------------+------------------+-----------------------------|
+| Docs     | rocm-docs-core |                  |                  |                             |
+| Dev      | *hipify*         |                  |                  | CUDA kernel conversion      |
+| Build    | *rocm-cmake*     |                  |                  |                             |
+| Compile  | *clang*          | *hipcc*            | *rocm-toolchain*   | =amdclang++= or =hipcc= compile |
+| Link     | *rocm-comgr*     | *rocm-device-libs* |                  |                             |
+| Debug    | *rocgdb*         | *rocdbgapi*        | *rocr-debug-agent* |                             |
+| Runtime  | *clr*            | hip (nixpkg?)    | opencl (nixpkg?) |                             |
+|----------+----------------+------------------+------------------+-----------------------------|
+
++ *hip-common*: a package in nixpkgs, but i'm still not sure of where it fits in
++ *rocm-toolchain*: this wraps almost all of the llvm/clang dependences, in an
+  isolated profile... or umm [[https://github.com/NixOS/nixpkgs/blob/fba245c24ffe3733ad7ccc1e377f6c0e39b8b3e1/pkgs/development/rocm-modules/6/default.nix#L264][nixpkgs explains]]
+
+
+#+begin_quote
+(2025-09-30) =rocm-merged-llvm= has been removed.
+
++ For =libllvm= or =libclang= use =rocmPackages.llvm.libllvm/clang=.
++ For a ROCm compiler toolchain use =rocmPackages.rocm-toolchain=.
++ If a package uses =$<TARGET_FILE:clang>= in CMake from =libclang= it may be
+  necessary to convince it to use =rocm-toolchain= instead.
+#+end_quote
+
+rocmPackages.llvm.llvm.*
+
+|-------------+----------+-----------------+-----------------|
+| libcxx      | bintools | rocmClangStdenv | clang-unwrapped |
+| compiler-rt | llvm     | lld             | openmp          |
+|-------------+----------+-----------------+-----------------|
+
+
+** Primatives
+
+|------------+--------------------------+-----------+-----------|
+| Nvidia     | Category                 | HIP       | ROCm      |
+|------------+--------------------------+-----------+-----------|
+| CUB (cccl) | OpenCL Primatives        | *hipcub*    | *rocprim*   |
+| cuTensor   | Tensor Data/Ops          | *hiptensor* |           |
+| Thrust     | Boolean Logic/Map Reduce |           | *rocthrust* |
+|------------+--------------------------+-----------+-----------|
+| nccl       | Communication            |           | *rccl*      |
+| nvshmem    |                          |           | *rocshmem*  |
+|------------+--------------------------+-----------+-----------|
+** Math Libraries
+
+|------------+-----------+---------------------------+-----------+------------|
+| nVidia     | Category  | HIP (ROCm/nVidia)         | ROCm Impl | Other      |
+|------------+-----------+---------------------------+-----------+------------|
+|            | Fortran   | *hipfort*                   |           |            |
+| cuSOLVER   | LAPACK    | *hipsolver*                 |           |            |
+| cuBLAS     | BLAS      | *hipblas* (hipblas-common)  |           | *Tensile¹*   |
+| cuBLASLt   |           | *hipblaslt*                 |           |            |
+| cuFFT      | FFT       | *hipfft*                    | *rocfft*    |            |
+| cuRAND     | Rand      | *hiprand*                   | *rocrand*   |            |
+| cuSPARSE   | Sparse    | *hipsparse*                 | *rocsparse* | *rocalution* |
+| cuSPARSELt |           | *hipsparselt*               |           |            |
+|            | Precision | *half*                      |           | *rocwmma¹*   |
+| CUTLASS    |           | *composeable_kernel{,base}* |           |            |
+|------------+-----------+---------------------------+-----------+------------|
+
+#+begin_quote
+¹ =rocwmma= & =tensile= are deprecated, =hipcc= is merged into the AMD llvm fork
+#+end_quote
+
++ [[https://github.com/ROCm/composable_kernel/blob/develop/TERMINOLOGY.md][Composable Kernel Terminology]]
+  - "A CK pipeline orchestrates the sequence of [resource utilization]
+    operations for a kernel ... and consists of two core components"
+  - Problem :: "What to compute: input/output shapes, data types, math ops
+    (GEMM, convolution)"
+  - Policy :: "Memory access patterns, hardware-specific optimizations"
+  - So it connects intent to resources, while enforcing rules. It "simplifies"
+    the process of declaring operations, managing resources and making data
+    about load available to facilitate constraints ... i think
+
+** Applications
+
++ [[https://rocm.docs.amd.com/en/latest/how-to/rocm-for-hpc/index.html][ROCm for HPC]]
+
+*** Graphics
+
++ hiprt :: ray-tracing (used by blender)
+
+*** Computer Vision
+
+|--------------+----------------------+-----------+------+------------------------------|
+| NVidia       | Category             | HIP       | ROCm | Backends                     |
+|--------------+----------------------+-----------+------+------------------------------|
+| cuDNN (and?) | convolutions (dense) |           |      |                              |
+|              |                      |           | *rpp*  | *rpp-cpu rpp-hip rpp-opencl*   |
+|              |                      | *mivisionx* |      | *mivisionx-hip*, *mivisionx-cpu* |
+|              |                      |           |      |                              |
+|              |                      |           |      |                              |
+|--------------+----------------------+-----------+------+------------------------------|
+*** GNN
+
+|---+---+----------+---|
+|   |   | *migraphx* |   |
+|---+---+----------+---|
++ rocmlir :: used for MLIR in migraphx & elsewhere
++ miopen
++ mpi
++ mscclpp
+
+
+#+begin_quote
+=miopengemm= has been deprecated.
+=miopen-opencl= has been deprecated.
+=mivisionx-opencl= has been deprecated. (other mivisionx still available)
+#+end_quote
+
+* tools
++ rocmPackages.rocminfo
++ rocmPackages.amd-smi
+  
+** rocmPackages.rocm-smi
+needs to propagate libdrm
+
+- in nixpkgs as ${rocm-smi}/include/libdrm -> ${libdrm/include/libdrm}
+
+* environment
+
++ MIOPEN_PATH
++ HIPFLAGS
+
+* script
+
+#+name: onnxruntimepkgs
+#+begin_src emacs-lisp :results vector value
+(list "hipcub"
+      "hipfft"
+      "hiprand"
+      "hipsparse"
+      ;; "rocblas"
+      "rocprim"
+      "rocrand"
+      "rocthrust"
+      "miopen"
+      "roctracer")
+;; "clr"
+;; "hipblas"
+;; "rccl"
+;; "rocm-smi"
+#+end_src
+
+#+RESULTS: onnxruntimepkgs
+| hipcub | hipfft | hiprand | hipsparse | rocblas | rocprim | rocrand | rocthrust | miopen | roctracer |
+
+#+name: rocmtree
+#+headers: :var pkgs=(list "rccl" "hipblas") pkgset="rocmPackages" treei="-I *.dat -I *.co -I *.hsaco"
+#+begin_src shell :results output verbatim
+# this works in babel params. i'm not sure why
+# treei="-I *.xml -I *.dat -I *.co -I *.hsaco" # not this "-I '.xml'"
+
+pkgset=${pkgset:+"$pkgset."}
+echo nixpkgs#$pkgset${pkgs[0]}
+
+
+for pkg in ${pkgs[@]}; do
+#    p=$(nix shell nixpkgs#rocmPackages.$pkg --command /bin/sh -c 'echo $PATH )
+    p=$(nix shell nixpkgs#$pkgset${pkg} --command env | grep -e '^PATH' | tr ":" "\n" | head -n1 | sed -E "s/\/bin//g")
+    p=${p/PATH=/}
+    echo "** $pkg: $p"
+    echo -e "#+begin_verse\n"
+    tree --noreport -l $treei $p
+    echo -e "#+end_verse\n\n"
+done
+
+  #  +call: rocmtree(pkgs=onnxruntimepkgs, pkgset="rocmPackages") :results output raw
+  #  +call: rocmtree(pkgs=(list "rocblas"), pkgset="rocmPackages")) :results output raw
+#+end_src
+
+#+call: rocmtree(pkgs=(list "rocm-toolchain"), pkgset="rocmPackages")) :results output raw
+
+#+RESULTS:
+nixpkgs#rocmPackages.rocm-toolchain
+
+
+* libs
+
+Targets for paths to create via systemd tmpfiles mount?
+
+#+begin_example
+/opt/rocm
+/opt/rocm/hip
+/opt/rocm/hip:clr
+/opt/rocm/llvm
+/opt/rocm/llvm/bin
+#+end_example
+
+
+
+** Driver
+*** miopen: /nix/store/aa22cc-miopen-6.4.3
+#+begin_verse
+
+/nix/store/aa22cc-miopen-6.4.3
+├── bin
+│   └── MIOpenDriver
+├── include
+│   └── miopen
+│       ├── config.h
+│       ├── export.h
+│       ├── miopen.h
+│       └── version.h
+├── lib
+│   ├── cmake
+│   │   └── miopen
+│   │       ├── miopen-config.cmake
+│   │       ├── miopen-config-version.cmake
+│   │       ├── miopen-targets.cmake
+│   │       └── miopen-targets-release.cmake
+│   ├── libMIOpen.so -> libMIOpen.so.1
+│   ├── libMIOpen.so.1 -> libMIOpen.so.1.0.60403
+│   └── libMIOpen.so.1.0.60403
+├── libexec
+│   └── miopen
+└── share
+    ├── doc
+    │   └── miopen-hip
+    │       └── LICENSE.txt
+    └── miopen
+        └── db
+            ├── gfx1030_36.db
+            ├── gfx1030_36.HIP.fdb.txt
+            ├── gfx1030.kdb -> /nix/store/aa22cc-miopen-gfx1030.kdb
+            ├── gfx803_36.HIP.fdb.txt
+            ├── gfx803_36.OpenCL.fdb.txt
+            ├── gfx803_64.HIP.fdb.txt
+            ├── gfx803_64.OpenCL.fdb.txt
+            ├── gfx900_56.db
+            ├── gfx900_56.HIP.fdb.txt
+            ├── gfx900_56.OpenCL.fdb.txt
+            ├── gfx900_64.HIP.fdb.txt
+            ├── gfx900_64.OpenCL.fdb.txt
+            ├── gfx900.kdb -> /nix/store/aa22cc-miopen-gfx900.kdb
+            ├── gfx906_60.db
+            ├── gfx906_60.HIP.fdb.txt
+            ├── gfx906_60.OpenCL.fdb.txt
+            ├── gfx906_64.HIP.fdb.txt
+            ├── gfx906_64.OpenCL.fdb.txt
+            ├── gfx906.kdb -> /nix/store/aa22cc-miopen-gfx906.kdb
+            ├── gfx90878.db
+            ├── gfx90878.HIP.fdb.txt
+            ├── gfx90878.OpenCL.fdb.txt
+            ├── gfx908_ConvAsm1x1U_decoder.ktn.model
+            ├── gfx908_ConvAsm1x1U_encoder.ktn.model
+            ├── gfx908_ConvAsm1x1U_metadata.ktn.model
+            ├── gfx908.kdb -> /nix/store/aa22cc-miopen-gfx908.kdb
+            ├── gfx908_metadata.tn.model
+            ├── gfx908.tn.model
+            ├── gfx90a68.db.txt
+            ├── gfx90a68.HIP.fdb.txt
+            ├── gfx90a6e.db
+            ├── gfx90a6e.HIP.fdb.txt
+            ├── gfx90a_ConvHipIgemmGroupFwdXdlops_decoder.ktn.model
+            ├── gfx90a_ConvHipIgemmGroupFwdXdlops_encoder.ktn.model
+            ├── gfx90a_ConvHipIgemmGroupFwdXdlops_metadata.ktn.model
+            ├── gfx90a_ConvHipIgemmGroupXdlops_decoder.ktn.model
+            ├── gfx90a_ConvHipIgemmGroupXdlops_encoder.ktn.model
+            ├── gfx90a_ConvHipIgemmGroupXdlops_metadata.ktn.model
+            ├── gfx90a.kdb -> /nix/store/aa22cc-miopen-gfx90a.kdb
+            ├── gfx90a_metadata.tn.model
+            ├── gfx90a.tn.model
+            ├── gfx942130.db.txt
+            ├── gfx942130.HIP.fdb.txt
+            ├── gfx942_ConvHipIgemmGroupBwdXdlops_decoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupBwdXdlops_encoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupBwdXdlops_metadata.ktn.model
+            ├── gfx942_ConvHipIgemmGroupFwdXdlops_decoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupFwdXdlops_encoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupFwdXdlops_metadata.ktn.model
+            ├── gfx942_ConvHipIgemmGroupWrwXdlops_decoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupWrwXdlops_encoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupWrwXdlops_metadata.ktn.model
+            ├── gfx942_ConvHipIgemmGroupXdlops_decoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupXdlops_encoder.ktn.model
+            ├── gfx942_ConvHipIgemmGroupXdlops_metadata.ktn.model
+            ├── gfx942e4.db.txt
+            ├── gfx942e4.HIP.fdb.txt
+            ├── gfx942.kdb
+            ├── gfx942_metadata.tn.model
+            └── gfx942.tn.model
+#+call: rocmtree(pkgs=(list "hiprt"), pkgset="rocmPackages")) :results output raw
+#+end_verse
+
+
+
+** OpenMP
+*** mpi
+
+#+begin_verse
+/nix/store/aa22bb-openmpi-5.0.9
+├── bin
+│   ├── mpiexec -> mpirun
+│   ├── mpirun                       
+│   └── oshrun -> mpirun             
+├── etc
+│   ├── openmpi-mca-params.conf       
+│   └── openmpi-totalview.tcl        
+└── lib
+    ├── libmpi_mpifh.so -> libmpi_mpifh.so.40.40.1
+    ├── libmpi_mpifh.so.40 -> libmpi_mpifh.so.40.40.1
+    ├── libmpi_mpifh.so.40.40.1
+    ├── libmpi.so -> libmpi.so.40.40.7
+    ├── libmpi.so.40 -> libmpi.so.40.40.7
+    ├── libmpi.so.40.40.7
+    ├── libmpi_usempif08.so -> libmpi_usempif08.so.40.40.3
+    ├── libmpi_usempif08.so.40 -> libmpi_usempif08.so.40.40.3
+    ├── libmpi_usempif08.so.40.40.3
+    ├── libmpi_usempi_ignore_tkr.so -> libmpi_usempi_ignore_tkr.so.40.40.1
+    ├── libmpi_usempi_ignore_tkr.so.40 -> libmpi_usempi_ignore_tkr.so.40.40.1
+    ├── libmpi_usempi_ignore_tkr.so.40.40.1
+    ├── libopen-pal.so -> libopen-pal.so.80.0.5
+    ├── libopen-pal.so.80 -> libopen-pal.so.80.0.5
+    ├── libopen-pal.so.80.0.5
+    ├── liboshmem.so -> liboshmem.so.40.40.4
+    ├── liboshmem.so.40 -> liboshmem.so.40.40.4
+    ├── liboshmem.so.40.40.4
+    ├── mpi_ext.mod
+    ├── mpi_f08_callbacks.mod
+    ├── mpi_f08_ext.mod
+    ├── mpi_f08_interfaces_callbacks.mod
+    ├── mpi_f08_interfaces.mod
+    ├── mpi_f08.mod
+    ├── mpi_f08_types.mod
+    ├── mpi.mod
+    ├── mpi_types.mod
+    ├── openmpi
+    │   └── libompi_dbg_msgq.so
+    └── pmpi_f08_interfaces.mod
+#+end_verse
+
+
+
+** HIP
+
+*** clr: /nix/store/aa22cc-clr-6.4.3
+
+| blender | tinygrad |
+
+#+begin_verse
+
+/nix/store/aa22cc-clr-6.4.3
+├── bin
+│   ├── amdclang
+│   ├── amdclang++
+│   ├── clinfo
+│   ├── hipcc
+│   ├── hipcc_cmake_linker_helper
+│   ├── hipcc.pl
+│   ├── hipconfig
+│   ├── hipconfig.pl
+│   ├── hipdemangleatp
+│   ├── hipvars.pm
+│   ├── rocm_agent_enumerator -> /nix/store/aa22cc-rocminfo-6.4.3/bin/rocm_agent_enumerator
+│   ├── rocminfo -> /nix/store/aa22cc-rocminfo-6.4.3/bin/rocminfo
+│   ├── roc-obj
+│   ├── roc-obj-extract
+│   ├── roc-obj-extract.bat
+│   ├── roc-obj-ls
+│   └── roc-obj-ls.bat
+├── include
+│   ├── CL
+│   │   ├── cl2.hpp
+│   │   ├── cl_dx9_media_sharing_intel.h
+│   │   ├── cl_egl.h
+│   │   ├── cl_ext.h
+│   │   ├── cl_ext_intel.h
+│   │   ├── cl_gl_ext.h
+│   │   ├── cl_gl.h
+│   │   ├── cl.h
+│   │   ├── cl.hpp
+│   │   ├── cl_icd.h
+│   │   ├── cl_platform.h
+│   │   ├── cl_va_api_media_sharing_intel.h
+│   │   ├── cl_version.h
+│   │   └── opencl.h
+│   ├── hip
+│   │   ├── amd_detail
+│   │   │   ├── amd_channel_descriptor.h
+│   │   │   ├── amd_device_functions.h
+│   │   │   ├── amd_hip_atomic.h
+│   │   │   ├── amd_hip_bf16.h
+│   │   │   ├── amd_hip_bfloat16.h
+│   │   │   ├── amd_hip_.h
+│   │   │   ├── amd_hip_complex.h
+│   │   │   ├── amd_hip_cooperative_groups.h
+│   │   │   ├── amd_hip_fp16.h
+│   │   │   ├── amd_hip_fp8.h
+│   │   │   ├── amd_hip_gl_interop.h
+│   │   │   ├── amd_hip_math_constants.h
+│   │   │   ├── amd_hip_runtime.h
+│   │   │   ├── amd_hip_runtime_pt_api.h
+│   │   │   ├── amd_hip_unsafe_atomics.h
+│   │   │   ├── amd_hip_vector_types.h
+│   │   │   ├── amd_math_functions.h
+│   │   │   ├── amd_surface_functions.h
+│   │   │   ├── amd_warp_functions.h
+│   │   │   ├── amd_warp_sync_functions.h
+│   │   │   ├── concepts.hpp
+│   │   │   ├── device_library_decls.h
+│   │   │   ├── functional_grid_launch.hpp
+│   │   │   ├── grid_launch_GGL.hpp
+│   │   │   ├── grid_launch.h
+│   │   │   ├── grid_launch.hpp
+│   │   │   ├── helpers.hpp
+│   │   │   ├── hip_api_trace.hpp
+│   │   │   ├── hip_assert.h
+│   │   │   ├── hip_cooperative_groups_helper.h
+│   │   │   ├── hip_fp16_gcc.h
+│   │   │   ├── hip_fp16_math_fwd.h
+│   │   │   ├── hip_ldg.h
+│   │   │   ├── hip_prof_str.h
+│   │   │   ├── hip_runtime_prof.h
+│   │   │   ├── host_defines.h
+│   │   │   ├── hsa_helpers.hpp
+│   │   │   ├── macro_based_grid_launch.hpp
+│   │   │   ├── math_fwd.h
+│   │   │   ├── ockl_image.h
+│   │   │   ├── program_state.hpp
+│   │   │   ├── texture_fetch_functions.h
+│   │   │   └── texture_indirect_functions.h
+│   │   ├── channel_descriptor.h
+│   │   ├── device_functions.h
+│   │   ├── driver_types.h
+│   │   ├── hip_bf16.h
+│   │   ├── hip_bfloat16.h
+│   │   ├── hip_common.h
+│   │   ├── hip_complex.h
+│   │   ├── hip_cooperative_groups.h
+│   │   ├── hip_deprecated.h
+│   │   ├── hip_ext.h
+│   │   ├── hip_fp16.h
+│   │   ├── hip_fp8.h
+│   │   ├── hip_gl_interop.h
+│   │   ├── hip_hcc.h
+│   │   ├── hip_math_constants.h
+│   │   ├── hip_profile.h
+│   │   ├── hiprtc.h
+│   │   ├── hip_runtime_api.h
+│   │   ├── hip_runtime.h
+│   │   ├── hip_texture_types.h
+│   │   ├── hip_vector_types.h
+│   │   ├── hip_version.h
+│   │   ├── library_types.h
+│   │   ├── linker_types.h
+│   │   ├── math_functions.h
+│   │   ├── surface_types.h
+│   │   └── texture_types.h
+│   ├── hip_prof_str.h
+│   └── rocm-core -> /nix/store/aa22cc-rocm-core-6.4.3/include/rocm-core
+│       ├── rocm_getpath.h
+│       └── rocm_version.h
+├── lib
+│   ├── cmake
+│   │   ├── hip
+│   │   │   ├── FindHIP
+│   │   │   │   ├── run_hipcc.cmake
+│   │   │   │   └── run_make2cmake.cmake
+│   │   │   ├── FindHIP.cmake
+│   │   │   ├── hip-config-amd.cmake
+│   │   │   ├── hip-config.cmake
+│   │   │   ├── hip-config-nvidia.cmake
+│   │   │   ├── hip-config-version.cmake
+│   │   │   ├── hip-targets.cmake
+│   │   │   └── hip-targets-relwithdebinfo.cmake
+│   │   ├── hip-lang
+│   │   │   ├── hip-lang-config.cmake
+│   │   │   ├── hip-lang-config-version.cmake
+│   │   │   ├── hip-lang-targets.cmake
+│   │   │   └── hip-lang-targets-relwithdebinfo.cmake
+│   │   └── hiprtc
+│   │       ├── hiprtc-config.cmake
+│   │       ├── hiprtc-config-version.cmake
+│   │       ├── hiprtc-targets.cmake
+│   │       └── hiprtc-targets-relwithdebinfo.cmake
+│   ├── libamdhip64.so -> libamdhip64.so.6
+│   ├── libamdhip64.so.6 -> libamdhip64.so.6.4.43484
+│   ├── libamdhip64.so.6.4.43484
+│   ├── libamdocl64.so -> libamdocl64.so.2
+│   ├── libamdocl64.so.2 -> libamdocl64.so.2.1.60403
+│   ├── libamdocl64.so.2.1.60403
+│   ├── libcltrace.so
+│   ├── libhiprtc-builtins.so -> libhiprtc-builtins.so.6
+│   ├── libhiprtc-builtins.so.6 -> libhiprtc-builtins.so.6.4.43484
+│   ├── libhiprtc-builtins.so.6.4.43484
+│   ├── libhiprtc.so -> libhiprtc.so.6
+│   ├── libhiprtc.so.6 -> libhiprtc.so.6.4.43484
+│   ├── libhiprtc.so.6.4.43484
+│   ├── libOpenCL.so -> libOpenCL.so.1
+│   ├── libOpenCL.so.1 -> libOpenCL.so.1.2
+│   └── libOpenCL.so.1.2
+├── llvm -> /nix/store/aa22cc-hipClang
+│   ├── bin
+│   │   ├── addr2line ->                    ..llvm-19.0.0-rocm/bin/llvm-symbolizer                     
+│   │   ├── amdgpu-arch ->                ..rocm-toolchain/bin/amdgpu-arch                           
+│   │   ├── analyze-build ->              ..rocm-toolchain/bin/analyze-build                         
+│   │   ├── ar ->                           ..llvm-19.0.0-rocm/bin/llvm-ar                             
+│   │   ├── bugpoint ->                     ..llvm-19.0.0-rocm/bin/bugpoint                            
+│   │   ├── c++filt ->                      ..llvm-19.0.0-rocm/bin/llvm-cxxfilt                        
+│   │   ├── clang ->                      ..rocm-toolchain/bin/clang                                 
+│   │   ├── clang++ ->                    ..rocm-toolchain/bin/clang                                 
+│   │   ├── clang-19 ->                   ..rocm-toolchain/bin/clang                                 
+│   │   ├── clang-build-select-link ->    ..rocm-toolchain/bin/clang-build-select-link               
+│   │   ├── clang-check ->                ..rocm-toolchain/bin/clang-check                           
+│   │   ├── clang-cl ->                   ..rocm-toolchain/bin/clang                                 
+│   │   ├── clang-cpp ->                  ..rocm-toolchain/bin/clang                                 
+│   │   ├── clang-extdef-mapping ->       ..rocm-toolchain/bin/clang-extdef-mapping                  
+│   │   ├── clang-format ->               ..rocm-toolchain/bin/clang-format                          
+│   │   ├── clang-installapi ->           ..rocm-toolchain/bin/clang-installapi                      
+│   │   ├── clang-linker-wrapper ->       ..rocm-toolchain/bin/clang-linker-wrapper                  
+│   │   ├── clang-nvlink-wrapper ->       ..rocm-toolchain/bin/clang-nvlink-wrapper                  
+│   │   ├── clang-offload-bundler ->      ..rocm-toolchain/bin/clang-offload-bundler                 
+│   │   ├── clang-offload-packager ->     ..rocm-toolchain/bin/clang-offload-packager                
+│   │   ├── clang-offload-wrapper ->      ..rocm-toolchain/bin/clang-offload-wrapper                 
+│   │   ├── clang-refactor ->             ..rocm-toolchain/bin/clang-refactor                        
+│   │   ├── clang-rename ->               ..rocm-toolchain/bin/clang-rename                          
+│   │   ├── clang-repl ->                 ..rocm-toolchain/bin/clang-repl                            
+│   │   ├── clang-scan-deps ->            ..rocm-toolchain/bin/clang-scan-deps                       
+│   │   ├── count ->                        ..llvm-19.0.0-rocm/bin/count                               
+│   │   ├── cpp ->                        ..rocm-toolchain/bin/clang                                 
+│   │   ├── debuginfod ->                   ..llvm-19.0.0-rocm/bin/llvm-debuginfod                     
+│   │   ├── debuginfod-find ->              ..llvm-19.0.0-rocm/bin/llvm-debuginfod-find                
+│   │   ├── diagtool ->                   ..rocm-toolchain/bin/diagtool                              
+│   │   ├── dlltool ->                      ..llvm-19.0.0-rocm/bin/llvm-ar                             
+│   │   ├── dsymutil ->                     ..llvm-19.0.0-rocm/bin/dsymutil                            
+│   │   ├── dwp ->                          ..llvm-19.0.0-rocm/bin/llvm-dwp                            
+│   │   ├── FileCheck ->                    ..llvm-19.0.0-rocm/bin/FileCheck                           
+│   │   ├── flang ->                      ..rocm-toolchain/bin/clang                                 
+│   │   ├── hmaptool ->                   ..rocm-toolchain/bin/hmaptool                              
+│   │   ├── hwasan_symbolize ->           ..rocm-toolchain/bin/hwasan_symbolize                      
+│   │   ├── intercept-build ->            ..rocm-toolchain/bin/intercept-build                       
+│   │   ├── ld ->                             ..lld-19.0.0-rocm/bin/lld                                  
+│   │   ├── ld64.lld ->                       ..lld-19.0.0-rocm/bin/ld64.lld                             
+│   │   ├── ld.lld ->                         ..lld-19.0.0-rocm/bin/ld.lld                               
+│   │   ├── llc ->                          ..llvm-19.0.0-rocm/bin/llc                                 
+│   │   ├── lld ->                            ..lld-19.0.0-rocm/bin/lld                                  
+│   │   ├── lld-link ->                       ..lld-19.0.0-rocm/bin/lld-link                             
+│   │   ├── lli ->                          ..llvm-19.0.0-rocm/bin/lli                                 
+│   │   ├── lli-child-target ->             ..llvm-19.0.0-rocm/bin/lli-child-target                    
+│   │   ├── llvm-addr2line ->               ..llvm-19.0.0-rocm/bin/llvm-addr2line                      
+│   │   ├── llvm-ar ->                      ..llvm-19.0.0-rocm/bin/llvm-ar                             
+│   │   ├── llvm-as ->                      ..llvm-19.0.0-rocm/bin/llvm-as                             
+│   │   ├── llvm-bcanalyzer ->              ..llvm-19.0.0-rocm/bin/llvm-bcanalyzer                     
+│   │   ├── llvm-bitcode-strip ->           ..llvm-19.0.0-rocm/bin/llvm-bitcode-strip                  
+│   │   ├── llvm-cat ->                     ..llvm-19.0.0-rocm/bin/llvm-cat                            
+│   │   ├── llvm-cfi-verify ->              ..llvm-19.0.0-rocm/bin/llvm-cfi-verify                     
+│   │   ├── llvm-cov ->                     ..llvm-19.0.0-rocm/bin/llvm-cov                            
+│   │   ├── llvm-c-test ->                  ..llvm-19.0.0-rocm/bin/llvm-c-test                         
+│   │   ├── llvm-cvtres ->                  ..llvm-19.0.0-rocm/bin/llvm-cvtres                         
+│   │   ├── llvm-cxxdump ->                 ..llvm-19.0.0-rocm/bin/llvm-cxxdump                        
+│   │   ├── llvm-cxxfilt ->                 ..llvm-19.0.0-rocm/bin/llvm-cxxfilt                        
+│   │   ├── llvm-cxxmap ->                  ..llvm-19.0.0-rocm/bin/llvm-cxxmap                         
+│   │   ├── llvm-debuginfo-analyzer ->      ..llvm-19.0.0-rocm/bin/llvm-debuginfo-analyzer             
+│   │   ├── llvm-debuginfod ->              ..llvm-19.0.0-rocm/bin/llvm-debuginfod                     
+│   │   ├── llvm-debuginfod-find ->         ..llvm-19.0.0-rocm/bin/llvm-debuginfod-find                
+│   │   ├── llvm-diff ->                    ..llvm-19.0.0-rocm/bin/llvm-diff                           
+│   │   ├── llvm-dis ->                     ..llvm-19.0.0-rocm/bin/llvm-dis                            
+│   │   ├── llvm-dlltool ->                 ..llvm-19.0.0-rocm/bin/llvm-dlltool                        
+│   │   ├── llvm-dwarfdump ->               ..llvm-19.0.0-rocm/bin/llvm-dwarfdump                      
+│   │   ├── llvm-dwarfutil ->               ..llvm-19.0.0-rocm/bin/llvm-dwarfutil                      
+│   │   ├── llvm-dwp ->                     ..llvm-19.0.0-rocm/bin/llvm-dwp                            
+│   │   ├── llvm-exegesis ->                ..llvm-19.0.0-rocm/bin/llvm-exegesis                       
+│   │   ├── llvm-extract ->                 ..llvm-19.0.0-rocm/bin/llvm-extract                        
+│   │   ├── llvm-gsymutil ->                ..llvm-19.0.0-rocm/bin/llvm-gsymutil                       
+│   │   ├── llvm-ifs ->                     ..llvm-19.0.0-rocm/bin/llvm-ifs                            
+│   │   ├── llvm-install-name-tool ->       ..llvm-19.0.0-rocm/bin/llvm-install-name-tool              
+│   │   ├── llvm-jitlink ->                 ..llvm-19.0.0-rocm/bin/llvm-jitlink                        
+│   │   ├── llvm-jitlink-executor ->        ..llvm-19.0.0-rocm/bin/llvm-jitlink-executor               
+│   │   ├── llvm-lib ->                     ..llvm-19.0.0-rocm/bin/llvm-lib                            
+│   │   ├── llvm-libtool-darwin ->          ..llvm-19.0.0-rocm/bin/llvm-libtool-darwin                 
+│   │   ├── llvm-link ->                    ..llvm-19.0.0-rocm/bin/llvm-link                           
+│   │   ├── llvm-lipo ->                    ..llvm-19.0.0-rocm/bin/llvm-lipo                           
+│   │   ├── llvm-lto ->                     ..llvm-19.0.0-rocm/bin/llvm-lto                            
+│   │   ├── llvm-lto2 ->                    ..llvm-19.0.0-rocm/bin/llvm-lto2                           
+│   │   ├── llvm-mc ->                      ..llvm-19.0.0-rocm/bin/llvm-mc                             
+│   │   ├── llvm-mca ->                     ..llvm-19.0.0-rocm/bin/llvm-mca                            
+│   │   ├── llvm-ml ->                      ..llvm-19.0.0-rocm/bin/llvm-ml                             
+│   │   ├── llvm-modextract ->              ..llvm-19.0.0-rocm/bin/llvm-modextract                     
+│   │   ├── llvm-mt ->                      ..llvm-19.0.0-rocm/bin/llvm-mt                             
+│   │   ├── llvm-nm ->                      ..llvm-19.0.0-rocm/bin/llvm-nm                             
+│   │   ├── llvm-objcopy ->                 ..llvm-19.0.0-rocm/bin/llvm-objcopy                        
+│   │   ├── llvm-objdump ->                 ..llvm-19.0.0-rocm/bin/llvm-objdump                        
+│   │   ├── llvm-opt-report ->              ..llvm-19.0.0-rocm/bin/llvm-opt-report                     
+│   │   ├── llvm-otool ->                   ..llvm-19.0.0-rocm/bin/llvm-otool                          
+│   │   ├── llvm-pdbutil ->                 ..llvm-19.0.0-rocm/bin/llvm-pdbutil                        
+│   │   ├── llvm-PerfectShuffle ->          ..llvm-19.0.0-rocm/bin/llvm-PerfectShuffle                 
+│   │   ├── llvm-profdata ->                ..llvm-19.0.0-rocm/bin/llvm-profdata                       
+│   │   ├── llvm-profgen ->                 ..llvm-19.0.0-rocm/bin/llvm-profgen                        
+│   │   ├── llvm-ranlib ->                  ..llvm-19.0.0-rocm/bin/llvm-ranlib                         
+│   │   ├── llvm-rc ->                      ..llvm-19.0.0-rocm/bin/llvm-rc                             
+│   │   ├── llvm-readelf ->                 ..llvm-19.0.0-rocm/bin/llvm-readelf                        
+│   │   ├── llvm-readobj ->                 ..llvm-19.0.0-rocm/bin/llvm-readobj                        
+│   │   ├── llvm-readtapi ->                ..llvm-19.0.0-rocm/bin/llvm-readtapi                       
+│   │   ├── llvm-reduce ->                  ..llvm-19.0.0-rocm/bin/llvm-reduce                         
+│   │   ├── llvm-remarkutil ->              ..llvm-19.0.0-rocm/bin/llvm-remarkutil                     
+│   │   ├── llvm-rtdyld ->                  ..llvm-19.0.0-rocm/bin/llvm-rtdyld                         
+│   │   ├── llvm-sim ->                     ..llvm-19.0.0-rocm/bin/llvm-sim                            
+│   │   ├── llvm-size ->                    ..llvm-19.0.0-rocm/bin/llvm-size                           
+│   │   ├── llvm-split ->                   ..llvm-19.0.0-rocm/bin/llvm-split                          
+│   │   ├── llvm-stress ->                  ..llvm-19.0.0-rocm/bin/llvm-stress                         
+│   │   ├── llvm-strings ->                 ..llvm-19.0.0-rocm/bin/llvm-strings                        
+│   │   ├── llvm-strip ->                   ..llvm-19.0.0-rocm/bin/llvm-strip                          
+│   │   ├── llvm-symbolizer ->              ..llvm-19.0.0-rocm/bin/llvm-symbolizer                     
+│   │   ├── llvm-tblgen ->                  ..llvm-19.0.0-rocm/bin/llvm-tblgen                         
+│   │   ├── llvm-tli-checker ->             ..llvm-19.0.0-rocm/bin/llvm-tli-checker                    
+│   │   ├── llvm-undname ->                 ..llvm-19.0.0-rocm/bin/llvm-undname                        
+│   │   ├── llvm-windres ->                 ..llvm-19.0.0-rocm/bin/llvm-windres                        
+│   │   ├── llvm-xray ->                    ..llvm-19.0.0-rocm/bin/llvm-xray                           
+│   │   ├── nm ->                           ..llvm-19.0.0-rocm/bin/llvm-nm                             
+│   │   ├── not ->                          ..llvm-19.0.0-rocm/bin/not                                 
+│   │   ├── nvptx-arch ->                 ..rocm-toolchain/bin/nvptx-arch                            
+│   │   ├── obj2yaml ->                     ..llvm-19.0.0-rocm/bin/obj2yaml                            
+│   │   ├── objcopy ->                      ..llvm-19.0.0-rocm/bin/llvm-objcopy                        
+│   │   ├── objdump ->                      ..llvm-19.0.0-rocm/bin/llvm-objdump                        
+│   │   ├── opt ->                          ..llvm-19.0.0-rocm/bin/opt                                 
+│   │   ├── ranlib ->                       ..llvm-19.0.0-rocm/bin/llvm-ar                             
+│   │   ├── readelf ->                      ..llvm-19.0.0-rocm/bin/llvm-readobj                        
+│   │   ├── reduce-chunk-list ->            ..llvm-19.0.0-rocm/bin/reduce-chunk-list                   
+│   │   ├── sancov ->                       ..llvm-19.0.0-rocm/bin/sancov                              
+│   │   ├── sanstats ->                     ..llvm-19.0.0-rocm/bin/sanstats                            
+│   │   ├── scan-build ->                 ..rocm-toolchain/bin/scan-build                            
+│   │   ├── scan-build-py ->              ..rocm-toolchain/bin/scan-build-py                         
+│   │   ├── size ->                         ..llvm-19.0.0-rocm/bin/llvm-size                           
+│   │   ├── split-file ->                   ..llvm-19.0.0-rocm/bin/split-file                          
+│   │   ├── strings ->                      ..llvm-19.0.0-rocm/bin/llvm-strings                        
+│   │   ├── strip ->                        ..llvm-19.0.0-rocm/bin/llvm-objcopy                        
+│   │   ├── UnicodeNameMappingGenerator ->  ..llvm-19.0.0-rocm/bin/UnicodeNameMappingGenerator         
+│   │   ├── verify-uselistorder ->          ..llvm-19.0.0-rocm/bin/verify-uselistorder                 
+│   │   ├── wasm-ld ->                        ..lld-19.0.0-rocm/bin/wasm-ld                              
+│   │   ├── windres ->                      ..llvm-19.0.0-rocm/bin/llvm-rc                             
+│   │   ├── yaml2obj ->                     ..llvm-19.0.0-rocm/bin/yaml2obj                            
+│   │   └── yaml-bench ->                   ..llvm-19.0.0-rocm/bin/yaml-bench                          
+│   └── libexec                                                                                        
+│       ├── analyze-c++ ->                 ...rocm-toolchain/libexec/analyze-c++                       
+│       ├── analyze-cc ->                  ...rocm-toolchain/libexec/analyze-cc                        
+│       ├── c++-analyzer ->                ...rocm-toolchain/libexec/c++-analyzer                      
+│       ├── ccc-analyzer ->                ...rocm-toolchain/libexec/ccc-analyzer                      
+│       ├── getconf                                                                                    
+│       │   ├── POSIX_V6_LP64_OFF64 ->     ...rocm-toolchain/libexec/getconf/POSIX_V6_LP64_OFF64       
+│       │   ├── POSIX_V7_LP64_OFF64 ->     ...rocm-toolchain/libexec/getconf/POSIX_V6_LP64_OFF64       
+│       │   └── XBS5_LP64_OFF64 ->         ...rocm-toolchain/libexec/getconf/POSIX_V6_LP64_OFF64       
+│       ├── intercept-c++ ->               ...rocm-toolchain/libexec/intercept-c++                     
+│       └── intercept-cc ->                ...rocm-toolchain/libexec/intercept-c++                     
+├── nix-support
+│   ├── propagated-build-inputs
+│   └── setup-hook
+└── share
+    ├── doc
+    │   ├── clr
+    │   │   └── LICENSE.txt
+    │   ├── clr-asan
+    │   │   └── LICENSE.txt
+    │   └── rocm-ocl-icd
+    │       └── LICENSE
+    └── hip
+        └── version
+#+end_verse
+
+
+
+
+*** hipblas
+
+#+begin_verse
+/nix/store/aa22cc-hipblas-6.4.3
+├── include
+│   └── hipblas
+│       ├── hipblas-export.h
+│       ├── hipblas.h
+│       ├── hipblas_module.f90
+│       └── hipblas-version.h
+├── lib
+│   ├── cmake
+│   │   └── hipblas
+│   │       ├── hipblas-config.cmake
+│   │       ├── hipblas-config-version.cmake
+│   │       ├── hipblas-targets.cmake
+│   │       └── hipblas-targets-release.cmake
+│   ├── libhipblas.so -> libhipblas.so.2
+│   ├── libhipblas.so.2 -> libhipblas.so.2.4.60403
+│   └── libhipblas.so.2.4.60403
+├── nix-support
+│   └── propagated-build-inputs
+└── share
+    └── doc
+        └── hipblas
+            └── LICENSE.md
+#+end_verse
+
+**** hipblas-common
+
+#+begin_verse
+/nix/store/aa22cc-hipblas-common-6.4.3
+├── include
+│   └── hipblas-common
+│       └── hipblas-common.h
+├── lib
+│   └── cmake
+│       └── hipblas-common
+│           ├── hipblas-common-config.cmake
+│           ├── hipblas-common-config-version.cmake
+│           └── hipblas-common-targets.cmake
+└── share
+    └── doc
+        └── hipblas-common
+            └── LICENSE.md
+#+end_verse
+
+
+
+  
+
+*** hipcub: /nix/store/aa22cc-hipcub-6.4.3
+
+#+begin_verse
+/nix/store/aa22cc-hipcub-6.4.3
+├── include
+│   └── hipcub
+│       ├── backend
+│       │   ├── cub
+│       │   │   ├── device
+│       │   │   │   ├── device_adjacent_difference.hpp
+│       │   │   │   ├── device_copy.hpp
+│       │   │   │   ├── device_for.hpp
+│       │   │   │   ├── device_histogram.hpp
+│       │   │   │   ├── device_memcpy.hpp
+│       │   │   │   ├── device_merge_sort.hpp
+│       │   │   │   ├── device_partition.hpp
+│       │   │   │   ├── device_radix_sort.hpp
+│       │   │   │   ├── device_reduce.hpp
+│       │   │   │   ├── device_run_length_encode.hpp
+│       │   │   │   ├── device_scan.hpp
+│       │   │   │   ├── device_segmented_radix_sort.hpp
+│       │   │   │   ├── device_segmented_reduce.hpp
+│       │   │   │   ├── device_segmented_sort.hpp
+│       │   │   │   ├── device_select.hpp
+│       │   │   │   └── device_spmv.hpp
+│       │   │   ├── grid
+│       │   │   │   └── grid_barrier.hpp
+│       │   │   ├── hipcub.hpp
+│       │   │   ├── iterator
+│       │   │   │   ├── tex_obj_input_iterator.hpp
+│       │   │   │   └── tex_ref_input_iterator.hpp
+│       │   │   ├── tuple.hpp
+│       │   │   ├── util_allocator.hpp
+│       │   │   ├── util_device.hpp
+│       │   │   ├── util_macro.hpp
+│       │   │   └── util_temporary_storage.hpp
+│       │   └── rocprim
+│       │       ├── block
+│       │       │   ├── block_adjacent_difference.hpp
+│       │       │   ├── block_discontinuity.hpp
+│       │       │   ├── block_exchange.hpp
+│       │       │   ├── block_histogram.hpp
+│       │       │   ├── block_load_func.hpp
+│       │       │   ├── block_load.hpp
+│       │       │   ├── block_merge_sort.hpp
+│       │       │   ├── block_radix_rank.hpp
+│       │       │   ├── block_radix_sort.hpp
+│       │       │   ├── block_raking_layout.hpp
+│       │       │   ├── block_reduce.hpp
+│       │       │   ├── block_run_length_decode.hpp
+│       │       │   ├── block_scan.hpp
+│       │       │   ├── block_shuffle.hpp
+│       │       │   ├── block_store_func.hpp
+│       │       │   ├── block_store.hpp
+│       │       │   └── radix_rank_sort_operations.hpp
+│       │       ├── device
+│       │       │   ├── device_adjacent_difference.hpp
+│       │       │   ├── device_copy.hpp
+│       │       │   ├── device_for.hpp
+│       │       │   ├── device_histogram.hpp
+│       │       │   ├── device_memcpy.hpp
+│       │       │   ├── device_merge_sort.hpp
+│       │       │   ├── device_partition.hpp
+│       │       │   ├── device_radix_sort.hpp
+│       │       │   ├── device_reduce.hpp
+│       │       │   ├── device_run_length_encode.hpp
+│       │       │   ├── device_scan.hpp
+│       │       │   ├── device_segmented_radix_sort.hpp
+│       │       │   ├── device_segmented_reduce.hpp
+│       │       │   ├── device_segmented_sort.hpp
+│       │       │   ├── device_select.hpp
+│       │       │   └── device_spmv.hpp
+│       │       ├── grid
+│       │       │   ├── grid_barrier.hpp
+│       │       │   ├── grid_even_share.hpp
+│       │       │   ├── grid_mapping.hpp
+│       │       │   └── grid_queue.hpp
+│       │       ├── hipcub.hpp
+│       │       ├── iterator
+│       │       │   ├── arg_index_input_iterator.hpp
+│       │       │   ├── cache_modified_input_iterator.hpp
+│       │       │   ├── cache_modified_output_iterator.hpp
+│       │       │   ├── constant_input_iterator.hpp
+│       │       │   ├── counting_input_iterator.hpp
+│       │       │   ├── discard_output_iterator.hpp
+│       │       │   ├── iterator_category.hpp
+│       │       │   ├── iterator_wrapper.hpp
+│       │       │   ├── tex_obj_input_iterator.hpp
+│       │       │   ├── tex_ref_input_iterator.hpp
+│       │       │   └── transform_input_iterator.hpp
+│       │       ├── thread
+│       │       │   ├── thread_load.hpp
+│       │       │   ├── thread_operators.hpp
+│       │       │   ├── thread_reduce.hpp
+│       │       │   ├── thread_scan.hpp
+│       │       │   ├── thread_search.hpp
+│       │       │   ├── thread_sort.hpp
+│       │       │   └── thread_store.hpp
+│       │       ├── tuple.hpp
+│       │       ├── util_allocator.hpp
+│       │       ├── util_device.hpp
+│       │       ├── util_macro.hpp
+│       │       ├── util_math.hpp
+│       │       ├── util_ptx.hpp
+│       │       ├── util_sync.hpp
+│       │       ├── util_temporary_storage.hpp
+│       │       ├── util_type.hpp
+│       │       └── warp
+│       │           ├── specializations
+│       │           │   ├── warp_exchange_shfl.hpp
+│       │           │   └── warp_exchange_smem.hpp
+│       │           ├── warp_exchange.hpp
+│       │           ├── warp_load.hpp
+│       │           ├── warp_merge_sort.hpp
+│       │           ├── warp_reduce.hpp
+│       │           ├── warp_scan.hpp
+│       │           └── warp_store.hpp
+│       ├── block
+│       │   ├── block_adjacent_difference.hpp
+│       │   ├── block_discontinuity.hpp
+│       │   ├── block_exchange.hpp
+│       │   ├── block_histogram.hpp
+│       │   ├── block_load.hpp
+│       │   ├── block_merge_sort.hpp
+│       │   ├── block_radix_rank.hpp
+│       │   ├── block_radix_sort.hpp
+│       │   ├── block_raking_layout.hpp
+│       │   ├── block_reduce.hpp
+│       │   ├── block_run_length_decode.hpp
+│       │   ├── block_scan.hpp
+│       │   ├── block_shuffle.hpp
+│       │   ├── block_store.hpp
+│       │   └── radix_rank_sort_operations.hpp
+│       ├── config.hpp
+│       ├── device
+│       │   ├── device_adjacent_difference.hpp
+│       │   ├── device_copy.hpp
+│       │   ├── device_for.hpp
+│       │   ├── device_histogram.hpp
+│       │   ├── device_memcpy.hpp
+│       │   ├── device_merge_sort.hpp
+│       │   ├── device_partition.hpp
+│       │   ├── device_radix_sort.hpp
+│       │   ├── device_reduce.hpp
+│       │   ├── device_run_length_encode.hpp
+│       │   ├── device_scan.hpp
+│       │   ├── device_segmented_radix_sort.hpp
+│       │   ├── device_segmented_reduce.hpp
+│       │   ├── device_segmented_sort.hpp
+│       │   ├── device_select.hpp
+│       │   └── device_spmv.hpp
+│       ├── grid
+│       │   ├── grid_barrier.hpp
+│       │   ├── grid_even_share.hpp
+│       │   ├── grid_mapping.hpp
+│       │   └── grid_queue.hpp
+│       ├── hipcub.hpp
+│       ├── hipcub_version.hpp
+│       ├── iterator
+│       │   ├── arg_index_input_iterator.hpp
+│       │   ├── cache_modified_input_iterator.hpp
+│       │   ├── cache_modified_output_iterator.hpp
+│       │   ├── constant_input_iterator.hpp
+│       │   ├── counting_input_iterator.hpp
+│       │   ├── discard_output_iterator.hpp
+│       │   ├── tex_obj_input_iterator.hpp
+│       │   ├── tex_ref_input_iterator.hpp
+│       │   └── transform_input_iterator.hpp
+│       ├── thread
+│       │   ├── thread_load.hpp
+│       │   ├── thread_operators.hpp
+│       │   ├── thread_reduce.hpp
+│       │   ├── thread_scan.hpp
+│       │   ├── thread_search.hpp
+│       │   ├── thread_sort.hpp
+│       │   └── thread_store.hpp
+│       ├── tuple.hpp
+│       ├── util_allocator.hpp
+│       ├── util_deprecated.hpp
+│       ├── util_device.hpp
+│       ├── util_macro.hpp
+│       ├── util_ptx.hpp
+│       ├── util_temporary_storage.hpp
+│       ├── util_type.hpp
+│       └── warp
+│           ├── warp_exchange.hpp
+│           ├── warp_load.hpp
+│           ├── warp_merge_sort.hpp
+│           ├── warp_reduce.hpp
+│           ├── warp_scan.hpp
+│           └── warp_store.hpp
+├── lib
+│   └── cmake
+│       └── hipcub
+│           ├── hipcub-config.cmake
+│           ├── hipcub-config-version.cmake
+│           └── hipcub-targets.cmake
+└── share
+    └── doc
+        └── hipcub
+            └── LICENSE.txt
+#+end_verse
+
+
+*** hipfft: /nix/store/aa22cc-hipfft-6.4.3
+
+#+begin_verse
+/nix/store/aa22cc-hipfft-6.4.3
+├── include
+│   └── hipfft
+│       ├── hipfft-export.h
+│       ├── hipfft.h
+│       ├── hipfftMp.h
+│       ├── hipfft-version.h
+│       ├── hipfftXt.h
+│       └── hiplibxt.h
+├── lib
+│   ├── cmake
+│   │   └── hipfft
+│   │       ├── hipfft-config.cmake
+│   │       ├── hipfft-config-version.cmake
+│   │       ├── hipfft-targets.cmake
+│   │       └── hipfft-targets-release.cmake
+│   ├── libhipfft.so -> libhipfft.so.0
+│   ├── libhipfft.so.0 -> libhipfft.so.0.1.60403
+│   └── libhipfft.so.0.1.60403
+└── share
+    └── doc
+        └── hipfft
+            └── LICENSE.md
+#+end_verse
+
+
+*** hiprand: /nix/store/aa22cc-hiprand-6.4.3
+
+#+begin_verse
+/nix/store/aa22cc-hiprand-6.4.3
+├── include
+│   └── hiprand
+│       ├── hiprand.h
+│       ├── hiprand.hpp
+│       ├── hiprand_kernel.h
+│       ├── hiprand_kernel_nvcc.h
+│       ├── hiprand_kernel_rocm.h
+│       ├── hiprand_mtgp32_host.h
+│       ├── hiprand_nvcc.h
+│       ├── hiprand_rocm.h
+│       └── hiprand_version.h
+├── lib
+│   ├── cmake
+│   │   └── hiprand
+│   │       ├── hiprand-config.cmake
+│   │       ├── hiprand-config-version.cmake
+│   │       ├── hiprand-fortran-config.cmake
+│   │       ├── hiprand-targets.cmake
+│   │       └── hiprand-targets-release.cmake
+│   ├── libhiprand.so -> libhiprand.so.1
+│   ├── libhiprand.so.1 -> libhiprand.so.1.1.60403
+│   └── libhiprand.so.1.1.60403
+└── share
+    └── doc
+        └── hiprand
+            └── LICENSE.txt
+#+end_verse
+
+
+*** hipsparse: /nix/store/aa22cc-hipsparse-6.4.3
+
+#+begin_verse
+/nix/store/aa22cc-hipsparse-6.4.3
+├── include
+│   └── hipsparse
+│       ├── hipsparse-export.h
+│       ├── hipsparse.h
+│       └── hipsparse-version.h
+├── lib
+│   ├── cmake
+│   │   └── hipsparse
+│   │       ├── hipsparse-config.cmake
+│   │       ├── hipsparse-config-version.cmake
+│   │       ├── hipsparse-targets.cmake
+│   │       └── hipsparse-targets-release.cmake
+│   ├── libhipsparse.so -> libhipsparse.so.1
+│   ├── libhipsparse.so.1 -> libhipsparse.so.1.1.0.60403
+│   └── libhipsparse.so.1.1.0.60403
+└── share
+    └── doc
+        └── hipsparse
+            └── LICENSE.md
+#+end_verse
+
+*** hiprt: /nix/store/aa22cc-hiprt-2.5.a21e075.3
+
+#+begin_verse
+/nix/store/aa22cc-hiprt-2.5.a21e075.3
+├── include
+│   ├── contrib
+│   │   └── Orochi
+│   │       └── ParallelPrimitives
+│   │           ├── RadixSortConfigs.h
+│   │           ├── RadixSort.h
+│   │           └── RadixSortKernels.h
+│   └── hiprt
+│       ├── hiprt_common.h
+│       ├── hiprt_device.h
+│       ├── hiprtew.h
+│       ├── hiprt.h
+│       ├── hiprt_libpath.h
+│       ├── hiprt_math.h
+│       ├── hiprt_types.h
+│       ├── hiprt_vec.h
+│       └── impl
+│           ├── Aabb.h
+│           ├── AabbList.h
+│           ├── ApiNodeList.h
+│           ├── BatchBuilder.h
+│           ├── BatchBuilderKernels.h
+│           ├── BvhBuilderKernels.h
+│           ├── BvhBuilderUtil.h
+│           ├── BvhCommon.h
+│           ├── BvhConfig.h
+│           ├── BvhImporter.h
+│           ├── BvhImporterKernels.h
+│           ├── BvhNode.h
+│           ├── Compiler.h
+│           ├── Context.h
+│           ├── Error.h
+│           ├── Geometry.h
+│           ├── hiprt_device_impl.h
+│           ├── hiprt_kernels_bitcode.h
+│           ├── hiprt_kernels.h
+│           ├── Instance.h
+│           ├── InstanceList.h
+│           ├── Kernel.h
+│           ├── LbvhBuilder.h
+│           ├── LbvhBuilderKernels.h
+│           ├── Logger.h
+│           ├── MemoryArena.h
+│           ├── MortonCode.h
+│           ├── PlocBuilder.h
+│           ├── PlocBuilderKernels.h
+│           ├── QrDecomposition.h
+│           ├── Quaternion.h
+│           ├── RadixSort.h
+│           ├── SbvhBuilder.h
+│           ├── SbvhBuilderKernels.h
+│           ├── SbvhCommon.h
+│           ├── Scene.h
+│           ├── Timer.h
+│           ├── Transform.h
+│           ├── Triangle.h
+│           ├── TriangleMesh.h
+│           └── Utility.h
+└── lib
+    ├── hiprt02005_6.4_amd.hipfb
+    ├── hiprt02005_6.4_amd_lib_linux.bc
+    ├── libhiprt0200564.so
+    ├── libhiprt64.so -> libhiprt0200564.so
+    └── oro_compiled_kernels.hipfb
+#+end_verse
+
+
+
+
+*** rpp: /nix/store/k3xl4j91miacdjnf24ngvddskrxj3bls-rpp-hip-6.4.3
+#+begin_verse
+
+/nix/store/k3xl4j91miacdjnf24ngvddskrxj3bls-rpp-hip-6.4.3
+├── include
+│   └── rpp
+│       ├── export.h
+│       ├── filesystem.h
+│       ├── rpp_audio_augmentations_support.h
+│       ├── rpp_backend.h
+│       ├── rppdefs.h
+│       ├── rpp.h
+│       ├── rppi_advanced_augmentations.h
+│       ├── rppi_arithmetic_operations.h
+│       ├── rppi_color_model_conversions.h
+│       ├── rppi_computer_vision.h
+│       ├── rppi_filter_operations.h
+│       ├── rppi_fused_functions.h
+│       ├── rppi_geometry_transforms.h
+│       ├── rppi.h
+│       ├── rppi_image_augmentations.h
+│       ├── rppi_logical_operations.h
+│       ├── rppi_morphological_transforms.h
+│       ├── rppi_statistical_operations.h
+│       ├── rppt_api_helpers.h
+│       ├── rppt.h
+│       ├── rppt_tensor_arithmetic_operations.h
+│       ├── rppt_tensor_audio_augmentations.h
+│       ├── rppt_tensor_color_augmentations.h
+│       ├── rppt_tensor_data_exchange_operations.h
+│       ├── rppt_tensor_effects_augmentations.h
+│       ├── rppt_tensor_filter_augmentations.h
+│       ├── rppt_tensor_geometric_augmentations.h
+│       ├── rppt_tensor_logical_operations.h
+│       ├── rppt_tensor_morphological_operations.h
+│       ├── rppt_tensor_statistical_operations.h
+│       ├── rpp_version.h
+│       └── third_party
+│           └── ffts
+│               ├── ffts_attributes.h
+│               └── ffts.h
+├── lib
+│   ├── librpp.so -> librpp.so.1
+│   ├── librpp.so.1 -> librpp.so.1.9.10
+│   └── librpp.so.1.9.10
+└── share
+    ├── doc
+    │   ├── rpp
+    │   │   └── LICENSE
+    │   └── rpp-asan
+    │       └── LICENSE
+    └── rpp
+        └── test
+            ├── cmake
+            │   ├── Analyzers.cmake
+            │   ├── CppCheck.cmake
+            │   ├── FindHALF.cmake
+            │   ├── FindOpenCL.cmake
+            │   ├── FindStdFilesystem.cmake
+            │   └── FindTurboJpeg.cmake
+            ├── CMakeLists.txt
+            ├── common.py
+            ├── HIP
+            │   ├── CMakeLists.txt
+            │   ├── runAudioTests.py
+            │   ├── runImageTests.py
+            │   ├── runMiscTests.py
+            │   ├── runVoxelTests.py
+            │   ├── Tensor_audio_hip.cpp
+            │   ├── Tensor_image_hip.cpp
+            │   ├── Tensor_misc_hip.cpp
+            │   └── Tensor_voxel_hip.cpp
+            ├── HOST
+            │   ├── CMakeLists.txt
+            │   ├── runAudioTests.py
+            │   ├── runImageTests.py
+            │   ├── runMiscTests.py
+            │   ├── runVoxelTests.py
+            │   ├── Tensor_audio_host.cpp
+            │   ├── Tensor_image_host.cpp
+            │   ├── Tensor_misc_host.cpp
+            │   └── Tensor_voxel_host.cpp
+            ├── NORMALIZE
+            │   ├── input
+            │   │   ├── 2d_input.bin
+            │   │   ├── 2d_mean_std.bin
+            │   │   ├── 3d_input.bin
+            │   │   └── 3d_mean_std.bin
+            │   └── output
+            │       ├── 2d_output.bin
+            │       └── 3d_output.bin
+            ├── README.md
+            ├── REFERENCE_OUTPUT
+            │   ├── bitwise_and
+            │   │   └── bitwise_and_u8_Tensor.bin
+            │   ├── bitwise_or
+            │   │   └── bitwise_or_u8_Tensor.bin
+            │   ├── bitwise_xor
+            │   │   └── bitwise_xor_u8_Tensor.bin
+            │   ├── blend
+            │   │   └── blend_u8_Tensor.bin
+            │   ├── box_filter
+            │   │   ├── box_filter_u8_Tensor_kernelSize3.bin
+            │   │   ├── box_filter_u8_Tensor_kernelSize5.bin
+            │   │   ├── box_filter_u8_Tensor_kernelSize7.bin
+            │   │   └── box_filter_u8_Tensor_kernelSize9.bin
+            │   ├── brightness
+            │   │   └── brightness_u8_Tensor.bin
+            │   ├── color_cast
+            │   │   └── color_cast_u8_Tensor.bin
+            │   ├── color_jitter
+            │   │   └── color_jitter_u8_Tensor.bin
+            │   ├── color_temperature
+            │   │   └── color_temperature_u8_Tensor.bin
+            │   ├── color_to_greyscale
+            │   │   └── color_to_greyscale_u8_Tensor.bin
+            │   ├── color_twist
+            │   │   └── color_twist_u8_Tensor.bin
+            │   ├── contrast
+            │   │   └── contrast_u8_Tensor.bin
+            │   ├── copy
+            │   │   └── copy_u8_Tensor.bin
+            │   ├── crop
+            │   │   └── crop_u8_Tensor.bin
+            │   ├── crop_and_patch
+            │   │   └── crop_and_patch_u8_Tensor.bin
+            │   ├── crop_mirror_normalize
+            │   │   └── crop_mirror_normalize_u8_Tensor.bin
+            │   ├── erase
+            │   │   └── erase_u8_Tensor.bin
+            │   ├── exposure
+            │   │   └── exposure_u8_Tensor.bin
+            │   ├── flip
+            │   │   └── flip_u8_Tensor.bin
+            │   ├── gamma_correction
+            │   │   └── gamma_correction_u8_Tensor.bin
+            │   ├── gaussian_filter
+            │   │   ├── gaussian_filter_u8_Tensor_kernelSize3.bin
+            │   │   ├── gaussian_filter_u8_Tensor_kernelSize5.bin
+            │   │   ├── gaussian_filter_u8_Tensor_kernelSize7.bin
+            │   │   └── gaussian_filter_u8_Tensor_kernelSize9.bin
+            │   ├── glitch
+            │   │   └── glitch_u8_Tensor.bin
+            │   ├── gridmask
+            │   │   └── gridmask_u8_Tensor.bin
+            │   ├── lens_correction
+            │   │   └── lens_correction_u8_Tensor.bin
+            │   ├── lut
+            │   │   └── lut_u8_Tensor.bin
+            │   ├── magnitude
+            │   │   └── magnitude_u8_Tensor.bin
+            │   ├── non_linear_blend
+            │   │   └── non_linear_blend_u8_Tensor.bin
+            │   ├── phase
+            │   │   └── phase_u8_Tensor.bin
+            │   ├── pixelate
+            │   │   └── pixelate_u8_Tensor.bin
+            │   ├── remap
+            │   │   ├── remap_u8_Tensor_interpolationTypeBilinear.bin
+            │   │   └── remap_u8_Tensor_interpolationTypeNearestNeighbor.bin
+            │   ├── resize
+            │   │   ├── resize_u8_Tensor_interpolationTypeBicubic.bin
+            │   │   ├── resize_u8_Tensor_interpolationTypeBilinear.bin
+            │   │   ├── resize_u8_Tensor_interpolationTypeGaussian.bin
+            │   │   ├── resize_u8_Tensor_interpolationTypeLanczos.bin
+            │   │   ├── resize_u8_Tensor_interpolationTypeNearestNeighbor.bin
+            │   │   └── resize_u8_Tensor_interpolationTypeTriangular.bin
+            │   ├── resize_crop_mirror
+            │   │   └── resize_crop_mirror_u8_Tensor.bin
+            │   ├── resize_mirror_normalize
+            │   │   └── resize_mirror_normalize_u8_Tensor.bin
+            │   ├── ricap
+            │   │   └── ricap_u8_Tensor.bin
+            │   ├── rotate
+            │   │   ├── rotate_u8_Tensor_interpolationTypeBilinear.bin
+            │   │   └── rotate_u8_Tensor_interpolationTypeNearestNeighbor.bin
+            │   ├── slice
+            │   │   └── slice_u8_Tensor.bin
+            │   ├── swap_channels
+            │   │   └── swap_channels_u8_Tensor.bin
+            │   ├── threshold
+            │   │   └── threshold_u8_Tensor.bin
+            │   ├── vignette
+            │   │   └── vignette_u8_Tensor.bin
+            │   └── water
+            │       └── water_u8_Tensor.bin
+            ├── REFERENCE_OUTPUTS_AUDIO
+            │   ├── down_mixing
+            │   │   └── down_mixing.bin
+            │   ├── mel_filter_bank
+            │   │   └── mel_filter_bank.bin
+            │   ├── pre_emphasis_filter
+            │   │   └── pre_emphasis_filter.bin
+            │   ├── resample
+            │   │   └── resample.bin
+            │   ├── slice
+            │   │   └── slice.bin
+            │   ├── spectrogram
+            │   │   └── spectrogram.bin
+            │   └── to_decibels
+            │       └── to_decibels.bin
+            ├── REFERENCE_OUTPUTS_MISC
+            │   ├── log
+            │   │   ├── 2d_output.bin
+            │   │   ├── 3d_output.bin
+            │   │   └── 4d_output.bin
+            │   ├── normalize
+            │   │   ├── 2d_output.bin
+            │   │   └── 3d_output.bin
+            │   └── transpose
+            │       ├── 2d_output.bin
+            │       └── 3d_output.bin
+            ├── REFERENCE_OUTPUT_VOXEL
+            │   ├── add_scalar
+            │   │   └── add_scalar_nifti_output.bin
+            │   ├── flip_voxel
+            │   │   └── flip_voxel_nifti_output.bin
+            │   ├── fused_multiply_add_scalar
+            │   │   └── fused_multiply_add_scalar_nifti_output.bin
+            │   ├── multiply_scalar
+            │   │   └── multiply_scalar_nifti_output.bin
+            │   ├── slice
+            │   │   └── slice_nifti_output.bin
+            │   └── subtract_scalar
+            │       └── subtract_scalar_nifti_output.bin
+            ├── rpp-performancetests
+            │   ├── HIP_NEW
+            │   │   ├── BatchPD_hip_pkd3.cpp
+            │   │   ├── BatchPD_hip_pln1.cpp
+            │   │   ├── BatchPD_hip_pln3.cpp
+            │   │   ├── CMakeLists.txt
+            │   │   ├── generatePerformanceLogs.py
+            │   │   ├── helpers
+            │   │   │   └── testSuite_helper.hpp
+            │   │   ├── rawLogsGenScript.sh
+            │   │   ├── Single_host.cpp
+            │   │   ├── Tensor_hip_pkd3.cpp
+            │   │   ├── Tensor_hip_pln1.cpp
+            │   │   ├── Tensor_hip_pln3.cpp
+            │   │   └── uniqueFunctionalities_hip.cpp
+            │   ├── HOST_NEW
+            │   │   ├── BatchPD_host_pkd3.cpp
+            │   │   ├── BatchPD_host_pln1.cpp
+            │   │   ├── BatchPD_host_pln3.cpp
+            │   │   ├── CMakeLists.txt
+            │   │   ├── generatePerformanceLogs.py
+            │   │   ├── helpers
+            │   │   │   └── testSuite_helper.hpp
+            │   │   ├── rawLogsGenScript.sh
+            │   │   ├── Single_host.cpp
+            │   │   ├── Tensor_host_pkd3.cpp
+            │   │   ├── Tensor_host_pln1.cpp
+            │   │   ├── Tensor_host_pln3.cpp
+            │   │   └── uniqueFunctionalities_host.cpp
+            │   ├── OCL_NEW
+            │   │   ├── BatchPD_ocl_pkd3.cpp
+            │   │   ├── BatchPD_ocl_pln1.cpp
+            │   │   ├── BatchPD_ocl_pln3.cpp
+            │   │   ├── CMakeLists.txt
+            │   │   ├── generatePerformanceLogs.py
+            │   │   ├── helpers
+            │   │   │   └── testSuite_helper.hpp
+            │   │   ├── rawLogsGenScript.sh
+            │   │   ├── Single_host.cpp
+            │   │   └── uniqueFunctionalities_ocl.cpp
+            │   ├── README.MD
+            │   └── TEST_IMAGES
+            │       ├── eight_images_224x224_src1
+            │       │   ├── img224x224_1.jpg
+            │       │   ├── img224x224_2.jpg
+            │       │   ├── img224x224_3.jpg
+            │       │   ├── img224x224_4.jpg
+            │       │   ├── img224x224_5.jpg
+            │       │   ├── img224x224_6.jpg
+            │       │   ├── img224x224_7.jpg
+            │       │   └── img224x224_8.jpg
+            │       ├── eight_images_224x224_src2
+            │       │   ├── img224x224_1.jpg
+            │       │   ├── img224x224_2.jpg
+            │       │   ├── img224x224_3.jpg
+            │       │   ├── img224x224_4.jpg
+            │       │   ├── img224x224_5.jpg
+            │       │   ├── img224x224_6.jpg
+            │       │   ├── img224x224_7.jpg
+            │       │   └── img224x224_8.jpg
+            │       ├── fast_corner_detector
+            │       │   ├── 1280x720_cornersChessboard.jpg
+            │       │   ├── 1280x720_cornersDesign2.jpg
+            │       │   └── 1280x720_cornersDesign.jpg
+            │       ├── harris_corner_detector
+            │       │   ├── 1280x720_cornersChessboard.jpg
+            │       │   ├── 1280x720_cornersDesign2.jpg
+            │       │   └── 1280x720_cornersDesign.jpg
+            │       ├── hog
+            │       │   └── hogImage.jpg
+            │       ├── hough_lines
+            │       │   ├── 638x479_fenceCannyEdges2.jpg
+            │       │   └── 868x600_building2CannyEdges.jpg
+            │       ├── single_image_1024x768_src1
+            │       │   └── img1024x768.jpg
+            │       ├── single_image_1920x1080_src1
+            │       │   └── img1920x1080.jpg
+            │       ├── single_image_224x224_src1
+            │       │   └── 224x224.jpg
+            │       ├── single_image_224x224_src2
+            │       │   └── 224x224.jpg
+            │       ├── single_image_256x256_src1
+            │       │   └── img256x256.jpg
+            │       ├── single_image_300x300_src1
+            │       │   └── img300x300.jpg
+            │       ├── single_image_3840x2160_src1
+            │       │   └── img3840x2160.jpg
+            │       ├── three_images_224x224_src1
+            │       │   ├── img224x224_1.jpg
+            │       │   ├── img224x224_2.jpg
+            │       │   └── img224x224_3.jpg
+            │       ├── three_images_224x224_src2
+            │       │   ├── img224x224_1.jpg
+            │       │   ├── img224x224_2.jpg
+            │       │   └── img224x224_3.jpg
+            │       ├── two_images_224x224_src1
+            │       │   ├── img224x224_1.jpg
+            │       │   └── img224x224_2.jpg
+            │       ├── two_images_224x224_src2
+            │       │   ├── img224x224_1.jpg
+            │       │   └── img224x224_2.jpg
+            │       ├── two_images_300x300_src1
+            │       │   ├── img300x300_1.jpg
+            │       │   └── img300x300_2.jpg
+            │       ├── two_images_mixed_src1
+            │       │   ├── 224x224.jpg
+            │       │   └── 300x300.jpg
+            │       └── two_images_mixed_src2
+            │           ├── 224x224.jpg
+            │           └── 300x300.jpg
+            ├── rpp_test_suite_audio.h
+            ├── rpp_test_suite_common.h
+            ├── rpp_test_suite_image.h
+            ├── rpp_test_suite_misc.h
+            ├── rpp_test_suite_voxel.h
+            ├── TEST_AUDIO_FILES
+            │   ├── three_sample_multi_channel_src1
+            │   │   ├── sample1.wav
+            │   │   ├── sample2.wav
+            │   │   └── sample3.wav
+            │   └── three_samples_single_channel_src1
+            │       ├── sample1.wav
+            │       ├── sample2.wav
+            │       └── sample3.wav
+            ├── TEST_IMAGES
+            │   ├── eight_images_mixed_src1
+            │   │   ├── img1024x768.jpg
+            │   │   ├── img1280x720.jpg
+            │   │   ├── img150x150.jpg
+            │   │   ├── img1920x1080.jpg
+            │   │   ├── img224x224.jpg
+            │   │   ├── img256x256.jpg
+            │   │   ├── img300x300.jpg
+            │   │   └── img3840x2160.jpg
+            │   ├── lens_distortion
+            │   │   ├── sample1.jpg
+            │   │   ├── sample2.jpg
+            │   │   └── sample3.jpg
+            │   ├── three_images_150x150_src1
+            │   │   ├── 1_img150x150.jpg
+            │   │   ├── 2_img150x150.jpg
+            │   │   └── 3_img150x150.jpg
+            │   ├── three_images_mixed_src1
+            │   │   ├── 1_img50x50.jpg
+            │   │   ├── 2_img100x100.jpg
+            │   │   └── 3_img150x150.jpg
+            │   └── three_images_mixed_src2
+            │       ├── 1_img50x50.jpg
+            │       ├── 2_img100x100.jpg
+            │       └── 3_img150x150.jpg
+            ├── TEST_MISC_FILES
+            │   ├── 2d_input.bin
+            │   ├── 2d_mean_std.bin
+            │   ├── 3d_input.bin
+            │   ├── 3d_mean_std.bin
+            │   └── 4d_input.bin
+            ├── TEST_QA_IMAGES_VOXEL
+            │   ├── 1_nifti_input_50x50x4.nii
+            │   ├── 2_nifti_input_100x100x4.nii
+            │   └── 3_nifti_input_150x150x4.nii
+            └── TEST_VOXEL_IMAGE
+                └── BraTS20_Training_002_flair.nii
+#+end_verse
+
+
+
+** ROCm Libs
+
+*** rocblas: /nix/store/aa22cc-rocblas-6.4.3
+
+#+begin_verse
+/nix/store/aa22cc-rocblas-6.4.3
+├── include
+│   └── rocblas
+│       ├── internal
+│       │   ├── rocblas-auxiliary.h
+│       │   ├── rocblas-beta.h
+│       │   ├── rocblas_bfloat16.h
+│       │   ├── rocblas_block_sizes.h
+│       │   ├── rocblas-complex-types.h
+│       │   ├── rocblas_device_malloc.hpp
+│       │   ├── rocblas-exported-proto.hpp
+│       │   ├── rocblas-export.h
+│       │   ├── rocblas_float8.h
+│       │   ├── rocblas-functions.h
+│       │   ├── rocblas_hip_f8_impl.h
+│       │   ├── rocblas-macros.h
+│       │   ├── rocblas-types.h
+│       │   ├── rocblas-version.h
+│       │   └── rocblas_xfloat32.h
+│       ├── rocblas.h
+│       └── rocblas_module.f90
+├── lib
+│   ├── cmake
+│   │   └── rocblas
+│   │       ├── rocblas-config.cmake
+│   │       ├── rocblas-config-version.cmake
+│   │       ├── rocblas-targets.cmake
+│   │       └── rocblas-targets-release.cmake
+│   ├── librocblas.so -> librocblas.so.4
+│   ├── librocblas.so.4 -> librocblas.so.4.4.60403
+│   ├── librocblas.so.4.4.60403
+│   └── rocblas
+│       └── library
+│           └── TensileManifest.txt
+└── share
+    └── doc
+        └── rocblas
+            └── LICENSE.md
+#+end_verse
+
+*** rocprim: /nix/store/aa22cc-rocprim-6.4.3
+#+begin_verse
+/nix/store/aa22cc-rocprim-6.4.3
+├── include
+│   └── rocprim
+│       ├── block
+│       │   ├── block_adjacent_difference.hpp
+│       │   ├── block_discontinuity.hpp
+│       │   ├── block_exchange.hpp
+│       │   ├── block_histogram.hpp
+│       │   ├── block_load_func.hpp
+│       │   ├── block_load.hpp
+│       │   ├── block_radix_rank.hpp
+│       │   ├── block_radix_sort.hpp
+│       │   ├── block_reduce.hpp
+│       │   ├── block_run_length_decode.hpp
+│       │   ├── block_scan.hpp
+│       │   ├── block_shuffle.hpp
+│       │   ├── block_sort.hpp
+│       │   ├── block_store_func.hpp
+│       │   ├── block_store.hpp
+│       │   ├── config.hpp
+│       │   └── detail
+│       │       ├── block_adjacent_difference_impl.hpp
+│       │       ├── block_histogram_atomic.hpp
+│       │       ├── block_histogram_sort.hpp
+│       │       ├── block_radix_rank_basic.hpp
+│       │       ├── block_radix_rank_match.hpp
+│       │       ├── block_reduce_raking_reduce.hpp
+│       │       ├── block_reduce_warp_reduce.hpp
+│       │       ├── block_scan_reduce_then_scan.hpp
+│       │       ├── block_scan_warp_scan.hpp
+│       │       ├── block_sort_bitonic.hpp
+│       │       └── block_sort_merge.hpp
+│       ├── common.hpp
+│       ├── config.hpp
+│       ├── detail
+│       │   ├── all_true.hpp
+│       │   ├── binary_op_wrappers.hpp
+│       │   ├── match_result_type.hpp
+│       │   ├── merge_path.hpp
+│       │   ├── radix_sort.hpp
+│       │   ├── temp_storage.hpp
+│       │   └── various.hpp
+│       ├── device
+│       │   ├── config_types.hpp
+│       │   ├── detail
+│       │   │   ├── common.hpp
+│       │   │   ├── config
+│       │   │   │   ├── device_adjacent_difference.hpp
+│       │   │   │   ├── device_adjacent_difference_inplace.hpp
+│       │   │   │   ├── device_adjacent_find.hpp
+│       │   │   │   ├── device_binary_search.hpp
+│       │   │   │   ├── device_find_first_of.hpp
+│       │   │   │   ├── device_histogram.hpp
+│       │   │   │   ├── device_lower_bound.hpp
+│       │   │   │   ├── device_merge.hpp
+│       │   │   │   ├── device_merge_sort_block_merge.hpp
+│       │   │   │   ├── device_merge_sort_block_sort.hpp
+│       │   │   │   ├── device_partition_flag.hpp
+│       │   │   │   ├── device_partition_predicate.hpp
+│       │   │   │   ├── device_partition_three_way.hpp
+│       │   │   │   ├── device_partition_two_way_flag.hpp
+│       │   │   │   ├── device_partition_two_way_predicate.hpp
+│       │   │   │   ├── device_radix_sort_block_sort.hpp
+│       │   │   │   ├── device_radix_sort_onesweep.hpp
+│       │   │   │   ├── device_reduce_by_key.hpp
+│       │   │   │   ├── device_reduce.hpp
+│       │   │   │   ├── device_run_length_encode.hpp
+│       │   │   │   ├── device_run_length_encode_non_trivial.hpp
+│       │   │   │   ├── device_scan_by_key.hpp
+│       │   │   │   ├── device_scan.hpp
+│       │   │   │   ├── device_segmented_radix_sort.hpp
+│       │   │   │   ├── device_segmented_reduce.hpp
+│       │   │   │   ├── device_select_flag.hpp
+│       │   │   │   ├── device_select_predicated_flag.hpp
+│       │   │   │   ├── device_select_predicate.hpp
+│       │   │   │   ├── device_select_unique_by_key.hpp
+│       │   │   │   ├── device_select_unique.hpp
+│       │   │   │   ├── device_transform.hpp
+│       │   │   │   └── device_upper_bound.hpp
+│       │   │   ├── device_adjacent_difference.hpp
+│       │   │   ├── device_adjacent_find.hpp
+│       │   │   ├── device_batch_memcpy.hpp
+│       │   │   ├── device_binary_search.hpp
+│       │   │   ├── device_config_helper.hpp
+│       │   │   ├── device_histogram.hpp
+│       │   │   ├── device_merge.hpp
+│       │   │   ├── device_merge_sort.hpp
+│       │   │   ├── device_merge_sort_mergepath.hpp
+│       │   │   ├── device_nth_element.hpp
+│       │   │   ├── device_partition.hpp
+│       │   │   ├── device_radix_sort.hpp
+│       │   │   ├── device_reduce_by_key.hpp
+│       │   │   ├── device_reduce.hpp
+│       │   │   ├── device_run_length_encode.hpp
+│       │   │   ├── device_scan_by_key.hpp
+│       │   │   ├── device_scan_common.hpp
+│       │   │   ├── device_scan.hpp
+│       │   │   ├── device_search.hpp
+│       │   │   ├── device_search_n.hpp
+│       │   │   ├── device_segmented_radix_sort.hpp
+│       │   │   ├── device_segmented_reduce.hpp
+│       │   │   ├── device_segmented_scan.hpp
+│       │   │   ├── device_transform.hpp
+│       │   │   ├── lookback_scan_state.hpp
+│       │   │   ├── ordered_block_id.hpp
+│       │   │   └── uint_fast_div.hpp
+│       │   ├── device_adjacent_difference_config.hpp
+│       │   ├── device_adjacent_difference.hpp
+│       │   ├── device_adjacent_find_config.hpp
+│       │   ├── device_adjacent_find.hpp
+│       │   ├── device_binary_search_config.hpp
+│       │   ├── device_binary_search.hpp
+│       │   ├── device_copy_config.hpp
+│       │   ├── device_copy.hpp
+│       │   ├── device_find_end.hpp
+│       │   ├── device_find_first_of_config.hpp
+│       │   ├── device_find_first_of.hpp
+│       │   ├── device_histogram_config.hpp
+│       │   ├── device_histogram.hpp
+│       │   ├── device_memcpy_config.hpp
+│       │   ├── device_memcpy.hpp
+│       │   ├── device_merge_config.hpp
+│       │   ├── device_merge.hpp
+│       │   ├── device_merge_sort_config.hpp
+│       │   ├── device_merge_sort.hpp
+│       │   ├── device_nth_element_config.hpp
+│       │   ├── device_nth_element.hpp
+│       │   ├── device_partial_sort_config.hpp
+│       │   ├── device_partial_sort.hpp
+│       │   ├── device_partition_config.hpp
+│       │   ├── device_partition.hpp
+│       │   ├── device_radix_sort_config.hpp
+│       │   ├── device_radix_sort.hpp
+│       │   ├── device_reduce_by_key_config.hpp
+│       │   ├── device_reduce_by_key.hpp
+│       │   ├── device_reduce_config.hpp
+│       │   ├── device_reduce.hpp
+│       │   ├── device_run_length_encode_config.hpp
+│       │   ├── device_run_length_encode.hpp
+│       │   ├── device_scan_by_key_config.hpp
+│       │   ├── device_scan_by_key.hpp
+│       │   ├── device_scan_config.hpp
+│       │   ├── device_scan.hpp
+│       │   ├── device_search_config.hpp
+│       │   ├── device_search.hpp
+│       │   ├── device_search_n_config.hpp
+│       │   ├── device_search_n.hpp
+│       │   ├── device_segmented_radix_sort_config.hpp
+│       │   ├── device_segmented_radix_sort.hpp
+│       │   ├── device_segmented_reduce.hpp
+│       │   ├── device_segmented_scan.hpp
+│       │   ├── device_select.hpp
+│       │   ├── device_transform_config.hpp
+│       │   ├── device_transform.hpp
+│       │   └── specialization
+│       │       ├── device_radix_block_sort.hpp
+│       │       └── device_radix_merge_sort.hpp
+│       ├── functional.hpp
+│       ├── intrinsics
+│       │   ├── arch.hpp
+│       │   ├── atomic.hpp
+│       │   ├── bit.hpp
+│       │   ├── thread.hpp
+│       │   ├── warp.hpp
+│       │   └── warp_shuffle.hpp
+│       ├── intrinsics.hpp
+│       ├── iterator
+│       │   ├── arg_index_iterator.hpp
+│       │   ├── constant_iterator.hpp
+│       │   ├── counting_iterator.hpp
+│       │   ├── detail
+│       │   │   └── replace_first_iterator.hpp
+│       │   ├── discard_iterator.hpp
+│       │   ├── predicate_iterator.hpp
+│       │   ├── reverse_iterator.hpp
+│       │   ├── texture_cache_iterator.hpp
+│       │   ├── transform_iterator.hpp
+│       │   └── zip_iterator.hpp
+│       ├── iterator.hpp
+│       ├── rocprim.hpp
+│       ├── rocprim_version.hpp
+│       ├── thread
+│       │   ├── radix_key_codec.hpp
+│       │   ├── thread_load.hpp
+│       │   ├── thread_operators.hpp
+│       │   ├── thread_reduce.hpp
+│       │   ├── thread_scan.hpp
+│       │   ├── thread_search.hpp
+│       │   └── thread_store.hpp
+│       ├── types
+│       │   ├── double_buffer.hpp
+│       │   ├── future_value.hpp
+│       │   ├── integer_sequence.hpp
+│       │   ├── key_value_pair.hpp
+│       │   ├── tuple.hpp
+│       │   └── uninitialized_array.hpp
+│       ├── types.hpp
+│       ├── type_traits.hpp
+│       ├── type_traits_interface.hpp
+│       └── warp
+│           ├── detail
+│           │   ├── warp_reduce_crosslane.hpp
+│           │   ├── warp_reduce_dpp.hpp
+│           │   ├── warp_reduce_shared_mem.hpp
+│           │   ├── warp_reduce_shuffle.hpp
+│           │   ├── warp_scan_crosslane.hpp
+│           │   ├── warp_scan_dpp.hpp
+│           │   ├── warp_scan_shared_mem.hpp
+│           │   ├── warp_scan_shuffle.hpp
+│           │   ├── warp_segment_bounds.hpp
+│           │   ├── warp_sort_shuffle.hpp
+│           │   └── warp_sort_stable.hpp
+│           ├── warp_exchange.hpp
+│           ├── warp_load.hpp
+│           ├── warp_reduce.hpp
+│           ├── warp_scan.hpp
+│           ├── warp_sort.hpp
+│           └── warp_store.hpp
+├── lib
+│   └── cmake
+│       └── rocprim
+│           ├── rocprim-config.cmake
+│           ├── rocprim-config-version.cmake
+│           └── rocprim-targets.cmake
+└── share
+    └── doc
+        └── rocprim
+            └── LICENSE.txt
+#+end_verse
+
+
+*** rocrand: /nix/store/aa22cc-rocrand-6.4.3
+#+begin_verse
+
+/nix/store/aa22cc-rocrand-6.4.3
+├── include
+│   └── rocrand
+│       ├── rocrandapi.h
+│       ├── rocrand_common.h
+│       ├── rocrand_discrete.h
+│       ├── rocrand_discrete_types.h
+│       ├── rocrand.h
+│       ├── rocrand.hpp
+│       ├── rocrand_kernel.h
+│       ├── rocrand_lfsr113.h
+│       ├── rocrand_lfsr113_precomputed.h
+│       ├── rocrand_log_normal.h
+│       ├── rocrand_mrg31k3p.h
+│       ├── rocrand_mrg31k3p_precomputed.h
+│       ├── rocrand_mrg32k3a.h
+│       ├── rocrand_mrg32k3a_precomputed.h
+│       ├── rocrand_mt19937_precomputed.h
+│       ├── rocrand_mtgp32_11213.h
+│       ├── rocrand_mtgp32.h
+│       ├── rocrand_normal.h
+│       ├── rocrand_philox4x32_10.h
+│       ├── rocrand_poisson.h
+│       ├── rocrand_scrambled_sobol32_constants.h
+│       ├── rocrand_scrambled_sobol32.h
+│       ├── rocrand_scrambled_sobol32_precomputed.h
+│       ├── rocrand_scrambled_sobol64_constants.h
+│       ├── rocrand_scrambled_sobol64.h
+│       ├── rocrand_scrambled_sobol64_precomputed.h
+│       ├── rocrand_sobol32.h
+│       ├── rocrand_sobol32_precomputed.h
+│       ├── rocrand_sobol64.h
+│       ├── rocrand_sobol64_precomputed.h
+│       ├── rocrand_threefry2_impl.h
+│       ├── rocrand_threefry2x32_20.h
+│       ├── rocrand_threefry2x64_20.h
+│       ├── rocrand_threefry4_impl.h
+│       ├── rocrand_threefry4x32_20.h
+│       ├── rocrand_threefry4x64_20.h
+│       ├── rocrand_threefry_common.h
+│       ├── rocrand_uniform.h
+│       ├── rocrand_version.h
+│       ├── rocrand_xorwow.h
+│       └── rocrand_xorwow_precomputed.h
+├── lib
+│   ├── cmake
+│   │   └── rocrand
+│   │       ├── rocrand-config.cmake
+│   │       ├── rocrand-config-version.cmake
+│   │       ├── rocrand-fortran-config.cmake
+│   │       ├── rocrand-targets.cmake
+│   │       └── rocrand-targets-release.cmake
+│   ├── librocrand.so -> librocrand.so.1
+│   ├── librocrand.so.1 -> librocrand.so.1.1.60403
+│   └── librocrand.so.1.1.60403
+└── share
+    └── doc
+        └── rocrand
+            └── LICENSE.txt
+#+end_verse
+
+
+*** rocthrust: /nix/store/aa22cc-rocthrust-6.4.3
+
++ removed =*.h= and =*.inl= from tree
+  
+#+begin_verse
+/nix/store/aa22cc-rocthrust-6.4.3
+├── include
+│   └── thrust
+│       ├── async
+│       ├── cmake
+│       │   └── thrust-header-search.cmake.in
+│       ├── detail
+│       │   ├── allocator
+│       │   ├── complex
+│       │   ├── config
+│       │   ├── functional
+│       │   │   └── operators
+│       │   ├── mpl
+│       │   ├── range
+│       │   ├── type_traits
+│       │   │   └── iterator
+│       │   └── util
+│       ├── iterator
+│       │   └── detail
+│       ├── mr
+│       ├── random
+│       │   └── detail
+│       ├── rocthrust_version.hpp
+│       ├── rocthrust_version.hpp.in
+│       ├── system
+│       │   ├── cpp
+│       │   │   └── detail
+│       │   ├── cuda
+│       │   │   └── detail
+│       │   │   │   ├── async
+│       │   │   │   ├── core
+│       │   │   │   └── internal
+│       │   ├── detail
+│       │   │   ├── adl
+│       │   │   │   └── async
+│       │   │   ├── generic
+│       │   │   │   └── scalar
+│       │   │   ├── internal
+│       │   │   └── sequential
+│       │   ├── hip
+│       │   │   ├── detail
+│       │   │   │   ├── async
+│       │   │   │   ├── general
+│       │   │   │   ├── internal
+│       │   │   │   ├── nv
+│       │   │   │   │   └── detail
+│       │   │   ├── hipstdpar
+│       │   │   │   ├── hipstdpar_lib.hpp
+│       │   │   │   └── impl
+│       │   │   │       ├── batch.hpp
+│       │   │   │       ├── copy.hpp
+│       │   │   │       ├── generation.hpp
+│       │   │   │       ├── heap.hpp
+│       │   │   │       ├── hipstd.hpp
+│       │   │   │       ├── interpose_allocations.hpp
+│       │   │   │       ├── lexicographical_comparison.hpp
+│       │   │   │       ├── merge.hpp
+│       │   │   │       ├── min_max.hpp
+│       │   │   │       ├── numeric.hpp
+│       │   │   │       ├── order_changing.hpp
+│       │   │   │       ├── partitioning.hpp
+│       │   │   │       ├── removing.hpp
+│       │   │   │       ├── search.hpp
+│       │   │   │       ├── set.hpp
+│       │   │   │       ├── sorting.hpp
+│       │   │   │       ├── swap.hpp
+│       │   │   │       ├── transformation.hpp
+│       │   │   │       └── uninitialized.hpp
+│       │   ├── omp
+│       │   │   └── detail
+│       │   └── tbb
+│       │       └── detail
+│       └── type_traits
+├── lib
+│   └── cmake
+│       └── rocthrust
+│           ├── rocthrust-config.cmake
+│           ├── rocthrust-config-version.cmake
+│           └── rocthrust-targets.cmake
+└── share
+    └── doc
+        └── rocthrust
+            └── LICENSE
+
+#+end_verse
+
+
+*** rccl
+
+#+begin_verse
+/nix/store/aa22cc-rccl-6.4.3
+├── include
+│   └── rccl
+│       ├── amd_detail
+│       │   └── api_trace.h
+│       ├── nccl_net.h
+│       └── rccl.h
+├── lib
+│   ├── cmake
+│   │   └── rccl
+│   │       ├── rccl-config.cmake
+│   │       ├── rccl-config-version.cmake
+│   │       ├── rccl-targets.cmake
+│   │       └── rccl-targets-release.cmake
+│   ├── librccl.so -> librccl.so.1
+│   ├── librccl.so.1 -> librccl.so.1.0.60403
+│   └── librccl.so.1.0.60403
+└── share
+    ├── doc
+    │   └── rccl
+    │       └── LICENSE.txt
+    └── rccl
+        │   ├── allreduce-allpairs-8n-ll-32tb-op.xml
+        │   ├── allreduce-allpairs-8n-ll-32tb.xml
+        │   ├── allreduce-allpairs-8n-ll-64tb-op.xml
+        │   ├── allreduce-allpairs-8n-ll-64tb.xml
+        │   ├── allreduce-allpairs-8n-simple_2.xml
+        │   ├── allreduce-allpairs-8n-simple-op.xml
+        │   ├── allreduce-allpairs-8n-simple.xml
+        │   ├── alltoall-8n-0-9kb.xml
+        │   ├── alltoall-8n-190kb-512kb.xml
+        │   ├── alltoall-8n-512kb-7mb.xml
+        │   ├── alltoall-8n-7mb-43mb.xml
+        │   └── alltoall-8n-9kb-190kb.xml
+        └── msccl-unit-test-algorithms
+            ├── all-reduce-ring-ll128.xml
+            ├── all-reduce-ring-ll.xml
+            └── all-reduce-ring-simple.xml
+#+end_verse
+
+** Toolchain
+
+
+*** roctracer: /nix/store/aa22cc-roctracer-6.4.3
+#+begin_verse
+
+/nix/store/aa22cc-roctracer-6.4.3
+├── include
+│   └── roctracer
+│       ├── ext
+│       │   └── prof_protocol.h
+│       ├── hip_ostream_ops.h
+│       ├── hsa_ostream_ops.h
+│       ├── hsa_prof_str.h
+│       ├── roctracer_ext.h
+│       ├── roctracer.h
+│       ├── roctracer_hcc.h
+│       ├── roctracer_hip.h
+│       ├── roctracer_hsa.h
+│       ├── roctracer_plugin.h
+│       ├── roctracer_roctx.h
+│       └── roctx.h
+├── lib
+│   ├── libroctracer64.so -> libroctracer64.so.4
+│   ├── libroctracer64.so.4 -> libroctracer64.so.4.1.0
+│   ├── libroctracer64.so.4.1.0
+│   ├── libroctx64.so -> libroctx64.so.4
+│   ├── libroctx64.so.4 -> libroctx64.so.4.1.0
+│   ├── libroctx64.so.4.1.0
+│   └── roctracer
+│       ├── libfile_plugin.so
+│       ├── libhip_stats.so
+│       └── libroctracer_tool.so
+└── share
+    └── doc
+        ├── roctracer
+        │   └── LICENSE
+        └── roctracer-asan
+            └── LICENSE
+#+end_verse
+
+
+*** rocm-comgr
+| tinygrad |
+
+/nix/store/aa22cc-rocm-comgr-19.0.0-rocm
+├── include
+│   └── amd_comgr
+│       └── amd_comgr.h
+├── lib
+│   ├── cmake
+│   │   └── amd_comgr
+│   │       ├── amd_comgr-config.cmake
+│   │       ├── amd_comgr-config-version.cmake
+│   │       ├── amd_comgr-targets.cmake
+│   │       └── amd_comgr-targets-release.cmake
+│   ├── libamd_comgr.so -> libamd_comgr.so.3
+│   ├── libamd_comgr.so.3 -> libamd_comgr.so.3.0.0
+│   └── libamd_comgr.so.3.0.0
+└── share
+    └── doc
+        └── amd_comgr
+            ├── LICENSE.txt
+            ├── NOTICES.txt
+            └── README.md
+
+*** rocm-cmake
+
+#+begin_verse
+/nix/store/aa22cc-rocm-cmake-6.4.3
+└── share
+    ├── doc
+    │   └── rocm-cmake
+    │       └── LICENSE
+    ├── rocm
+    │   └── cmake
+    │       ├── ROCMConfig.cmake
+    │       └── ROCMConfigVersion.cmake
+    └── rocmcmakebuildtools
+        └── cmake
+            ├── header_template.h.in
+            ├── ROCMAnalyzers.cmake
+            ├── ROCMChecks.cmake
+            ├── ROCMCheckTargetIds.cmake
+            ├── ROCMClangTidy.cmake
+            ├── ROCMClients.cmake
+            ├── ROCmCMakeBuildToolsConfig.cmake
+            ├── ROCmCMakeBuildToolsConfigVersion.cmake
+            ├── ROCMCppCheck.cmake
+            ├── ROCMCreatePackage.cmake
+            ├── ROCMDocs.cmake
+            ├── ROCMDoxygenDoc.cmake
+            ├── ROCMHeaderWrapper.cmake
+            ├── ROCMInstallSymlinks.cmake
+            ├── ROCMInstallTargets.cmake
+            ├── ROCMPackageConfigHelpers.cmake
+            ├── ROCMProperty.cmake
+            ├── ROCMSetupVersion.cmake
+            ├── ROCMSphinxDoc.cmake
+            ├── ROCMTest.cmake
+            └── ROCMUtilities.cmake
+#+end_verse
+
+
+
+
+*** llvm.llvm: /nix/store/aa22cc-llvm-19.0.0-rocm
+
+#+begin_verse
+/nix/store/aa22cc-llvm-19.0.0-rocm
+├── bin
+│   ├── bugpoint
+│   ├── count
+│   ├── dsymutil
+│   ├── FileCheck
+│   ├── llc
+│   ├── lli
+│   ├── lli-child-target
+│   ├── llvm-addr2line -> llvm-symbolizer
+│   ├── llvm-ar
+│   ├── llvm-as
+│   ├── llvm-bcanalyzer
+│   ├── llvm-bitcode-strip -> llvm-objcopy
+│   ├── llvm-cat
+│   ├── llvm-cfi-verify
+│   ├── llvm-cov
+│   ├── llvm-c-test
+│   ├── llvm-cvtres
+│   ├── llvm-cxxdump
+│   ├── llvm-cxxfilt
+│   ├── llvm-cxxmap
+│   ├── llvm-debuginfo-analyzer
+│   ├── llvm-debuginfod
+│   ├── llvm-debuginfod-find
+│   ├── llvm-diff
+│   ├── llvm-dis
+│   ├── llvm-dlltool -> llvm-ar
+│   ├── llvm-dwarfdump
+│   ├── llvm-dwarfutil
+│   ├── llvm-dwp
+│   ├── llvm-exegesis
+│   ├── llvm-extract
+│   ├── llvm-gsymutil
+│   ├── llvm-ifs
+│   ├── llvm-install-name-tool -> llvm-objcopy
+│   ├── llvm-jitlink
+│   ├── llvm-jitlink-executor
+│   ├── llvm-lib -> llvm-ar
+│   ├── llvm-libtool-darwin
+│   ├── llvm-link
+│   ├── llvm-lipo
+│   ├── llvm-lto
+│   ├── llvm-lto2
+│   ├── llvm-mc
+│   ├── llvm-mca
+│   ├── llvm-ml
+│   ├── llvm-modextract
+│   ├── llvm-mt
+│   ├── llvm-nm
+│   ├── llvm-objcopy
+│   ├── llvm-objdump
+│   ├── llvm-opt-report
+│   ├── llvm-otool -> llvm-objdump
+│   ├── llvm-pdbutil
+│   ├── llvm-PerfectShuffle
+│   ├── llvm-profdata
+│   ├── llvm-profgen
+│   ├── llvm-ranlib -> llvm-ar
+│   ├── llvm-rc
+│   ├── llvm-readelf -> llvm-readobj
+│   ├── llvm-readobj
+│   ├── llvm-readtapi
+│   ├── llvm-reduce
+│   ├── llvm-remarkutil
+│   ├── llvm-rtdyld
+│   ├── llvm-sim
+│   ├── llvm-size
+│   ├── llvm-split
+│   ├── llvm-stress
+│   ├── llvm-strings
+│   ├── llvm-strip -> llvm-objcopy
+│   ├── llvm-symbolizer
+│   ├── llvm-tblgen
+│   ├── llvm-tli-checker
+│   ├── llvm-undname
+│   ├── llvm-windres -> llvm-rc
+│   ├── llvm-xray
+│   ├── not
+│   ├── obj2yaml
+│   ├── opt
+│   ├── reduce-chunk-list
+│   ├── sancov
+│   ├── sanstats
+│   ├── split-file
+│   ├── UnicodeNameMappingGenerator
+│   ├── verify-uselistorder
+│   ├── yaml2obj
+│   └── yaml-bench
+└── share
+#+end_verse
+
+** Tools
+
+*** rdc
+#+begin_verse
+
+/nix/store/aa22cc-rdc-6.4.3
+├── bin
+│   ├── rdcd
+│   └── rdci
+├── include
+│   └── rdc
+│       └── rdc.h
+├── lib
+│   ├── cmake
+│   │   └── rdc
+│   │       ├── rdc-config.cmake
+│   │       ├── rdc-config-version.cmake
+│   │       ├── rdcTargets.cmake
+│   │       └── rdcTargets-release.cmake
+│   ├── librdc_bootstrap.so
+│   ├── librdc_bootstrap.so.1 -> librdc_bootstrap.so.1.0
+│   ├── librdc_bootstrap.so.1.0
+│   ├── librdc_client.so
+│   ├── librdc_client.so.1 -> librdc_client.so.1.0
+│   ├── librdc_client.so.1.0
+│   ├── librdc.so
+│   ├── librdc.so.1 -> librdc.so.1.0
+│   ├── librdc.so.1.0
+│   └── rdc
+│       ├── grpc
+│       │   ├── bin
+│       │   │   ├── grpc_cpp_plugin
+│       │   │   ├── grpc_csharp_plugin
+│       │   │   ├── grpc_node_plugin
+│       │   │   ├── grpc_objective_c_plugin
+│       │   │   ├── grpc_php_plugin
+│       │   │   ├── grpc_python_plugin
+│       │   │   └── grpc_ruby_plugin
+│       │   ├── include
+│       │   │   ├── grpc
+│       │   │   │   ├── byte_buffer.h
+│       │   │   │   ├── byte_buffer_reader.h
+│       │   │   │   ├── census.h
+│       │   │   │   ├── compression.h
+│       │   │   │   ├── create_channel_from_endpoint.h
+│       │   │   │   ├── credentials.h
+│       │   │   │   ├── event_engine
+│       │   │   │   │   ├── endpoint_config.h
+│       │   │   │   │   ├── event_engine.h
+│       │   │   │   │   ├── extensible.h
+│       │   │   │   │   ├── internal
+│       │   │   │   │   │   ├── memory_allocator_impl.h
+│       │   │   │   │   │   ├── slice_cast.h
+│       │   │   │   │   │   └── write_event.h
+│       │   │   │   │   ├── memory_allocator.h
+│       │   │   │   │   ├── memory_request.h
+│       │   │   │   │   ├── port.h
+│       │   │   │   │   ├── slice_buffer.h
+│       │   │   │   │   └── slice.h
+│       │   │   │   ├── fork.h
+│       │   │   │   ├── grpc_audit_logging.h
+│       │   │   │   ├── grpc_crl_provider.h
+│       │   │   │   ├── grpc.h
+│       │   │   │   ├── grpc_posix.h
+│       │   │   │   ├── grpc_security_constants.h
+│       │   │   │   ├── grpc_security.h
+│       │   │   │   ├── impl
+│       │   │   │   │   ├── call.h
+│       │   │   │   │   ├── channel_arg_names.h
+│       │   │   │   │   ├── codegen
+│       │   │   │   │   │   ├── atm_gcc_atomic.h
+│       │   │   │   │   │   ├── atm_gcc_sync.h
+│       │   │   │   │   │   ├── atm.h
+│       │   │   │   │   │   ├── atm_windows.h
+│       │   │   │   │   │   ├── byte_buffer.h
+│       │   │   │   │   │   ├── byte_buffer_reader.h
+│       │   │   │   │   │   ├── compression_types.h
+│       │   │   │   │   │   ├── connectivity_state.h
+│       │   │   │   │   │   ├── fork.h
+│       │   │   │   │   │   ├── gpr_types.h
+│       │   │   │   │   │   ├── grpc_types.h
+│       │   │   │   │   │   ├── log.h
+│       │   │   │   │   │   ├── port_platform.h
+│       │   │   │   │   │   ├── propagation_bits.h
+│       │   │   │   │   │   ├── slice.h
+│       │   │   │   │   │   ├── status.h
+│       │   │   │   │   │   ├── sync_abseil.h
+│       │   │   │   │   │   ├── sync_custom.h
+│       │   │   │   │   │   ├── sync_generic.h
+│       │   │   │   │   │   ├── sync.h
+│       │   │   │   │   │   ├── sync_posix.h
+│       │   │   │   │   │   └── sync_windows.h
+│       │   │   │   │   ├── compression_types.h
+│       │   │   │   │   ├── connectivity_state.h
+│       │   │   │   │   ├── grpc_types.h
+│       │   │   │   │   ├── propagation_bits.h
+│       │   │   │   │   └── slice_type.h
+│       │   │   │   ├── load_reporting.h
+│       │   │   │   ├── passive_listener.h
+│       │   │   │   ├── slice_buffer.h
+│       │   │   │   ├── slice.h
+│       │   │   │   ├── status.h
+│       │   │   │   └── support
+│       │   │   │       ├── alloc.h
+│       │   │   │       ├── atm_gcc_atomic.h
+│       │   │   │       ├── atm_gcc_sync.h
+│       │   │   │       ├── atm.h
+│       │   │   │       ├── atm_windows.h
+│       │   │   │       ├── cpu.h
+│       │   │   │       ├── json.h
+│       │   │   │       ├── log.h
+│       │   │   │       ├── log_windows.h
+│       │   │   │       ├── metrics.h
+│       │   │   │       ├── port_platform.h
+│       │   │   │       ├── string_util.h
+│       │   │   │       ├── sync_abseil.h
+│       │   │   │       ├── sync_custom.h
+│       │   │   │       ├── sync_generic.h
+│       │   │   │       ├── sync.h
+│       │   │   │       ├── sync_posix.h
+│       │   │   │       ├── sync_windows.h
+│       │   │   │       ├── thd_id.h
+│       │   │   │       ├── time.h
+│       │   │   │       └── workaround_list.h
+│       │   │   ├── grpc++
+│       │   │   │   ├── alarm.h
+│       │   │   │   ├── channel.h
+│       │   │   │   ├── client_context.h
+│       │   │   │   ├── completion_queue.h
+│       │   │   │   ├── create_channel.h
+│       │   │   │   ├── create_channel_posix.h
+│       │   │   │   ├── ext
+│       │   │   │   │   ├── health_check_service_server_builder_option.h
+│       │   │   │   │   └── proto_server_reflection_plugin.h
+│       │   │   │   ├── generic
+│       │   │   │   │   ├── async_generic_service.h
+│       │   │   │   │   └── generic_stub.h
+│       │   │   │   ├── grpc++.h
+│       │   │   │   ├── health_check_service_interface.h
+│       │   │   │   ├── impl
+│       │   │   │   │   ├── call.h
+│       │   │   │   │   ├── channel_argument_option.h
+│       │   │   │   │   ├── client_unary_call.h
+│       │   │   │   │   ├── codegen
+│       │   │   │   │   │   ├── async_stream.h
+│       │   │   │   │   │   ├── async_unary_call.h
+│       │   │   │   │   │   ├── byte_buffer.h
+│       │   │   │   │   │   ├── call.h
+│       │   │   │   │   │   ├── call_hook.h
+│       │   │   │   │   │   ├── channel_interface.h
+│       │   │   │   │   │   ├── client_context.h
+│       │   │   │   │   │   ├── client_unary_call.h
+│       │   │   │   │   │   ├── completion_queue.h
+│       │   │   │   │   │   ├── completion_queue_tag.h
+│       │   │   │   │   │   ├── config.h
+│       │   │   │   │   │   ├── config_protobuf.h
+│       │   │   │   │   │   ├── create_auth_context.h
+│       │   │   │   │   │   ├── metadata_map.h
+│       │   │   │   │   │   ├── method_handler_impl.h
+│       │   │   │   │   │   ├── proto_utils.h
+│       │   │   │   │   │   ├── rpc_method.h
+│       │   │   │   │   │   ├── rpc_service_method.h
+│       │   │   │   │   │   ├── security
+│       │   │   │   │   │   │   └── auth_context.h
+│       │   │   │   │   │   ├── serialization_traits.h
+│       │   │   │   │   │   ├── server_context.h
+│       │   │   │   │   │   ├── server_interface.h
+│       │   │   │   │   │   ├── service_type.h
+│       │   │   │   │   │   ├── slice.h
+│       │   │   │   │   │   ├── status_code_enum.h
+│       │   │   │   │   │   ├── status.h
+│       │   │   │   │   │   ├── string_ref.h
+│       │   │   │   │   │   ├── stub_options.h
+│       │   │   │   │   │   ├── sync_stream.h
+│       │   │   │   │   │   └── time.h
+│       │   │   │   │   ├── grpc_library.h
+│       │   │   │   │   ├── method_handler_impl.h
+│       │   │   │   │   ├── rpc_method.h
+│       │   │   │   │   ├── rpc_service_method.h
+│       │   │   │   │   ├── serialization_traits.h
+│       │   │   │   │   ├── server_builder_option.h
+│       │   │   │   │   ├── server_builder_plugin.h
+│       │   │   │   │   ├── server_initializer.h
+│       │   │   │   │   └── service_type.h
+│       │   │   │   ├── resource_quota.h
+│       │   │   │   ├── security
+│       │   │   │   │   ├── auth_context.h
+│       │   │   │   │   ├── auth_metadata_processor.h
+│       │   │   │   │   ├── credentials.h
+│       │   │   │   │   └── server_credentials.h
+│       │   │   │   ├── server_builder.h
+│       │   │   │   ├── server_context.h
+│       │   │   │   ├── server.h
+│       │   │   │   ├── server_posix.h
+│       │   │   │   └── support
+│       │   │   │       ├── async_stream.h
+│       │   │   │       ├── async_unary_call.h
+│       │   │   │       ├── byte_buffer.h
+│       │   │   │       ├── channel_arguments.h
+│       │   │   │       ├── config.h
+│       │   │   │       ├── error_details.h
+│       │   │   │       ├── slice.h
+│       │   │   │       ├── status_code_enum.h
+│       │   │   │       ├── status.h
+│       │   │   │       ├── string_ref.h
+│       │   │   │       ├── stub_options.h
+│       │   │   │       ├── sync_stream.h
+│       │   │   │       └── time.h
+│       │   │   └── grpcpp
+│       │   │       ├── alarm.h
+│       │   │       ├── channel.h
+│       │   │       ├── client_context.h
+│       │   │       ├── completion_queue.h
+│       │   │       ├── create_channel.h
+│       │   │       ├── create_channel_posix.h
+│       │   │       ├── ext
+│       │   │       │   ├── call_metric_recorder.h
+│       │   │       │   ├── channelz_service_plugin.h
+│       │   │       │   ├── health_check_service_server_builder_option.h
+│       │   │       │   ├── proto_server_reflection_plugin.h
+│       │   │       │   └── server_metric_recorder.h
+│       │   │       ├── generic
+│       │   │       │   ├── async_generic_service.h
+│       │   │       │   ├── callback_generic_service.h
+│       │   │       │   ├── generic_stub_callback.h
+│       │   │       │   └── generic_stub.h
+│       │   │       ├── grpcpp.h
+│       │   │       ├── health_check_service_interface.h
+│       │   │       ├── impl
+│       │   │       │   ├── call.h
+│       │   │       │   ├── call_hook.h
+│       │   │       │   ├── call_op_set.h
+│       │   │       │   ├── call_op_set_interface.h
+│       │   │       │   ├── channel_argument_option.h
+│       │   │       │   ├── channel_interface.h
+│       │   │       │   ├── client_unary_call.h
+│       │   │       │   ├── codegen
+│       │   │       │   │   ├── async_generic_service.h
+│       │   │       │   │   ├── async_stream.h
+│       │   │       │   │   ├── async_unary_call.h
+│       │   │       │   │   ├── byte_buffer.h
+│       │   │       │   │   ├── callback_common.h
+│       │   │       │   │   ├── call.h
+│       │   │       │   │   ├── call_hook.h
+│       │   │       │   │   ├── call_op_set.h
+│       │   │       │   │   ├── call_op_set_interface.h
+│       │   │       │   │   ├── channel_interface.h
+│       │   │       │   │   ├── client_callback.h
+│       │   │       │   │   ├── client_context.h
+│       │   │       │   │   ├── client_interceptor.h
+│       │   │       │   │   ├── client_unary_call.h
+│       │   │       │   │   ├── completion_queue.h
+│       │   │       │   │   ├── completion_queue_tag.h
+│       │   │       │   │   ├── config.h
+│       │   │       │   │   ├── config_protobuf.h
+│       │   │       │   │   ├── create_auth_context.h
+│       │   │       │   │   ├── delegating_channel.h
+│       │   │       │   │   ├── intercepted_channel.h
+│       │   │       │   │   ├── interceptor_common.h
+│       │   │       │   │   ├── interceptor.h
+│       │   │       │   │   ├── message_allocator.h
+│       │   │       │   │   ├── metadata_map.h
+│       │   │       │   │   ├── method_handler.h
+│       │   │       │   │   ├── method_handler_impl.h
+│       │   │       │   │   ├── proto_buffer_reader.h
+│       │   │       │   │   ├── proto_buffer_writer.h
+│       │   │       │   │   ├── proto_utils.h
+│       │   │       │   │   ├── rpc_method.h
+│       │   │       │   │   ├── rpc_service_method.h
+│       │   │       │   │   ├── security
+│       │   │       │   │   │   └── auth_context.h
+│       │   │       │   │   ├── serialization_traits.h
+│       │   │       │   │   ├── server_callback.h
+│       │   │       │   │   ├── server_callback_handlers.h
+│       │   │       │   │   ├── server_context.h
+│       │   │       │   │   ├── server_interceptor.h
+│       │   │       │   │   ├── server_interface.h
+│       │   │       │   │   ├── service_type.h
+│       │   │       │   │   ├── slice.h
+│       │   │       │   │   ├── status_code_enum.h
+│       │   │       │   │   ├── status.h
+│       │   │       │   │   ├── string_ref.h
+│       │   │       │   │   ├── stub_options.h
+│       │   │       │   │   ├── sync.h
+│       │   │       │   │   ├── sync_stream.h
+│       │   │       │   │   └── time.h
+│       │   │       │   ├── completion_queue_tag.h
+│       │   │       │   ├── create_auth_context.h
+│       │   │       │   ├── delegating_channel.h
+│       │   │       │   ├── generic_serialize.h
+│       │   │       │   ├── generic_stub_internal.h
+│       │   │       │   ├── grpc_library.h
+│       │   │       │   ├── intercepted_channel.h
+│       │   │       │   ├── interceptor_common.h
+│       │   │       │   ├── metadata_map.h
+│       │   │       │   ├── method_handler_impl.h
+│       │   │       │   ├── proto_utils.h
+│       │   │       │   ├── rpc_method.h
+│       │   │       │   ├── rpc_service_method.h
+│       │   │       │   ├── serialization_traits.h
+│       │   │       │   ├── server_builder_option.h
+│       │   │       │   ├── server_builder_plugin.h
+│       │   │       │   ├── server_callback_handlers.h
+│       │   │       │   ├── server_initializer.h
+│       │   │       │   ├── service_type.h
+│       │   │       │   ├── status.h
+│       │   │       │   └── sync.h
+│       │   │       ├── passive_listener.h
+│       │   │       ├── ports_def.inc
+│       │   │       ├── ports_undef.inc
+│       │   │       ├── resource_quota.h
+│       │   │       ├── security
+│       │   │       │   ├── alts_context.h
+│       │   │       │   ├── alts_util.h
+│       │   │       │   ├── audit_logging.h
+│       │   │       │   ├── auth_context.h
+│       │   │       │   ├── auth_metadata_processor.h
+│       │   │       │   ├── authorization_policy_provider.h
+│       │   │       │   ├── credentials.h
+│       │   │       │   ├── server_credentials.h
+│       │   │       │   ├── tls_certificate_provider.h
+│       │   │       │   ├── tls_certificate_verifier.h
+│       │   │       │   ├── tls_credentials_options.h
+│       │   │       │   └── tls_crl_provider.h
+│       │   │       ├── server_builder.h
+│       │   │       ├── server_context.h
+│       │   │       ├── server.h
+│       │   │       ├── server_interface.h
+│       │   │       ├── server_posix.h
+│       │   │       ├── support
+│       │   │       │   ├── async_stream.h
+│       │   │       │   ├── async_unary_call.h
+│       │   │       │   ├── byte_buffer.h
+│       │   │       │   ├── callback_common.h
+│       │   │       │   ├── channel_arguments.h
+│       │   │       │   ├── client_callback.h
+│       │   │       │   ├── client_interceptor.h
+│       │   │       │   ├── config.h
+│       │   │       │   ├── error_details.h
+│       │   │       │   ├── global_callback_hook.h
+│       │   │       │   ├── interceptor.h
+│       │   │       │   ├── message_allocator.h
+│       │   │       │   ├── method_handler.h
+│       │   │       │   ├── proto_buffer_reader.h
+│       │   │       │   ├── proto_buffer_writer.h
+│       │   │       │   ├── server_callback.h
+│       │   │       │   ├── server_interceptor.h
+│       │   │       │   ├── slice.h
+│       │   │       │   ├── status_code_enum.h
+│       │   │       │   ├── status.h
+│       │   │       │   ├── string_ref.h
+│       │   │       │   ├── stub_options.h
+│       │   │       │   ├── sync_stream.h
+│       │   │       │   ├── time.h
+│       │   │       │   └── validate_service_config.h
+│       │   │       ├── version_info.h
+│       │   │       └── xds_server_builder.h
+│       │   └── lib
+│       │       ├── cmake
+│       │       │   └── grpc
+│       │       │       ├── gRPCConfig.cmake
+│       │       │       ├── gRPCConfigVersion.cmake
+│       │       │       ├── gRPCPluginTargets.cmake
+│       │       │       ├── gRPCPluginTargets-release.cmake
+│       │       │       ├── gRPCTargets.cmake
+│       │       │       ├── gRPCTargets-release.cmake
+│       │       │       └── modules
+│       │       │           ├── Findc-ares.cmake
+│       │       │           ├── Findre2.cmake
+│       │       │           └── Findsystemd.cmake
+│       │       ├── libaddress_sorting.so -> libaddress_sorting.so.51
+│       │       ├── libaddress_sorting.so.51 -> libaddress_sorting.so.51.0.0
+│       │       ├── libaddress_sorting.so.51.0.0
+│       │       ├── libgpr.so -> libgpr.so.51
+│       │       ├── libgpr.so.51 -> libgpr.so.51.0.0
+│       │       ├── libgpr.so.51.0.0
+│       │       ├── libgrpc++_alts.so -> libgrpc++_alts.so.1.76
+│       │       ├── libgrpc++_alts.so.1.76 -> libgrpc++_alts.so.1.76.0
+│       │       ├── libgrpc++_alts.so.1.76.0
+│       │       ├── libgrpc_authorization_provider.so -> libgrpc_authorization_provider.so.1.76
+│       │       ├── libgrpc_authorization_provider.so.1.76 -> libgrpc_authorization_provider.so.1.76.0
+│       │       ├── libgrpc_authorization_provider.so.1.76.0
+│       │       ├── libgrpc++_error_details.so -> libgrpc++_error_details.so.1.76
+│       │       ├── libgrpc++_error_details.so.1.76 -> libgrpc++_error_details.so.1.76.0
+│       │       ├── libgrpc++_error_details.so.1.76.0
+│       │       ├── libgrpc_plugin_support.so -> libgrpc_plugin_support.so.1.76
+│       │       ├── libgrpc_plugin_support.so.1.76 -> libgrpc_plugin_support.so.1.76.0
+│       │       ├── libgrpc_plugin_support.so.1.76.0
+│       │       ├── libgrpcpp_channelz.so -> libgrpcpp_channelz.so.1.76
+│       │       ├── libgrpcpp_channelz.so.1.76 -> libgrpcpp_channelz.so.1.76.0
+│       │       ├── libgrpcpp_channelz.so.1.76.0
+│       │       ├── libgrpc++_reflection.so -> libgrpc++_reflection.so.1.76
+│       │       ├── libgrpc++_reflection.so.1.76 -> libgrpc++_reflection.so.1.76.0
+│       │       ├── libgrpc++_reflection.so.1.76.0
+│       │       ├── libgrpc++.so -> libgrpc++.so.1.76
+│       │       ├── libgrpc.so -> libgrpc.so.51
+│       │       ├── libgrpc++.so.1.76 -> libgrpc++.so.1.76.0
+│       │       ├── libgrpc++.so.1.76.0
+│       │       ├── libgrpc.so.51 -> libgrpc.so.51.0.0
+│       │       ├── libgrpc.so.51.0.0
+│       │       ├── libgrpc++_unsecure.so -> libgrpc++_unsecure.so.1.76
+│       │       ├── libgrpc_unsecure.so -> libgrpc_unsecure.so.51
+│       │       ├── libgrpc++_unsecure.so.1.76 -> libgrpc++_unsecure.so.1.76.0
+│       │       ├── libgrpc++_unsecure.so.1.76.0
+│       │       ├── libgrpc_unsecure.so.51 -> libgrpc_unsecure.so.51.0.0
+│       │       ├── libgrpc_unsecure.so.51.0.0
+│       │       ├── libupb_base_lib.so -> libupb_base_lib.so.51
+│       │       ├── libupb_base_lib.so.51 -> libupb_base_lib.so.51.0.0
+│       │       ├── libupb_base_lib.so.51.0.0
+│       │       ├── libupb_hash_lib.so -> libupb_hash_lib.so.51
+│       │       ├── libupb_hash_lib.so.51 -> libupb_hash_lib.so.51.0.0
+│       │       ├── libupb_hash_lib.so.51.0.0
+│       │       ├── libupb_json_lib.so -> libupb_json_lib.so.51
+│       │       ├── libupb_json_lib.so.51 -> libupb_json_lib.so.51.0.0
+│       │       ├── libupb_json_lib.so.51.0.0
+│       │       ├── libupb_lex_lib.so -> libupb_lex_lib.so.51
+│       │       ├── libupb_lex_lib.so.51 -> libupb_lex_lib.so.51.0.0
+│       │       ├── libupb_lex_lib.so.51.0.0
+│       │       ├── libupb_mem_lib.so -> libupb_mem_lib.so.51
+│       │       ├── libupb_mem_lib.so.51 -> libupb_mem_lib.so.51.0.0
+│       │       ├── libupb_mem_lib.so.51.0.0
+│       │       ├── libupb_message_lib.so -> libupb_message_lib.so.51
+│       │       ├── libupb_message_lib.so.51 -> libupb_message_lib.so.51.0.0
+│       │       ├── libupb_message_lib.so.51.0.0
+│       │       ├── libupb_mini_descriptor_lib.so -> libupb_mini_descriptor_lib.so.51
+│       │       ├── libupb_mini_descriptor_lib.so.51 -> libupb_mini_descriptor_lib.so.51.0.0
+│       │       ├── libupb_mini_descriptor_lib.so.51.0.0
+│       │       ├── libupb_mini_table_lib.so -> libupb_mini_table_lib.so.51
+│       │       ├── libupb_mini_table_lib.so.51 -> libupb_mini_table_lib.so.51.0.0
+│       │       ├── libupb_mini_table_lib.so.51.0.0
+│       │       ├── libupb_reflection_lib.so -> libupb_reflection_lib.so.51
+│       │       ├── libupb_reflection_lib.so.51 -> libupb_reflection_lib.so.51.0.0
+│       │       ├── libupb_reflection_lib.so.51.0.0
+│       │       ├── libupb_textformat_lib.so -> libupb_textformat_lib.so.51
+│       │       ├── libupb_textformat_lib.so.51 -> libupb_textformat_lib.so.51.0.0
+│       │       ├── libupb_textformat_lib.so.51.0.0
+│       │       ├── libupb_wire_lib.so -> libupb_wire_lib.so.51
+│       │       ├── libupb_wire_lib.so.51 -> libupb_wire_lib.so.51.0.0
+│       │       ├── libupb_wire_lib.so.51.0.0
+│       │       ├── libutf8_range_lib.so -> libutf8_range_lib.so.51
+│       │       ├── libutf8_range_lib.so.51 -> libutf8_range_lib.so.51.0.0
+│       │       ├── libutf8_range_lib.so.51.0.0
+│       │       └── pkgconfig
+│       │           ├── gpr.pc
+│       │           ├── grpc++.pc
+│       │           ├── grpc.pc
+│       │           ├── grpcpp_otel_plugin.pc
+│       │           ├── grpc++_unsecure.pc
+│       │           └── grpc_unsecure.pc
+│       ├── hsaco
+│       │   ├── gfx1010
+│       │   ├── gfx1011
+│       │   ├── gfx1012
+│       │   ├── gfx1030
+│       │   ├── gfx1031
+│       │   ├── gfx1032
+│       │   ├── gfx1033
+│       │   ├── gfx700
+│       │   ├── gfx701
+│       │   ├── gfx702
+│       │   ├── gfx801
+│       │   ├── gfx802
+│       │   ├── gfx803
+│       │   ├── gfx805
+│       │   ├── gfx810
+│       │   ├── gfx900
+│       │   ├── gfx902
+│       │   ├── gfx904
+│       │   ├── gfx906
+│       │   ├── gfx908
+│       │   ├── gfx90a
+│       │   ├── gfx940
+│       │   ├── gfx941
+│       │   └── gfx942
+│       ├── librdc_rocr.so
+│       ├── librdc_rocr.so.1 -> librdc_rocr.so.1.0
+│       └── librdc_rocr.so.1.0
+├── libexec
+│   └── rdc
+│       ├── authentication
+│       │   ├── 01gen_root_cert.sh
+│       │   ├── 02gen_ssl_artifacts.sh
+│       │   ├── install_client.sh
+│       │   ├── install_server.sh
+│       │   ├── openssl.cnf
+│       │   └── readme.txt
+│       ├── python_binding
+│       │   ├── prometheus_targets.json
+│       │   ├── rdc_bootstrap.py
+│       │   ├── rdc_collectd.conf
+│       │   ├── rdc_collectd.py
+│       │   ├── rdc_grafana_dashboard_example.json
+│       │   ├── rdc_prometheus_example.yml
+│       │   ├── rdc_prometheus.py
+│       │   ├── RdcReader.py
+│       │   ├── RdcUtil.py
+│       │   └── README.md
+│       └── rdc.service
+└── share
+    └── rdc
+        ├── conf
+        │   └── rdc_options.conf
+        └── example
+            ├── CMakeLists.txt
+            ├── config_example.cc
+            ├── diagnostic_example.cc
+            ├── field_value_example.cc
+            ├── health_example.cc
+            ├── job_stats_example.cc
+            ├── policy_example.cc
+            ├── README.md
+            ├── rocprofiler_example.cc
+            └── topologylink_example.cc
+#+end_verse
+
+
+
+
+
+

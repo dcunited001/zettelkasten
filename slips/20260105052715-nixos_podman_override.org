@@ -1,0 +1,92 @@
+:PROPERTIES:
+:ID:       2cd82f6d-f549-4fc2-b6f9-a8c7b7fadc61
+:END:
+#+TITLE: NixOS: Podman override
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:afe1b2f0-d765-4b68-85d0-2a9983fa2127][Containers]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+* Notes
+
+I couldn't start =podman=. It immediatedly stopped. Restarting the socket didn't
+help. Also there was a raw =podman= process (without the =nix= path, which I get
+from systemd).
+
+My user podman has an invalid =podman.service.d/overrides.conf=.
+
+#+begin_example systemd
+[Unit]
+Description=Podman API Service
+Requires=podman.socket
+After=podman.socket
+Documentation=man:podman-system-service(1)
+StartLimitIntervalSec=0
+
+[Service]
+Delegate=true
+Type=exec
+KillMode=process
+Environment=LOGGING="--log-level=info"
+ExecStart=/nix/store/n23jspllh2v0xj9y18v0w40jlaq5s97v-podman-5.7.0/bin/podman $LOGGING system service
+
+[Install]
+WantedBy=default.target
+
+# /nix/store/7fmsliv87j2ykaydb2hqk5grikdzhsbf-user-units/podman.service.d/overrides.conf -> /nix/store/8y8pmamn76x5ss1kz04n6ng67wbbpsks-unit-podman.service/podman.service
+[Unit]
+
+[Service]
+Environment="LOCALE_ARCHIVE=/nix/store/9vmxdn26pggj3glazmb68vhcf4smflvz-glibc-locales-2.40-66/lib/locale/locale-archive"
+Environment="PATH=/nix/store/imad8dvhp77h0pjbckp6wvmnyhp8dpgg-coreutils-9.8/bin:/nix/store/av4xw9f56xlx5pgv862wabfif6m1yc0a-findutils-4.10.0/bin:/nix/store/x3zjxxz8m4ki88axp0gn8q8m6bldybba-gnugrep-3.12/bin:/nix/store/drc7kang929jaza6cy9zdx10s4gw1z5p-gnused-4.9/bin:/nix/store/zf8qy81dsw1vqwgh9p9n2h40s1k0g2l1-systemd-258.2/bin:/nix/store/imad8dvhp77h0pjbckp6wvmnyhp8dpgg-coreutils-9.8/sbin:/nix/store/av4xw9f56xlx5pgv862wabfif6m1yc0a-findutils-4.10.0/sbin:/nix/store/x3zjxxz8m4ki88axp0gn8q8m6bldybba-gnugrep-3.12/sbin:/nix/store/drc7kang929jaza6cy9zdx10s4gw1z5p-gnused-4.9/sbin:/nix/store/zf8qy81dsw1vqwgh9p9n2h40s1k0g2l1-systemd-258.2/sbin"
+Environment="TZDIR=/nix/store/xaa75rd44q62nc9mrbvym9d1m6gy0fj8-tzdata-2025b/share/zoneinfo"
+#+end_example
+
+These paths no loger exist, but i haven't upgraded my nix flake in some time.
+updating ROCm/etc
+
+#+begin_src  sh
+# ls: cannot access '/nix/store/imad8dvhp77h0pjbckp6wvmnyhp8dpgg-coreutils-9.8/sbin': No such file or directory
+# ls: cannot access '/nix/store/av4xw9f56xlx5pgv862wabfif6m1yc0a-findutils-4.10.0/sbin': No such file or directory
+# ls: cannot access '/nix/store/x3zjxxz8m4ki88axp0gn8q8m6bldybba-gnugrep-3.12/sbin': No such file or directory
+# ls: cannot access '/nix/store/drc7kang929jaza6cy9zdx10s4gw1z5p-gnused-4.9/sbin': No such file or directory
+paths=(/nix/store/imad8dvhp77h0pjbckp6wvmnyhp8dpgg-coreutils-9.8/bin
+       /nix/store/av4xw9f56xlx5pgv862wabfif6m1yc0a-findutils-4.10.0/bin
+       /nix/store/x3zjxxz8m4ki88axp0gn8q8m6bldybba-gnugrep-3.12/bin
+       /nix/store/drc7kang929jaza6cy9zdx10s4gw1z5p-gnused-4.9/bin
+       /nix/store/zf8qy81dsw1vqwgh9p9n2h40s1k0g2l1-systemd-258.2/bin
+       /nix/store/imad8dvhp77h0pjbckp6wvmnyhp8dpgg-coreutils-9.8/sbin
+       /nix/store/av4xw9f56xlx5pgv862wabfif6m1yc0a-findutils-4.10.0/sbin
+       /nix/store/x3zjxxz8m4ki88axp0gn8q8m6bldybba-gnugrep-3.12/sbin
+       /nix/store/drc7kang929jaza6cy9zdx10s4gw1z5p-gnused-4.9/sbin
+       /nix/store/zf8qy81dsw1vqwgh9p9n2h40s1k0g2l1-systemd-258.2/sbin)
+# LOCAL_ARCHIVE and TZINFO exist
+#+end_src
+
+idk. the override is in the nix store & probably created by this
+
+* What's going on?
+** Watch network & sockets
+
+Couldn't figure out the =podman= thing (fixed on reboot)
+
+#+begin_src shell
+watch /bin/sh -c 'ss -tu --unix | grep podman'
+watch /bin/sh -c 'ss -tu'
+watch /bin/sh -c 'ss --unix | grep -e "/run"'
+
+# don't forget your funny ip protocols
+watch /bin/sh -c 'ss -0 | grep -e "/run"'
+#+end_src
+
+** Probe network traffic
+
+Pulled out the =tcpdump= cheatsheets. There's also =nfdump=
+
+#+begin_src shell
+nix shell nixpkgs#nfdump
+#+end_src
+
+I didn't quite get through running =nfdump= though. It requires some workup to
+decode traffic from packets.

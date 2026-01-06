@@ -24,6 +24,7 @@
 
 *** Misc
 + [[https://web.archive.org/web/20250117000431/https://theholytachanka.com/posts/setting-up-resolve/][theholytachanka.com: setting up davinci resolve]]
+
 ** NixOS
 
 + [[https://github.com/NixOS/nixpkgs/blob/fba245c24ffe3733ad7ccc1e377f6c0e39b8b3e1/pkgs/development/rocm-modules/6/clr/default.nix#L36][./pkgs/development/rocm-modules/6/clr/default.nix#L36]] contains an example of
@@ -69,8 +70,6 @@ Domain problems. Can't simplify that. AVOID THE DOMAIN.
 *** Omarchy
 
 ** ROCm
-
-
 
 *** CL Runtime
 
@@ -124,6 +123,7 @@ python -m pip list | grep amd-sm # (expecting these already isntalled)
 + Same version detection, similar flow, different dependencies.
 + Clones [[https://github.com/ROCm/rocm-examples.git][ROCm/rocm-examples]], tries building, then runs their tests.
 + Conveys how =cmake= and =ctest= should work using their toolchain.
+
 ** Nixos
 *** Environment
 
@@ -198,53 +198,210 @@ amd-smi version | tr '|' '\n'
 :  amdgpu version: Linuxversion6.17.9-zen1(nixbld@localhost)(gcc(GCC)14.3.0,GNUld(GNUBinutils)2.44)#1-NixOSZENSMPPREEMPT_DYNAMICTueJan100:00:00UTC1980 
 :  amd_hsmp version: N/A
 
+** Guix
 
-** NixOS
-*** Jupyter Envs
+Equivalents
 
-+ [[https://www.reddit.com/r/NixOS/comments/1ojtcmm/comment/nmeex42/?context=3][r/NixOS: Python uv + Nix-ld: "RuntimeError: Found no NVIDIA driver on your system"]]
-  - [[https://github.com/Naxdy/nix-flake-templates/blob/main/python-nn/flake.nix][uv2nix: 250 line template for flake.nix]] yo dawg, i heard you like pins
+| Guix                 | Nix                         |                          |
+|----------------------+-----------------------------+--------------------------|
+| rocm-bandwidth-test  |                             |                          |
+| rocm-opencl-runtime  |                             |                          |
+| roct-thunk-interface |                             | deprecated               |
+| rocm-cmake           |                             |                          |
+| rocm-comgr           |                             |                          |
+| rocm-device-libs     |                             |                          |
+| rocm-hip-cpu         |                             |                          |
+| rocminfo             |                             |                          |
+| rocr-runtime         |                             |                          |
+| llvm-for-rocm        | rocmpackages.llvm.llvm, ... | a hidden package in guix |
 
-user wants to run [[github.com/comfyanonymous/ComfyUI][ComfyUI]], but restoring configuration across install states for
-applications that have graph-based configureation is at least as hard as
-programming it (hardness as in spatial computation)
 
-anyways, i like dragging connections between nodes in my wireplumber audio graph
-(i don't though). nlg OP sounds smart though. but data science really comes down
-to who can afford a ferrari. it's not really a test of it's not exactly a battle
-of wits. i'm honestly pretty happy to have not spent a ton of effort learning
-these tools. i can't say i'm regret-free for not using it at all though.
 
-*** tweag/jupyenv
+#+name: rocmpkgs
+#+begin_src shell :results output verbatim
+guix search 'rocm' \
+    | guix shell recutils -- recsel -P name \
+    | grep -vE '^(procmail|amd-smi)' \
+    | sort | uniq | grep -e '\S'
+#+end_src
 
-Examples in [[https://github.com/tweag/jupyenv/tree/main/examples][examples/$lang]]
+#+RESULTS: rocmpkgs
+: rocm-bandwidth-test
+: rocm-cmake
+: rocm-comgr
+: rocm-device-libs
+: rocm-hip-cpu
+: rocminfo
+: rocm-opencl-runtime
+: rocr-runtime
+: roct-thunk-interface
 
-+ [[https://github.com/tweag/jupyenv/blob/main/modules/default.nix#L15-L60][Options for =jupyterlab= modules/default.nix]]
-+ [[https://github.com/tweag/jupyenv/blob/main/modules/kernel.nix#L12-L84][Options for =kernel.*= and =kernel.python= modules/kernel.nix]]
-+ [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/haskell/default.nix#L63-L100][Options for =kernel.haskell= modules/kernels/haskell/default.nix]]
-+ [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/julia/default.nix#L73-L104][Options for =kernel.julia= modules/kernels/julia/default.nix]]
-  
-| bash       | minimal |         |         |        |
-| c          | minimal |         |         |        |
-| dotnet     | csharp  | fsharp} |         |        |
-| elm        | minimal |         |         |        |
-| go         | minimal |         |         |        |
-| haskell    | minimal |         |         |        |
-| javascript | minimal |         |         |        |
-| julia      | minimal |         |         |        |
-| nix        | minimal |         |         |        |
-| ocaml      | minimal |         |         |        |
-| postgres   | minimal |         |         |        |
-| python     | minimal | native  | science | stable |
-| r          | minimal |         |         |        |
-| rust       | minimal |         |         |        |
-| scala      | minimal |         |         |        |
-| typescript | minimal |         |         |        |
-| zsh        | minimal |         |         |        |
+#+name:
+#+headers: :var pkgs=rocmpkgs
+#+begin_src shell
+guix graph --max-depth=2 --type=reverse-package $pkgs | dot -Tsvg
+# guix graph --max-depth=2  $rocmpkgs | dot -Tsvg
+#+end_src
+
+#+RESULTS:
+[[file:img/guix-rocm-revpkgs.svg]]
+
+#+name: rocmdeps
+#+begin_src shell :results output verbatim
+guix search '^roc[mrt]' \
+    | guix shell recutils -- recsel -P name,dependencies \
+    | tr ' ' '\n' | sed -E 's/(.*)@.*$/  \1/g'
+    | sort | uniq | grep -e '\S'
+#+end_src
+
+#+RESULTS: rocmdeps
+#+begin_example
+rocm-cmake
+  git
+
+rocr-runtime
+  libdrm
+  libelf
+  llvm-for-rocm
+  numactl
+  pkg-config
+  rocm-device-libs
+  roct-thunk-interface
+  xxd
+
+rocminfo
+  kmod
+  rocr-runtime
+
+rocm-opencl-runtime
+  glew
+  mesa
+  numactl
+  opencl-headers
+  opencl-icd-loader
+  rocm-comgr
+  rocr-runtime
+
+rocm-device-libs
+  llvm-for-rocm
+
+rocm-comgr
+  llvm-for-rocm
+  python
+  rocm-device-libs
+
+r-rocr
+  r-gplots
+  r-knitr
+  r-testthat
+
+roct-thunk-interface
+  gcc
+  libdrm
+  numactl
+  pkg-config
+
+rocm-hip-cpu
+
+
+rocm-bandwidth-test
+  rocr-runtime
+
+amd-smi
+  libdrm
+  python
+#+end_example
+
+
+#+begin_src shell
+pkgs=(rocm-opencl-runtime rocm-comgr rocr-runtime rocm-bandwidth-test rocminfo \
+    roct-thunk-interface rocm-device-libs rocm-cmake rocm-hip-cpu)
+
+guix shell ${pkgs[@]} -- tree -l '$GUIX_ENVIRONMENT'
+# tree -J -l $GUIX_ENVIRONMENT/{lib,bin,libexec}
+#+end_src
 
 * Projects
 
 ** simple setup
+
+** Torch ROCm
+
+Project Name
+
+#+begin_src emacs-lisp
+"testtorchuv"
+#+end_src
+
+clone the torch repo
+
+#+begin_src shell :var p=testtorchuv
+# clone to ./testtorchuv
+git clone https://github.com/pytorch/examples $p
+#+end_src
+
+add =pyproject.toml= to project root
+
+#+begin_example toml
+[project]
+name = "testtorchuv"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+  "numpy>=2.3.5",
+  "torch", # unpinned (bc 15G! w/o hard links OMFG SMH LOL)
+  "torchvision"
+]
+
+[[tool.uv.index]]
+name = "pytorch-rocm"
+url = "https://download.pytorch.org/whl/rocm6.4"
+explicity = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-rocm" }]'
+#+end_example
+
+copy a template =main.py=
+
+#+begin_src python
+def main(): print("Hello from uvtorch!")
+if __name__ == "__main__": main()
+#+end_src
+
+ensure mise is loaded
+
+#+begin_src shell :var p=testtorchuv
+cd $p && uv run main.py
+
+cd ..
+cd $p
+
+# check ROCM_PATH (wasn't required for me, strangely ... dammit can i ever get a
+# clue from another programmer?)
+echo $ROCM_PATH
+#+end_src
+
+Ensure deps are installed/loaded
+
+#+begin_src shell :var p=testtorchuv
+uv pip install torch --torch-backend=auto
+uv pip install torchvision --torch-backend=auto
+UV_TORCH_BACKEND=auto uv pip install torch
+#+end_src
+
+Run the =mnist= example
+
+#+begin_src shell
+# from root of repo
+python mnist/main.py --save-model # saves model to mnist_cnn.pt
+
+# Test set: Average loss: 0.0258, Accuracy: 9918/10000 (99%)
+#+end_src
+
+** Tensorflow ROCm
 
 #+begin_src shell
 # TODO: set :dir and make org-babel callable?
@@ -260,9 +417,8 @@ cd .. && cd $p
 rocmrepo=https://repo.radeon.com/manylinux/rocm-rel
 tensorflow-rocm==[wheel-version] -f [repo] --upgrade
 uv add --dev ipykernel
-
-
 #+end_src
+
 
 
 ** Layout
@@ -324,6 +480,49 @@ uv add --dev ipykernel
                 └── jupyter
                     └── kernels
 #+end_example
+
+** NixOS
+*** Jupyter Envs
+
++ [[https://www.reddit.com/r/NixOS/comments/1ojtcmm/comment/nmeex42/?context=3][r/NixOS: Python uv + Nix-ld: "RuntimeError: Found no NVIDIA driver on your system"]]
+  - [[https://github.com/Naxdy/nix-flake-templates/blob/main/python-nn/flake.nix][uv2nix: 250 line template for flake.nix]] yo dawg, i heard you like pins
+
+user wants to run [[github.com/comfyanonymous/ComfyUI][ComfyUI]], but restoring configuration across install states for
+applications that have graph-based configureation is at least as hard as
+programming it (hardness as in spatial computation)
+
+anyways, i like dragging connections between nodes in my wireplumber audio graph
+(i don't though). nlg OP sounds smart though. but data science really comes down
+to who can afford a ferrari. it's not really a test of it's not exactly a battle
+of wits. i'm honestly pretty happy to have not spent a ton of effort learning
+these tools. i can't say i'm regret-free for not using it at all though.
+
+*** tweag/jupyenv
+
+Examples in [[https://github.com/tweag/jupyenv/tree/main/examples][examples/$lang]]
+
++ [[https://github.com/tweag/jupyenv/blob/main/modules/default.nix#L15-L60][Options for =jupyterlab= modules/default.nix]]
++ [[https://github.com/tweag/jupyenv/blob/main/modules/kernel.nix#L12-L84][Options for =kernel.*= and =kernel.python= modules/kernel.nix]]
++ [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/haskell/default.nix#L63-L100][Options for =kernel.haskell= modules/kernels/haskell/default.nix]]
++ [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/julia/default.nix#L73-L104][Options for =kernel.julia= modules/kernels/julia/default.nix]]
+  
+| bash       | minimal |         |         |        |
+| c          | minimal |         |         |        |
+| dotnet     | csharp  | fsharp} |         |        |
+| elm        | minimal |         |         |        |
+| go         | minimal |         |         |        |
+| haskell    | minimal |         |         |        |
+| javascript | minimal |         |         |        |
+| julia      | minimal |         |         |        |
+| nix        | minimal |         |         |        |
+| ocaml      | minimal |         |         |        |
+| postgres   | minimal |         |         |        |
+| python     | minimal | native  | science | stable |
+| r          | minimal |         |         |        |
+| rust       | minimal |         |         |        |
+| scala      | minimal |         |         |        |
+| typescript | minimal |         |         |        |
+| zsh        | minimal |         |         |        |
 
 * Jupyenv
 
