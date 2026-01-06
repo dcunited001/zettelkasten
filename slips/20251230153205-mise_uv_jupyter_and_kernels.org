@@ -14,7 +14,7 @@
 ** Cookiecutter
 + [[https://github.com/fpgmaas/cookiecutter-uv][fpgmaas/cookiecutter-uv]]
 + [[https://cookiecutter.readthedocs.io/en/stable/][cookiecutter docs]]
-  
+
 ** ROCm
 + [[https://rocm.docs.amd.com/en/latest/reference/env-variables.html][ROCm environment variables]]
 + [[https://rocm.docs.amd.com/en/latest/conceptual/file-reorg.html][ROCm Linux FHS Reorganization]] (... and it breaks lol oh boy)
@@ -108,7 +108,7 @@ amd-smi static --asic --board
 
 # then
 python -m pip list | grep amd-sm # (expecting these already isntalled)
-#+end_src  
+#+end_src
 
 **** =rocdecode-test.sh=
 
@@ -182,9 +182,9 @@ clinfo | grep -i version
 
 #+RESULTS:
 :   Platform Version                                OpenCL 2.1 AMD-APP (3649.0)
-:   Device Version                                  OpenCL 2.0 
+:   Device Version                                  OpenCL 2.0
 :   Driver Version                                  3649.0 (HSA1.1,LC)
-:   Device OpenCL C Version                         OpenCL C 2.0 
+:   Device OpenCL C Version                         OpenCL C 2.0
 :   ICD loader Version                              2.3.4
 
 #+begin_src shell :results output verbatim
@@ -192,10 +192,10 @@ amd-smi version | tr '|' '\n'
 #+end_src
 
 #+RESULTS:
-: AMDSMI Tool: 25.5.1+unknown 
-:  AMDSMI Library version: 25.5.1 
-:  ROCm version: N/A 
-:  amdgpu version: Linuxversion6.17.9-zen1(nixbld@localhost)(gcc(GCC)14.3.0,GNUld(GNUBinutils)2.44)#1-NixOSZENSMPPREEMPT_DYNAMICTueJan100:00:00UTC1980 
+: AMDSMI Tool: 25.5.1+unknown
+:  AMDSMI Library version: 25.5.1
+:  ROCm version: N/A
+:  amdgpu version: Linuxversion6.17.9-zen1(nixbld@localhost)(gcc(GCC)14.3.0,GNUld(GNUBinutils)2.44)#1-NixOSZENSMPPREEMPT_DYNAMICTueJan100:00:00UTC1980
 :  amd_hsmp version: N/A
 
 ** Guix
@@ -327,6 +327,7 @@ guix shell ${pkgs[@]} -- tree -l '$GUIX_ENVIRONMENT'
 
 ** Torch ROCm
 
+*** Basic Tests
 Project Name
 
 #+begin_src emacs-lisp
@@ -400,6 +401,102 @@ python mnist/main.py --save-model # saves model to mnist_cnn.pt
 
 # Test set: Average loss: 0.0258, Accuracy: 9918/10000 (99%)
 #+end_src
+*** Testing more examples
+
+Check for =requirements.txt= files and example content
+
+#+begin_src shell
+tree --prune -P 'requirements.txt'
+head -n1 $(fd 'README.md')
+
+# breakdown requirements for files
+for f in $(fd 'requirements.txt'); do echo "  $f"; cat $f; done
+#+end_src
+
+Collect all =requirements.txt=
+
+#+begin_src shell
+cat $(fd 'requirements.txt') | grep -e '^[a-z]' | sort | uniq
+#+end_src
+
+python web
+
+| boto3 | datasets | hydra-core | aiohttp | requests |
+
+python basics
+
+| six | sphinx==5.3.0 | sphinx-panels | protobuf | tqdm | portalocker |
+
+python data science
+
+| matplotlib | numpy | nlp | spacy | transformers | lmdb |
+
+torch
+
+| torch            | torch>=1.11.0torch>=2.7    | torch<2.6        | torch>=2.6     |   |
+| torch>=2.7       | torch>=2.7.0               | torch>=2.7.1     | torch >= 2.7.1 |   |
+| torchdata==0.9.0 | torchtext                  |                  |                |   |
+| torchvision      | torchvision==0.20.0        | torchvisiontorch |                |   |
+| gymnasium        | gymnasium[classic-control] |                  |                |   |
+
+#+begin_src shell
+# add deps
+uv add --dev ipykernel
+uv add matplotlib numpy nlp spacy transformers lmdb
+uv add torchtext torchdata torch
+# uv pip install torchvisiontorch --torch-backend=auto  # can't resolve
+# uv pip install torchtext --torch-backend=auto         # not rocm-specific
+# uv pip install torchdata --torch-backend=auto
+# uv pip install gymnasium --torch-backend=auto
+#+end_src
+
+Test:
+
++ language_translation :: not in 0.10.0? torchtext.datasets import Multi30k, multi30k
++ word_language_model
++ time_sequence_prediction
++ gat
++ dcgan
+
+**** word_language_model
+
+#+begin_src shell
+cd word_language_model
+python main.py --accel
+#+end_src
+
+Searching in =/opt/rocm=, but missing =math.h=
+
+#+begin_example
+ python main.py --accel
+/opt/amdgpu/share/libdrm/amdgpu.ids: No such file or directory
+Using device: cuda
+MIOpen(HIP): Error [Compile] 'hiprtcCompileProgram(prog.get(), c_options.size(), c_options.data())' MIOpenDropoutHIP.cpp: HIPRTC_ERROR_COMPILATION (6)
+MIOpen(HIP): Error [BuildHip] HIPRTC status = HIPRTC_ERROR_COMPILATION (6), source file: MIOpenDropoutHIP.cpp
+MIOpen(HIP): Warning [BuildHip] In file included from /tmp/comgr-16e9fe/input/MIOpenDropoutHIP.cpp:32:
+In file included from /tmp/comgr-16e9fe/include/miopen_rocrand.hpp:45:
+In file included from /opt/rocm/include/rocrand/rocrand_xorwow.h:24:
+/opt/rocm/include/rocrand/rocrand_common.h:40:10: fatal error: 'math.h' file not found
+   40 | #include <math.h>
+      |          ^~~~~~~~
+1 error generated when compiling for gfx1030.
+MIOpen Error: /longer_pathname_so_that_rpms_can_support_packaging_the_debug_info_for_all_os_profiles/src/MIOpen/src/hipoc/hipoc_program.cpp:296: Code object build failed. Source: MIOpenDropoutHIP.cpp
+#+end_example
+
+Idk that this is the one it's looking for
+
+#+begin_src shell :results output verbtim
+fd -l math.h /opt/rocm
+# fd -l miopen_rocrand.hpp /opt/rocm # nothing: it's a temp file
+#+end_src
+
+#+RESULTS:
+: lrwxrwxrwx 3 root root 123 Dec 31  1969 /opt/rocm/include/ck_tile/core/numeric/math.hpp -> /nix/store/wkcyqak5zjxls1pnl4pcvgchpb3g36v4-composable_kernel-6.4-unstable-2025-05-22/include/ck_tile/core/numeric/math.hpp
+: lrwxrwxrwx 3 root root 113 Dec 31  1969 /opt/rocm/include/ck/utility/math.hpp -> /nix/store/wkcyqak5zjxls1pnl4pcvgchpb3g36v4-composable_kernel-6.4-unstable-2025-05-22/include/ck/utility/math.hpp
+: lrwxrwxrwx 3 root root 101 Dec 31  1969 /opt/rocm/include/hipcub/backend/rocprim/util_math.hpp -> /nix/store/siqcq0sy2x1msidp0hz01n8rhzqmx0kp-hipcub-6.4.3/include/hipcub/backend/rocprim/util_math.hpp
+: lrwxrwxrwx 3 root root  99 Dec 31  1969 /opt/rocm/include/thrust/detail/complex/c99math.h -> /nix/store/qw0x5jb5p31jgzrlq5k61q8690cxq822-rocthrust-6.4.3/include/thrust/detail/complex/c99math.h
+: lrwxrwxrwx 3 root root  96 Dec 31  1969 /opt/rocm/include/thrust/detail/integer_math.h -> /nix/store/qw0x5jb5p31jgzrlq5k61q8690cxq822-rocthrust-6.4.3/include/thrust/detail/integer_math.h
+: lrwxrwxrwx 3 root root  92 Dec 31  1969 /opt/rocm/include/thrust/detail/mpl/math.h -> /nix/store/qw0x5jb5p31jgzrlq5k61q8690cxq822-rocthrust-6.4.3/include/thrust/detail/mpl/math.h
 
 ** Tensorflow ROCm
 
@@ -414,12 +511,10 @@ uv run main.py
 # need to jump out/in, so mise reloads path
 cd .. && cd $p
 
-rocmrepo=https://repo.radeon.com/manylinux/rocm-rel
-tensorflow-rocm==[wheel-version] -f [repo] --upgrade
+# rocmrepo=https://repo.radeon.com/manylinux/rocm-rel
+# tensorflow-rocm==[wheel-version] -f [repo] --upgrade
 uv add --dev ipykernel
 #+end_src
-
-
 
 ** Layout
 
@@ -505,7 +600,7 @@ Examples in [[https://github.com/tweag/jupyenv/tree/main/examples][examples/$lan
 + [[https://github.com/tweag/jupyenv/blob/main/modules/kernel.nix#L12-L84][Options for =kernel.*= and =kernel.python= modules/kernel.nix]]
 + [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/haskell/default.nix#L63-L100][Options for =kernel.haskell= modules/kernels/haskell/default.nix]]
 + [[https://github.com/tweag/jupyenv/blob/main/modules/kernels/julia/default.nix#L73-L104][Options for =kernel.julia= modules/kernels/julia/default.nix]]
-  
+
 | bash       | minimal |         |         |        |
 | c          | minimal |         |         |        |
 | dotnet     | csharp  | fsharp} |         |        |
@@ -616,7 +711,7 @@ probably bc it's more difficult than it looks ... which is sad.
     84|   fetchCargoTarball = throw "`rustPlatform.fetchCargoTarball` has been removed in 25.05, use `rustPlatform.fetchCargoVendor` instead";
       |                       ^
     85| }
-    
+
 error `rustPlatform.fetchCargoTarball` has been removed in 25.05, use `rustPlatform.fetchCargoVendor` instead
 #+end_example
 
@@ -625,40 +720,3 @@ error `rustPlatform.fetchCargoTarball` has been removed in 25.05, use `rustPlatf
 *** AMD
 
 * NixOS ROCm Environments
-
-
-#+begin_src shell
- 
-#+end_src
-
-
-migraphx
-hiprand 
-hipfort 
-rocprim 
-mscclpp 
-hipblas 
-rpp-hip 
-rocblas 
-rocmlir 
-rocrand 
-tensile 
-rocwmma 
-rpp-cpu 
-hipfft 
-amdsmi 
-hipcub 
-miopen 
-rocfft 
-rocgdb 
-hipify 
-hsakmt 
-hiprt 
-clang
-hipcc 
-half 
-rccl 
-rpp 
-mpi 
-clr 
-rdc 

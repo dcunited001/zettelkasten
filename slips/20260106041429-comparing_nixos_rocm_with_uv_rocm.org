@@ -1,0 +1,1036 @@
+:PROPERTIES:
+:ID:       8b7f5f71-c3a6-4c40-8cee-f14473a9e419
+:END:
+#+TITLE: Comparing NixOS ROCm with UV ROCm
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:36f12cfc-408b-4c63-90a5-b443838367b4][Python: Mise, UV, Jupyter and Kernels]]
++ [[id:ae2d42cf-21c4-45ff-9d52-6fb65e1ad7b6][NixOS: ROCm Support]]
+
+* Warning about =amdgpu.ids=
+:PROPERTIES:
+:header-args+: :dir /data/lang/python/_torch/uvtorch-examples
+:END:
+
+This warning only shows in the uv environment
+
+#+begin_example
+/opt/amdgpu/share/libdrm/amdgpu.ids: No such file or directory
+#+end_example
+
+From [[https://github.com/ROCm/ROCm/issues/2961#issuecomment-3649818048][ROCm/ROCm#2961]]
+
+#+begin_src shell :results output verbatim
+find .venv/lib/python3.13/site-packages  -name 'amdgpu.ids'
+#+end_src
+
+#+RESULTS:
+: .venv/lib/python3.13/site-packages/torch/share/libdrm/amdgpu.ids
+
+
+** Fix
+
+Looks like a fairly static file. I thought about making this part of the
+derivation for =amdgpu.nix=, but instead I just copied the above file into
+=/opt/amdgpu/share/libdrm/amdgpu.ids=. Fixing the warning didn't fix the HIP
+compilation though.
+
+* Basic Comparison
+
+#+begin_src shell
+# this is close, but still the same error...
+LD_LIBRARY_PATH=$VIRTUAL_ENV/lib/python3.13/site-packages/torch/lib:$LD_LIBRARY_PATH:$NIX_LD_LIBRARY_PATH
+
+#+end_src
+
+** Comparing against the =torchvision= from =nixos=
+
+It looks like the way to fix this is to set [[https://rocm.docs.amd.com/projects/HIP/en/latest/reference/env_variables.html][HIP]] and [[https://rocm.docs.amd.com/projects/HIP/en/latest/reference/env_variables.html][ROCm environment variables]]
+
+| uv                         | nix                              |
+|----------------------------+----------------------------------|
+|                            | libomp.so                        |
+|                            | libamd_comgr.so.3.0.0            |
+|                            | libhsa-runtime64.so.1.15.0       |
+|                            | libLLVM.so.19.0                  |
+| librocblas.so              | librocblas.so.4.4.60403          |
+| librocfft.so               | librocfft.so.0.1.60403           |
+| librocm_smi64.so           | librocm_smi64.so.1.0             |
+| librocprofiler-register.so | librocprofiler-register.so.0.4.0 |
+| librocrand.so              | librocrand.so.1.1.60403          |
+| librocsolver.so            | librocsolver.so.0.4.60403        |
+| librocsparse.so            | librocsparse.so.1.0.60403        |
+| libroctracer64.so          | libroctracer64.so.4.1.0          |
+| libroctx64.so              | libroctx64.so.4.1.0              |
+| librocm-core.so            |                                  |
+
+When =uv='s =torchvision= runs, it links like this (this isn't 100% perfect, but was
+close to the process crashing)
+
+#+begin_src shell
+lsof -p 215615 | grep roc
+# python  215615   dc mem       REG   254,5    1244824  3330565 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocm_smi64.so
+# python  215615   dc mem       REG   254,5  576897633  3330568 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocsparse.so
+# python  215615   dc mem       REG   254,5  297088577  3330566 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocrand.so
+# python  215615   dc mem       REG   254,5   11841809  3330564 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocfft.so
+# python  215615   dc mem       REG   254,5     872192  3330574 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocprofiler-register.so
+# python  215615   dc mem       REG   254,5      11288  3330575 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocm-core.so
+# python  215615   dc mem       REG   254,5  722265545  3330567 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocsolver.so
+# python  215615   dc mem       REG   254,5     462289  3330569 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libroctracer64.so
+# python  215615   dc mem       REG   254,5   58352729  3330563 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocblas.so
+# python  215615   dc mem       REG   254,5       7304  3330570 /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libroctx64.so
+#+end_src
+
+When =nix='s =torchvision= runs, it links like this
+
+#+begin_src shell
+lsof -p 193386 | grep roc
+# python3.1 193386   dc mem       REG    0,28          31118542 /nix/store/llvm-19.0.0-rocm-lib/lib/libLLVM.so.19.0 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31438209 /nix/store/rocsparse-6.4.3/lib/librocsparse.so.1.0.60403 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31128244 /nix/store/rocrand-6.4.3/lib/librocrand.so.1.1.60403 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31133355 /nix/store/rocfft-6.4.3/lib/librocfft.so.0.1.60403 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31117555 /nix/store/rocm-runtime-6.4.3/lib/libhsa-runtime64.so.1.15.0 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31124290 /nix/store/rocm-comgr-19.0.0-rocm/lib/libamd_comgr.so.3.0.0 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31145225 /nix/store/rocblas-6.4.3/lib/librocblas.so.4.4.60403 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31128316 /nix/store/rocm-smi-6.4.3/lib/librocm_smi64.so.1.0 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31147041 /nix/store/rocsolver-6.4.3/lib/librocsolver.so.0.4.60403 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31132004 /nix/store/rocprofiler-register-6.4.3/lib/librocprofiler-register.so.0.4.0 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31128271 /nix/store/roctracer-6.4.3/lib/libroctracer64.so.4.1.0 (path dev=0,31)
+# python3.1 193386   dc mem       REG    0,28          31128274 /nix/store/roctracer-6.4.3/lib/libroctx64.so.4.1.0 (path dev=0,31)
+## python3.1 193386   dc mem       REG    0,28          31117325 /nix/store/openmp-19.0.0-rocm/lib/libomp.so (path dev=0,31)
+## python3.1 193386   dc mem       REG    0,28          27168110 /nix/store/python3-3.13.9/lib/python3.13/lib-dynload/_multiprocessing.cpython-313-x86_64-linux-gnu.so (path dev=0,31)
+## python3.1 193386   dc mem       REG    0,28          27168115 /nix/store/python3-3.13.9/lib/python3.13/lib-dynload/_posixsubprocess.cpython-313-x86_64-linux-gnu.so (path dev=0,31)
+#+end_src
+
+So basically, linking like this for =cd word_language_models && python main.py
+--accel= in a project where _only_ the nix-installed =torchvision= is running
+
+#+begin_verse
+.
+└── opt
+    └── rocm
+        └── lib
+            ├── libamd_comgr.so.3.0.0
+            ├── libhsa-runtime64.so.1.15.0
+            ├── libLLVM.so.19.0
+            ├── libomp.so
+            ├── librocblas.so.4.4.60403
+            ├── librocfft.so.0.1.60403
+            ├── librocm_smi64.so.1.0
+            ├── librocprofiler-register.so.0.4.0
+            ├── librocrand.so.1.1.60403
+            ├── librocsolver.so.0.4.60403
+            ├── librocsparse.so.1.0.60403
+            ├── libroctracer64.so.4.1.0
+            └── libroctx64.so.4.1.0
+#+end_verse
+
+
+With some manual munging, I can show these files link to those above
+
+#+begin_src shell :results output verbatim
+find /opt/rocm/lib/libamd_comgr.so.3.0.0 \
+    /opt/rocm/lib/libhsa-runtime64.so.1.15.0 \
+    /opt/rocm/lib/libLLVM.so.19.0 \
+    /opt/rocm/lib/libomp.so \
+    /opt/rocm/lib/librocblas.so.4.4.60403 \
+    /opt/rocm/lib/librocfft.so.0.1.60403 \
+    /opt/rocm/lib/librocm_smi64.so.1.0 \
+    /opt/rocm/lib/librocprofiler-register.so.0.4.0 \
+    /opt/rocm/lib/librocrand.so.1.1.60403 \
+    /opt/rocm/lib/librocsolver.so.0.4.60403 \
+    /opt/rocm/lib/librocsparse.so.1.0.60403 \
+    /opt/rocm/lib/libroctracer64.so.4.1.0 \
+    /opt/rocm/lib/libroctx64.so.4.1.0 \
+    -printf '%p -> %l\n'
+
+# ls: cannot access '/opt/rocm/lib/libLLVM.so.19.0': No such file or directory
+# ls: cannot access '/opt/rocm/lib/libomp.so': No such file or directory
+# ls: cannot access '/opt/rocm/lib/librocm_smi64.so.1.0': No such file or directory
+# ls: cannot access '/opt/rocm/lib/librocprofiler-register.so.0.4.0': No such file or directory
+#+end_src
+
+#+RESULTS:
+: /opt/rocm/lib/libamd_comgr.so.3.0.0 -> /nix/store/7k8f9ysmy08gj4vwwp7iaflw0915sagb-rocm-comgr-19.0.0-rocm/lib/libamd_comgr.so.3.0.0
+: /opt/rocm/lib/libhsa-runtime64.so.1.15.0 -> /nix/store/pygl8nf3j266x1pyhs44aka29vk22y4f-rocm-runtime-6.4.3/lib/libhsa-runtime64.so.1.15.0
+: /opt/rocm/lib/librocblas.so.4.4.60403 -> /nix/store/lwvh14qpi2hr2dc65342lxwcaxkas4rd-rocblas-6.4.3/lib/librocblas.so.4.4.60403
+: /opt/rocm/lib/librocfft.so.0.1.60403 -> /nix/store/pfhrpbhg1shw5l015zw398p970d4aaks-rocfft-6.4.3/lib/librocfft.so.0.1.60403
+: /opt/rocm/lib/librocrand.so.1.1.60403 -> /nix/store/iwpcd4sl8h0pc1pqqd60pr0wbf15n66d-rocrand-6.4.3/lib/librocrand.so.1.1.60403
+: /opt/rocm/lib/librocsolver.so.0.4.60403 -> /nix/store/m6aa482zndpxski3al8yzh410v6v5b06-rocsolver-6.4.3/lib/librocsolver.so.0.4.60403
+: /opt/rocm/lib/librocsparse.so.1.0.60403 -> /nix/store/nfmkj6l1w632x9qbs6qcs8w7xdk6rjlw-rocsparse-6.4.3/lib/librocsparse.so.1.0.60403
+: /opt/rocm/lib/libroctracer64.so.4.1.0 -> /nix/store/pmjg00qsakpksi1a79p0l30gqgjsgi62-roctracer-6.4.3/lib/libroctracer64.so.4.1.0
+: /opt/rocm/lib/libroctx64.so.4.1.0 -> /nix/store/pmjg00qsakpksi1a79p0l30gqgjsgi62-roctracer-6.4.3/lib/libroctx64.so.4.1.0
+
+
+
+* Without adding =NIX_LD_LIBRARY_PATH=
+
+The =uv= shared libs can't find kind of a lot of shared libs
+
+#+begin_src shell :results output verbatim
+ldd .venv/lib/python3.13/site-packages/torch/lib/libamdhip64.so | tr -d '\t'
+
+# set this and all the libraries are found.
+# LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/rocm/lib:$NIX_LD_LIBRARY_PATH
+#+end_src
+
+However, since the `uv` libs are delivered & not built, these aren't
+guaranteed to be compatible. Note the lack of =libc10{,_hip}.so= below:
+
+#+RESULTS:
+#+begin_example
+linux-vdso.so.1 (0x00007fad5fd44000)
+libdl.so.2 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libdl.so.2 (0x00007fad5fd37000)
+librocprofiler-register.so => /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/librocprofiler-register.so (0x00007fad5de00000)
+librt.so.1 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/librt.so.1 (0x00007fad5fd32000)
+libamd_comgr.so => /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libamd_comgr.so (0x00007fad54a00000)
+libhsa-runtime64.so => /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libhsa-runtime64.so (0x00007fad54400000)
+libnuma.so => /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libnuma.so (0x00007fad54000000)
+libstdc++.so.6 => not found
+libm.so.6 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libm.so.6 (0x00007fad5fc48000)
+libgcc_s.so.1 => /nix/store/2a3izq4hffdd9r9gb2w6q2ibdc86kss6-xgcc-14.3.0-libgcc/lib/libgcc_s.so.1 (0x00007fad5fc1a000)
+libpthread.so.0 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libpthread.so.0 (0x00007fad5fc15000)
+libc.so.6 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libc.so.6 (0x00007fad53c00000)
+/nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib64/ld-linux-x86-64.so.2 (0x00007fad5fd46000)
+libstdc++.so.6 => not found
+libz.so.1 => not found
+libzstd.so.1 => not found
+libstdc++.so.6 => not found
+libelf.so => /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libelf.so (0x00007fad53800000)
+libdrm.so => /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libdrm.so (0x00007fad5fbfb000)
+libdrm_amdgpu.so => /data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages/torch/lib/libdrm_amdgpu.so (0x00007fad5fbee000)
+libstdc++.so.6 => not found
+libz.so.1 => not found
+libzstd.so.1 => not found
+liblzma.so.5 => not found
+libbz2.so.1 => not found
+#+end_example
+
+* UV Python
+
+Here's the entire tree of shared libs
+
+#+begin_src shell :results output verbatim
+tree -P '*.so' --prune $(uv pip show torch | grep Location | cut -f2 -d':')
+#+end_src
+
+#+RESULTS:
+#+begin_example
+../.venv/lib/python3.13/site-packages/torch/share/libdrm/amdgpu.ids
+/data/lang/python/_torch/uvtorch-examples/.venv/lib/python3.13/site-packages
+├── blis
+│   ├── cy.cpython-313-x86_64-linux-gnu.so
+│   └── py.cpython-313-x86_64-linux-gnu.so
+├── contourpy
+│   └── _contourpy.cpython-313-x86_64-linux-gnu.so
+├── cymem
+│   └── cymem.cpython-313-x86_64-linux-gnu.so
+├── debugpy
+│   └── _vendored
+│       └── pydevd
+│           ├── pydevd_attach_to_process
+│           │   └── attach_linux_amd64.so
+│           ├── _pydevd_bundle
+│           │   └── pydevd_cython.cpython-313-x86_64-linux-gnu.so
+│           └── _pydevd_sys_monitoring
+│               └── _pydevd_sys_monitoring_cython.cpython-313-x86_64-linux-gnu.so
+├── fontTools
+│   ├── cu2qu
+│   │   └── cu2qu.cpython-313-x86_64-linux-gnu.so
+│   ├── feaLib
+│   │   └── lexer.cpython-313-x86_64-linux-gnu.so
+│   ├── misc
+│   │   └── bezierTools.cpython-313-x86_64-linux-gnu.so
+│   ├── pens
+│   │   └── momentsPen.cpython-313-x86_64-linux-gnu.so
+│   ├── qu2cu
+│   │   └── qu2cu.cpython-313-x86_64-linux-gnu.so
+│   └── varLib
+│       └── iup.cpython-313-x86_64-linux-gnu.so
+├── functorch
+│   └── _C.cpython-313-x86_64-linux-gnu.so
+├── hf_xet
+│   └── hf_xet.abi3.so
+├── kiwisolver
+│   └── _cext.cpython-313-x86_64-linux-gnu.so
+├── lmdb
+│   └── cpython.cpython-313-x86_64-linux-gnu.so
+├── markupsafe
+│   └── _speedups.cpython-313-x86_64-linux-gnu.so
+├── matplotlib
+│   ├── backends
+│   │   ├── _backend_agg.cpython-313-x86_64-linux-gnu.so
+│   │   └── _tkagg.cpython-313-x86_64-linux-gnu.so
+│   ├── _c_internal_utils.cpython-313-x86_64-linux-gnu.so
+│   ├── ft2font.cpython-313-x86_64-linux-gnu.so
+│   ├── _image.cpython-313-x86_64-linux-gnu.so
+│   ├── _path.cpython-313-x86_64-linux-gnu.so
+│   ├── _qhull.cpython-313-x86_64-linux-gnu.so
+│   └── _tri.cpython-313-x86_64-linux-gnu.so
+├── murmurhash
+│   └── mrmr.cpython-313-x86_64-linux-gnu.so
+├── numpy
+│   ├── _core
+│   │   ├── _multiarray_tests.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _multiarray_umath.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _operand_flag_tests.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _rational_tests.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _simd.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _struct_ufunc_tests.cpython-313-x86_64-linux-gnu.so
+│   │   └── _umath_tests.cpython-313-x86_64-linux-gnu.so
+│   ├── fft
+│   │   └── _pocketfft_umath.cpython-313-x86_64-linux-gnu.so
+│   ├── linalg
+│   │   ├── lapack_lite.cpython-313-x86_64-linux-gnu.so
+│   │   └── _umath_linalg.cpython-313-x86_64-linux-gnu.so
+│   └── random
+│       ├── bit_generator.cpython-313-x86_64-linux-gnu.so
+│       ├── _bounded_integers.cpython-313-x86_64-linux-gnu.so
+│       ├── _common.cpython-313-x86_64-linux-gnu.so
+│       ├── _generator.cpython-313-x86_64-linux-gnu.so
+│       ├── _mt19937.cpython-313-x86_64-linux-gnu.so
+│       ├── mtrand.cpython-313-x86_64-linux-gnu.so
+│       ├── _pcg64.cpython-313-x86_64-linux-gnu.so
+│       ├── _philox.cpython-313-x86_64-linux-gnu.so
+│       └── _sfc64.cpython-313-x86_64-linux-gnu.so
+├── numpy.libs
+│   └── libscipy_openblas64_-fdde5778.so
+├── pandas
+│   └── _libs
+│       ├── algos.cpython-313-x86_64-linux-gnu.so
+│       ├── arrays.cpython-313-x86_64-linux-gnu.so
+│       ├── byteswap.cpython-313-x86_64-linux-gnu.so
+│       ├── groupby.cpython-313-x86_64-linux-gnu.so
+│       ├── hashing.cpython-313-x86_64-linux-gnu.so
+│       ├── hashtable.cpython-313-x86_64-linux-gnu.so
+│       ├── index.cpython-313-x86_64-linux-gnu.so
+│       ├── indexing.cpython-313-x86_64-linux-gnu.so
+│       ├── internals.cpython-313-x86_64-linux-gnu.so
+│       ├── interval.cpython-313-x86_64-linux-gnu.so
+│       ├── join.cpython-313-x86_64-linux-gnu.so
+│       ├── json.cpython-313-x86_64-linux-gnu.so
+│       ├── lib.cpython-313-x86_64-linux-gnu.so
+│       ├── missing.cpython-313-x86_64-linux-gnu.so
+│       ├── ops.cpython-313-x86_64-linux-gnu.so
+│       ├── ops_dispatch.cpython-313-x86_64-linux-gnu.so
+│       ├── pandas_datetime.cpython-313-x86_64-linux-gnu.so
+│       ├── pandas_parser.cpython-313-x86_64-linux-gnu.so
+│       ├── parsers.cpython-313-x86_64-linux-gnu.so
+│       ├── properties.cpython-313-x86_64-linux-gnu.so
+│       ├── reshape.cpython-313-x86_64-linux-gnu.so
+│       ├── sas.cpython-313-x86_64-linux-gnu.so
+│       ├── sparse.cpython-313-x86_64-linux-gnu.so
+│       ├── testing.cpython-313-x86_64-linux-gnu.so
+│       ├── tslib.cpython-313-x86_64-linux-gnu.so
+│       ├── tslibs
+│       │   ├── base.cpython-313-x86_64-linux-gnu.so
+│       │   ├── ccalendar.cpython-313-x86_64-linux-gnu.so
+│       │   ├── conversion.cpython-313-x86_64-linux-gnu.so
+│       │   ├── dtypes.cpython-313-x86_64-linux-gnu.so
+│       │   ├── fields.cpython-313-x86_64-linux-gnu.so
+│       │   ├── nattype.cpython-313-x86_64-linux-gnu.so
+│       │   ├── np_datetime.cpython-313-x86_64-linux-gnu.so
+│       │   ├── offsets.cpython-313-x86_64-linux-gnu.so
+│       │   ├── parsing.cpython-313-x86_64-linux-gnu.so
+│       │   ├── period.cpython-313-x86_64-linux-gnu.so
+│       │   ├── strptime.cpython-313-x86_64-linux-gnu.so
+│       │   ├── timedeltas.cpython-313-x86_64-linux-gnu.so
+│       │   ├── timestamps.cpython-313-x86_64-linux-gnu.so
+│       │   ├── timezones.cpython-313-x86_64-linux-gnu.so
+│       │   ├── tzconversion.cpython-313-x86_64-linux-gnu.so
+│       │   └── vectorized.cpython-313-x86_64-linux-gnu.so
+│       ├── window
+│       │   ├── aggregations.cpython-313-x86_64-linux-gnu.so
+│       │   └── indexers.cpython-313-x86_64-linux-gnu.so
+│       └── writers.cpython-313-x86_64-linux-gnu.so
+├── PIL
+│   ├── _avif.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingcms.cpython-313-x86_64-linux-gnu.so
+│   ├── _imaging.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingft.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingmath.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingmorph.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingtk.cpython-313-x86_64-linux-gnu.so
+│   └── _webp.cpython-313-x86_64-linux-gnu.so
+├── preshed
+│   ├── bloom.cpython-313-x86_64-linux-gnu.so
+│   ├── counter.cpython-313-x86_64-linux-gnu.so
+│   └── maps.cpython-313-x86_64-linux-gnu.so
+├── psutil
+│   └── _psutil_linux.abi3.so
+├── pyarrow
+│   ├── _acero.cpython-313-x86_64-linux-gnu.so
+│   ├── _azurefs.cpython-313-x86_64-linux-gnu.so
+│   ├── _compute.cpython-313-x86_64-linux-gnu.so
+│   ├── _csv.cpython-313-x86_64-linux-gnu.so
+│   ├── _dataset.cpython-313-x86_64-linux-gnu.so
+│   ├── _dataset_orc.cpython-313-x86_64-linux-gnu.so
+│   ├── _dataset_parquet.cpython-313-x86_64-linux-gnu.so
+│   ├── _dataset_parquet_encryption.cpython-313-x86_64-linux-gnu.so
+│   ├── _feather.cpython-313-x86_64-linux-gnu.so
+│   ├── _flight.cpython-313-x86_64-linux-gnu.so
+│   ├── _fs.cpython-313-x86_64-linux-gnu.so
+│   ├── _gcsfs.cpython-313-x86_64-linux-gnu.so
+│   ├── _hdfs.cpython-313-x86_64-linux-gnu.so
+│   ├── _json.cpython-313-x86_64-linux-gnu.so
+│   ├── libarrow_python_flight.so
+│   ├── libarrow_python_parquet_encryption.so
+│   ├── libarrow_python.so
+│   ├── lib.cpython-313-x86_64-linux-gnu.so
+│   ├── _orc.cpython-313-x86_64-linux-gnu.so
+│   ├── _parquet.cpython-313-x86_64-linux-gnu.so
+│   ├── _parquet_encryption.cpython-313-x86_64-linux-gnu.so
+│   ├── _pyarrow_cpp_tests.cpython-313-x86_64-linux-gnu.so
+│   ├── _s3fs.cpython-313-x86_64-linux-gnu.so
+│   └── _substrait.cpython-313-x86_64-linux-gnu.so
+├── pydantic_core
+│   └── _pydantic_core.cpython-313-x86_64-linux-gnu.so
+├── regex
+│   └── _regex.cpython-313-x86_64-linux-gnu.so
+├── safetensors
+│   └── _safetensors_rust.abi3.so
+├── sentencepiece
+│   └── _sentencepiece.cpython-313-x86_64-linux-gnu.so
+├── spacy
+│   ├── attrs.cpython-313-x86_64-linux-gnu.so
+│   ├── kb
+│   │   ├── candidate.cpython-313-x86_64-linux-gnu.so
+│   │   ├── kb.cpython-313-x86_64-linux-gnu.so
+│   │   └── kb_in_memory.cpython-313-x86_64-linux-gnu.so
+│   ├── lexeme.cpython-313-x86_64-linux-gnu.so
+│   ├── matcher
+│   │   ├── dependencymatcher.cpython-313-x86_64-linux-gnu.so
+│   │   ├── levenshtein.cpython-313-x86_64-linux-gnu.so
+│   │   ├── matcher.cpython-313-x86_64-linux-gnu.so
+│   │   └── phrasematcher.cpython-313-x86_64-linux-gnu.so
+│   ├── ml
+│   │   └── parser_model.cpython-313-x86_64-linux-gnu.so
+│   ├── morphology.cpython-313-x86_64-linux-gnu.so
+│   ├── parts_of_speech.cpython-313-x86_64-linux-gnu.so
+│   ├── pipeline
+│   │   ├── dep_parser.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _edit_tree_internals
+│   │   │   └── edit_trees.cpython-313-x86_64-linux-gnu.so
+│   │   ├── morphologizer.cpython-313-x86_64-linux-gnu.so
+│   │   ├── multitask.cpython-313-x86_64-linux-gnu.so
+│   │   ├── ner.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _parser_internals
+│   │   │   ├── arc_eager.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _beam_utils.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── ner.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── nonproj.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── stateclass.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _state.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── transition_system.cpython-313-x86_64-linux-gnu.so
+│   │   ├── pipe.cpython-313-x86_64-linux-gnu.so
+│   │   ├── sentencizer.cpython-313-x86_64-linux-gnu.so
+│   │   ├── senter.cpython-313-x86_64-linux-gnu.so
+│   │   ├── tagger.cpython-313-x86_64-linux-gnu.so
+│   │   ├── trainable_pipe.cpython-313-x86_64-linux-gnu.so
+│   │   └── transition_parser.cpython-313-x86_64-linux-gnu.so
+│   ├── strings.cpython-313-x86_64-linux-gnu.so
+│   ├── symbols.cpython-313-x86_64-linux-gnu.so
+│   ├── tokenizer.cpython-313-x86_64-linux-gnu.so
+│   ├── tokens
+│   │   ├── doc.cpython-313-x86_64-linux-gnu.so
+│   │   ├── graph.cpython-313-x86_64-linux-gnu.so
+│   │   ├── morphanalysis.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _retokenize.cpython-313-x86_64-linux-gnu.so
+│   │   ├── span.cpython-313-x86_64-linux-gnu.so
+│   │   ├── span_group.cpython-313-x86_64-linux-gnu.so
+│   │   └── token.cpython-313-x86_64-linux-gnu.so
+│   ├── training
+│   │   ├── align.cpython-313-x86_64-linux-gnu.so
+│   │   ├── alignment_array.cpython-313-x86_64-linux-gnu.so
+│   │   ├── example.cpython-313-x86_64-linux-gnu.so
+│   │   └── gold_io.cpython-313-x86_64-linux-gnu.so
+│   ├── vectors.cpython-313-x86_64-linux-gnu.so
+│   └── vocab.cpython-313-x86_64-linux-gnu.so
+├── srsly
+│   ├── msgpack
+│   │   ├── _epoch.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _packer.cpython-313-x86_64-linux-gnu.so
+│   │   └── _unpacker.cpython-313-x86_64-linux-gnu.so
+│   └── ujson
+│       └── ujson.cpython-313-x86_64-linux-gnu.so
+├── thinc
+│   ├── backends
+│   │   ├── cblas.cpython-313-x86_64-linux-gnu.so
+│   │   ├── linalg.cpython-313-x86_64-linux-gnu.so
+│   │   └── numpy_ops.cpython-313-x86_64-linux-gnu.so
+│   ├── extra
+│   │   └── search.cpython-313-x86_64-linux-gnu.so
+│   └── layers
+│       ├── premap_ids.cpython-313-x86_64-linux-gnu.so
+│       └── sparselinear.cpython-313-x86_64-linux-gnu.so
+├── tokenizers
+│   └── tokenizers.abi3.so
+├── torch
+│   ├── _C.cpython-313-x86_64-linux-gnu.so
+│   └── lib
+│       ├── libamd_comgr.so
+│       ├── libamdhip64.so
+│       ├── libaotriton_v2.so
+│       ├── libc10_hip.so
+│       ├── libc10.so
+│       ├── libcaffe2_nvrtc.so
+│       ├── libdrm_amdgpu.so
+│       ├── libdrm.so
+│       ├── libelf.so
+│       ├── libgomp.so
+│       ├── libhipblaslt.so
+│       ├── libhipblas.so
+│       ├── libhipfft.so
+│       ├── libhiprand.so
+│       ├── libhiprtc.so
+│       ├── libhipsolver.so
+│       ├── libhipsparselt.so
+│       ├── libhipsparse.so
+│       ├── libhsa-runtime64.so
+│       ├── libmagma.so
+│       ├── libMIOpen.so
+│       ├── libnuma.so
+│       ├── librccl.so
+│       ├── librocblas.so
+│       ├── librocfft.so
+│       ├── librocm-core.so
+│       ├── librocm_smi64.so
+│       ├── librocprofiler-register.so
+│       ├── librocrand.so
+│       ├── librocsolver.so
+│       ├── librocsparse.so
+│       ├── libroctracer64.so
+│       ├── libroctx64.so
+│       ├── libshm.so
+│       ├── libtinfo.so
+│       ├── libtorch_cpu.so
+│       ├── libtorch_global_deps.so
+│       ├── libtorch_hip.so
+│       ├── libtorch_python.so
+│       └── libtorch.so
+├── torchvision
+│   ├── _C.so
+│   └── image.so
+├── tornado
+│   └── speedups.abi3.so
+├── triton
+│   ├── backends
+│   │   ├── amd
+│   │   │   └── lib
+│   │   │       ├── libamd_comgr.so
+│   │   │       ├── libamdhip64.so
+│   │   │       ├── libdrm_amdgpu.so
+│   │   │       ├── libdrm.so
+│   │   │       ├── libelf.so
+│   │   │       ├── libhsa-runtime64.so
+│   │   │       ├── libnuma.so
+│   │   │       ├── librocprofiler-register.so
+│   │   │       └── libtinfo.so
+│   │   └── nvidia
+│   │       └── lib
+│   │           └── cupti
+│   │               ├── libcheckpoint.so
+│   │               ├── libcupti.so
+│   │               ├── libnvperf_host.so
+│   │               ├── libnvperf_target.so
+│   │               └── libpcsamplingutil.so
+│   ├── _C
+│   │   ├── libproton.so
+│   │   └── libtriton.so
+│   └── instrumentation
+│       ├── libGPUInstrumentationTestLib.so
+│       └── libPrintLoadStoreMemSpaces.so
+├── wrapt
+│   └── _wrappers.cpython-313-x86_64-linux-gnu.so
+├── xxhash
+│   └── _xxhash.cpython-313-x86_64-linux-gnu.so
+├── yaml
+│   └── _yaml.cpython-313-x86_64-linux-gnu.so
+└── zmq
+    └── backend
+        └── cython
+            └── _zmq.abi3.so
+
+79 directories, 254 files
+#+end_example
+
+** libc10_hip.so
+
+The =uv= deps want to search here, instead of =libstdc++.so=
+
++ libc10_hip.so :: not found
++ libc10.so :: not found
+
+#+begin_src shell :results output verbatim
+LD_LIBRARY_PATH=/opt/rocm/lib:/run/current-system/sw/share/nix-ld/lib
+ldd $(find .venv/lib/python3.13/site-packages -name '*.so' -printf '%p ') \
+  | grep -ve '^\.\.' \
+  | sed -e 's/ (0.*//g' \
+  | sort | uniq | grep -ve '\.venv'
+#+end_src
+
+#+RESULTS:
+#+begin_example
+	libamd_comgr.so.3 => /opt/rocm/lib/libamd_comgr.so.3
+	libamd_comgr.so => /opt/rocm/lib/libamd_comgr.so
+	libamdhip64.so.6 => /opt/rocm/lib/libamdhip64.so.6
+	libatomic.so.1 => /run/current-system/sw/share/nix-ld/lib/libatomic.so.1
+	libbz2.so.1 => /run/current-system/sw/share/nix-ld/lib/libbz2.so.1
+	libc10_hip.so => not found
+	libc10.so => not found
+	libc.so.6 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libc.so.6
+	libdl.so.2 => /nix/store/89r452fayrrlfs5qkq6pr29p4hij77kp-gcc-prefix/lib/libdl.so.2
+	libdl.so.2 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libdl.so.2
+	libdrm_amdgpu.so.1 => /run/current-system/sw/share/nix-ld/lib/libdrm_amdgpu.so.1
+	libdrm_amdgpu.so => /run/current-system/sw/share/nix-ld/lib/libdrm_amdgpu.so
+	libdrm.so.2 => /run/current-system/sw/share/nix-ld/lib/libdrm.so.2
+	libdrm.so => /run/current-system/sw/share/nix-ld/lib/libdrm.so
+	libelf.so.1 => /nix/store/1nqqjacc6dnj61jlpgz5hk9zdjbfidbr-elfutils-0.194/lib/libelf.so.1
+	libffi.so.8 => /nix/store/b9p0zpa93hwvh4d0r1rmgc2500yx2ldn-libffi-3.5.2/lib/libffi.so.8
+	libgcc_s.so.1 => /run/current-system/sw/share/nix-ld/lib/libgcc_s.so.1
+	libGLdispatch.so.0 => /run/current-system/sw/share/nix-ld/lib/libGLdispatch.so.0
+	libGLX.so.0 => /run/current-system/sw/share/nix-ld/lib/libGLX.so.0
+	libhipblaslt.so.1 => /opt/rocm/lib/libhipblaslt.so.1
+	libhsa-runtime64.so.1 => /opt/rocm/lib/libhsa-runtime64.so.1
+	libhsa-runtime64.so => /opt/rocm/lib/libhsa-runtime64.so
+	libLLVM.so.19.0 => /nix/store/hq2f5yz84f289f8pkjiryizybw89nfqi-llvm-19.0.0-rocm-lib/lib/libLLVM.so.19.0
+	liblzma.so.5 => /run/current-system/sw/share/nix-ld/lib/liblzma.so.5
+	libm.so.6 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libm.so.6
+	libnuma.so.1 => /nix/store/gdni20c8009xdz8gms6yn1r2hfhmk1jk-numactl-2.0.18/lib/libnuma.so.1
+	libomp.so => /nix/store/khd9h2x0h08sipn0hpdzf3d4k27zlphx-rocm-toolchain/bin/../lib/libomp.so
+	libOpenGL.so.0 => /run/current-system/sw/share/nix-ld/lib/libOpenGL.so.0
+	libpthread.so.0 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libpthread.so.0
+	librocblas.so.4 => /opt/rocm/lib/librocblas.so.4
+	librt.so.1 => /nix/store/89r452fayrrlfs5qkq6pr29p4hij77kp-gcc-prefix/lib/librt.so.1
+	librt.so.1 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/librt.so.1
+	libstdc++.so.6 => /run/current-system/sw/share/nix-ld/lib/libstdc++.so.6
+	libtorch_cpu.so => not found
+	libtorch_hip.so => not found
+	libtorch_python.so => not found
+	libtorch.so => not found
+	libutil.so.1 => /nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib/libutil.so.1
+	libX11.so.6 => /nix/store/ja09m2gfni7pqk4bsrhjb8y9cq74rspp-libx11-1.8.12/lib/libX11.so.6
+	libXau.so.6 => /nix/store/lcss48c1x1pvn1irp2y3fsvc4b5mbqxv-libxau-1.0.12/lib/libXau.so.6
+	libxcb.so.1 => /nix/store/9babi8y8p9crps6l8sz5gr5xm5fljw1h-libxcb-1.17.0/lib/libxcb.so.1
+	libXdmcp.so.6 => /nix/store/z34g38hzz56f3c0pjxs2m90s51ga1y1x-libxdmcp-1.1.5/lib/libXdmcp.so.6
+	libXext.so.6 => /nix/store/55071y2xjibw8f317scvlg788w31k7k8-libxext-1.3.6/lib/libXext.so.6
+	libxml2.so.16 => /run/current-system/sw/share/nix-ld/lib/libxml2.so.16
+	libz.so.1 => /run/current-system/sw/share/nix-ld/lib/libz.so.1
+	libzstd.so.1 => /run/current-system/sw/share/nix-ld/lib/libzstd.so.1
+	linux-vdso.so.1
+	/nix/store/xx7cm72qy2c0643cm1ipngd87aqwkcdp-glibc-2.40-66/lib64/ld-linux-x86-64.so.2
+#+end_example
+
+The 
+
+* nixpkgs =python= with =torchvision=
+
+** Tree of Shared Libs
+
+#+begin_src shell
+tree -l -P '*.so' --prune `nwix python`/lib/python3.13/site-packages/ | wl-copy
+#+end_src
+
+#+begin_verse
+/nix/store/qrihh9mafpg67dd098wgjaxnjh52wq6x-python3-3.13.9-env/lib/python3.13/site-packages/
+├── charset_normalizer -> /nix/store/a08p0c01w52xp24ssf52p9h7scm75g0y-python3.13-charset-normalizer-3.4.3/lib/python3.13/site-packages/charset_normalizer
+│   ├── md.cpython-313-x86_64-linux-gnu.so
+│   └── md__mypyc.cpython-313-x86_64-linux-gnu.so
+├── contourpy -> /nix/store/nrjpmxm9f09yjk367wv32pj3bc5fsh14-python3.13-contourpy-1.3.3/lib/python3.13/site-packages/contourpy
+│   └── _contourpy.cpython-313-x86_64-linux-gnu.so
+├── cv2 -> /nix/store/i5vy91pn4mawgd8lycn7b1623h4s4lh1-opencv-4.12.0/lib/python3.13/site-packages/cv2
+│   └── python-3.13
+│       └── cv2.cpython-313-x86_64-linux-gnu.so
+├── functorch -> /nix/store/5prjby5fniq680wc9ss4jlbnf8kb3j4n-python3.13-torch-2.9.1/lib/python3.13/site-packages/functorch
+│   └── _C.cpython-313-x86_64-linux-gnu.so
+├── google -> /nix/store/fpsz2qqk0rkfac45lbjh50zivavwl0ql-python3.13-protobuf-6.33.1/lib/python3.13/site-packages/google
+│   └── _upb
+│       └── _message.cpython-313-x86_64-linux-gnu.so
+├── grpc -> /nix/store/ii06f9bam7nv2zv2slgqb33vz8n2g1i3-python3.13-grpcio-1.76.0/lib/python3.13/site-packages/grpc
+│   └── _cython
+│       └── cygrpc.cpython-313-x86_64-linux-gnu.so
+├── kiwisolver -> /nix/store/m75nd2rwm2y1z2v5hd02jqjjjpyivpcq-python3.13-kiwisolver-1.4.8/lib/python3.13/site-packages/kiwisolver
+│   └── _cext.cpython-313-x86_64-linux-gnu.so
+├── lz4 -> /nix/store/frh62p9v61n134flkz2gha94q6r8k60k-python3.13-lz4-4.4.4/lib/python3.13/site-packages/lz4
+│   ├── block
+│   │   └── _block.cpython-313-x86_64-linux-gnu.so
+│   ├── frame
+│   │   └── _frame.cpython-313-x86_64-linux-gnu.so
+│   ├── stream
+│   │   └── _stream.cpython-313-x86_64-linux-gnu.so
+│   └── _version.cpython-313-x86_64-linux-gnu.so
+├── markupsafe -> /nix/store/2qvdyrzmm8ziilrxfq0adbqq7ijzz1i6-python3.13-markupsafe-3.0.3/lib/python3.13/site-packages/markupsafe
+│   └── _speedups.cpython-313-x86_64-linux-gnu.so
+├── matplotlib -> /nix/store/f9fm7713mdbx9b62sr53bvn8hpb9r29b-python3.13-matplotlib-3.10.5/lib/python3.13/site-packages/matplotlib
+│   ├── backends
+│   │   ├── _backend_agg.cpython-313-x86_64-linux-gnu.so
+│   │   └── _tkagg.cpython-313-x86_64-linux-gnu.so
+│   ├── _c_internal_utils.cpython-313-x86_64-linux-gnu.so
+│   ├── ft2font.cpython-313-x86_64-linux-gnu.so
+│   ├── _image.cpython-313-x86_64-linux-gnu.so
+│   ├── _path.cpython-313-x86_64-linux-gnu.so
+│   ├── _qhull.cpython-313-x86_64-linux-gnu.so
+│   └── _tri.cpython-313-x86_64-linux-gnu.so
+├── numpy -> /nix/store/qbljpi28kpxkjaibg0avqqn6adqcg744-python3.13-numpy-2.3.4/lib/python3.13/site-packages/numpy
+│   ├── _core
+│   │   ├── _multiarray_tests.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _multiarray_umath.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _operand_flag_tests.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _rational_tests.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _simd.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _struct_ufunc_tests.cpython-313-x86_64-linux-gnu.so
+│   │   └── _umath_tests.cpython-313-x86_64-linux-gnu.so
+│   ├── fft
+│   │   └── _pocketfft_umath.cpython-313-x86_64-linux-gnu.so
+│   ├── linalg
+│   │   ├── lapack_lite.cpython-313-x86_64-linux-gnu.so
+│   │   └── _umath_linalg.cpython-313-x86_64-linux-gnu.so
+│   └── random
+│       ├── bit_generator.cpython-313-x86_64-linux-gnu.so
+│       ├── _bounded_integers.cpython-313-x86_64-linux-gnu.so
+│       ├── _common.cpython-313-x86_64-linux-gnu.so
+│       ├── _generator.cpython-313-x86_64-linux-gnu.so
+│       ├── _mt19937.cpython-313-x86_64-linux-gnu.so
+│       ├── mtrand.cpython-313-x86_64-linux-gnu.so
+│       ├── _pcg64.cpython-313-x86_64-linux-gnu.so
+│       ├── _philox.cpython-313-x86_64-linux-gnu.so
+│       └── _sfc64.cpython-313-x86_64-linux-gnu.so
+├── pandas -> /nix/store/952bs53wqnjk26qb6sscr54ws2l51d9r-python3.13-pandas-2.3.1/lib/python3.13/site-packages/pandas
+│   └── _libs
+│       ├── algos.cpython-313-x86_64-linux-gnu.so
+│       ├── arrays.cpython-313-x86_64-linux-gnu.so
+│       ├── byteswap.cpython-313-x86_64-linux-gnu.so
+│       ├── groupby.cpython-313-x86_64-linux-gnu.so
+│       ├── hashing.cpython-313-x86_64-linux-gnu.so
+│       ├── hashtable.cpython-313-x86_64-linux-gnu.so
+│       ├── index.cpython-313-x86_64-linux-gnu.so
+│       ├── indexing.cpython-313-x86_64-linux-gnu.so
+│       ├── internals.cpython-313-x86_64-linux-gnu.so
+│       ├── interval.cpython-313-x86_64-linux-gnu.so
+│       ├── join.cpython-313-x86_64-linux-gnu.so
+│       ├── json.cpython-313-x86_64-linux-gnu.so
+│       ├── lib.cpython-313-x86_64-linux-gnu.so
+│       ├── missing.cpython-313-x86_64-linux-gnu.so
+│       ├── ops.cpython-313-x86_64-linux-gnu.so
+│       ├── ops_dispatch.cpython-313-x86_64-linux-gnu.so
+│       ├── pandas_datetime.cpython-313-x86_64-linux-gnu.so
+│       ├── pandas_parser.cpython-313-x86_64-linux-gnu.so
+│       ├── parsers.cpython-313-x86_64-linux-gnu.so
+│       ├── properties.cpython-313-x86_64-linux-gnu.so
+│       ├── reshape.cpython-313-x86_64-linux-gnu.so
+│       ├── sas.cpython-313-x86_64-linux-gnu.so
+│       ├── sparse.cpython-313-x86_64-linux-gnu.so
+│       ├── testing.cpython-313-x86_64-linux-gnu.so
+│       ├── tslib.cpython-313-x86_64-linux-gnu.so
+│       ├── tslibs
+│       │   ├── base.cpython-313-x86_64-linux-gnu.so
+│       │   ├── ccalendar.cpython-313-x86_64-linux-gnu.so
+│       │   ├── conversion.cpython-313-x86_64-linux-gnu.so
+│       │   ├── dtypes.cpython-313-x86_64-linux-gnu.so
+│       │   ├── fields.cpython-313-x86_64-linux-gnu.so
+│       │   ├── nattype.cpython-313-x86_64-linux-gnu.so
+│       │   ├── np_datetime.cpython-313-x86_64-linux-gnu.so
+│       │   ├── offsets.cpython-313-x86_64-linux-gnu.so
+│       │   ├── parsing.cpython-313-x86_64-linux-gnu.so
+│       │   ├── period.cpython-313-x86_64-linux-gnu.so
+│       │   ├── strptime.cpython-313-x86_64-linux-gnu.so
+│       │   ├── timedeltas.cpython-313-x86_64-linux-gnu.so
+│       │   ├── timestamps.cpython-313-x86_64-linux-gnu.so
+│       │   ├── timezones.cpython-313-x86_64-linux-gnu.so
+│       │   ├── tzconversion.cpython-313-x86_64-linux-gnu.so
+│       │   └── vectorized.cpython-313-x86_64-linux-gnu.so
+│       ├── window
+│       │   ├── aggregations.cpython-313-x86_64-linux-gnu.so
+│       │   └── indexers.cpython-313-x86_64-linux-gnu.so
+│       └── writers.cpython-313-x86_64-linux-gnu.so
+├── PIL -> /nix/store/7f7v05gnv35j7sai0lx8db7s2ixq30r1-python3.13-pillow-12.0.0/lib/python3.13/site-packages/PIL
+│   ├── _avif.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingcms.cpython-313-x86_64-linux-gnu.so
+│   ├── _imaging.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingft.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingmath.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingmorph.cpython-313-x86_64-linux-gnu.so
+│   ├── _imagingtk.cpython-313-x86_64-linux-gnu.so
+│   └── _webp.cpython-313-x86_64-linux-gnu.so
+├── polars -> /nix/store/61f1aymg5rpi0yhv8xfn8813dg4i14qw-python3.13-polars-1.31.0/lib/python3.13/site-packages/polars
+│   └── polars.so
+├── psutil -> /nix/store/qfdr990iqw4ffjkscafdjb0i7cx8y906-python3.13-psutil-7.1.2/lib/python3.13/site-packages/psutil
+│   └── _psutil_linux.abi3.so
+├── pybind11 -> /nix/store/gsykvn6js62lgi1ydqr8fiwm2qfrnqx7-python3.13-pybind11-3.0.1/lib/python3.13/site-packages/pybind11
+│   ├── cross_module_gil_utils.cpython-313-x86_64-linux-gnu.so
+│   ├── cross_module_interleaved_error_already_set.cpython-313-x86_64-linux-gnu.so
+│   ├── eigen_tensor_avoid_stl_array.cpython-313-x86_64-linux-gnu.so
+│   ├── exo_planet_c_api.cpython-313-x86_64-linux-gnu.so
+│   ├── exo_planet_pybind11.cpython-313-x86_64-linux-gnu.so
+│   ├── home_planet_very_lonely_traveler.cpython-313-x86_64-linux-gnu.so
+│   ├── pybind11_cross_module_tests.cpython-313-x86_64-linux-gnu.so
+│   └── pybind11_tests.cpython-313-x86_64-linux-gnu.so
+├── scipy -> /nix/store/n79436xsq57ncdqpq8rh4ix25padxqjh-python3.13-scipy-1.16.3/lib/python3.13/site-packages/scipy
+│   ├── cluster
+│   │   ├── _hierarchy.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _optimal_leaf_ordering.cpython-313-x86_64-linux-gnu.so
+│   │   └── _vq.cpython-313-x86_64-linux-gnu.so
+│   ├── _cyutility.cpython-313-x86_64-linux-gnu.so
+│   ├── fft
+│   │   └── _pocketfft
+│   │       └── pypocketfft.cpython-313-x86_64-linux-gnu.so
+│   ├── fftpack
+│   │   └── convolve.cpython-313-x86_64-linux-gnu.so
+│   ├── integrate
+│   │   ├── _dop.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _lsoda.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _odepack.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _quadpack.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _test_multivariate.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _test_odeint_banded.cpython-313-x86_64-linux-gnu.so
+│   │   └── _vode.cpython-313-x86_64-linux-gnu.so
+│   ├── interpolate
+│   │   ├── _dfitpack.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _dierckx.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _fitpack.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _interpnd.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _ppoly.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _rbfinterp_pythran.cpython-313-x86_64-linux-gnu.so
+│   │   └── _rgi_cython.cpython-313-x86_64-linux-gnu.so
+│   ├── io
+│   │   ├── _fast_matrix_market
+│   │   │   └── _fmm_core.cpython-313-x86_64-linux-gnu.so
+│   │   ├── matlab
+│   │   │   ├── _mio5_utils.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _mio_utils.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── _streams.cpython-313-x86_64-linux-gnu.so
+│   │   └── _test_fortran.cpython-313-x86_64-linux-gnu.so
+│   ├── _lib
+│   │   ├── _ccallback_c.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _fpumode.cpython-313-x86_64-linux-gnu.so
+│   │   ├── messagestream.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _test_ccallback.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _test_deprecation_call.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _test_deprecation_def.cpython-313-x86_64-linux-gnu.so
+│   │   └── _uarray
+│   │       └── _uarray.cpython-313-x86_64-linux-gnu.so
+│   ├── linalg
+│   │   ├── cython_blas.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _cythonized_array_utils.cpython-313-x86_64-linux-gnu.so
+│   │   ├── cython_lapack.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _decomp_interpolative.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _decomp_lu_cython.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _decomp_update.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _fblas.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _flapack.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _linalg_pythran.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _matfuncs_expm.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _matfuncs_schur_sqrtm.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _matfuncs_sqrtm_triu.cpython-313-x86_64-linux-gnu.so
+│   │   └── _solve_toeplitz.cpython-313-x86_64-linux-gnu.so
+│   ├── ndimage
+│   │   ├── _ctest.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _cytest.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _nd_image.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _ni_label.cpython-313-x86_64-linux-gnu.so
+│   │   └── _rank_filter_1d.cpython-313-x86_64-linux-gnu.so
+│   ├── odr
+│   │   └── __odrpack.cpython-313-x86_64-linux-gnu.so
+│   ├── optimize
+│   │   ├── _bglu_dense.cpython-313-x86_64-linux-gnu.so
+│   │   ├── cython_optimize
+│   │   │   └── _zeros.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _direct.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _group_columns.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _highspy
+│   │   │   ├── _core.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── _highs_options.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _lbfgsb.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _lsap.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _lsq
+│   │   │   └── givens_elimination.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _minpack.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _moduleTNC.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _pava_pybind.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _slsqplib.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _trlib
+│   │   │   └── _trlib.cpython-313-x86_64-linux-gnu.so
+│   │   └── _zeros.cpython-313-x86_64-linux-gnu.so
+│   ├── signal
+│   │   ├── _max_len_seq_inner.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _peak_finding_utils.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _sigtools.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _sosfilt.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _spline.cpython-313-x86_64-linux-gnu.so
+│   │   └── _upfirdn_apply.cpython-313-x86_64-linux-gnu.so
+│   ├── sparse
+│   │   ├── csgraph
+│   │   │   ├── _flow.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _matching.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _min_spanning_tree.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _reordering.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _shortest_path.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _tools.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── _traversal.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _csparsetools.cpython-313-x86_64-linux-gnu.so
+│   │   ├── linalg
+│   │   │   ├── _dsolve
+│   │   │   │   └── _superlu.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _eigen
+│   │   │   │   └── arpack
+│   │   │   │       └── _arpack.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── _propack
+│   │   │       ├── _cpropack.cpython-313-x86_64-linux-gnu.so
+│   │   │       ├── _dpropack.cpython-313-x86_64-linux-gnu.so
+│   │   │       ├── _spropack.cpython-313-x86_64-linux-gnu.so
+│   │   │       └── _zpropack.cpython-313-x86_64-linux-gnu.so
+│   │   └── _sparsetools.cpython-313-x86_64-linux-gnu.so
+│   ├── spatial
+│   │   ├── _ckdtree.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _distance_pybind.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _distance_wrap.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _hausdorff.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _qhull.cpython-313-x86_64-linux-gnu.so
+│   │   ├── transform
+│   │   │   ├── _rigid_transform.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── _rotation.cpython-313-x86_64-linux-gnu.so
+│   │   └── _voronoi.cpython-313-x86_64-linux-gnu.so
+│   ├── special
+│   │   ├── _comb.cpython-313-x86_64-linux-gnu.so
+│   │   ├── cython_special.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _ellip_harm_2.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _gufuncs.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _specfun.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _special_ufuncs.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _test_internal.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _ufuncs.cpython-313-x86_64-linux-gnu.so
+│   │   └── _ufuncs_cxx.cpython-313-x86_64-linux-gnu.so
+│   └── stats
+│       ├── _ansari_swilk_statistics.cpython-313-x86_64-linux-gnu.so
+│       ├── _biasedurn.cpython-313-x86_64-linux-gnu.so
+│       ├── _levy_stable
+│       │   └── levyst.cpython-313-x86_64-linux-gnu.so
+│       ├── _qmc_cy.cpython-313-x86_64-linux-gnu.so
+│       ├── _qmvnt_cy.cpython-313-x86_64-linux-gnu.so
+│       ├── _rcont
+│       │   └── rcont.cpython-313-x86_64-linux-gnu.so
+│       ├── _sobol.cpython-313-x86_64-linux-gnu.so
+│       ├── _stats.cpython-313-x86_64-linux-gnu.so
+│       ├── _stats_pythran.cpython-313-x86_64-linux-gnu.so
+│       └── _unuran
+│           └── unuran_wrapper.cpython-313-x86_64-linux-gnu.so
+├── sklearn -> /nix/store/wyaiz2sgvlh6izjyqjqnbdyqhm5kq8mh-python3.13-scikit-learn-1.7.1/lib/python3.13/site-packages/sklearn
+│   ├── __check_build
+│   │   └── _check_build.cpython-313-x86_64-linux-gnu.so
+│   ├── cluster
+│   │   ├── _dbscan_inner.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _hdbscan
+│   │   │   ├── _linkage.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _reachability.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── _tree.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _hierarchical_fast.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _k_means_common.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _k_means_elkan.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _k_means_lloyd.cpython-313-x86_64-linux-gnu.so
+│   │   └── _k_means_minibatch.cpython-313-x86_64-linux-gnu.so
+│   ├── _cyutility.cpython-313-x86_64-linux-gnu.so
+│   ├── datasets
+│   │   └── _svmlight_format_fast.cpython-313-x86_64-linux-gnu.so
+│   ├── decomposition
+│   │   ├── _cdnmf_fast.cpython-313-x86_64-linux-gnu.so
+│   │   └── _online_lda_fast.cpython-313-x86_64-linux-gnu.so
+│   ├── ensemble
+│   │   ├── _gradient_boosting.cpython-313-x86_64-linux-gnu.so
+│   │   └── _hist_gradient_boosting
+│   │       ├── _binning.cpython-313-x86_64-linux-gnu.so
+│   │       ├── _bitset.cpython-313-x86_64-linux-gnu.so
+│   │       ├── common.cpython-313-x86_64-linux-gnu.so
+│   │       ├── _gradient_boosting.cpython-313-x86_64-linux-gnu.so
+│   │       ├── histogram.cpython-313-x86_64-linux-gnu.so
+│   │       ├── _predictor.cpython-313-x86_64-linux-gnu.so
+│   │       └── splitting.cpython-313-x86_64-linux-gnu.so
+│   ├── feature_extraction
+│   │   └── _hashing_fast.cpython-313-x86_64-linux-gnu.so
+│   ├── _isotonic.cpython-313-x86_64-linux-gnu.so
+│   ├── linear_model
+│   │   ├── _cd_fast.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _sag_fast.cpython-313-x86_64-linux-gnu.so
+│   │   └── _sgd_fast.cpython-313-x86_64-linux-gnu.so
+│   ├── _loss
+│   │   └── _loss.cpython-313-x86_64-linux-gnu.so
+│   ├── manifold
+│   │   ├── _barnes_hut_tsne.cpython-313-x86_64-linux-gnu.so
+│   │   └── _utils.cpython-313-x86_64-linux-gnu.so
+│   ├── metrics
+│   │   ├── cluster
+│   │   │   └── _expected_mutual_info_fast.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _dist_metrics.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _pairwise_distances_reduction
+│   │   │   ├── _argkmin_classmode.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _argkmin.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _base.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _datasets_pair.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _middle_term_computer.cpython-313-x86_64-linux-gnu.so
+│   │   │   ├── _radius_neighbors_classmode.cpython-313-x86_64-linux-gnu.so
+│   │   │   └── _radius_neighbors.cpython-313-x86_64-linux-gnu.so
+│   │   └── _pairwise_fast.cpython-313-x86_64-linux-gnu.so
+│   ├── neighbors
+│   │   ├── _ball_tree.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _kd_tree.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _partition_nodes.cpython-313-x86_64-linux-gnu.so
+│   │   └── _quad_tree.cpython-313-x86_64-linux-gnu.so
+│   ├── preprocessing
+│   │   ├── _csr_polynomial_expansion.cpython-313-x86_64-linux-gnu.so
+│   │   └── _target_encoder_fast.cpython-313-x86_64-linux-gnu.so
+│   ├── svm
+│   │   ├── _liblinear.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _libsvm.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _libsvm_sparse.cpython-313-x86_64-linux-gnu.so
+│   │   └── _newrand.cpython-313-x86_64-linux-gnu.so
+│   ├── tree
+│   │   ├── _criterion.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _partitioner.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _splitter.cpython-313-x86_64-linux-gnu.so
+│   │   ├── _tree.cpython-313-x86_64-linux-gnu.so
+│   │   └── _utils.cpython-313-x86_64-linux-gnu.so
+│   └── utils
+│       ├── arrayfuncs.cpython-313-x86_64-linux-gnu.so
+│       ├── _cython_blas.cpython-313-x86_64-linux-gnu.so
+│       ├── _fast_dict.cpython-313-x86_64-linux-gnu.so
+│       ├── _heap.cpython-313-x86_64-linux-gnu.so
+│       ├── _isfinite.cpython-313-x86_64-linux-gnu.so
+│       ├── murmurhash.cpython-313-x86_64-linux-gnu.so
+│       ├── _openmp_helpers.cpython-313-x86_64-linux-gnu.so
+│       ├── _random.cpython-313-x86_64-linux-gnu.so
+│       ├── _seq_dataset.cpython-313-x86_64-linux-gnu.so
+│       ├── _sorting.cpython-313-x86_64-linux-gnu.so
+│       ├── sparsefuncs_fast.cpython-313-x86_64-linux-gnu.so
+│       ├── _typedefs.cpython-313-x86_64-linux-gnu.so
+│       ├── _vector_sentinel.cpython-313-x86_64-linux-gnu.so
+│       └── _weight_vector.cpython-313-x86_64-linux-gnu.so
+├── _tkinter.cpython-313-x86_64-linux-gnu.so -> /nix/store/457i1fimc4smh2v8ax2qpy6r0yprnbay-python3.13-tkinter-3.13.9/lib/python3.13/site-packages/_tkinter.cpython-313-x86_64-linux-gnu.so
+├── torch -> /nix/store/5prjby5fniq680wc9ss4jlbnf8kb3j4n-python3.13-torch-2.9.1/lib/python3.13/site-packages/torch
+│   ├── _C.cpython-313-x86_64-linux-gnu.so
+│   └── lib -> /nix/store/r81viwszilznic5b23zgm8d9r84likq8-python3.13-torch-2.9.1-lib/lib
+│       ├── libaotriton_v2.so
+│       ├── libc10_hip.so
+│       ├── libc10.so
+│       ├── libcaffe2_nvrtc.so
+│       ├── libshm.so
+│       ├── libtorch_cpu.so
+│       ├── libtorch_global_deps.so
+│       ├── libtorch_hip.so
+│       ├── libtorch_python.so
+│       ├── libtorch.so
+│       └── pyaotriton.cpython-313-x86_64-linux-gnu.so
+├── torchvision -> /nix/store/fnih0igdi04k5mlrrdd62akq29xzg6zi-python3.13-torchvision-0.24.1/lib/python3.13/site-packages/torchvision
+│   ├── _C.so
+│   └── image.so
+├── triton -> /nix/store/rklsk8qh639r5zsv5p5nmfmym2aqvld8-python3.13-triton-3.5.1/lib/python3.13/site-packages/triton
+│   ├── _C
+│   │   └── libtriton.so
+│   └── instrumentation
+│       ├── libGPUInstrumentationTestLib.so
+│       └── libPrintLoadStoreMemSpaces.so
+└── yaml -> /nix/store/yv88fk5ya2c35gbady8ssmg3l92k4vki-python3.13-pyyaml-6.0.3/lib/python3.13/site-packages/yaml
+    └── _yaml.cpython-313-x86_64-linux-gnu.so
+
+93 directories, 304 files
+#+end_verse
