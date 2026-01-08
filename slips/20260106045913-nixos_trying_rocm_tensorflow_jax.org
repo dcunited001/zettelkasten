@@ -6,7 +6,76 @@
 #+TAGS:
 
 * Roam
+
+
+* Resources
+** AMD Blogs
+
++ [[https://github.com/ROCm/rocm-blogs/blob/3e9ad9a0f52fa029731b0978e77a6070afe542ab/blogs/artificial-intelligence/reinforcement-learning-gym/README.md][Reinforcement Gymnasium]] includes
++ Spack Installation includes a [[https://github.com/ROCm/rocm-blogs/blob/3e9ad9a0f52fa029731b0978e77a6070afe542ab/blogs/software-tools-optimization/spack-installation/README.md#rocm-component-dependencies][handy dependency matrix for ROCm Components]]
+
 * Notes
+
+** Permissions
+
+#+begin_quote
+apparently, i do _not_ need root to run the containers as such. Idk whether it's
+because my user's in =video= and =render= groups ... but that would be great if that
+just magically came up in coversation once in idk the past 5 or so years.
+#+end_quote
+
+Seems to run:
+
++ [[https://www.tensorflow.org/tutorials/quickstart/advanced][MNIST Keras API Example]]
+
+* Tensorflow
+
+** GPU Memory
+
+A little eager to eat everything
+
+#+begin_quote
+i don't have iGPU bc i thought the 5950 with 32 vCPU would be great for building
+software... but i vote wrong and everyone here uses microsoft. so ya know.
+#+end_quote
+
+Anyways. Only logical devices can have policy set, but it must be set _before_
+initialization.
+
+*** Hard Limit
+
+#+begin_src python
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+  # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+  try:
+    tf.config.set_logical_device_configuration(
+        gpus[0],
+        [tf.config.LogicalDeviceConfiguration(memory_limit=1024)])
+    logical_gpus = tf.config.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Virtual devices must be set before GPUs have been initialized
+    print(e)
+#+end_src
+
+*** Memory Growth
+
+#+begin_src python
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+  try:
+    # Currently, memory growth needs to be the same across GPUs
+    for gpu in gpus:
+      tf.config.experimental.set_memory_growth(gpu, True)
+    logical_gpus = tf.config.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Memory growth must be set before GPUs have been initialized
+    print(e)
+#+end_src
+
+* Environments
 ** UV
 *** Setup
 
@@ -63,7 +132,20 @@ idk where to start really
 :header-args+: :dir (identity ob@nixos_trying_rocm_tensorflow_jax)
 :END:
 
-*** Setup
++ See [[https://github.com/ROCm/rocAL/blob/develop/docker/rocal-with-tensorflow.dockerfile][ROCm/rocAL docker/rocal-with-tensorflow.dockerfile]] for an example of
+  extending the =Dockerfile=.
++ [[https://github.com/ROCm/rocm-blogs/blob/3e9ad9a0f52fa029731b0978e77a6070afe542ab/blogs/software-tools-optimization/tf_profiler/docker/Dockerfile][ROCm/rocm-blogs]] has an example of extending the rocm/tensorflow images to
+  include =jupyterlab= with a few dependencies.
++ [[https://github.com/ROCm/taichi/commit/1a6520a533bf127e760eefdc49accfd29728cce9#diff-21cfa228c69f2aa456d76adb243bd3a9aa8e35d05cca8a18c744b354cd73c817][ROCm/taichi]] has [[https://github.com/ROCm/taichi/commit/1a6520a533bf127e760eefdc49accfd29728cce9#diff-21cfa228c69f2aa456d76adb243bd3a9aa8e35d05cca8a18c744b354cd73c817][its multi-stage build-file added here]]. it's newer builds are
+  ROCm 7.0. There are plenty of examples in [[https://github.com/ROCm/taichi/tree/master/python/taichi/examples][python/taichi/examples]]
+
+
+| [[https://hub.docker.com/r/rocm/jax-training][rocm/jax-training]] | includes XLA, JAX, Pytorch, TransformerEngine                   |
+| rocm/rocal        | for both TF & Torch. includes magick/ffmpeg, image manipulation |
+| [[https://hub.docker.com/r/rocm/jax-training][rocm/taichi]]       | processing, but with python (and mojo-style MLIR to GPU code    |
+|                   |                                                                 |
+
+*** Images
 
 #+name: imgtf
 #+begin_src emacs-lisp
@@ -83,12 +165,81 @@ idk where to start really
 #+RESULTS: imgjax
 : rocm/jax:rocm6.4.2-jax0.4.35-py3.12
 
-#+begin_src shell
-# probably needs to run under the system
-echo podman pull $imgtf
++ Taichi Lang on ROCm installation
+  - fork rocm/taichi
++ [[https://yuanming.taichi.graphics/publication/2019-taichi/taichi-lang.pdf][Taichi: High-Perf Computation on Spatially Sparse Data Structures]]
+  - lots of =@ti
+
+#+name: imgtaichi
+#+begin_src emacs-lisp
+(format "rocm/taichi:taichi-%s_rocm%s_ubuntu22.04_py%s" "1.8.0b1" "6.3.2" "3.10.12")
 #+end_src
 
-*** Tensorflow
+#+RESULTS: imgtaichi
+: rocm/taichi:taichi-1.8.0b1_rocm6.3.2_ubuntu22.04_py3.10.12
+
+*** Containers
+
+**** Taichi
+
+#+headers: :shebang "#!/usr/bin/env bash" :comments no :noweb yes :tangle-mode (identity #o744)
+#+begin_src shell :tangle (expand-file-name "starttaichi.sh" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
+shm_size=16G
+
+# conflict: --ipc=host & --shm-size $shm_size
+podman run -it --replace \
+    --network=host \
+    --device=/dev/kfd \
+    --device=/dev/dri \
+    --ipc=host \
+    --group-add video \
+    --cap-add=SYS_PTRACE \
+    --security-opt seccomp=unconfined \
+    -e 'HSA_OVERRIDE_GFX_VERSION=10.3.0' \
+    -v $(pwd)/taichi/python/taichi/examples:/examples \
+    -w /examples \
+    --name dc-rocm_amd_taichi_test \
+    <<imgtaichi()>> /bin/bash
+# TODO: setup jupyter
+#+end_src
+
+Seems to work, but simulations aren't very fun without GUI
+
+Needs X11 to be passed through to get GUI.......
+
+#+begin_src dockerfile
+FROM <<imgtaichi()>>
+
+ARG user=appuser
+ARG group=appuser
+ARG uid=1000
+ARG gid=1000
+RUN groupadd -g ${gid} ${group} -f
+RUN useradd -u ${uid} -g ${gid} -m ${user}
+USER ${uid}:${gid}
+
+# ...
+#+end_src
+
+Can't easily retrofit for =x11docker= and +can't+ definitely should _not_ pass the
+wayland socket with =-u 0:1000=.
+
+This would not be very difficult to package for nixos, actually.
+
+**** Tensorflow
+
+#+begin_src dockerfile :tangle (expand-file-name "compose.yml" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
+FROM <<imgtf()>>
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN pip install jupyterlab
+RUN pip install -U tensorflow-datasets
+RUN pip install matplotlib
+RUN pip install -U tensorboard_plugin_profile
+
+WORKDIR /usr/src/app
+#+end_src
 
 compose
 
@@ -140,7 +291,7 @@ benefit from that... but i'm thinking about things in)
 2026-01-08 08:38:54.125807: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
 To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
 #+end_quote
-*** JAX
+**** JAX
 
 #+headers: :comments no :noweb yes
 #+begin_src yaml :tangle (expand-file-name "jax-compose.yml" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
@@ -160,6 +311,7 @@ services:
       - $(pwd)/tf_jax:/tf_jax
 #+end_src
 
+running from script
 
 #+headers: :shebang "#!/usr/bin/env bash" :comments no :noweb yes :tangle-mode (identity #o744)
 #+begin_src shell :tangle (expand-file-name "startrocmjax.sh" ob@nixos_trying_rocm_tensorflow_jax)
@@ -180,3 +332,12 @@ podman run -it --replace \
     <<imgjax()>> /bin/bash
 #+end_src
 
+quick tests
+
+#+begin_src shell
+python3 -c "import jax; print(jax.devices())" # [RocmDevice(id=0)]
+python3 -c "import jax.numpy as jnp; x = jnp.arange(5); print(x)" # [0 1 2 3 4]
+#+end_src
+
+Not dynamically MLIR'ing anything yet though
+***
