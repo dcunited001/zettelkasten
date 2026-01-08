@@ -1,0 +1,521 @@
+:PROPERTIES:
+:ID:       ac253ca3-15e1-4973-868f-985de2386bfc
+:END:
+#+TITLE: NixOS: Comparing With AMD's ROCm Container Distribution
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
++ [[id:ae2d42cf-21c4-45ff-9d52-6fb65e1ad7b6][NixOS: ROCm Support]]
++ [[id:c79795f9-4953-4662-8177-a1d2151d62ba][NixOS: Trying ROCm Tensorflow & JAX]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+  
+* For All The Marbles
+
+#+begin_src shell
+# diff file lists
+rocmdiff() {
+    rgx="$1";
+    diff <(grep -E "$rgx" $2) <(grep -E "$rgx" $3)
+}
+
+rocmdiffnoshare() {
+    rgx="$1";
+    diff <(grep -E "$rgx" $2 | grep -ve '^share') <(grep -E "$rgx" $3 | grep -ve '^share')
+}
+
+rr=tf/rocm.find
+rn=tf/rocm.nix.find
+#+end_src
+
+generate lists
+
+#+begin_src shell
+# on container
+find -L /opt/rocm -name '*' -printf '%P\n' | sort > tf/rocm.find
+
+# on nixos system
+find -L /opt/rocm -name '*' -printf '%P\n' | sort > tf/rocm.nix.find
+#+end_src
+
+Overview
+
+| lib/cmake  | missing a lot here |
+| aqlprofile | missing HSA =.so=    |
+
+** Bin
+
+no diff
+
+** LLVM
+
+The =rocm= images include a lot of content at both =lib/llvm/**= and =llvm/**=. In
+fact, it seems to be the same set of filenames
+
+#+begin_src shell :results output code :wrap example diff
+diff <(grep '^lib/llvm' tf/rocm.find | sed -e 's/^lib\///g' | tree --fromfile .) \
+    <(grep -e '^llvm' tf/rocm.find | tree --fromfile .)
+#+end_src
+
+echo ... none
+
+#+begin_src shell :results output table
+echo -n "rocm,lib/llvm/,"
+grep -e '^lib/llvm' tf/rocm.find | sed -e 's/^lib\///g' | wc -l
+echo -n "rocm,llvm/,"
+grep -e '^llvm' tf/rocm.find | wc -l
+
+echo -n "nixos,lib/llvm/,"
+grep -e '^lib/llvm' tf/rocm.nix.find | wc -l
+echo -n "nixos,llvm/,"
+grep -e '^llvm' tf/rocm.nix.find | wc -l
+#+end_src
+
+#+RESULTS:
+| rocm  | lib/llvm/ | 846 |
+| rocm  | llvm/     | 846 |
+| nixos | lib/llvm/ |   0 |
+| nixos | llvm/     | 152 |
+
+*** llvm.lld
+
+#+begin_src shell
+rocmdiffnoshare 'llvm.*lld' $rr $rn
+#+end_src
+
+Still missing =amdlld=, even after adding =rocmPackages.llvm.lld=
+
+#+begin_example diff
+1,6d0
+< lib/llvm/bin/amdlld
+< lib/llvm/bin/ld64.lld
+< lib/llvm/bin/ld.lld
+< lib/llvm/bin/lld
+< lib/llvm/bin/lld-link
+< llvm/bin/amdlld
+#+end_example
+
+
+** Lib
+ 
+#+begin_src shell :results output code :wrap example diff
+diff -U3 <(grep -e 'llvm' tf/rocm.find | tree -d -L4 --noreport --fromfile .) \
+    <(grep -e 'llvm' tf/rocm.nix.find | tree -d -L4 --noreport --fromfile .)
+echo ' '
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+--- /dev/fd/63	2026-01-08 05:18:25.743316247 -0500
++++ /dev/fd/62	2026-01-08 05:18:25.743316247 -0500
+@@ -1,49 +1,5 @@
+ .
+-├── lib
+-│   └── llvm
+-│       ├── bin
+-│       ├── include
+-│       ├── lib
+-│       │   ├── clang
+-│       │   ├── cmake
+-│       │   └── omptest
+-│       ├── lib-debug
+-│       │   ├── cmake
+-│       │   ├── omptest
+-│       │   └── src
+-│       └── share
+-│           ├── gdb
+-│           └── man1
+-├── llvm
+-│   ├── bin
+-│   ├── include
+-│   ├── lib
+-│   │   ├── clang
+-│   │   │   └── 19
+-│   │   ├── cmake
+-│   │   │   ├── omptest
+-│   │   │   └── openmp
+-│   │   └── omptest
+-│   │       └── include
+-│   ├── lib-debug
+-│   │   ├── cmake
+-│   │   │   ├── omptest
+-│   │   │   └── openmp
+-│   │   ├── omptest
+-│   │   │   └── include
+-│   │   └── src
+-│   │       ├── offload
+-│   │       └── openmp
+-│   └── share
+-│       ├── gdb
+-│       │   └── python
+-│       └── man1
+-└── share
+-    ├── doc
+-    │   └── rocm-llvm
+-    ├── hip
+-    │   └── samples
+-    │       └── 2_Cookbook
+-    └── openmp-extras
+-        └── examples
+-            └── openmp
++└── llvm
++    ├── bin
++    └── libexec
++        └── getconf
+ 
+#+end_example
+** Components
+*** Half
+
+#+begin_src shell
+rocmdiffnoshare 'half' tf/rocm.find tf/rocm.nix.find
+#+end_src
+
+
+#+begin_example diff
+8,9c8
+< include/half
+< include/half/half.hpp
+---
+> lib/migraphx/include/migraphx/half.hpp
+#+end_example
+
+
+*** MPI
+
+#+begin_src shell
+rocmdiffnoshare 'mpi' tf/rocm.find tf/rocm.nix.find
+#+end_src
+
+#+begin_example diff
+0a1,2
+> include/thrust/detail/config/compiler.h
+> include/thrust/detail/config/compiler_fence.h
+3,8c5,33
+< include/rocprofiler-sdk/hip/compiler_api_id.h
+< include/thrust/detail/config/compiler_fence.h
+< include/thrust/detail/config/compiler.h
+< lib/cmake/rocprofiler-sdk/Modules/rocprofiler-sdk-custom-compilation.cmake
+< libexec/miopen/install_precompiled_kernels.sh
+< libexec/rocprofiler-sdk/rocprofiler-sdk-launch-compiler
+---
+> include/hiprt/impl/Compiler.h
+> lib/oro_compiled_kernels.hipfb
+> lib/migraphx/include/migraphx/compile_options.hpp
+> lib/migraphx/include/migraphx/compile_src.hpp
+> lib/migraphx/include/migraphx/gpu/compile_gen.hpp
+> lib/migraphx/include/migraphx/gpu/compile_hip.hpp
+> lib/migraphx/include/migraphx/gpu/compile_hip_code_object.hpp
+> lib/migraphx/include/migraphx/gpu/compile_hipblaslt.hpp
+> lib/migraphx/include/migraphx/gpu/compile_miopen.hpp
+> lib/migraphx/include/migraphx/gpu/compile_ops.hpp
+> lib/migraphx/include/migraphx/gpu/compile_pointwise.hpp
+> lib/migraphx/include/migraphx/gpu/compiler.hpp
+> bin/mv_compile
+> libexec/mivisionx/model_compiler
+> libexec/mivisionx/model_compiler/mv_deploy
+> libexec/mivisionx/model_compiler/mv_deploy/mv_extras_postproc.cpp
+> libexec/mivisionx/model_compiler/mv_deploy/mv_extras_postproc.h
+> libexec/mivisionx/model_compiler/python
+> libexec/mivisionx/model_compiler/python/caffe_pb2.py
+> libexec/mivisionx/model_compiler/python/caffe_to_nnir.py
+> libexec/mivisionx/model_compiler/python/nnef_to_nnir.py
+> libexec/mivisionx/model_compiler/python/nnir.py
+> libexec/mivisionx/model_compiler/python/nnir_to_clib.py
+> libexec/mivisionx/model_compiler/python/nnir_to_nnef.py
+> libexec/mivisionx/model_compiler/python/nnir_to_openvx.py
+> libexec/mivisionx/model_compiler/python/nnir_to_zendnn.py
+> libexec/mivisionx/model_compiler/python/nnir_update.py
+> libexec/mivisionx/model_compiler/python/onnx_to_nnir.py
+> libexec/mivisionx/model_compiler/README.md
+#+end_example
+** Full Diff 
+#+begin_src shell :results output code :wrap example diff
+diff -U3 <(cat tf/rocm.find | tree -d -L3 --noreport --fromfile .) \
+     <(cat tf/rocm.nix.find | tree -d -L3 --noreport --fromfile .)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+--- /dev/fd/63	2026-01-08 04:11:30.568058055 -0500
++++ /dev/fd/62	2026-01-08 04:11:30.568058055 -0500
+@@ -2,10 +2,12 @@
+ ├── amdgcn
+ │   └── bitcode
+ ├── bin
++├── etc
++│   └── OpenCL
++│       └── vendors
+ ├── include
+ │   ├── amd_comgr
+ │   ├── amd-dbgapi
+-│   ├── amd_smi
+ │   ├── ck
+ │   │   ├── host_utility
+ │   │   ├── library
+@@ -21,10 +23,8 @@
+ │   │   ├── ops
+ │   │   └── ref
+ │   ├── CL
+-│   ├── half
+ │   ├── hip
+-│   │   ├── amd_detail
+-│   │   └── nvidia_detail
++│   │   └── amd_detail
+ │   ├── hipblas
+ │   ├── hipblas-common
+ │   ├── hipblaslt
+@@ -44,24 +44,17 @@
+ │   ├── hipsolver
+ │   │   └── internal
+ │   ├── hipsparse
+-│   ├── hipsparselt
+-│   ├── hiptensor
+-│   │   └── internal
+ │   ├── hsa
+ │   ├── hsakmt
+ │   ├── miopen
+-│   ├── oam
++│   ├── mivisionx
++│   │   └── VX
+ │   ├── rccl
+ │   │   └── amd_detail
+-│   ├── rocalution
+-│   │   ├── base
+-│   │   ├── solvers
+-│   │   └── utils
+ │   ├── rocblas
+ │   │   └── internal
+ │   ├── rocfft
+ │   ├── rocm-core
+-│   ├── rocm_smi
+ │   ├── rocprim
+ │   │   ├── block
+ │   │   ├── detail
+@@ -71,29 +64,14 @@
+ │   │   ├── thread
+ │   │   ├── types
+ │   │   └── warp
+-│   ├── rocprofiler
+-│   │   └── v2
+-│   ├── rocprofiler-register
+-│   ├── rocprofiler-sdk
+-│   │   ├── amd_detail
+-│   │   ├── cxx
+-│   │   ├── experimental
+-│   │   ├── hip
+-│   │   ├── hsa
+-│   │   ├── kfd
+-│   │   ├── marker
+-│   │   ├── ompt
+-│   │   ├── rccl
+-│   │   └── rocdecode
+-│   ├── rocprofiler-sdk-roctx
+ │   ├── rocrand
+ │   ├── rocsolver
+ │   ├── rocsparse
+ │   │   └── internal
+ │   ├── roctracer
+ │   │   └── ext
+-│   ├── rocwmma
+-│   │   └── internal
++│   ├── rpp
++│   │   └── third_party
+ │   └── thrust
+ │       ├── async
+ │       ├── cmake
+@@ -109,7 +87,6 @@
+ │   │   ├── amd_comgr
+ │   │   ├── amd-dbgapi
+ │   │   ├── AMDDeviceLibs
+-│   │   ├── amd_smi
+ │   │   ├── composable_kernel
+ │   │   ├── hip
+ │   │   ├── hipblas
+@@ -123,160 +100,83 @@
+ │   │   ├── hiprtc
+ │   │   ├── hipsolver
+ │   │   ├── hipsparse
+-│   │   ├── hipsparselt
+-│   │   ├── hiptensor
+ │   │   ├── hsakmt
+ │   │   ├── hsa-runtime64
+ │   │   ├── miopen
+ │   │   ├── rccl
+-│   │   ├── rocalution
+ │   │   ├── rocblas
+ │   │   ├── rocfft
+ │   │   ├── rocm-core
+-│   │   ├── rocm_smi
+ │   │   ├── rocprim
+-│   │   ├── rocprofiler-register
+-│   │   ├── rocprofiler-sdk
+-│   │   ├── rocprofiler-sdk-roctx
+ │   │   ├── rocrand
+ │   │   ├── rocsolver
+ │   │   ├── rocsparse
+ │   │   └── rocthrust
+ │   ├── hipblaslt
+ │   │   └── library
+-│   ├── hipsparselt
+-│   │   └── library
+-│   ├── hsa-amd-aqlprofile
+-│   ├── llvm
+-│   │   ├── bin
+-│   │   ├── include
+-│   │   ├── lib
+-│   │   ├── lib-debug
+-│   │   └── share
+ │   ├── pkgconfig
+ │   ├── rocblas
+ │   │   └── library
+ │   ├── rocfft
+ │   │   └── 1.0.32
+-│   ├── rocprofiler
+-│   ├── rocprofiler-sdk
+ │   └── roctracer
+ ├── libexec
+-│   ├── amdsmi_cli
+ │   ├── hipfort
+ │   ├── hipify
+-│   ├── miopen
+-│   ├── rocm-core
+-│   ├── rocm_smi
+-│   ├── rocprofiler
+-│   │   ├── att
+-│   │   └── counters
+-│   └── rocprofiler-sdk
++│   ├── mivisionx
++│   │   ├── model_compiler
++│   │   └── toolkit
++│   └── rocm-core
+ ├── llvm
+ │   ├── bin
+-│   ├── include
+-│   ├── lib
+-│   │   ├── clang
+-│   │   ├── cmake
+-│   │   └── omptest
+-│   ├── lib-debug
+-│   │   ├── cmake
+-│   │   ├── omptest
+-│   │   └── src
+-│   └── share
+-│       ├── gdb
+-│       └── man1
++│   └── libexec
++│       └── getconf
++├── nix-support
+ └── share
+-    ├── amd_smi
+-    │   ├── amdsmi
+-    │   ├── amdsmi.egg-info
+-    │   ├── build
+-    │   └── example
+     ├── doc
+     │   ├── amd_comgr
+-    │   ├── amd-dbgapi
+-    │   ├── amd_smi
++    │   ├── clr
++    │   ├── clr-asan
+     │   ├── composablekernel
+-    │   ├── half
+-    │   ├── hip
+     │   ├── hipblas
+     │   ├── hipblas-common
+     │   ├── hipblaslt
+-    │   ├── hipcc
+     │   ├── hipcub
+     │   ├── hipfft
+     │   ├── hipfort
+-    │   ├── hipify-clang
+     │   ├── hiprand
+     │   ├── hipsolver
+     │   ├── hipsparse
+-    │   ├── hipsparselt
+-    │   ├── hiptensor
+-    │   ├── hsa-amd-aqlprofile
+-    │   ├── hsa-runtime64
+     │   ├── miopen-hip
+-    │   ├── opencl
+-    │   ├── openmp-extras
++    │   ├── mivisionx
++    │   ├── mivisionx-asan
+     │   ├── rccl
+-    │   ├── rocalution
+     │   ├── rocblas
+     │   ├── rocfft
+-    │   ├── rocgdb
+-    │   ├── rocm-cmake
+     │   ├── rocm-core
+-    │   ├── rocm-debug-agent
+     │   ├── ROCm-Device-Libs
+-    │   ├── rocminfo
+-    │   ├── rocm-llvm
+-    │   ├── rocm_smi
++    │   ├── rocm-ocl-icd
+     │   ├── rocprim
+-    │   ├── rocprofiler
+-    │   ├── rocprofiler-register
+-    │   ├── rocprofiler-sdk
+-    │   ├── rocprofiler-sdk-roctx
++    │   ├── rocr
+     │   ├── rocrand
+     │   ├── rocsolver
+     │   ├── rocsparse
+     │   ├── rocthrust
+     │   ├── roctracer
+-    │   └── rocwmma
++    │   ├── roctracer-asan
++    │   ├── rpp
++    │   └── rpp-asan
+     ├── hip
+-    │   └── samples
+     ├── hipfort
+-    ├── html
+-    │   ├── amd-dbgapi
+-    │   ├── rocannotate
+-    │   ├── rocgdb
+-    │   ├── rocstabs
+-    │   └── roctracer
+-    ├── info
+-    │   └── rocgdb
+-    ├── man
+-    │   ├── man1
+-    │   └── man5
+     ├── miopen
+-    │   ├── db
+-    │   └── perf_models
+-    ├── modulefiles
+-    │   ├── rocprofiler-register
+-    │   ├── rocprofiler-sdk
+-    │   └── rocprofiler-sdk-roctx
+-    ├── openmp-extras
+-    │   └── examples
++    │   └── db
++    ├── mivisionx
++    │   ├── apps
++    │   ├── samples
++    │   └── test
+     ├── pkgconfig
+     ├── rccl
+     │   ├── msccl-algorithms
+     │   └── msccl-unit-test-algorithms
+-    ├── rocgdb
+-    │   ├── python
+-    │   └── syscalls
+-    ├── rocm
+-    │   └── cmake
+-    ├── rocmcmakebuildtools
+-    │   └── cmake
+-    ├── rocprofiler
+-    │   └── plugin
+-    ├── rocprofiler-register
+-    ├── rocprofiler-sdk
+-    │   └── samples
+-    └── rocprofiler-sdk-roctx
++    └── rpp
++        └── test
+#+end_example
+

@@ -1,0 +1,182 @@
+:PROPERTIES:
+:ID:       c79795f9-4953-4662-8177-a1d2151d62ba
+:END:
+#+TITLE: NixOS: Trying ROCm Tensorflow & JAX
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
+* Notes
+** UV
+*** Setup
+
+Setup the =pyproject.toml=
+
+#+begin_example toml
+[project]
+name = "uvtf"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[[tool.uv.index]]
+name = "rocm-manylinux"
+url = "https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4"
+explicity = true
+
+[tool.uv.sources]
+tensorflow-rocm = [{ index = "rocm-manylinux" }]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.1.0",
+]
+
+# uv pip install torch --torch-backend=auto
+# UV_TORCH_BACKEND=auto uv pip install torch
+#+end_example
+
+Copy a template =main.py=
+
+#+begin_src python
+def main(): print("Hello from uvtorch!")
+if __name__ == "__main__": main()
+#+end_src
+
+Needed to change to =python3.12= to get wheels from the =rocm/manylinux= repo
+
+
+#+begin_src shell
+uv pip install tensorflow-rocm==2.18.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4 --upgrade
+#+end_src
+
+** NixOS Native
+
+idk where to start really
+
+** Podman
+:PROPERTIES:
+:header-args+: :var rocmAmdTest=(or (bound-and-true-p ob@nixos_trying_rocm_tensorflow_jax) (setq ob@nixos_trying_rocm_tensorflow_jax "/data/ml/rocm-amd-test"))
+:header-args+: :var vrocm="6.4.2" vpython="3.12" vtf="2.18" vjax="0.4.35"
+:header-args+: :dir (identity ob@nixos_trying_rocm_tensorflow_jax)
+:END:
+
+*** Setup
+
+#+name: imgtf
+#+begin_src emacs-lisp
+;; :noweb-ref imgtf
+(format "rocm/tensorflow:rocm%s-py%s-tf%s-dev" vrocm vpython vtf)
+#+end_src
+
+#+RESULTS: imgtf
+: rocm/tensorflow:rocm6.4.2-py3.12-tf2.18-dev
+
+#+name: imgjax
+#+begin_src emacs-lisp
+;; :noweb-ref imgjax
+(format "rocm/jax:rocm%s-jax%s-py3.12" vrocm vjax vpython)
+#+end_src
+
+#+RESULTS: imgjax
+: rocm/jax:rocm6.4.2-jax0.4.35-py3.12
+
+#+begin_src shell
+# probably needs to run under the system
+echo podman pull $imgtf
+#+end_src
+
+*** Tensorflow
+
+compose
+
+#+headers: :comments no :noweb yes
+#+begin_src yaml :tangle (expand-file-name "compose.yml" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
+version: "3"
+services:
+  rocm:
+    image: <<imgtf()>>
+    container_name: dc-rocm_amd_tf
+    ports:
+      - "8080:80"
+    # ports:
+    #   - "8080:80"
+    environment:
+      - "CUPY_INSTALL_USE_HIP=1"
+      - "ROCM_HOME=/opt/rocm"
+      - "HCC_AMDGPU_TARGET=gfx1030"
+      - "HSA_OVERRIDE_GFX_VERSION=10.3.0"
+    volumes:
+      - $(pwd)/tf_jax:/tf_jax
+#+end_src
+
+Run
+
+#+headers: :shebang "#!/usr/bin/env bash" :comments no :noweb yes :tangle-mode (identity #o744)
+#+begin_src shell :tangle (expand-file-name "startrocmtf.sh" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
+shm_size=16G
+
+# conflict: --ipc=host & --shm-size $shm_size
+podman run -it --replace \
+    --network=host \
+    --device=/dev/kfd \
+    --device=/dev/dri \
+    --ipc=host \
+    --group-add video \
+    --cap-add=SYS_PTRACE \
+    --security-opt seccomp=unconfined \
+    -e 'HSA_OVERRIDE_GFX_VERSION=10.3.0' \
+    -v $(pwd)/tf:/tf \
+    --name dc-rocm_amd_tf_test \
+    <<imgtf()>> /bin/bash
+#+end_src
+
+No AVX512?! watt?! (seriously though. binary open/close, erode/dialate can
+benefit from that... but i'm thinking about things in)
+
+#+begin_quote
+2026-01-08 08:38:54.125807: I tensorflow/core/platform/cpu_feature_guard.cc:210] This TensorFlow binary is optimized to use available CPU instructions in performance-critical operations.
+To enable the following instructions: SSE3 SSE4.1 SSE4.2 AVX AVX2 FMA, in other operations, rebuild TensorFlow with the appropriate compiler flags.
+#+end_quote
+*** JAX
+
+#+headers: :comments no :noweb yes
+#+begin_src yaml :tangle (expand-file-name "jax-compose.yml" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
+version: "3"
+services:
+  rocm:
+    image: <<imgjax()>>
+    container_name: dc-rocm_amd_jax
+    # ports:
+    #   - "8080:80"
+    environment:
+      - "CUPY_INSTALL_USE_HIP=1"
+      - "ROCM_HOME=/opt/rocm"
+      - "HCC_AMDGPU_TARGET=gfx1030"
+      - "HSA_OVERRIDE_GFX_VERSION=10.3.0"
+    volumes:
+      - $(pwd)/tf_jax:/tf_jax
+#+end_src
+
+
+#+headers: :shebang "#!/usr/bin/env bash" :comments no :noweb yes :tangle-mode (identity #o744)
+#+begin_src shell :tangle (expand-file-name "startrocmjax.sh" ob@nixos_trying_rocm_tensorflow_jax)
+shm_size=16G
+
+# conflict: --ipc=host & --shm-size $shm_size
+podman run -it --replace \
+    --network=host \
+    --device=/dev/kfd \
+    --device=/dev/dri \
+    --ipc=host \
+    --group-add video \
+    --cap-add=SYS_PTRACE \
+    --security-opt seccomp=unconfined \
+    -e 'HSA_OVERRIDE_GFX_VERSION=10.3.0' \
+    -v $(pwd)/tf_jax:/tf_jax \
+    --name dc-rocm_amd_jax_test \
+    <<imgjax()>> /bin/bash
+#+end_src
+
