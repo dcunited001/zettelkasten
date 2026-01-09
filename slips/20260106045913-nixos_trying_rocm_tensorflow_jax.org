@@ -4,15 +4,23 @@
 #+TITLE: NixOS: Trying ROCm Tensorflow & JAX
 #+CATEGORY: slips
 #+TAGS:
+#+PROPERTY: header-args:jupyter-python+ :kernel python3 :session /jpy::nixos_trying_rocm_tensorflow_jax
+#+PROPERTY: header-args+ :var jpvol=(setq-local jpvol "/nb")
+#+PROPERTY: header-args+ :var jpdir=(setq-local jpdir (expand-file-name (dc/org-roam-get-slug) jpvol))
 
 * Roam
-
++ [[id:4c629c53-91b5-45eb-bb45-7dd0aca51123][Tensorflow]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
 
 * Resources
 ** AMD Blogs
 
-+ [[https://github.com/ROCm/rocm-blogs/blob/3e9ad9a0f52fa029731b0978e77a6070afe542ab/blogs/artificial-intelligence/reinforcement-learning-gym/README.md][Reinforcement Gymnasium]] includes
++ [[https://github.com/ROCm/rocm-blogs/blob/3e9ad9a0f52fa029731b0978e77a6070afe542ab/blogs/artificial-intelligence/reinforcement-learning-gym/README.md][Reinforcement Gymnasium]]
 + Spack Installation includes a [[https://github.com/ROCm/rocm-blogs/blob/3e9ad9a0f52fa029731b0978e77a6070afe542ab/blogs/software-tools-optimization/spack-installation/README.md#rocm-component-dependencies][handy dependency matrix for ROCm Components]]
++ [[https://rocm.blogs.amd.com/software-tools-optimization/tf_profiler/README.html][TensorFlow Profiler in practice: Optimizing TensorFlow models on AMD GPUs]]
+** Tensorflow
++ [[https://github.com/tensorflow/metadata][tensorflow/metadata]]
 
 * Notes
 
@@ -27,6 +35,56 @@ just magically came up in coversation once in idk the past 5 or so years.
 Seems to run:
 
 + [[https://www.tensorflow.org/tutorials/quickstart/advanced][MNIST Keras API Example]]
+
+** Babel
+
+Currently known servers
+
+#+begin_src emacs-lisp
+jupyter-server-kernel-names
+#+end_src
+
+Server's currently known kernel names
+
+#+begin_src emacs-lisp
+(jupyter-server-has-kernelspec-p (nth 0 (jupyter-servers)) "python3")
+#+end_src
+
+Tramp url's to jupyter host can be tested with =/jpy:localhost#8888:NAME=
+
+#+begin_quote
+When connecting to an existing kernel, i.e. _when_ =NAME= in =/jpy::NAME= is the =ID= of
+a kernel, the =:kernel= header argument must match the name of the kernel’s
+kernelspec.
+#+end_quote
+
+* K3D
+
+write a variable
+
+#+begin_src jupyter-python :results output file :file "img/foo.png" :async t
+foo=2+2
+#+end_src
+
+#+begin_src jupyter-python
+with open("nixos_trying_rocm_tensorflow_jax.html",'w') as fp:
+    fp.write(plot.get_snapshot())
+#+end_src
+
+#+RESULTS:
+
+write an image
+
+#+begin_src jupyter-python :results output file :file "img/foo.png" :async t
+import base64
+import binascii
+# file :file = output
+#
+plot.fetch_screenshot()
+print(base64.b64decode(plot.screenshot)
+# base64.decode(binascii.a2b(plot.screenshot)
+# print(f"data:image/png;base64,{plot.screenshot}")
+#+end_src
 
 * Tensorflow
 
@@ -59,6 +117,8 @@ if gpus:
     print(e)
 #+end_src
 
+#+RESULTS:
+
 *** Memory Growth
 
 #+begin_src python
@@ -74,6 +134,8 @@ if gpus:
     # Memory growth must be set before GPUs have been initialized
     print(e)
 #+end_src
+
+#+RESULTS:
 
 * Environments
 ** UV
@@ -114,12 +176,17 @@ def main(): print("Hello from uvtorch!")
 if __name__ == "__main__": main()
 #+end_src
 
+#+RESULTS:
+: None
+
 Needed to change to =python3.12= to get wheels from the =rocm/manylinux= repo
 
 
 #+begin_src shell
 uv pip install tensorflow-rocm==2.18.1 -f https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4 --upgrade
 #+end_src
+
+#+RESULTS:
 
 ** NixOS Native
 
@@ -138,7 +205,10 @@ idk where to start really
   include =jupyterlab= with a few dependencies.
 + [[https://github.com/ROCm/taichi/commit/1a6520a533bf127e760eefdc49accfd29728cce9#diff-21cfa228c69f2aa456d76adb243bd3a9aa8e35d05cca8a18c744b354cd73c817][ROCm/taichi]] has [[https://github.com/ROCm/taichi/commit/1a6520a533bf127e760eefdc49accfd29728cce9#diff-21cfa228c69f2aa456d76adb243bd3a9aa8e35d05cca8a18c744b354cd73c817][its multi-stage build-file added here]]. it's newer builds are
   ROCm 7.0. There are plenty of examples in [[https://github.com/ROCm/taichi/tree/master/python/taichi/examples][python/taichi/examples]]
-
+  - To circumvent the Docker/X11 thing, it is built with many multimedia
+    processing capabilities. e.g. the julia set [[https://rocm.blogs.amd.com/artificial-intelligence/taichi_mi300x/README.html#rocm-taichi][mp4 video]] here (and [[https://github.com/ROCm/rocm-blogs/blob/b14966e7d36a831b44022f87d1a1501d501ad322/blogs/artificial-intelligence/taichi_mi300x/README.md?plain=1#L284-L325][source]])
+  - Taichi has popup Qt plots. and jupyter's always an option, though IMO not
+    ideal for interactive coding (too much scrolling, too much browser/js)
 
 | [[https://hub.docker.com/r/rocm/jax-training][rocm/jax-training]] | includes XLA, JAX, Pytorch, TransformerEngine                   |
 | rocm/rocal        | for both TF & Torch. includes magick/ffmpeg, image manipulation |
@@ -207,7 +277,7 @@ Seems to work, but simulations aren't very fun without GUI
 
 Needs X11 to be passed through to get GUI.......
 
-#+begin_src dockerfile
+#+begin_src dockerfile :tangle (expand-file-name "Dockerfile.rocm-taichi" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
 FROM <<imgtaichi()>>
 
 ARG user=appuser
@@ -228,12 +298,13 @@ This would not be very difficult to package for nixos, actually.
 
 **** Tensorflow
 
-#+begin_src dockerfile :tangle (expand-file-name "compose.yml" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
+#+begin_src dockerfile :tangle (expand-file-name "Dockerfile.rocm-tf-jupyter" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
 FROM <<imgtf()>>
 
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN pip install jupyterlab
+RUN pip install k3d
 RUN pip install -U tensorflow-datasets
 RUN pip install matplotlib
 RUN pip install -U tensorboard_plugin_profile
@@ -241,29 +312,63 @@ RUN pip install -U tensorboard_plugin_profile
 WORKDIR /usr/src/app
 #+end_src
 
+Clone and copy src from example
+
+#+begin_src shell
+#d=$(mktemp -d)
+#git clone https://github.com/rocm/rocm-blogs $d/rcom-blogs
+#cp -r software-tools-optimization/tf_profiler/src ./tf
+#+end_src
+
+#+RESULTS:
+
 compose
 
 #+headers: :comments no :noweb yes
 #+begin_src yaml :tangle (expand-file-name "compose.yml" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
-version: "3"
+version: "3.8"
 services:
-  rocm:
-    image: <<imgtf()>>
-    container_name: dc-rocm_amd_tf
+  tf_prof:
+    # image: <<imgtf()>>
+    image: dc-tf_profiler
+    container_name: dc-rocm_amd_tf_profiler
+    volumes:
+      - ./tf:/usr/src/app
+      # - ../:/usr/src/app
+    workdir: /usr/src/app
+    build:
+      context: .
+      dockerfile: Dockerfile.rocm-tf-jupyter
+    devices:
+      - /dev/kfd
+      - /dev/dri
     ports:
-      - "8080:80"
-    # ports:
-    #   - "8080:80"
+      - "8888:8888"
+      - "6006:6006"
     environment:
       - "CUPY_INSTALL_USE_HIP=1"
       - "ROCM_HOME=/opt/rocm"
       - "HCC_AMDGPU_TARGET=gfx1030"
       - "HSA_OVERRIDE_GFX_VERSION=10.3.0"
-    volumes:
-      - $(pwd)/tf_jax:/tf_jax
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    ipc: host
+    group_add:
+      - video
+    shm_size: 8G
+    command: jupyter-lab --ip=0.0.0.0 --no-browser --allow-root --NotebookApp.token=''
 #+end_src
 
-Run
+Run tensorflow, tensorboard and jupyter
+
+#+begin_src shell
+podman compose build
+podman compose up
+#+end_src
+
+Run tf only
 
 #+headers: :shebang "#!/usr/bin/env bash" :comments no :noweb yes :tangle-mode (identity #o744)
 #+begin_src shell :tangle (expand-file-name "startrocmtf.sh" ob@nixos_trying_rocm_tensorflow_jax) :noweb yes
@@ -340,4 +445,3 @@ python3 -c "import jax.numpy as jnp; x = jnp.arange(5); print(x)" # [0 1 2 3 4]
 #+end_src
 
 Not dynamically MLIR'ing anything yet though
-***
