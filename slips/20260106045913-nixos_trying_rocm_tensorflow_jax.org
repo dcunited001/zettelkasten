@@ -66,6 +66,8 @@ write a variable
 foo=2+2
 #+end_src
 
+#+RESULTS:
+
 #+begin_src jupyter-python
 with open("nixos_trying_rocm_tensorflow_jax.html",'w') as fp:
     fp.write(plot.get_snapshot())
@@ -82,11 +84,82 @@ import binascii
 #
 plot.fetch_screenshot()
 print(base64.b64decode(plot.screenshot)
-# base64.decode(binascii.a2b(plot.screenshot)
-# print(f"data:image/png;base64,{plot.screenshot}")
+      # base64.decode(binascii.a2b(plot.screenshot)
+      # print(f"data:image/png;base64,{plot.screenshot}")
 #+end_src
 
 * Tensorflow
+
+#+begin_src jupyter-python :results output file :file "img/foo.png" :async t
+import tensorflow as tf
+print("TensorFlow version:", tf.__version__)
+
+from tensorflow.keras.layers import Dense, Flatten, Conv2D
+from tensorflow.keras import Model
+#+end_src
+
+#+begin_src jupyter-python :results output file :file "img/foo.png" :async t
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+  # Restrict TensorFlow to only allocate 1GB of memory on the first GPU
+  try:
+    tf.config.set_logical_device_configuration(
+      gpus[0],
+      [tf.config.LogicalDeviceConfiguration(memory_limit=1024)])
+    logical_gpus = tf.config.list_logical_devices('GPU')
+    print(len(gpus), "Physical GPUs,", len(logical_gpus), "Logical GPUs")
+  except RuntimeError as e:
+    # Virtual devices must be set before GPUs have been initialized
+    print(e)
+#+end_src
+
+#+RESULTS:
+: 1 Physical GPUs, 1 Logical GPUs
+: WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+: I0000 00:00:1767996340.596433      13 gpu_device.cc:2022] Created device /job:localhost/replica:0/task:0/device:GPU:0 with 1024 MB memory:  -> device: 0, name: AMD Radeon RX 6700 XT, pci bus id: 0000:0b:00.0
+
+#+begin_src jupyter-python :results output file :file "img/foo.png" :async t
+
+mnist = tf.keras.datasets.mnist
+
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+x_train, x_test = x_train / 255.0, x_test / 255.0
+model = tf.keras.models.Sequential([
+  tf.keras.layers.Flatten(input_shape=(28, 28)),
+  tf.keras.layers.Dense(128, activation='relu'),
+  tf.keras.layers.Dropout(0.2),
+  tf.keras.layers.Dense(10)
+])
+predictions = model(x_train[:1]).numpy()
+tf.nn.softmax(predictions).numpy()
+loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+loss_fn(y_train[:1], predictions).numpy()
+model.compile(optimizer='adam',
+              loss=loss_fn,
+              metrics=['accuracy'])
+model.fit(x_train, y_train, epochs=5)
+model.evaluate(x_test,  y_test, verbose=2)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+Downloading data from https://storage.googleapis.com/tensorflow/tf-keras-datasets/mnist.npz
+/usr/local/lib/python3.12/site-packages/keras/src/layers/reshaping/flatten.py:37: UserWarning: Do not pass an `input_shape`/`input_dim` argument to a layer. When using Sequential models, prefer using an `Input(shape)` object as the first layer in the model instead.
+  super().__init__(**kwargs)
+Epoch 1/5
+2026-01-09 22:06:31.458106: W external/local_xla/xla/tsl/framework/cpu_allocator_impl.cc:83] Allocation of 188160000 exceeds 10% of free system memory.
+2026-01-09 22:06:31.707436: W external/local_xla/xla/tsl/framework/cpu_allocator_impl.cc:83] Allocation of 188160000 exceeds 10% of free system memory.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1767996392.202636     959 service.cc:148] XLA service 0x7f9d1c009770 initialized for platform ROCM (this does not guarantee that XLA will be used). Devices:
+I0000 00:00:1767996392.202666     959 service.cc:156]   StreamExecutor device (0): AMD Radeon RX 6700 XT, AMDGPU ISA version: gfx1030
+2026-01-09 22:06:32.214364: I tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.cc:268] disabling MLIR crash reproducer, set env var `MLIR_CRASH_REPRODUCER_DIRECTORY` to enable.
+Epoch 2/5
+Epoch 3/5
+Epoch 4/5
+Epoch 5/5
+313/313 - 2s - 5ms/step - accuracy: 0.9761 - loss: 0.0742
+#+end_example
+
 
 ** GPU Memory
 

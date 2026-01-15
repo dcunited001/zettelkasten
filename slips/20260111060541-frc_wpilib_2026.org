@@ -1,0 +1,568 @@
+:PROPERTIES:
+:ID:       d8f56dce-63c2-4345-9c57-e9c13274445f
+:END:
+#+TITLE: FRC: WPILib 2026
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
+
+* Resources
++ [[https://www.firstinspires.org/resources/library/frc/season-materials?view=calendar][2026 Season Materials]]
++ [[https://firstfrc.blob.core.windows.net/frc2026/KitBot/2026-kitbot-java-guide.pdf][2026 KitBot Java Software Guide]]
+
+** Game Field
+
+Dimension Drawings Useful Pages
+
+** CAD
+
++ [[https://onshape4frc.com/cad-library][MKCAD parts library]] (includes parts masses)
+
+* Notes
+
+** Project
++ needed to change =gradlew= to executable
+** Advantage Scope
+** Field
+
+*** STL Export of regions
+
+After trying a dozen ways to export, I overlayed some sketches with a small
+extrusion. and exported to STL. I couldn't get drawings to export to SVG without
+lighting being rendered. It was messy anyways.
+
+#+begin_src python
+import numpy as np
+import stl as mesh
+
+# data is centered and reversed from the "blue always" coord system
+t = np.eye(4)
+t[:,3] = [-325.611, -158.844, 0, 1] 
+s = np.array([[-1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,1]])
+f = 'blue zone'
+
+
+upward_triangles = [
+  (m.v0[i],m.v1[i],m.v2[i])
+  for i in range(numpy.shape(m.units)[0])
+  if m.units[i][2] == -1 ]
+
+def upward_indices(m, up=[0, 0, 1]):
+  n = numpy.shape(m.units)[0]
+  # risky unless ints
+  tris = [ i for i in range(n) if np.array_equal(m.units[i], up) ]
+  nn = len(tris)
+  newdata = numpy.zeros(nn, dtype=mesh.Mesh.dtype)
+  for i in range(nn):
+    newdata['vectors'][i] = np.vstack([
+      m.v0[tris[i]],
+      m.v1[tris[i]],
+      m.v2[tris[i]]])
+    newmesh = mesh.Mesh(newdata, remove_empty_areas=False)
+  return newmesh
+#+end_src
+
+#+begin_quote
+$#@!, it assumes normals based on winding?.....
+
+-- signed, distanced fields
+
+([[https://arxiv.org/pdf/1603.03788][A Primer on the Signature Method in Machine Learning]])
+#+end_quote
+
++ fix normals
++ Process scale/translation
+
+#+begin_src python
+
+
+#+end_src
+
+** WPILib
+*** Native
++ [[https://github.com/wpilibsuite/gradlejni][wpilibsuite/gradle-jni]] template for vendors
++ [[https://github.com/wpilibsuite/wpilib-tool-plugin][wpilibsuite/wpilib-tool-plugin]]
+  - also [[https://github.com/PhotonVision/wpilib-tool-plugin][PhotonVision/wpilib-tool-plugin]] as org.photonvision.WpilibTools in the
+    =build.gradle= (for JNI native extensions in =rknn_jni= and =rubik_jni= that get
+    built into photonlib)
+*** PhotonVision
+
++ [[https://github.com/PhotonVision/photonvision/issues/2275][PhotonVision/photonvision#2275]] "flaky opi builds" maybe fixed by [[https://github.com/PhotonVision/photon-image-runner/pulls/6][PhotonVision/photon-image-runner#6]]
+
+*** AdvantageKit
+Templates are found in the release bundle.
+
+#+begin_src shell
+# diff skeleton templates against others
+k=AdvantageKit_SkeletonTemplate
+for z in AdvantageKit_*.zip; do
+     f=${z%.zip}
+     if [[ "$f" != "$k" ]]; then
+         diff -Nur $k $f > ${k#AdvantageKit_}-${f#AdvantageKit_}.patch 
+     fi
+done
+#+end_src
+** Emacs
+
+*** VSCode Functionality & Gradle Tasks
+
++ Metadata for VSCode interactivity is defined in =package.json= (i feel like i've
+  noted this elsewhere lol).
++ It defines a =wpilibgradle= type of [[https://code.visualstudio.com/api/references/vscode-api#Task][vscode.Task]], which is used here in
+  [[https://github.com/wpilibsuite/vscode-wpilib/blob/f5010f31148475ad1f8ff4f19ee7ada083c9826a/vscode-wpilib/src/executor.ts#L67][vscode-wpilib]]. =IExecuteAPI.execute= calls that via [[gradleRun][gradleRun]] and a few other
+  places.
+
+gradleRun
+
+| args        |                        |
+| rootDir     |                        |
+| workspace   | vscode.WorkspaceFolder |
+| name        |                        |
+| executeApi  | IExecuteAPI            |
+| preferences | IPreferences           |
+
+Tasks
+
+| InstallAllTools |
+
+Just a few hours ago, =gradleRun()= wasn't calling
+=setExecutePermissions(path.join(workspace.uri.fsPath, 'gradlew'));=
+
+#+begin_src dot :file img/frc/vscode-wpilib.png
+digraph G {
+    "cppprovider/\napiprovider.ts" -> "APIProvider" -> "generateVsCodeConfig"
+    "toolapi.ts" -> "ToolAPI" -> "InstallToolsFromGradle()"
+    { "java/", "cpp/" } -> "buildtest.ts" -> { "CodeBuilder", "CodeTester" } -> ".runBuilder()"
+    { "cpp/", "java/" } -> "deploydebug.ts" -> { "DebugCodeDeployer", "DeployCodeDeployer", "SimulateCodeDeployer" } -> ".runDeployer()"
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/frc/vscode-wpilib.png]]
+
+| lang     | impl                 | gradle task                 | extra | function args                 | optional          |
+|----------+----------------------+-----------------------------+-------+-------------------------------+-------------------|
+| java/cpp | DebugCodeDeployer    | deploy                      |       | -PdebugMode -PteamNumber=1234 | -xcheck --offline |
+| java/cpp | DeployCodeDeployer   | deploy                      |       | -PteamNumber=1234             | -xcheck --offline |
+| java     | SimulateCodeDeployer | simulateExternalJavaRelease |       |                               | -xcheck --offline |
+| cpp      | SimulateCodeDeployer | simulateExternalNativeDebug |       |                               | -xcheck --offline |
+| java     | CodeBuilder          | build                       |       |                               |                   |
+| cpp      | CodeBuilder          | build generateVsCodeConfig  |       |                               |                   |
+| java     | CodeTester           | test                        |       |                               |                   |
+|          | CodeTester           | check                       |       |                               |                   |
+|          | vscommands.ts        | clean.ts                    |       |                               |                   |
+|          | InstallAllTools      | toolapi.ts                  |       |                               |                   |
+|          | generateVsCodeConfig |                             |       |                               |                   |
+
++ some commands read =debug_info.json=, which isn't created when running =./gradlew
+  simulateJava= only =simulateExternalJavaRelease= (for java).
++ "extra" args are from the caller. idk whether any commands actually use this.
+  There's probably a way to pass them in via =.vscode/tasks.json= but idk what can
+  be done.
++ [[https://github.com/wpilibsuite/vscode-wpilib/blob/f5010f31148475ad1f8ff4f19ee7ada083c9826a/vscode-wpilib/src/cpp/deploydebug.ts#L133-L198][src/cpp/deploydebug.ts]] sets up a =gdb= session by iterating over a list of
+  artifacts' built libraries.
++ =generateVsCodeConfig= is called by =runGradleRefresh()=
+
+not complete..
+
+**** Native VSCode commands
+
+| setContext | isWPILibProvidedCpp | workbench.action.reloadWindow | java.projectConfiguration.update |
+| openFolder | revealFileInOS      | workbench.action.quickOpen    |                                  |
+
+The Java LSP project configuration is managed [[https://github.com/wpilibsuite/vscode-wpilib/blob/f5010f31148475ad1f8ff4f19ee7ada083c9826a/vscode-wpilib/src/java/java.ts#L54-L81][here]]
+
+**** WPILib Commands
+
+| wpilib.refreshVendordeps |                              |
+| extension.showWebsite    | used to show vendordeps view |
+
+wpilibcore.*
+
+| buildCode        | debugCode               | manageVendorLibs     | selectCppBinaryTypes | setLanguage                       | showLogFolder  | setStopSimulationOnEntry |
+| cancelTasks      | deployCode              | openApiDocumentation | selectCppToolchain   | setOffline                        | simulateCode   | setTeamNumber            |
+| changeDesktop    | getProjectInformation   | openCommandPalette   | setAutoSave          | setSelectDefaultSimulateExtension | simulateHwCode | setUseWinDbgX            |
+| checkForUpdates  | help                    | refreshCppProperties | runGradleClean       | setSkipSelectSimulateExtension    | startRioLog    |                          |
+| createCommand    | importGradle2020Project | resetAutoUpdate      | setDeployOffline     | setSkipTests                      | startTool      |                          |
+| createNewProject | installGradleTools      | runGradleCommand     | setJavaHome          | setStartRioLog                    | testCode       |                          |
+
+
+*** Project Setup
+
+#+begin_quote
+Eventually I installed jdtls from nixos. And used the =add-advice= below. It's
+still not a great fit. There's not a lot of IDE functionality either way
+(refactors or running gradle tasks). It would be tough to replicate the
+extension's functionality. For gradle tasks, a =Justfile= would be easier. With
+some tweaks, =gradle= _may_ work in compilation mode, but i haven't tried it...
+
+Also, it's _necessary_ to stop emacs' =jdtls= before starting VS Code and
+vice-versa -- otherwise both will be confused and =gradlew clean= is likely
+necessary. That's one more piece of complexity that needs juggling.
+#+end_quote
+
++ See [[https://www.reddit.com/r/emacs/comments/j4xz2w/got_lspjava_working_with_gradle_and_java_15_on/][reddit post about gradle/java]]
+
+Create =.mise.toml=. Use =envrc.el= if possible, tho =direnv= isn't as nice as mise.
+
+#+begin_src toml
+[env]
+JAVA_HOME="{{env.HOME}}/wpilib/2026/jdk"
+HALSIM_EXTENSIONS="{{config_root}}/build/jni/release/libhalsim_gui.so"
+_.path="{{env.JAVA_HOME}}/bin"
+#+end_src
+
+Run =mise trust= and ensure the vars are correct.
+
++Use =.dir-locals.el= to ensure the correct =jdtls= runs, etc...+
+
+Ensure the correct java runtime is selected:
+
+#+begin_src emacs-lisp
+(use-package! java-mode :defer t)
+(use-package! java-ts-mode :defer t)
+
+(after! treesit
+  (when (treesit-language-available-p 'java)
+    (add-to-list 'major-mode-remap-alist '(java-mode . java-ts-mode))))
+
+;; - https://github.com/emacs-lsp/lsp-java/issues/487
+;; - https://github.com/emacs-lsp/lsp-java/pull/497
+(defun dc/lsp-java-server-install-dir ()
+  "Return install dir for `jdtls'"
+  (cond (is-guix-system (getenv "GUIX_ENVIRONMENT")) ;; not in guix yet
+        (is-nixos (expand-file-name ".nix-profile" (getenv "HOME")))
+        (t (expand-file-name ".nix-profile" (getenv "HOME")))))
+
+(defun java-server-subdir-for-jar (orig &rest args)
+  "Add nix subdir to `lsp-java-server-install-dir' so lsp test succeeds."
+  (let ((lsp-java-server-install-dir
+         (expand-file-name "./share/java/jdtls/" lsp-java-server-install-dir)))
+    (apply orig args)))
+
+;; After getting nix's jdtls running, i cycled the server/jdtls until it had
+;; accepted `M-x lsp-java-load-vscode-workspace'. nav-to-reference
+;; works. After `gradlew clean' and `M-x lsp-java-build-project', then
+;; `./gradlew simulateJava' seems to work.
+(use-package! lsp-java
+  :defer t
+  :config
+  (advice-add 'lsp-java--locate-server-jar :around #'java-server-subdir-for-jar)
+  (setq lsp-semgrep-languages (delete "java" lsp-semgrep-languages)
+
+        lsp-java-jdt-ls-command "jdtls"
+        lsp-java-jdt-ls-prefer-native-command t
+        lsp-java-server-install-dir (dc/lsp-java-server-install-dir)))
+
+;; using .dir-locals.el for the lsp hook is painful
+(defun dc/lsp-java-toggle-hook ()
+  (interactive)
+  (if (memq #'lsp java-ts-mode-hook)
+      (remove-hook 'java-ts-mode-hook #'lsp)
+    (add-hook 'java-ts-mode-hook #'lsp)))
+
+;; lsp-java-configuration-runtimes
+;; `[(:name "OpenJDK-17"
+;;    :path ,(expand-file-name "wpilib/2026/jdk" (getenv "HOME"))
+;;    :default t)])
+#+end_src
+
+**** Update project configuration from =.vscode/settings.json=
+Or run =M-x lsp-java-load-vscode-workspace=
+
+#+begin_src emacs-lisp
+;; apparently it's a command  and select
+;;
+;; this makes the OpenJDK-17 config redundant and configures the running server
+(lsp-java-load-vscode-workspace
+ (projectile-locate-dominating-file
+  (buffer-file-name (current-buffer)) ".vscode/settings.json") t)
+#+end_src
+
+#+begin_quote
+prefer just =(setq those-vars "for the love of god")= over =.dir-locals.el= here. I
+really can't stand LSP.
+#+end_quote
+
++ Run =M-x lsp-install-server= for =jdtls= and check =lsp-server-install-dir=
++ Check =lsp-java-import-gradle-wrapper-enabled=
++ Nav to =build.gradle= and run =M-x lsp-java-update-project-configuration=.
+
+
+**** Better Approach
+
++ Use =eglot= and explicitly set the java parameters in =.dir-locals.el=
+  - =grep -e ':lsp-path "java\..*"' path/to/lsp-mode.el= to find the LSP
+    configuration schema names
++ Use =compilation-mode= to run gradle tasks. This is better with =project.el=.
+  - apparently, [[https://www.aarsen.me/posts/2025-04-26-emacs-gradle-double-diagnostics.html][gradle output can confuse emacs]], though i still haven't tested
+    this
+
+**** Troubleshooting
+
++ =(setq lsp-log-io t)=, run =M-x lsp-workspace-show-log=
+
+***** Logs
+
+=jdtls= error logs don't show up in the buffer
+
++ even though ~--jvm-arg=-Dlog.level=ALL~ is set)...
++ They show up in =$EMACSDIR/.local/etc/eclipse.jdt.ls/config_linux/$time.log=
+
+=lsp-mode= can make the CLI invocation a bit opaque (it's not in the logs and if
+the process is short-lived...). Run =(lsp-java--ls-command)= in a project java
+buffer.
+
+The "helpful lsp-mode auto-installer" downloaded the wrong =jdtls= jar.
+
++ Use =(lsp-java--get-java-version)= to validate it finds the correct java version
++ Apparently, [[https://github.com/eclipse-jdtls/eclipse.jdt.ls/pull/3358#issuecomment-2729368625][a separate version of java can start the runtime]] ... but there's
+  no separate configuration surface for gradle tasks.
+
+Nix has a wrapper or whatver for =jdtls= that ensures it starts with a specific
+JVM (without setting =JAVA_HOME=...i think)
+
+#+begin_src shell
+nix profile add nixpkgs#jdt-language-server
+#+end_src
+
+After this, i switched to eglot
+
+***** eglot setup
+
+
+***** lombok setup
+
+Using =JAVA_TOOL_OPTIONS=. I just added =nixpkgs#lombok= to the profile
+
+#+begin_src shell
+# From https://github.com/skybert/skybert-talks/blob/main/emacs-java-eglot/slides.md?plain=1
+mvn dependency:list |
+      grep 'module lombok' |
+      awk '{print $2}' |
+      cut -d: -f2,4 |
+      tr ':' '-' |
+      sed -r 's#(.*)#\1.jar#' |
+      xargs find ~/.m2/repository/ -name
+# $HOME/.m2/repository/org/projectlombok/lombok/1.18.34/lombok-1.18.34.jar
+export JAVA_TOOL_OPTIONS="$HOME/.m2/repository/org/projectlombok/lombok/1.18.34/lombok-1.18.34.jar"
+#+end_src
+
+Or with ~export JDTLS_JVM_ARGS="-Xms1g -Xmx2g -javaagent:/path/to/lombok.jar"~
+
+***** .dir-locals.el
+
+#+begin_src emacs-lisp
+;; NOTE: IF YOU HAVE PROJECTS ENVIRONMENT-SPECIFIC NEEDS
+;; ... _DO NOT_ USE LSP-JAVA. USE EGLOT
+
+;; - This .dir-locals.el will prompt you for EVERY file you open.
+
+;;   - the eval is a problem, but so are the variables. the main reason i'm
+;;     setting them is to avoid downloading arbitrary blobs and auto-loading LSP
+;;     mode everywhere.
+;;   - i seriously cannot stand LSP whatsoever. it is NOT essential. most scripting
+;;     languages have a repl.
+
+((nil . ((lsp-java-jdt-ls-command . "jdtls") ;; may not be correct
+         ;; this is deprecated
+         ;; (lsp-java-server-install-dir . ".dev/eclipse.jdt.ls")
+         (lsp-server-install-dir . ".dev/eclipse.jdt.ls")
+         (lsp-java-java-path . "/home/me/wpilib/2026/jdk/bin/java")))
+
+ ;; do NOT set this while troubleshooting. LSP is a PITA to debug. when
+ ;; lsp-log-io is set, it autorestarts servers. to be sure that dir-locals has
+ ;; taken effect, you need to kill buffers and use `C-h v' to check.
+ ;; or use M-x customize-dirlocals (and it reapplies them.)
+ (java-ts-mode . ((eval . (add-hook 'java-ts-mode-hook #'lsp)))))
+
+;; - mise doesn't affect lsp-mode.el processes. mise.el requires specific
+;;   configs for that, but they can't really be project-specific, yet
+;;   - envrc.el would work for that
+#+end_src
+***** Java Agents
+** VSCode
+*** Extensions
+**** RedHat Java Upgrade Glitch
+
+#+begin_quote
+went to search & report this, started typing a response to an existing issue,
+then realized it was jan 3rd 2025 (on the 2025 beta project...)
+
+this is probably a one-off
+#+end_quote
+
+Sticky cache issue after upgrading RedHat LSP.
+
+#+begin_quote
+The specified initialization script
+=/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle=
+does not exist.
+#+end_quote
+
++ Survived multiple =gradle clean= (and vendor dep refreshes, iirc).
++ Not quite sure how to reproduce. I'm Unsure of whether some logic in
+  wpilibsuite/vscode-wpilib wasn't firing.
++ Fix: found =settings.json= (seemed to have changes; can't recall), made a small
+  change, then undid all changes, saved. This forced a refresh of some cache in
+  =$WPILIBDIR/vscode/VSCode-linux-x64=
+
+#+begin_quote
+WPILib Information:
+Project Version: 2026.1.1
+VS Code Version: 1.105.1
+WPILib Extension Version: 2026.1.1
+Project Year: 2026
+Language: java
+C++ Extension Version: 1.29.3
+Java Extension Version: 1.51.0
+Java Debug Extension Version: 0.58.5
+Java Dependencies Extension Version 0.27.0
+Java Version: 17
+Java Location: $HOME/wpilib/2026/jdk
+Vendor Libraries:
+    AdvantageKit (26.0.0)
+    ChoreoLib (2026.0.1)
+    PathplannerLib (2026.1.2)
+    CTRE-Phoenix (v6) (26.1.0)
+    REVLib (2026.0.0)
+    WPILib-New-Commands (1.0.0)
+    XRP-Vendordep (1.0.0)
+#+end_quote
+
+#+begin_example grep
+Exported grep results:
+
+VSCode-linux-x64/data/extensions/redhat.java-1.51.0-linux-x64/changelog.md:163:## 1.38.0 (December 19th, 2024)
+VSCode-linux-x64/data/user-data/logs/20260111T235740/sharedprocess.log:2:2026-01-11 23:57:42.160 [info] Deleted marked for removal extension from disk redhat.java /$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/extensions/redhat.java-1.38.0
+VSCode-linux-x64/data/user-data/logs/20260111T235740/window1/exthost/output_logging_20260111T235742/1-Language Support for Java.log:1599:Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/logs/20260111T235740/window1/exthost/output_logging_20260111T235742/1-Language Support for Java.log:1634:Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/logs/20260111T235740/window1/exthost/output_logging_20260111T235742/1-Language Support for Java.log:1691:Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+.....
+.....
+VSCode-linux-x64/data/user-data/logs/20260111T235740/window1/exthost/output_logging_20260111T235742/1-Language Support for Java.log:2507:Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/logs/20260111T235740/window1/exthost/output_logging_20260111T235742/1-Language Support for Java.log:2542:Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/logs/20260111T052815/sharedprocess.log:26:2026-01-11 13:35:55.113 [info] Marked extension as removed redhat.java-1.38.0
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-12:40:    "Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.\n" +
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-12:75:    "Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.\n" +
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-11:7:[Omitted long matching line]
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-11:17:[Omitted long matching line]
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-11:22:  message: 'Removing old folder in globalStorage : 1.38.0',
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-11:563:    "Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.\n" +
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-11:598:    "Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.\n" +
+.....
+.....
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-11:1400:    "Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.\n" +
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/client.log.2026-01-11:1435:    "Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.\n" +
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.log:3354:Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.log:3389:Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.log:3448:Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.log:3483:Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+.....
+......
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.log:4291:Caused by: org.gradle.internal.exceptions.LocationAwareException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.log:4326:Caused by: java.lang.IllegalArgumentException: The specified initialization script '/$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle' does not exist.
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.plugins/org.eclipse.core.resources/.history/5f/50189c5073ef001012baedc2e9d82098:1:arguments=--init-script /$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle --init-script /$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/con
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.plugins/org.eclipse.core.resources/.history/81/a02809031cef00101a46a2eb36f7426b:1:arguments=--init-script /$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle --init-script /$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/con
+VSCode-linux-x64/data/user-data/User/workspaceStorage/b44d8314fedca0ce89e624f1aac6087c/redhat.java/jdt_ws/.metadata/.plugins/org.eclipse.core.resources/.projects/xrp2026/.settings/org.eclipse.buildship.core.prefs:1:arguments=--init-script /$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle --init-script /$HOME/wpilib/2026/vscode/VSCode-linux-x64/data/user-data/User/globalStorage/redhat.java/1.38.0/con
+#+end_example
+
+
+*** Remote Config
+
+Added =~/wpilib/2026/vscode/bin= to =PATH= to maybe run =code= when another host
+connects via VSCode....
+
++ Not 100% how VSCode's TRAMP clone functionality works. It's a bit opaque.
+
+*** WPILib Project Creator
+
+The "WPILib Project Creator" uses files from
+=wpilibjExamples/src/main/java/edu/wpi/first/wpilibj= in the =wpilibsuite/allwpilib=
+project.
+
+**** Examples/Templates
+
+=examples= & =templates= contain only seem to contain these changes
+
+#+begin_example diff
+     m_autonomousCommand = m_robot.getAutonomousCommand();
+ 
+     if (m_autonomousCommand != null) {
+-      m_autonomousCommand.schedule();
++      CommandScheduler.getInstance().schedule(m_autonomousCommand);
+     }
+   }
+ 
+#+end_example
+
+In these files:
+
+#+begin_verse
+.
+├── examples
+│   ├── drivedistanceoffboard
+│   │   └── Robot.java              
+│   ├── hatchbotinlined
+│   │   └── Robot.java                    
+│   ├── hatchbottraditional
+│   │   └── Robot.java                
+│   ├── mecanumcontrollercommand
+│   │   └── Robot.java           
+│   ├── rapidreactcommandbot
+│   │   └── Robot.java               
+│   ├── romireference
+│   │   └── Robot.java                      
+│   ├── selectcommand
+│   │   └── Robot.java                      
+│   ├── swervecontrollercommand
+│   │   └── Robot.java            
+│   ├── sysidroutine
+│   │   └── Robot.java                       
+│   └── xrpreference
+│       └── Robot.java
+└── templates
+    ├── commandbased
+    │   ├── commands
+    │   │   └── ExampleCommand.java    
+    │   └── Robot.java                      
+    ├── commandbasedskeleton
+    │   └── Robot.java              
+    ├── romicommandbased
+    │   ├── commands
+    │   │   └── ExampleCommand.java
+    │   └── Robot.java                  
+    └── xrpcommandbased
+        ├── commands
+        │   └── ExampleCommand.java 
+        └── Robot.java                   
+#+end_verse
+
+**** Snippets
+
+However, there does seem to be a new snippets system. Snippets are defined in
+this file =snippets/snippets.json=. For java, this file is only referenced in
+[[https://github.com/wpilibsuite/allwpilib/blob/b82d204525fa991db6f295634c8a324a2a7cdbe7/wpilibjExamples/build.gradle#L87][wpilibjExamples/build.gradle]]. I'm still not sure how this snippets system is
+used, since the VSCode extension doesn't include references to it.
+
+#+begin_verse
+.
+├── accelerometercollision
+├── accelerometerfilter
+├── adxlaccelerometers
+├── analogaccelerometer
+├── analogencoder
+├── analoginput
+├── analogpotentiometer
+├── analogtrigger
+├── builtinaccelerometer
+├── digitalinput
+├── dutycycleencoder
+├── encoder
+├── encoderdrive
+├── encoderhoming
+├── limitswitch          
+└── profiledpidfeedforward
+#+end_verse

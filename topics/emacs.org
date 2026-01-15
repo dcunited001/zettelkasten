@@ -314,6 +314,75 @@ idk... i didn't know what to expect. It is:
 + not coupled to the editor (at least, the state doesn't necessarily need to be
   managed by obtuse IPC that seriously lacked documentation everytime i looked)
 + trivially works remotely ... etc
+** Advice
+
+*** Reflection on advice to toggle on & off
+
+#+begin_src emacs-lisp
+
+(defun dc/toggle-bufler-switch-advice ()
+  "Toggle the `ace-window' advice function on `bufler-switch-buffer'"
+  (interactive)
+  (let* ((f 'bufler-switch-buffer)
+         ;; unused
+         (sf (symbol-function f))
+         (place :before)
+         (adf #'ace-select-window)
+         (is-advice (advice--p (advice--symbol-function f))))
+    (if is-advice
+        ;; is advice should be (advice oclosure), since it's interactive
+        (advice-remove f adf)
+      (advice-add f place adf))))
+
+(defun dc/toggle-advised-command (fsym place fn)
+  "Toggle an advised function `fn' on function symbol `fsym'."
+  ;; TODO: extend with keywords to more fully mirror the advice-add spec
+  (interactive)
+  ;; check args?
+  (let* ((is-advice (advice--p (advice--symbol-function fsym))))
+    (if is-advice
+        ;; is advice should be (advice oclosure), since it's interactive
+        (advice-remove fsym fn)
+      (advice-add fsym place fn))))
+
+;; doesn't quite work when focus is removed from help-buffer
+;; (dc/toggle-advised-command 'help-view-source :before #'ace-select-window)
+#+end_src
+
+**** Remove advice
+
+#+begin_src emacs-lisp
+(undefadvice! +org-babel-disable-async-maybe-a (fn &optional orig-fn arg info params)
+    "Use ob-comint where supported, disable async altogether where it isn't.
+
+We have access to two async backends: ob-comint or ob-async, which have
+different requirements. This advice tries to pick the best option between them,
+falling back to synchronous execution otherwise. Without this advice, they die
+with an error; terrible UX!
+
+Note: ob-comint support will only kick in for languages listed in
+`+org-babel-native-async-langs'.
+
+Also adds support for a `:sync' parameter to override `:async'."
+    :around #'ob-async-org-babel-execute-src-block
+    (ignore-errors (apply fn args)))
+#+end_src
+
+
+
+#+begin_src emacs-lisp
+;; TODO: parameterize bufler-switch-advice with: (f place before)
+;; as: dc/toggle-advised-command and dc/toggle-advised-function
+
+(let* ((f 'ob-async-org-babel-execute-src-block)
+       (this-advice (advice--symbol-function f))
+       (this-function (symbol-function f)))
+  (if (advice--p this-advice)
+      (advice-remove f #'+org-babel-disable-async-maybe-a))
+  ;; (pp this-advice)
+  ;; (pp this-function)
+  (pp (advice--symbol-function f)))
+#+end_src
 
 
 ** Lore
