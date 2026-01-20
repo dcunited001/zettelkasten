@@ -56,6 +56,7 @@ From nixpkgs
 
 ** WPILib
 + [[https://github.com/wpilibsuite/xrp-wpilib-firmware][wpilibsuite/xrp-wpilib-firmware]] see releases
+
 ** Example Projects
 + [[https://github.com/Pickles888/beanbot][Pickles888/beanbot]]
 + [[https://github.com/FRC8516/XRP-Robotics-Camp][FRC8516/XRP-Robotics-Camp]]
@@ -142,6 +143,48 @@ On linux, connecting here requires:
 
 + Browser permissions: serial access for (default: ask for site exception)
 + Device permissions:
+
+* Initial Setup
+** TODO type up notes
+** Components
+
+*** Servo
+
++ Range of motion is =180°=
+  - It's not in docs: it's sometimes difficult to find information if not enough
+    people are asking the question.
++ WPILib's XRP code constrains the angle value sent in Arm.java
+  - In the XRP reference project, the [[https://github.com/wpilibsuite/allwpilib/blob/dbffe6e8ac2443a47d8b63391ca3bc267d5a57dc/wpilibjExamples/src/main/java/edu/wpi/first/wpilibj/examples/xrpreference/subsystems/Arm.java#L33][Arm]] class creates an [[https://github.com/wpilibsuite/allwpilib/blob/dbffe6e8ac2443a47d8b63391ca3bc267d5a57dc/xrpVendordep/src/main/java/edu/wpi/first/wpilibj/xrp/XRPServo.java#L69][XRPServo]] object,
+    where the input is validated.
+  - If it didn't there are two problems:
+    - invalid mechanical states (for the gears or your design)
+    - generation of PWM signals the component isn't designed to handle
+
+The servo resets during (1) the Pico's boot and (2) the board's reset routine.
+Each method is different and defined in the firmware loaded on the XRP board.
+
++ By default, running a WPILibJ program will initializae the servo to =90°=.
++ To reset the servo:
+  - terminate your program & the simulator (otherwise the robot may reconnect)
+  - power the robot off. remove the arm -- the Pico must be off or the servo
+    will react to small movements
+  - power on the robot, push the reset button. when the lights finish blinking
+    it should have reset to =0°=.
+  - after adding the arm, ensure it has =180°= range of motion.
+  - power on the robot again. it runs the firmware check
+  - check the program code.
+
+
+
++ Avoid the need to adjust the servo manually: the gears are fragile.
++ Don't move the servo while it's connected: this generates back-EMF, which
+  can damage components.
++ Don't move the servo while the XRP is on: the motor will freak out and may
+  move to an invalid configuration (if the arm wasn't zeroed properly)
+  - The board signals to the motors with PWM. (I think) the back-EMF screw with
+    the encoded PWM causing noise (PWM waves have specific frequency components,
+    so the back-EMF garbles the signaled angle value).
+** Common/Early Issues
 
 * Advanced Connectivity
 
