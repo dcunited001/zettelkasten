@@ -1016,6 +1016,71 @@ Ideas (probably not useful)
     - or just extract class-specific content from =*.puml=
     - or by modifying the generated tests to output fields
 
+** Generating Projects
+
+The generated code is older style (no triggers and other newer features)
+
++ The spring templating system generates into =~/FRCProjects= using a =yaml= file as
+  input. Save a copy of this to regenerate or examine.
++ Copy the generated java path into a sibling path in =~/FRCProjects=
+  - then =git init= yada yada. or wait until comments/crlf removed
+
+#+begin_src shell
+# Remove code-generation comments
+sed -E 's/^ *\/\/ (BEGIN|END).*$//' $(fd '.*\.java')
+
+# copy some files (while VS Code is closed)
+cp $src/.vscode/{extensions,settings}.json $robotout/.vscode
+diff $src/build.gradle $robotout/build.gradle # removed the akit lines
+
+# Then reopen, ensure WPILib is updated
+./gradlew spotlessJavaApply -Dorg.gradle.java.home="/home/dc/wpilib/2026/jdk"
+#+end_src
+
++ Then update WPILib, add spotless gradle, format, =git add .=, commit again.
++ Generate UML or whatever. I'm just trying to get a feel for
+  mechanisms, sensors, subsystems, PID, etc.
+
+*** Wiring
+
+It also generates handy wiring tables
+
+=C-u M-! pandoc -f html -t org ~/wiring.html=
+
+**** DIO
+:PROPERTIES:
+:CUSTOM_ID: dio
+:END:
+|  # | Subsystem           | Sensor            |   |
+|----+---------------------+-------------------+---|
+|  0 | ultrasonicSubsystem | ultrasonicOutput  |   |
+|  1 | ultrasonicSubsystem | ultrasonicSensor  |   |
+|  2 | limitSubsystem      | indexedEncoder    |   |
+|  3 | ultrasonicSubsystem | ultrasonicSensor  |   |
+|  4 | limitSubsystem      | limitSwitch       |   |
+| 11 | pidSubsystem        | quadratureEncoder |   |
+| 12 | pidSubsystem        | quadratureEncoder |   |
+| 13 | limitSubsystem      | indexedEncoder    |   |
+| 14 | limitSubsystem      | indexedEncoder    |   |
+
+**** PWMs
+:PROPERTIES:
+:CUSTOM_ID: pwms
+:END:
+| # | Subsystem    | Motor     | Type       |
+|---+--------------+-----------+------------|
+| 0 | pidSubsystem | pidMotor1 | PWMTalonFX |
+| 1 | pidSubsystem | pidMotor2 | PWMTalonFX |
+
+**** CAN IDs
+:PROPERTIES:
+:CUSTOM_ID: can-ids
+:END:
+| ID | Subsystem    | Device              | Type              |
+|----+--------------+---------------------+-------------------|
+|  0 | pidSubsystem | PowerDistribution 1 | PowerDistribution |
+
+
 ** Robot Builder 2
 
 Same thing with a few more abstractions, but slightly less support for hardware

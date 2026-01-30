@@ -24,7 +24,87 @@ Dimension Drawings Useful Pages
 
 ** Project
 + needed to change =gradlew= to executable
+
 ** Advantage Scope
+
+*** Models
+
++ [[https://github.com/codertanish/Turret-FRC-Bot-For-AdvantageKit][codertanish/Turret-FRC-Bot-For-AdvantageKit]] assets for advantagescope to
+  visualize a simple Turret Bot
+
+** Code
+
++ [[https://github.com/Mattiemateo/2025-2026_FTC_DECODE/tree/main/TeamCode/src/main/java/org/firstinspires/ftc/teamcode][Mattiemateo/2025-2026_FTC_DECODE]] An FTC project with an auto-aiming turret
+
+** PhotonVision
+
++ [[https://github.com/PhotonVision/photonvision/issues/2275][PhotonVision/photonvision#2275]] "flaky opi builds" maybe fixed by [[https://github.com/PhotonVision/photon-image-runner/pulls/6][PhotonVision/photon-image-runner#6]]
++ [[https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html][OpenCV Camera Calibration]] for information on intrinsics and distortion coefficients
+
+*** Quirks
+
+**** General Usage
+
++ huge blindspots for single-cam robots... or when cams oriented same direction
+
+*** Targeting
+
+#+begin_quote
+I still don't really get this. I just thought you'd maybe add another camera
+(and have more confidence), then calculate from there.
+#+end_quote
+
++ Limelight has on-device pipelines, but still needs to be integrated into
+  =PhotonVision= for some reason.
++
+
+*** =VisionConstants=
+
+Any change at this point would be superficial
+
++ 1086 :: as fields on a =Camera= utilities class
++ 6236 :: uses =CameraConfig[]= records, but these cameras are treated
+  homogenously. If we use this, we need to find a way to differentiate the
+  Limelight camera
++ 254 :: uses a set of fields on =Constants.VisionConstants=
+
+*** =VisionSim= setup
+
+**** Culling for occlusion
+
++ Does not do backface culling. It renders reversed tags instead: may be CPU
+  graphics idk. These apriltags should not register, except maybe as partial
+  activations, but AFAIK, only [nearly] complete tags should register.
++ By default, it doesn't cull rendering for occlusion. You get more tag
+  activations than you should.
+
+**** Instantiation
+
+Should not be set up as a =static= singleton, since it should only be evaluated
+after the constructor is initialized (idk exactly when this happens for java)
+
+#+begin_src java
+// this is imported as static (idk about that)
+import static frc.robot.subsystems.vision.VisionConstants.aprilTagLayout;
+
+public class VisionIOPhotonVisionSim extends VisionIDPhotonVision {
+    // not this
+    // private static VisionSystemSim visionSim = new VisionSystemSim("main");
+     private static VisionSystemSim visionSim;
+
+    public VisionIOPhotonVisionSim(String name,
+                                   Transform3d robotToCamera,
+                                   Supplier<Pose2d> poseSupplier) {
+        super(name, robotToCamera);
+        // ...
+        if (visionSim == null) {
+            visionSim = new VisionSystemSim("main");
+            visionSim.addAprilTags(aprilTagLayout)
+        }
+        // ...
+    }
+}
+#+end_src
 ** Field
 
 *** STL Export of regions
@@ -39,7 +119,7 @@ import stl as mesh
 
 # data is centered and reversed from the "blue always" coord system
 t = np.eye(4)
-t[:,3] = [-325.611, -158.844, 0, 1] 
+t[:,3] = [-325.611, -158.844, 0, 1]
 s = np.array([[-1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,1]])
 f = 'blue zone'
 
@@ -86,11 +166,6 @@ $#@!, it assumes normals based on winding?.....
   - also [[https://github.com/PhotonVision/wpilib-tool-plugin][PhotonVision/wpilib-tool-plugin]] as org.photonvision.WpilibTools in the
     =build.gradle= (for JNI native extensions in =rknn_jni= and =rubik_jni= that get
     built into photonlib)
-*** PhotonVision
-
-+ [[https://github.com/PhotonVision/photonvision/issues/2275][PhotonVision/photonvision#2275]] "flaky opi builds" maybe fixed by [[https://github.com/PhotonVision/photon-image-runner/pulls/6][PhotonVision/photon-image-runner#6]]
-+ [[https://docs.opencv.org/4.x/dc/dbb/tutorial_py_calibration.html][OpenCV Camera Calibration]] for information on intrinsics and distortion coefficients
-
 *** AdvantageKit
 Templates are found in the release bundle.
 
@@ -100,7 +175,7 @@ k=AdvantageKit_SkeletonTemplate
 for z in AdvantageKit_*.zip; do
      f=${z%.zip}
      if [[ "$f" != "$k" ]]; then
-         diff -Nur $k $f > ${k#AdvantageKit_}-${f#AdvantageKit_}.patch 
+         diff -Nur $k $f > ${k#AdvantageKit_}-${f#AdvantageKit_}.patch
      fi
 done
 #+end_src
@@ -515,13 +590,13 @@ project.
 
 #+begin_example diff
      m_autonomousCommand = m_robot.getAutonomousCommand();
- 
+
      if (m_autonomousCommand != null) {
 -      m_autonomousCommand.schedule();
 +      CommandScheduler.getInstance().schedule(m_autonomousCommand);
      }
    }
- 
+
 #+end_example
 
 In these files:
@@ -530,40 +605,40 @@ In these files:
 .
 ├── examples
 │   ├── drivedistanceoffboard
-│   │   └── Robot.java              
+│   │   └── Robot.java
 │   ├── hatchbotinlined
-│   │   └── Robot.java                    
+│   │   └── Robot.java
 │   ├── hatchbottraditional
-│   │   └── Robot.java                
+│   │   └── Robot.java
 │   ├── mecanumcontrollercommand
-│   │   └── Robot.java           
+│   │   └── Robot.java
 │   ├── rapidreactcommandbot
-│   │   └── Robot.java               
+│   │   └── Robot.java
 │   ├── romireference
-│   │   └── Robot.java                      
+│   │   └── Robot.java
 │   ├── selectcommand
-│   │   └── Robot.java                      
+│   │   └── Robot.java
 │   ├── swervecontrollercommand
-│   │   └── Robot.java            
+│   │   └── Robot.java
 │   ├── sysidroutine
-│   │   └── Robot.java                       
+│   │   └── Robot.java
 │   └── xrpreference
 │       └── Robot.java
 └── templates
     ├── commandbased
     │   ├── commands
-    │   │   └── ExampleCommand.java    
-    │   └── Robot.java                      
+    │   │   └── ExampleCommand.java
+    │   └── Robot.java
     ├── commandbasedskeleton
-    │   └── Robot.java              
+    │   └── Robot.java
     ├── romicommandbased
     │   ├── commands
     │   │   └── ExampleCommand.java
-    │   └── Robot.java                  
+    │   └── Robot.java
     └── xrpcommandbased
         ├── commands
-        │   └── ExampleCommand.java 
-        └── Robot.java                   
+        │   └── ExampleCommand.java
+        └── Robot.java
 #+end_verse
 
 **** Snippets
@@ -589,6 +664,6 @@ used, since the VSCode extension doesn't include references to it.
 ├── encoder
 ├── encoderdrive
 ├── encoderhoming
-├── limitswitch          
+├── limitswitch
 └── profiledpidfeedforward
 #+end_verse
