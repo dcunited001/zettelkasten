@@ -11,15 +11,297 @@
 * Resources
 + [[https://gist.github.com/eylenburg/38e5da371b7fedc0662198efc66be57b][Run office apps on Linux]]
 * Issues :windows:
+** Misc
+
+Scan system files for corruption
+
+#+begin_src shell
+sfc /scannow
+#+end_src
+
+
+** Hyper V :virtualization:
+
+*** Config
+
+#+begin_src powershell
+  Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
+#+end_src
+
+** Keyboard
+
+Fix with [[https://github.com/microsoft/PowerToys][PowerToys]]
+
+*** Fix capslock without extra software
+
++ [[https://gist.github.com/joshschmelzle/5e88dabc71014d7427ff01bca3fed33d][gist.github.com/joshschmelzle/f00b]]
+
+
 ** WSL :wsl:
 
 *** Installing WSL
+
 Installation
 
-#+begin_src cmd
-  wsl --install
+#+begin_src shell
+wsl --install # wsl --update # later
+
+wsl -l -v # verify version
+wsl --list --online          # list available distros
+wls --install -d Debian # or $distroname
 #+end_src
 
+Or use winget to install (went with the =wsl --install=)
+
+#+begin_src shell
+winget install --scope machine -s Microsoft.WSL
+#+end_src
+
++ How to trigger the welcome screen again?
+
+** PowerToys
+
+*** UAC prompts
+
+After installing, UAC secure desktop pops up in background... hopefully magic
+restart may fixit. Probably the pin up app
+
+** Winget
+
+[[https://learn.microsoft.com/en-us/windows/package-manager/winget/][Docs]]
+
++ Enable =OpenSSH= from "optional features" in windows settings
+  - config directory is =~/Data/Keys=? (via NETworkManager)
+
+
+#+begin_src shell
+# use --accept-configuration-agreements to avoid confirmation
+winget install --scope machine -s Microsoft.PowerShell # a lot of stuff needs > 7.4.5
+winget install --scope machine -s PuTTY
+winget install --scope machine -e --id Git.Git # get you a bash silly cygwin
+
+# hallucination: you need actual yaml to enable/disable specific features
+# winget configure -e --id Microsoft.PowerToys
+winget install --scope machine -e --id Microsoft.PowerToys # Microsoft.HyprApple
+#+end_src
+
+PowerToys should _not_ typically be installed for all users, especially if you
+have a local admin account (and maybe not for roamable profiles). You should _not_
+run _any_ of the tools with elevated permissions, except maybe briefly.
+
+After installing PowerToys:
+
++ Configure it thoroughly, removing anything dumb/problematic (like the pinup
+  extension). Customize the capslock.
++ Then backup the config, find it in =~/AppData/PowerToys/Backups=. Create a
+  matching directory for other users. Ensure that you change ownership!
++ Then login & import the configs. It's terrible that you can't do this with
+  your local user settings in windows
+
+See notes on group policy...
+
+Another option for quick config is to invest heavily in =winget= yaml,
+which will be brittle, so you'll need jinja.
+
+#+begin_src shell
+# network tools
+winget install --scope machine -e --id angryziber.AngryIPScanner
+winget install --scope machine -e --id BornToBeRoot.NETworkManager
+# winget install --scope machine "Wifi Analyzer" # can't isntall
+winget install --scope machine -e --id WiresharkFoundation.Wireshark
+
+# disk management
+winget install --scope machine -e --id Balena.Etcher
+
+# git & diff
+winget install --scope machine -e --id Meld.Meld
+winget install --scope machine -e --id Atlassian.Sourcetree --accept-configuration-agreements
+winget install --scope machine -e --id GitHub.GitHubDesktop
+winget install --scope machine -e --id GitHub.cli
+
+# editor
+winget install --scope machine -e --id GNU.Emacs
+winget install --scope machine -e --id GnuWin32.DiffUtils
+
+# docs
+winget install --scope machine -e --id OlegShparber.Zeal
+
+# notes
+winget install --scope machine -e --id Obsidian.Obsidian
+
+# 3d stuff
+winget install --scope machine -e --id BlenderFoundation.Blender
+
+# Docker
+winget install --scope machine -e --id Docker.DockerDesktop
+winget install --scope machine -e --id Docker.DockerCLI
+
+# gnu (only installs these, cli tools not available in cmd)
+winget install --scope machine -e --id GnuWin32.GetText
+winget install --scope machine -e --id GnuWin32.Patch
+winget install --scope machine -e --id GnuWin32.Tree
+winget install --scope machine -e --id GnuWin32.UnZip
+# other tools: Bison, Cpio, Flex, Gperf
+# winget install --scope machine -e --id GnuWin32.DiffUtils
+# winget install --scope machine -e --id GnuWin32.File
+# winget install --scope machine -e --id GnuWin32.FindUtils
+# winget install --scope machine -e --id GnuWin32.Grep
+# winget install --scope machine -e --id GnuWin32.Gzip
+# winget install --scope machine -e --id GnuWin32.M4
+# winget install --scope machine -e --id GnuWin32.Make
+# winget install --scope machine -e --id GnuWin32.Tar
+# winget install --scope machine -e --id GnuWin32.Zip
+# winget install --scope machine -e --id GnuWin32.Which
+#+end_src
+
+Install =pathplanner= and =WiFi Analyzer= from MS Store (repeat for other users)
+
+*** For =NeoVim= with =LazyVim=
+
+#+begin_src shell
+# from gitbash
+cd ~/AppData/Local
+mkdir nvim
+cd nvim
+
+winget install -e --id zig.zig # apparently zig is a dep
+winget install -e --id NeoVim.NeoVim
+git clone https://github.com/LazyVim/starter .
+#+end_src
+
+For other users, this needs to be done separately.
+
+*** Other setup
+
++ Disable as much backgrounding as is feasible using windows configuration
+  - This reduces IPC overhead for slower computers (so does removing the cloud
+    functionality, but that's a PITA)
++ You'd need to repeat the steps for local users unless you sync your settings
+
+*** For chrome
+
++ Enable memorysaver
+
+*** =winget configure=
+
+#+begin_src shell
+winget configure -f <C:/Users/<username>/winget-configs/config-file-name.dsc.winget>
+#+end_src
+
+*** Group Policy
+
+
+#+begin_quote
+To provide user configuration migration without expert tooling, Microsoft would
+be competing with itself.
+
+*The thing* that Microsoft +bought+ built was "Group Policy". While that's not easy
+to use without a domain -- or maybe not feasible, idk -- declaritively
+specififying policy and user application config, backing it up and and
+distributing it IS LITERALLY RESPONSIBLE FOR 100% OF WINDOWS' SUCCESS.
+
+There are endless links to a handful of posts telling you to import
+everything except three =DAT= files in your user's directory. I would not do that
+(each app needs to know to reproduce its cache, so that could be a dirty start)
+
+This is not such great advice. If =regedit= was a reasonable "big hash on your
+hard drive", _then you could fucking DIFF it_ without exporting or using 3rd party
+tools _which should not be required to provide insight to such a critical tool_
+
+Anyways, they bait-and-switched forced Windows 11 upgrades -- "it's because TPM
+2.0!" -- with "secure bootclobber now with copilot" and now all your data are
+belong to them. GLHF
+#+end_quote
+
+Anyways...
+
+** Security
+
+Magic MSC's that shield you from evil complexity like =net config daddy no!!!=
+
+*** Password on local admin accounts
+
++ Possibility: use =lusrmgr.msc= to manually add a password to the =Administrator=
+  account... but this cautions about resetting the users' encrypted caches.
+  Also, local admin is typically "the problem" whatever that means.
+
+Use =secpol.msc= to set =User Account Control: Behavior of Elevation Prompt for
+Administrators=
+
+*** Yubikey
+
+No appealing configurations for me, except maybe PIV:
+
++ allow computer to run on untrusted /network(s)/
++ mainly with quick UAC approval where I don't need to remember the password &
+  can hand the key to someone...
++ while someone else could configure administrative priveledges while I'm not
+  there.
+
+The main thing i'm worried about is BIOS/UEFI & Intel Mgmt-Console type stuff
+being installed by windows/admin via network. Fishy things always happen when I
+use windows. I'm surprised i was able to successfully run updates after two
+years. IDK why using Windows feels like a heavy =dnf= upgrade in Centos?
+
+**** PIV
+
++ For simple configuration, requires a domain account
++ Otherwise, gemini hallucinates that you can:
+  - use a combination of =altSecurityIdentities=
+  - with =GroupPolicy= on local users/groups... or something idk
+
+**** Okta, Entra ID and Microsoft something
+
++ Uses =FIDO2= and Windows Hello. Configured with =yubienroll=
+
+**** YubiLogin
+
++ Doesn't affect UAC prompts (the Duo device does handle this somehow)
++ Uses =FIDO2= and requires YK 5 Series
++ Can't concurrently have this installed with other login methods
++ You need to juggle a recovery key
+
+*** Security
+
+=Power Users= are compatibilibuddies only. (since vista)
+
+Settings
+
+|       |          |                   | Setting                                 | Value                             |
+|-------+----------+-------------------+-----------------------------------------+-----------------------------------|
+| Local | Security | MS Network Client | Digitally sign communications           | Always                            |
+|       |          | System Crypto     | Use FIPS Compliant algs                 | Enabled                           |
+|       |          | UAC               | Behavior of elevation prompt for admins | Prompt for creds (secure desktop) |
+|       |          | UAC               | Behavior of elevation prompt for Users  | Prompt for creds (secure desktop) |
+
++ Setting signed communications (both client & server, 4 settings)
+  - Requires SMB communications to be signed
+  - Affects connections to printers, servers & shared drives
++ Setting FIPS compliant algos changes client/server behavior for SSL -> TLS and
+  restricts the algorithms that can be used.
++ The two UAC configs above are somewhat redundant if =UAC: Switch to the Secure
+  Desktop...= is enabled. You need to change to require creds though.
+
+
+Others (didn't change)
+
+|       |             |   | Setting                  | Value  |
+|-------+-------------+---+--------------------------+--------|
+| Local | User Rights |   | Bypass traverse checking | Groups |
+|       |             |   |                          |        |
+|-------+-------------+---+--------------------------+--------|
++ Directory traversal doesn't affect files listed, but AFAIK this can be used to
+  enumerate vulnerabilities by checking for success on traversal (using guesses)
+  - Changing the defaults without borking your system, and thus having malware
+    components like this fuck up forces attackers to hedge against risk of
+    creating logs or leaving unfinished business.
+  - Changing too many low-level settings risks too many problems, but it depends
+    on how much software's running on your computer.
+
+*** Smart Card
+
+In =secpol.msc=, set =Interactive Logon: Smart card removal behavior= to =Lock
+Workstation=, then ensure =Smart Card Removal Policy Service= is activated
 ** Emacs :emacs:
 
 Emacs can run, but maybe it's hard
@@ -39,13 +321,10 @@ Nyxt browser can run under WSL.
 
 **** TODO test Nyxt
 
-** Hyper V :virtualization:
+** WiFi 6e
 
-*** Config
-
-#+begin_src powershell
-  Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V -All
-#+end_src
+Gotta get copilot if you want to stream PC games from your coach while you cook
+your balls at 6Ghz
 
 * Installing
 
@@ -135,4 +414,3 @@ For me, when using the Apple boot menu. the Microsoft Windows logo is
 still shown as the primary =/dev/sda= boot partition. If I want to
 boot Guix, I select windows image. If I want to boot Windows, I plug
 in the thunderbolt hard drive and select the non-windows image.
-

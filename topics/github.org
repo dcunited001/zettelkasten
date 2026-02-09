@@ -23,6 +23,68 @@
 
 *** Github Actions
 
+** Data Backup
+
+This requires =admin:org= and =repos= permissions.
+
++ it doesn't work with fine-grained, i tried
++ make the token for 7 days
++ See the migrations POST [[https://docs.github.com/en/rest/migrations/orgs?apiVersion=2022-11-28#start-an-organization-migration][response schema here]]
+
+#+begin_src shell
+org="thisorg"
+repos="\"theserepos\",\"arecomma\",\"separated\""
+url="https://api.github.com/orgs/$thisorg/migrations"
+
+payload='{"repositories":['"$repos"'"]}'
+
+# ideally, this wouldn't need a paste
+curl -X POST \
+    -H "$(paste -d ' ' <(echo -n 'Authorization: Bearer') <(get-the-token))" \
+    -d"$payload"
+#+end_src
+
+Migrations can be in four states:
+
+| pending   | which means the migration hasn't started yet.    |
+| exporting | which means the migration is in progress.        |
+| exported  | which means the migration finished successfully. |
+| failed    | which means the migration failed.                |
+
+Note the migrations ID. check the status with:
+
+#+begin_src shell
+org="thisorg"
+migration_id=12345678
+url="https://api.github.com/orgs/$thisorg/migrations/$migration_id"
+
+# ideally, this wouldn't need a paste
+curl -X GET \
+    -H "Accept: application/vnd.github+json" \
+    -H "$(paste -d ' ' <(echo -n 'Authorization: Bearer') <(get-the-token))" \
+    -d"$payload" \
+    | jq '.state'
+#+end_src
+
+When this returns =exported=, you can download it with this:
+
+#+begin_src shell
+org="thisorg"
+migration_id=12345678
+url="https://api.github.com/orgs/$thisorg/migrations/$migration_id/archive"
+output="${org}_migration_${migration_id}.tar.gz"
+
+# ideally, this wouldn't need a paste
+
+# must follow redirects (with headers), so -L
+curl -X GET -L \
+    -H "Accept: application/vnd.github+json" \
+    -H "$(paste -d ' ' <(echo -n 'Authorization: Bearer') <(get-the-token))" \
+    -d"$payload" | gpg -aer "$EMAIL" > "${output}.gpg"
+
+# if you don't want gpg encryption on save, just use `-L -o $output`
+#+end_src
+
 ** Models
 
 *** Via API
@@ -89,5 +151,4 @@ A picture is worth 10,000 tokens (and no, I can never afford those either)
 
 #+RESULTS:
 [[file:img/githubapi/someapi.svg]]
-
 * Issues
