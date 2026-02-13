@@ -1,0 +1,3768 @@
+:PROPERTIES:
+:ID:       989f7d7e-99d9-4934-ba3b-461b66e60eb6
+:END:
+#+TITLE: DDWRT: FreshTomato 2026
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
+
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:2b08c8e0-8c78-4a29-a56d-16db0ef4be1e][DDWRT: Troubleshooting]]
++ [[id:b5b9a80f-1234-4326-a83a-0faedbc0c89b][Org Babel: Use Tramp and SSHFS to Push Configs]]
+
+
+* Scenario
+
+| hostname | nick | device        | Purpose                                                |
+|----------+------+---------------+--------------------------------------------------------|
+|          | FT1  | Netgear R7000 | Connect computers via LAN to Realbot                   |
+|          | VH1  | VH109         | Provides different wifi capabilities. and lan to =RIO2=  |
+|          | RIO1 | RoboRio 2.0   | Runs roborio code, provides webadmin for IP assignment |
+|----------+------+---------------+--------------------------------------------------------|
+|          | FT2  | Netgear R7000 | Connect computers via LAN to Realbot                   |
+|          | VH2  | VH109         | Provides different wifi capabilities. and lan to =RIO2=  |
+|          | RIO2 | RoboRio 2.0   | Runs roborio code, provides webadmin for IP assignment |
+|----------+------+---------------+--------------------------------------------------------|
+
++ The =VH-109=
+  - already does wireless bridging to a LAN, so having the =FT= devices do that is
+    super confusing and potetntially buggy.
+  - Also a DHCP pool from =.200-.219= that can't conflict.
++ The =FT= devices will instead have their wifi connect to a =WAN=
+  - and will provide LAN only and will not provide DHCP.
+  - It is incredibly frustrating that almost ZERO laptop manufacturers provide
+    LAN ports, so dongle' (_and_ transient ethernet devices) are necessary to deal
+    with because consumers cannot be bothered to demand reasonable device specs.
+  - Scripting network on devices with transient devices is a PITA. It's
+    physically stateful and requires an extra layer or two.
+
+** Config Backups
+
+*** Config
+
+FreshTomato provides =*.cfg= backups, but they're encoded (and I'm not sure how).
+These serve as checkpoints that can easily be restored without scripting, but
+they can easily be diffed. Each one is about 38KB.
+
+*** NVRAM
+
+** Usability Issues
+
+*** Interface config
+
++ with =FT=, the =WAN= interface:
+  - can't be placed under the same bridge =br0= and is handled differently --
+    usually using a =gateway= abstraction for most router OS's. So it autocreates
+    and autodestroys routes for other interfaces/bridges/vlans.
+  - If there's a webadmin, then handling this WAN port differently would cause
+    too many problems for noobs. So, to make these WebAdmins idiot proof -- you
+    can't haz this port do whatever you want. This is nice because manual
+    gateway configuration is very problematic
+
+
+*** Connectivity
+
++ SSH configuration changes
+  + non-interactive password auth isn't available for all OS and setting host
+    config for static or dhcp ip's requires constantly changing this file (or
+    some other host)
++ =systemd-newtorkd= requires changing the profile with =sudo= & symlinks or =ip
+  addr add/del= commands, which =networkctl= doesn't seem to wipe out.
+
+** SSH
+
+*** Using =sshpass= (before keys are set on machine)
+
+From [[https://superuser.com/questions/1605215/how-to-specify-password-in-ssh-command][s/o post]]. I'm unsure of how useful this is for Windows users.
+
+#+begin_src shell
+sshpass -ffilename ssh user@ip   # prefer this
+sshpass -pPa5sw0rd ssh user@ip
+#+end_src
+
+So... this will non-interactively dump the NVRAM, which still needs its lines sorted
+
+#+begin_src 
+host=ft1
+backup=$backupdir/freshtomato/$host-$(date +%s).nvram
+sshpass -padmin ssh root@192.168.1.1 'nvram show' > $backup
+#+end_src
+
+
+
+*** From =ssh= via default password
+
+You don't necessarily need SSH keys to make an SSH connection, so each NVRAM
+reset requires clearing the relevant line from =~/.ssh/known_hosts=. But SSH does
+not easily permit password entry for automation, so this cannot be totally
+scripted unless =sshpass= is installed.
+
+In any case, you'll need to change this code as the passwords/keys/networks
+chnage.  requirements change
+
+#+begin_src sshconfig
+# host defaults
+Host *
+  IdentitiesOnly Yes
+  UseRoaming no
+  KexAlgorithms sntrup761x25519-sha512,sntrup761x25519-sha512@openssh.com,curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group-exchange-sha256
+
+# or: Host myhost
+Host 192.168.1.1
+  HostName 192.168.1.1
+  IdentitiesOnly no
+  User root
+  PasswordAuthentication yes
+#+end_src
+
+The authentication failure message will indicate line =n=. So run:
+
++ =vim ~/.ssh/known_hosts=
++ hit =28G= then =dd= to delete and =:wq= to save
+
+.. if the line =n= were =28=. This will happen everytime you reset the router's
+NVRAM to defaults bc it generates new host keys in =/etc/ssh=
+  
+Once you can authenticate without a =known_hosts= failure, then you can run
+scripts against the box.
+
+* Startup
+
+If your box doesn't already have =FreshTomato=, you're on you own. That requires
+flashing an intermediate image that lets you migrate away from the original
+manufacturer image. This sometimes differs per-version of manufacturer software.
+GLHF
+
+Transitioning between custom firmwares usually doesn't require intermediate
+flashing, but could be problematic. This is because the upgrade process for
+custom firmwares is somewhat opaque and forward/backward migrations are NOT
+necessarily restoring a known "zero" state for firmware upgrades. It depends,
+but router hardware/arch varies considerably and so different hardware has
+different stores for values. They usually depend on NVRAM for storage and FLASH
+for NVRAM storage. But IIRC, some of NVRAM is dedicated to storing some of the
+initial values (defaults).
+
+** Upgrade
+
++ Find the upgrade file. It's a =zip=, that unpacks a =trx= file
++ Upgrade
+  - Reset the box. On a Netgear R7000: hold reset for 8 seconds; the lights
+    flash pink when you release the button. It reboots with NVRAM reinitialized.
+  - Find =Administration > Upgrade=, submit the =trx= file, check that you want to
+    =clear NVRAM= and Click =upgrade=
+
+Upgrade, then (for me), login with =root/admin=.
+
+** Capture initial NVRAM
+
+Initially all ports will belong to a default network & bridge with =vlan 0=. This
+is obnoxious if:
+
++ you want to retain access to the =FT1= default network
++ *but* you need the LAN ports to be on another network
++ *and* you can't control the VLANs in ethernet frames for the networks you're
+  connected to (here, i'm connecting to a =VH-109= for FRC)
+
+*** From Tools > System Commands
+
+When you upgrade, you should clear NVRAM, unless you've upgraded very recently.
+Capturing the NVRAM allows you to get insight into how the GUI changes as you
+toggle settings.
+
+_Immediately_ after loading the new firmware and without changing any value, open
+=Tools > System Commands= and run:
+
+#+begin_src shell
+nvram show > /tmp/freshtomato-R7000-K26ARM-2025.5-AIO-64K.initial.nvram
+#+end_src
+
+It's difficult to manuevre in this shell, but this at least captures the fresh
+values. Toggling certain settings will reboot the router, so you'll lose files
+in =/tmp=
+
+Keep in mind that this output contains passwords/keys and should be
+GPG-encrypted. I don't really care for this application, so i'm not going to be
+worried about that.
+
+See [[id:2b08c8e0-8c78-4a29-a56d-16db0ef4be1e][DDWRT: Troubleshooting]] and [[id:94aaac5c-c45a-4b92-a977-d8d86cce3c2b][ddwrt: troubleshoot iptables]] for more info on
+diffing these NVRAM updates. It's just important that you begin having captured
+the "zeroed values" ... otherwise you can't diff and it won't be obvious which
+=nvram show= invocations would contain your passwords in clear text.
+
+** Add SSH keys
+
+Next, add the SSH keys, so you can grab values from this box and diff them
+without =busybox= and =ash= getting in the way. This isn't necessary (for our
+FRC application per se), IF =sshpass= is available on windows or whatever.
+
+* Configs
+:PROPERTIES:
+:header-args+: :var rtrname="switch10004" baseconfig="switch10004_00.nvram"
+:END:
+** Change the bridge =br0= network addresses
+
+Changing the =br0= configuration at once risks lockout, but is much faster than
+migrating the LAN ports two at a time.
+
++ change IP space: move =br0= address to =10.100.4.247=.
+  - This is all bits hot, except ~247 == (255-8)~
++ setup DHCP: change the pools from =.220= to =.239=. This should _not_ conflict with
+  the =VH-109= DHCP, but should ultimately be removed. While configuring, this is
+  convenient.
+
+#+begin_src shell :results output verbatim code :wrap example diff
+# ls -al $backupsdir/$baseconfig $backupsdir/$rtrname
+diff <(sort $backupsdir/$baseconfig) <(sort $backupsdir/${rtrname}_01-br0-with-dhcp.nvram)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+145,147c145,147
+< dhcp1_lease=1440
+< dhcp2_lease=1440
+< dhcp3_lease=1440
+---
+> dhcp1_lease=
+> dhcp2_lease=
+> dhcp3_lease=
+162c162
+< dhcpd_endip=
+---
+> dhcpd_endip=10.100.4.240
+168c168
+< dhcpd_startip=
+---
+> dhcpd_startip=10.100.4.220
+233d232
+< http_id_warn=192.168.1.47,1024
+241d239
+< https_crt_gen=0
+290a289
+> lan1_ifname=
+293c292,294
+< lan1_stp=0
+---
+> lan1_proto=
+> lan1_stp=
+> lan2_ifname=
+296c297,299
+< lan2_stp=0
+---
+> lan2_proto=
+> lan2_stp=
+> lan3_ifname=
+299c302,303
+< lan3_stp=0
+---
+> lan3_proto=
+> lan3_stp=
+311c315
+< lan_ipaddr=192.168.1.1
+---
+> lan_ipaddr=10.100.4.247
+783d786
+< ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAb9WIuASHRVkpqpF5tT5AZoOw5lqlY/ycx1UqsWQH7W cardno:19_294_239
+1075c1078
+< wan2_dns_auto=1
+---
+> wan2_dns_auto=0
+1114a1118
+> wan2_sta=
+1121c1125
+< wan3_dns_auto=1
+---
+> wan3_dns_auto=0
+1160a1165
+> wan3_sta=
+1167c1172
+< wan4_dns_auto=1
+---
+> wan4_dns_auto=0
+1206a1212
+> wan4_sta=
+1280a1287
+> wan_sta=
+#+end_example
+
+*** Troubleshooting
+
+This locks me out?... After installing =net-tools= which is *inexplicably missing*
+on most linux distributions, now i can check ARP.
+
+#+begin_src shell
+arp -vi enp5s0 -a # this lists nothing, which means a layer2 problem
+#+end_src
+
+Although I guess it's also here =cat /proc/net/arp=
+
+Turns out this is because I lost a connection and the =NetworkManager= doesn't
+connect by default (which is what I want). Now, =arp= shows
+
+#+begin_src shell
+arp -a -i enp5s0
+#+end_src
+
+#+RESULTS:
+: _gateway (10.100.4.247) at 00:00:00:aa:bb:cc [ether] on enp5s0
+
+** Change the hostname
+
+After changing the hostname, =chromium= starts to connect to the =mDNS= name
+=switch10004.local=, but i can't ping it. The site ultimately refuses to serve the
+webadmin over that =http= connection.
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff <(sort $backupsdir/${rtrname}_01*) <(sort $backupsdir/${rtrname}_02*)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+267a268,269
+> ipv6_pd_pltime=0
+> ipv6_pd_vltime=0
+309c311
+< lan_hostname=unknown
+---
+> lan_hostname=switch10004
+712c714
+< router_name=FreshTomato
+---
+> router_name=switch10004
+1230c1232
+< wan_hostname=unknown
+---
+> wan_hostname=switch10004
+1681c1683
+< wl1_tnoise=-92
+---
+> wl1_tnoise=-90
+#+end_example
+
+** Set up 2.4Ghz WLAN bridge
+
+After changing the hostname, =chromium= starts to connect to the =mDNS= name
+=switch10004.local=, but i can't ping it. The site ultimately refuses to serve the
+webadmin over that =http= connection.
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff <(sort $backupsdir/${rtrname}_02*) <(sort $backupsdir/${rtrname}_03*)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1225c1225
+< wan_dns_auto=1
+---
+> wan_dns_auto=0
+1233c1233
+< wan_hwaddr=E4:F4:C6:06:48:CB
+---
+> wan_hwaddr=
+1235c1235
+< wan_iface=vlan2
+---
+> wan_iface=
+1279c1279
+< wan_proto=dhcp
+---
+> wan_proto=disabled
+1406c1406
+< wl0_akm=
+---
+> wl0_akm=psk2
+1426,1427c1426,1427
+< wl0_channel=6
+< wl0_chanspec=6u
+---
+> wl0_channel=0
+> wl0_chanspec=0
+1466c1466
+< wl0_mode=ap
+---
+> wl0_mode=wet
+1507,1508c1507,1508
+< wl0_security_mode=disabled
+< wl0_ssid=FreshTomato24
+---
+> wl0_security_mode=wpa2_personal
+> wl0_ssid=PASSWORD
+1513c1513
+< wl0_tnoise=-88
+---
+> wl0_tnoise=-89
+1559c1559
+< wl0_wpa_psk=
+---
+> wl0_wpa_psk=SSID
+1656c1656
+< wl1_radio=1
+---
+> wl1_radio=0
+1683c1683
+< wl1_tnoise=-90
+---
+> wl1_tnoise=-92
+#+end_example
+
+
+
+
+* Config Mgmt
+
+*** Diffing via =ssh=
+
+Aftersetting =$backupsdir=, you can somewhat diff backups using the following:
+
+#+begin_src shell :results output verbatim code :wrap example diff
+diff <(sort $backupsdir/ft1-1771010478.nvram) <(sort $backupsdir/ft1-1771010829.nvram)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+233c233
+< http_id_warn=192.168.1.47,704
+---
+> http_id_warn=192.168.1.47,1024
+240a241
+> https_crt_gen=0
+770c771
+< sshd_authkeys=
+---
+> sshd_authkeys=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAb9WIuASHRVkpqpF5tT5AZoOw5lqlY/ycx1UqsWQH7W openpgp:0xBECF991C
+781a783
+> ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAb9WIuASHRVkpqpF5tT5AZoOw5lqlY/ycx1UqsWQH7W cardno:19_294_239
+#+end_example
+
+But as you can see: newlines are not encoded in =nvram show= or =nvram get=! They're
+a bit difficult to detect (there are tons of newlines...). For shell, some cases
+are handled by an awk script that memoizes lines with === then concatenates any
+immediately following lines without === with =%20= or something.
+#+begin_src shell :results output verbatim :code :wrap example text
+grep -v '=' $backupsdir/ft1-1771010478.nvram
+
+echo -e '\n'
+#+end_src
+
+#+RESULTS:
+#+begin_example text
+^begins-with.domain.
+.ends-with.net$
+^www.exact-domain.net$|0|example
+
+
+
+
+#+end_example
+
+Fortunately, in the default config, there aren't many of these. As soon as you
+add =iptables= though, you totally lose the ability to do this. So, becoming
+familiar with the default keys and with what features add/remove keys is useful.
+
+Here's a naive dump for those keys
+
+#+begin_src shell :results output verbatim
+grep -E '=' $backupsdir/ft1-1771010478.nvram \
+    | rev | sed -E 's/.*=//g' | rev | sort | wc -l
+#+end_src
+
+#+RESULTS:
+: 1868
+
+Here's a tree of the default key namespaces (again, with naive processing)
+
+#+begin_src shell :results output verbatim :wrap verse
+grep -E '=' $backupsdir/ft1-1771010478.nvram \
+    | rev | sed -E 's/.*=//g' | rev | sort\
+    | tr '_' '/' | tree --fromfile '.'
+#+end_src
+
+
+Results
+
+#+begin_verse
+.
+├── acs
+│   ├── 2g
+│   │   └── ch
+│   │       └── no
+│   │           └── restrict
+│   ├── mode
+│   └── no
+│       └── restrict
+│           └── align
+├── action
+│   └── service
+├── adblock
+│   ├── blacklist
+│   │   └── custom
+│   ├── enable
+│   ├── limit
+│   ├── logs
+│   ├── path
+│   └── whitelist
+├── blink
+│   └── wl
+├── block
+│   └── wan
+│       └── limit
+│           └── icmp
+├── board
+│   └── id
+├── boardflags
+├── boardflags2
+├── boardnum
+├── boardrev
+├── boardtype
+├── boot
+│   └── wait
+├── bt
+│   ├── auth
+│   ├── autoadd
+│   ├── binary
+│   │   └── custom
+│   ├── blocklist
+│   │   └── url
+│   ├── check
+│   │   └── time
+│   ├── custom
+│   ├── dht
+│   ├── dir
+│   ├── dl
+│   │   ├── enable
+│   │   └── queue
+│   │       ├── enable
+│   │       └── size
+│   ├── enable
+│   ├── incomplete
+│   ├── log
+│   │   └── path
+│   ├── login
+│   ├── lpd
+│   ├── message
+│   ├── password
+│   ├── peer
+│   │   └── limit
+│   │       ├── global
+│   │       └── per
+│   │           └── torrent
+│   ├── pex
+│   ├── port
+│   │   └── gui
+│   ├── ratio
+│   │   ├── enable
+│   │   └── idle
+│   │       └── enable
+│   ├── rpc
+│   │   ├── enable
+│   │   └── wan
+│   ├── settings
+│   │   └── custom
+│   ├── sleep
+│   ├── ul
+│   │   ├── enable
+│   │   ├── queue
+│   │   │   ├── enable
+│   │   │   └── size
+│   │   └── slot
+│   │       └── per
+│   │           └── torrent
+│   └── utp
+├── btn
+│   ├── override
+│   └── reset
+├── bwl
+│   ├── enable
+│   ├── lan
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── tcp
+│   │   ├── udp
+│   │   ├── ulc
+│   │   └── ulr
+│   ├── lan1
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── ulc
+│   │   └── ulr
+│   ├── lan2
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── ulc
+│   │   └── ulr
+│   ├── lan3
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── ulc
+│   │   └── ulr
+│   └── rules
+├── caldata
+│   └── ready
+├── cfe
+│   └── version
+├── cifs1
+├── cifs2
+├── clkfreq
+├── console
+│   └── loglevel
+├── cstats
+│   └── enable
+├── ct
+│   ├── hashsize
+│   ├── max
+│   ├── tcp
+│   │   └── timeout
+│   ├── timeout
+│   └── udp
+│       └── timeout
+├── ctf
+│   └── disable
+├── ddnsx
+│   └── custom
+│       └── if
+├── ddnsx0
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── ddnsx1
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── ddnsx2
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── ddnsx3
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── debug
+│   ├── cprintf
+│   │   └── file
+│   ├── ddns
+│   ├── logsegfault
+│   └── nocommit
+├── dhcp
+│   ├── domain
+│   ├── lease
+│   └── moveip
+├── dhcp1
+│   └── lease
+├── dhcp2
+│   └── lease
+├── dhcp3
+│   └── lease
+├── dhcpc
+│   ├── 121
+│   ├── 33
+│   ├── custom
+│   └── minpkt
+├── dhcpd
+│   ├── dmdns
+│   ├── endip
+│   ├── gwmode
+│   ├── lmax
+│   ├── ostatic
+│   ├── slt
+│   ├── startip
+│   └── static
+├── dhcpd1
+│   ├── endip
+│   ├── ostatic
+│   └── startip
+├── dhcpd2
+│   ├── endip
+│   ├── ostatic
+│   └── startip
+├── dhcpd3
+│   ├── endip
+│   ├── ostatic
+│   └── startip
+├── dmz
+│   ├── enable
+│   ├── ipaddr
+│   ├── ra
+│   └── sip
+├── dns
+│   ├── fwd
+│   │   └── local
+│   ├── intcpt
+│   ├── norebind
+│   └── priv
+│       └── override
+├── dnscrypt
+│   ├── ephemeral
+│   │   └── keys
+│   ├── log
+│   ├── manual
+│   ├── port
+│   ├── priority
+│   ├── provider
+│   │   ├── key
+│   │   └── name
+│   ├── proxy
+│   └── resolver
+│       └── address
+├── dnsmasq
+│   ├── custom
+│   ├── debug
+│   ├── edns
+│   │   └── size
+│   ├── gen
+│   │   └── names
+│   ├── norestart
+│   ├── onion
+│   │   └── support
+│   ├── pxelan
+│   ├── pxelan1
+│   ├── pxelan2
+│   ├── pxelan3
+│   ├── q
+│   ├── safe
+│   ├── static
+│   │   └── only
+│   └── tftp
+│       └── path
+├── dnssec
+│   ├── enable
+│   └── method
+├── dpsta
+│   ├── ifnames
+│   ├── lan
+│   │   └── uif
+│   └── policy
+├── DSCP
+│   └── fix
+│       └── enable
+├── ehci
+│   └── ports
+├── emf
+│   ├── enable
+│   ├── entry
+│   ├── rtport
+│   │   └── entry
+│   └── uffp
+│       └── entry
+├── env
+│   └── path
+├── et
+│   └── txq
+│       └── thresh
+├── et0macaddr
+├── et0mdcport
+├── et0phyaddr
+├── force
+│   └── igmpv2
+├── ftp
+│   └── enable
+├── fw
+│   ├── blackhole
+│   ├── nat
+│   │   └── tuning
+│   └── strict
+│       └── input
+├── g
+│   ├── reboot
+│   └── upgrade
+├── gpio0
+├── gro
+│   └── disable
+├── http
+│   ├── enable
+│   ├── id
+│   │   └── warn
+│   ├── ipv6
+│   ├── lan
+│   │   └── listeners
+│   ├── lanport
+│   ├── nocache
+│   ├── passwd
+│   ├── username
+│   └── wanport
+│       └── bfm
+├── https
+│   ├── crt
+│   │   ├── cn
+│   │   ├── file
+│   │   └── save
+│   ├── enable
+│   └── lanport
+├── idle
+│   └── enable
+├── ipsec
+│   └── pass
+├── ipv6
+│   ├── 6rd
+│   │   ├── borderrelay
+│   │   ├── ipv4masklen
+│   │   └── prefix
+│   │       └── length
+│   ├── accept
+│   │   └── ra
+│   ├── debug
+│   ├── dhcpd
+│   ├── dns
+│   │   └── lan
+│   ├── duid
+│   │   └── type
+│   ├── fast
+│   │   └── ra
+│   ├── get
+│   │   └── dns
+│   ├── ia
+│   │   ├── na
+│   │   │   └── id
+│   │   └── pd
+│   │       └── id
+│   ├── ifname
+│   ├── isp
+│   │   ├── gw
+│   │   └── opt
+│   ├── lease
+│   │   └── time
+│   ├── pd
+│   │   └── norelease
+│   ├── pdonly
+│   ├── portforward
+│   ├── prefix
+│   │   ├── len
+│   │   │   └── wan
+│   │   └── length
+│   ├── radvd
+│   ├── relay
+│   ├── rtr
+│   │   └── addr
+│   ├── service
+│   ├── tun
+│   │   ├── addr
+│   │   ├── addrlen
+│   │   ├── mtu
+│   │   ├── ttl
+│   │   └── v4end
+│   ├── vlan
+│   └── wan
+│       └── addr
+├── jffs2
+│   ├── auto
+│   │   └── unmount
+│   ├── exec
+│   ├── format
+│   └── on
+├── jumbo
+│   └── frame
+│       ├── enable
+│       └── size
+├── lan
+│   ├── desc
+│   ├── dhcp
+│   ├── domain
+│   ├── gateway
+│   ├── hostname
+│   ├── hwaddr
+│   ├── hwnames
+│   ├── ifname
+│   ├── ifnames
+│   ├── invert
+│   ├── ipaddr
+│   ├── lease
+│   ├── netmask
+│   ├── proto
+│   ├── route
+│   ├── state
+│   ├── stp
+│   └── wins
+├── lan1
+│   ├── ipaddr
+│   ├── netmask
+│   └── stp
+├── lan2
+│   ├── ipaddr
+│   ├── netmask
+│   └── stp
+├── lan3
+│   ├── ipaddr
+│   ├── netmask
+│   └── stp
+├── landevs
+├── led
+│   └── override
+├── log
+│   ├── dropdups
+│   ├── events
+│   ├── file
+│   │   ├── custom
+│   │   ├── keep
+│   │   ├── path
+│   │   └── size
+│   ├── in
+│   ├── limit
+│   ├── mark
+│   ├── min
+│   │   └── level
+│   ├── out
+│   ├── remote
+│   ├── remoteip
+│   ├── remoteport
+│   ├── wm
+│   ├── wmdmax
+│   ├── wmip
+│   ├── wmsmax
+│   └── wmtype
+├── macnames
+├── manual
+│   └── boot
+│       └── nv
+├── mdns
+│   ├── debug
+│   ├── enable
+│   └── reflector
+├── ms
+│   ├── autoscan
+│   ├── custom
+│   ├── dbdir
+│   ├── dirs
+│   ├── enable
+│   ├── ifname
+│   ├── port
+│   ├── sas
+│   ├── stdlna
+│   └── tivo
+├── multicast
+│   ├── custom
+│   ├── lan
+│   ├── lan1
+│   ├── lan2
+│   ├── lan3
+│   ├── pass
+│   └── quickleave
+├── mwan
+│   ├── ckdst
+│   ├── cktime
+│   ├── debug
+│   ├── diff
+│   ├── init
+│   ├── num
+│   ├── state
+│   │   └── init
+│   └── tune
+│       └── gc
+├── mysql
+│   ├── allow
+│   │   └── anyhost
+│   ├── binary
+│   │   └── custom
+│   ├── check
+│   │   └── time
+│   ├── datadir
+│   ├── dlroot
+│   ├── enable
+│   ├── init
+│   │   ├── priv
+│   │   └── rootpass
+│   ├── key
+│   │   └── buffer
+│   ├── max
+│   │   ├── allowed
+│   │   │   └── packet
+│   │   └── connections
+│   ├── net
+│   │   └── buffer
+│   │       └── length
+│   ├── passwd
+│   ├── port
+│   ├── query
+│   │   └── cache
+│   │       └── size
+│   ├── read
+│   │   ├── buffer
+│   │   │   └── size
+│   │   └── rnd
+│   │       └── buffer
+│   │           └── size
+│   ├── server
+│   │   └── custom
+│   ├── sleep
+│   ├── sort
+│   │   └── buffer
+│   │       └── size
+│   ├── table
+│   │   └── open
+│   │       └── cache
+│   ├── thread
+│   │   ├── cache
+│   │   │   └── size
+│   │   └── stack
+│   ├── tmpdir
+│   ├── usb
+│   │   └── enable
+│   └── username
+├── NC
+│   ├── AllowedWebHosts
+│   ├── BridgeLAN
+│   ├── DocumentRoot
+│   ├── enable
+│   ├── ExcludePorts
+│   ├── ForcedRedirect
+│   ├── GatewayMode
+│   ├── GatewayName
+│   ├── GatewayPort
+│   ├── HomePage
+│   ├── IdleTimeout
+│   ├── LoginTimeout
+│   ├── MaxMissedARP
+│   ├── PeerChecktimeout
+│   ├── RenewTimeout
+│   └── Verbosity
+├── ne
+│   ├── shlimit
+│   ├── snat
+│   ├── syncookies
+│   ├── valpha
+│   ├── vbeta
+│   ├── vegas
+│   └── vgamma
+├── nf
+│   ├── ftp
+│   ├── h323
+│   ├── l7in
+│   ├── loopback
+│   ├── pptp
+│   ├── rtsp
+│   ├── sip
+│   └── ttl
+├── nfs
+│   ├── enable
+│   │   └── v2
+│   └── exports
+├── nginx
+│   ├── custom
+│   ├── docroot
+│   ├── enable
+│   ├── fqdn
+│   ├── h5aisupport
+│   ├── httpcustom
+│   ├── keepconf
+│   ├── override
+│   ├── overridefile
+│   ├── php
+│   ├── phpconf
+│   ├── phpfpmconf
+│   ├── port
+│   ├── priority
+│   ├── remote
+│   ├── servercustom
+│   ├── upload
+│   └── user
+├── ntp
+│   ├── ready
+│   ├── server
+│   └── updates
+├── ntpd
+│   ├── enable
+│   └── server
+│       └── redir
+├── ohci
+│   └── ports
+├── os
+│   ├── date
+│   └── version
+│       └── last
+├── pbr
+│   └── rules
+├── pci
+│   ├── 1
+│   │   └── 1
+│   │       ├── aa2g
+│   │       ├── agbg0
+│   │       ├── agbg1
+│   │       ├── agbg2
+│   │       ├── antswitch
+│   │       ├── boardflags
+│   │       ├── boardflags2
+│   │       ├── boardflags3
+│   │       ├── boardnum
+│   │       ├── boardrev
+│   │       ├── boardtype
+│   │       ├── boardvendor
+│   │       ├── cckbw202gpo
+│   │       ├── cckbw20ul2gpo
+│   │       ├── ccode
+│   │       ├── devid
+│   │       ├── dot11agduphrpo
+│   │       ├── dot11agduplrpo
+│   │       ├── dot11agofdmhrbw202gpo
+│   │       ├── epagain2g
+│   │       ├── femctrl
+│   │       ├── gainctrlsph
+│   │       ├── macaddr
+│   │       ├── maxp2ga0
+│   │       ├── maxp2ga1
+│   │       ├── maxp2ga2
+│   │       ├── mcsbw202gpo
+│   │       ├── mcsbw402gpo
+│   │       ├── measpower
+│   │       ├── measpower1
+│   │       ├── measpower2
+│   │       ├── noiselvl2ga0
+│   │       ├── noiselvl2ga1
+│   │       ├── noiselvl2ga2
+│   │       ├── ofdmlrbw202gpo
+│   │       ├── pa2ga0
+│   │       ├── pa2ga1
+│   │       ├── pa2ga2
+│   │       ├── papdcap2g
+│   │       ├── pdgain2g
+│   │       ├── pdoffset2g40ma0
+│   │       ├── pdoffset2g40ma1
+│   │       ├── pdoffset2g40ma2
+│   │       ├── pdoffset2g40mvalid
+│   │       ├── pdoffset40ma0
+│   │       ├── pdoffset40ma1
+│   │       ├── pdoffset40ma2
+│   │       ├── pdoffset80ma0
+│   │       ├── pdoffset80ma1
+│   │       ├── pdoffset80ma2
+│   │       ├── regrev
+│   │       ├── rpcal2g
+│   │       ├── rxchain
+│   │       ├── rxgainerr2ga0
+│   │       ├── rxgainerr2ga1
+│   │       ├── rxgainerr2ga2
+│   │       ├── rxgains2gelnagaina0
+│   │       ├── rxgains2gelnagaina1
+│   │       ├── rxgains2gelnagaina2
+│   │       ├── rxgains2gtrelnabypa0
+│   │       ├── rxgains2gtrelnabypa1
+│   │       ├── rxgains2gtrelnabypa2
+│   │       ├── rxgains2gtrisoa0
+│   │       ├── rxgains2gtrisoa1
+│   │       ├── rxgains2gtrisoa2
+│   │       ├── sar2g
+│   │       ├── sromrev
+│   │       ├── subband5gver
+│   │       ├── subvid
+│   │       ├── tempoffset
+│   │       ├── temps
+│   │       │   └── period
+│   │       ├── tempthresh
+│   │       ├── tssifloor2g
+│   │       ├── tssiposslope2g
+│   │       ├── tworangetssi2g
+│   │       ├── txchain
+│   │       ├── venid
+│   │       └── xtalfreq
+│   └── 2
+│       └── 1
+│           ├── aa5g
+│           ├── aga0
+│           ├── aga1
+│           ├── aga2
+│           ├── agbg0
+│           ├── agbg1
+│           ├── agbg2
+│           ├── antswitch
+│           ├── boardflags
+│           ├── boardflags2
+│           ├── boardflags3
+│           ├── boardnum
+│           ├── boardrev
+│           ├── boardtype
+│           ├── ccode
+│           ├── devid
+│           ├── dot11agduphrpo
+│           ├── dot11agduplrpo
+│           ├── epagain5g
+│           ├── femctrl
+│           ├── gainctrlsph
+│           ├── macaddr
+│           ├── maxp5ga0
+│           ├── maxp5ga1
+│           ├── maxp5ga2
+│           ├── mcsbw1605ghpo
+│           ├── mcsbw1605glpo
+│           ├── mcsbw1605gmpo
+│           ├── mcsbw205ghpo
+│           ├── mcsbw205glpo
+│           ├── mcsbw205gmpo
+│           ├── mcsbw405ghpo
+│           ├── mcsbw405glpo
+│           ├── mcsbw405gmpo
+│           ├── mcsbw805ghpo
+│           ├── mcsbw805glpo
+│           ├── mcsbw805gmpo
+│           ├── mcslr5ghpo
+│           ├── mcslr5glpo
+│           ├── mcslr5gmpo
+│           ├── measpower
+│           ├── measpower1
+│           ├── measpower2
+│           ├── noiselvl5ga0
+│           ├── noiselvl5ga1
+│           ├── noiselvl5ga2
+│           ├── pa5ga0
+│           ├── pa5ga1
+│           ├── pa5ga2
+│           ├── papdcap5g
+│           ├── pdgain5g
+│           ├── pdoffset40ma0
+│           ├── pdoffset40ma1
+│           ├── pdoffset40ma2
+│           ├── pdoffset80ma0
+│           ├── pdoffset80ma1
+│           ├── pdoffset80ma2
+│           ├── phycal
+│           │   └── tempdelta
+│           ├── rawtempsense
+│           ├── regrev
+│           ├── rpcal5gb0
+│           ├── rpcal5gb1
+│           ├── rpcal5gb2
+│           ├── rpcal5gb3
+│           ├── rxchain
+│           ├── rxgainerr5ga0
+│           ├── rxgainerr5ga1
+│           ├── rxgainerr5ga2
+│           ├── rxgains5gelnagaina0
+│           ├── rxgains5gelnagaina1
+│           ├── rxgains5gelnagaina2
+│           ├── rxgains5ghelnagaina0
+│           ├── rxgains5ghelnagaina1
+│           ├── rxgains5ghelnagaina2
+│           ├── rxgains5ghtrelnabypa0
+│           ├── rxgains5ghtrelnabypa1
+│           ├── rxgains5ghtrelnabypa2
+│           ├── rxgains5ghtrisoa0
+│           ├── rxgains5ghtrisoa1
+│           ├── rxgains5ghtrisoa2
+│           ├── rxgains5gmelnagaina0
+│           ├── rxgains5gmelnagaina1
+│           ├── rxgains5gmelnagaina2
+│           ├── rxgains5gmtrelnabypa0
+│           ├── rxgains5gmtrelnabypa1
+│           ├── rxgains5gmtrelnabypa2
+│           ├── rxgains5gmtrisoa0
+│           ├── rxgains5gmtrisoa1
+│           ├── rxgains5gmtrisoa2
+│           ├── rxgains5gtrelnabypa0
+│           ├── rxgains5gtrelnabypa1
+│           ├── rxgains5gtrelnabypa2
+│           ├── rxgains5gtrisoa0
+│           ├── rxgains5gtrisoa1
+│           ├── rxgains5gtrisoa2
+│           ├── sar5g
+│           ├── sb20in40hrpo
+│           ├── sb20in40lrpo
+│           ├── sb20in80and160hr5ghpo
+│           ├── sb20in80and160hr5glpo
+│           ├── sb20in80and160hr5gmpo
+│           ├── sb20in80and160lr5ghpo
+│           ├── sb20in80and160lr5glpo
+│           ├── sb20in80and160lr5gmpo
+│           ├── sb40and80hr5ghpo
+│           ├── sb40and80hr5glpo
+│           ├── sb40and80hr5gmpo
+│           ├── sb40and80lr5ghpo
+│           ├── sb40and80lr5glpo
+│           ├── sb40and80lr5gmpo
+│           ├── sromrev
+│           ├── subband5gver
+│           ├── subvid
+│           ├── tempcorrx
+│           ├── tempoffset
+│           ├── temps
+│           │   ├── hysteresis
+│           │   └── period
+│           ├── tempsense
+│           │   ├── option
+│           │   └── slope
+│           ├── tempthresh
+│           ├── tssifloor5g
+│           ├── tssiposslope5g
+│           ├── tworangetssi5g
+│           ├── txchain
+│           └── xtalfreq
+├── pmon
+│   └── ver
+├── portforward
+├── pptpc
+│   ├── crypt
+│   ├── custom
+│   ├── dfltroute
+│   ├── eas
+│   ├── mru
+│   ├── mruenable
+│   ├── mtu
+│   ├── mtuenable
+│   ├── nat
+│   ├── passwd
+│   ├── peerdns
+│   ├── srvip
+│   ├── srvsub
+│   ├── srvsubmsk
+│   ├── stateless
+│   ├── username
+│   └── usewan
+├── pptpd
+│   └── chap
+├── qos
+│   ├── ack
+│   ├── burst0
+│   ├── burst1
+│   ├── cake
+│   │   ├── prio
+│   │   │   └── mode
+│   │   └── wash
+│   ├── classify
+│   ├── classnames
+│   ├── default
+│   ├── enable
+│   ├── fin
+│   ├── icmp
+│   ├── irates
+│   ├── mode
+│   ├── orates
+│   ├── orules
+│   ├── pfifo
+│   ├── reset
+│   ├── rst
+│   ├── syn
+│   └── udp
+├── rast
+│   └── idlrt
+├── remote
+│   ├── management
+│   ├── mgt
+│   │   └── https
+│   └── upgrade
+├── restore
+│   └── defaults
+├── rmgt
+│   └── sip
+├── router
+│   └── name
+├── routes
+│   └── static
+│       └── saved
+├── rrule0
+├── rruleN
+├── rrules
+│   ├── activated
+│   ├── radio
+│   └── timewarn
+├── rrulewp
+├── rstats
+│   ├── bak
+│   ├── data
+│   ├── enable
+│   ├── exclude
+│   ├── offset
+│   ├── path
+│   ├── sshut
+│   └── stime
+├── sch
+│   ├── c1
+│   │   └── cmd
+│   ├── c2
+│   │   └── cmd
+│   ├── c3
+│   │   └── cmd
+│   ├── c4
+│   │   └── cmd
+│   ├── c5
+│   │   └── cmd
+│   ├── rboot
+│   └── rcon
+├── script
+│   ├── fire
+│   ├── init
+│   ├── mwanup
+│   ├── shut
+│   ├── usbhotplug
+│   ├── usbmount
+│   ├── usbumount
+│   └── wanup
+├── sdram
+│   ├── config
+│   ├── init
+│   ├── ncdl
+│   └── refresh
+├── sesx
+│   ├── b0
+│   ├── b1
+│   ├── b2
+│   ├── b3
+│   ├── led
+│   └── script
+├── smart
+│   └── connect
+│       └── x
+├── smbd
+│   ├── autoshare
+│   ├── cpage
+│   ├── cset
+│   ├── custom
+│   ├── enable
+│   ├── ifnames
+│   ├── master
+│   ├── passwd
+│   ├── protocol
+│   ├── shares
+│   ├── user
+│   ├── wgroup
+│   └── wins
+├── snmp
+│   └── enable
+├── sromrev
+├── sshd
+│   ├── authkeys
+│   ├── dsskey
+│   ├── eas
+│   ├── ecdsakey
+│   ├── ed25519
+│   ├── forwarding
+│   ├── hostkey
+│   ├── motd
+│   ├── pass
+│   ├── port
+│   ├── remote
+│   └── rport
+├── stealth
+│   ├── iled
+│   └── mode
+├── stubby
+│   ├── custom
+│   ├── force
+│   │   └── tls13
+│   ├── log
+│   ├── port
+│   ├── priority
+│   ├── proxy
+│   └── resolvers
+├── switch
+│   └── type
+├── t
+│   ├── cafree
+│   ├── features
+│   ├── fix1
+│   ├── hidelr
+│   └── model
+│       └── name
+├── telnetd
+│   ├── eas
+│   └── port
+├── tinc
+│   ├── custom
+│   ├── devicetype
+│   ├── enable
+│   ├── firewall
+│   ├── host
+│   │   ├── down
+│   │   └── up
+│   ├── hosts
+│   ├── manual
+│   │   ├── firewall
+│   │   └── tinc
+│   │       └── up
+│   ├── mode
+│   ├── name
+│   ├── poll
+│   ├── private
+│   │   ├── ed25519
+│   │   └── rsa
+│   ├── subnet
+│   │   ├── down
+│   │   └── up
+│   ├── tinc
+│   │   ├── down
+│   │   └── up
+│   └── vpn
+│       └── netmask
+├── tm
+│   ├── dst
+│   ├── sel
+│   └── tz
+├── tomatoanon
+│   ├── enable
+│   ├── id
+│   └── notify
+├── tor
+│   ├── custom
+│   ├── datadir
+│   ├── dnsport
+│   ├── enable
+│   ├── iface
+│   ├── ports
+│   │   └── custom
+│   ├── socksport
+│   ├── solve
+│   │   └── only
+│   ├── transport
+│   └── users
+├── trigforward
+├── ttb
+│   ├── css
+│   ├── loc
+│   └── url
+├── udpxy
+│   ├── clients
+│   ├── enable
+│   ├── lan
+│   ├── lan1
+│   ├── lan2
+│   ├── lan3
+│   ├── port
+│   ├── stats
+│   └── wanface
+├── upnp
+│   └── enable
+├── usb
+│   ├── apcupsd
+│   │   └── custom
+│   ├── automount
+│   ├── enable
+│   ├── ext
+│   │   └── opt
+│   ├── fat
+│   │   └── opt
+│   ├── fs
+│   │   ├── exfat
+│   │   ├── ext4
+│   │   ├── fat
+│   │   ├── hfs
+│   │   ├── ntfs
+│   │   └── zfs
+│   │       └── automount
+│   ├── hfs
+│   │   └── driver
+│   ├── irq
+│   │   └── thresh
+│   ├── ntfs
+│   │   ├── driver
+│   │   └── opt
+│   ├── ohci
+│   ├── printer
+│   │   └── bidirect
+│   ├── storage
+│   ├── uhci
+│   ├── usb2
+│   └── usb3
+├── vlan1hwname
+├── vlan1ports
+├── vlan1vid
+├── vlan2hwname
+├── vlan2ports
+├── vlan2vid
+├── vpn
+│   ├── client
+│   │   └── eas
+│   ├── client1
+│   │   ├── addr
+│   │   ├── adns
+│   │   ├── br
+│   │   ├── bridge
+│   │   ├── ca
+│   │   ├── cipher
+│   │   ├── comp
+│   │   ├── crt
+│   │   ├── crypt
+│   │   ├── custom
+│   │   ├── digest
+│   │   ├── firewall
+│   │   ├── fw
+│   │   ├── gw
+│   │   ├── hmac
+│   │   ├── if
+│   │   ├── key
+│   │   ├── local
+│   │   ├── nat
+│   │   ├── ncp
+│   │   │   └── ciphers
+│   │   ├── nm
+│   │   ├── nobind
+│   │   ├── poll
+│   │   ├── port
+│   │   ├── prio
+│   │   ├── proto
+│   │   ├── remote
+│   │   ├── reneg
+│   │   ├── retry
+│   │   ├── rg
+│   │   ├── rgw
+│   │   ├── routing
+│   │   │   └── val
+│   │   ├── static
+│   │   └── tlsvername
+│   ├── client2
+│   │   ├── addr
+│   │   ├── adns
+│   │   ├── br
+│   │   ├── bridge
+│   │   ├── ca
+│   │   ├── cipher
+│   │   ├── comp
+│   │   ├── crt
+│   │   ├── crypt
+│   │   ├── custom
+│   │   ├── digest
+│   │   ├── firewall
+│   │   ├── fw
+│   │   ├── gw
+│   │   ├── hmac
+│   │   ├── if
+│   │   ├── key
+│   │   ├── local
+│   │   ├── nat
+│   │   ├── ncp
+│   │   │   └── ciphers
+│   │   ├── nm
+│   │   ├── nobind
+│   │   ├── poll
+│   │   ├── port
+│   │   ├── prio
+│   │   ├── proto
+│   │   ├── remote
+│   │   ├── reneg
+│   │   ├── retry
+│   │   ├── rg
+│   │   ├── rgw
+│   │   ├── routing
+│   │   │   └── val
+│   │   ├── static
+│   │   └── tlsvername
+│   ├── client3
+│   │   ├── addr
+│   │   ├── adns
+│   │   ├── br
+│   │   ├── bridge
+│   │   ├── ca
+│   │   ├── cipher
+│   │   ├── comp
+│   │   ├── crt
+│   │   ├── crypt
+│   │   ├── custom
+│   │   ├── digest
+│   │   ├── firewall
+│   │   ├── fw
+│   │   ├── gw
+│   │   ├── hmac
+│   │   ├── if
+│   │   ├── key
+│   │   ├── local
+│   │   ├── nat
+│   │   ├── ncp
+│   │   │   └── ciphers
+│   │   ├── nm
+│   │   ├── nobind
+│   │   ├── poll
+│   │   ├── port
+│   │   ├── prio
+│   │   ├── proto
+│   │   ├── remote
+│   │   ├── reneg
+│   │   ├── retry
+│   │   ├── rg
+│   │   ├── rgw
+│   │   ├── routing
+│   │   │   └── val
+│   │   ├── static
+│   │   └── tlsvername
+│   ├── debug
+│   ├── server
+│   │   ├── dns
+│   │   └── eas
+│   ├── server1
+│   │   ├── br
+│   │   ├── c2c
+│   │   ├── ca
+│   │   │   └── key
+│   │   ├── ccd
+│   │   │   ├── excl
+│   │   │   └── val
+│   │   ├── cipher
+│   │   ├── comp
+│   │   ├── crl
+│   │   ├── crt
+│   │   ├── crypt
+│   │   ├── custom
+│   │   ├── dh
+│   │   ├── dhcp
+│   │   ├── digest
+│   │   ├── ecdh
+│   │   ├── firewall
+│   │   ├── hmac
+│   │   ├── if
+│   │   ├── key
+│   │   ├── local
+│   │   ├── ncp
+│   │   │   └── ciphers
+│   │   ├── nm
+│   │   ├── nocert
+│   │   ├── pdns
+│   │   ├── plan
+│   │   ├── plan1
+│   │   ├── plan2
+│   │   ├── plan3
+│   │   ├── poll
+│   │   ├── port
+│   │   ├── proto
+│   │   ├── r1
+│   │   ├── r2
+│   │   ├── remote
+│   │   ├── reneg
+│   │   ├── rgw
+│   │   ├── sn
+│   │   ├── static
+│   │   └── userpass
+│   └── server2
+│       ├── br
+│       ├── c2c
+│       ├── ca
+│       │   └── key
+│       ├── ccd
+│       │   ├── excl
+│       │   └── val
+│       ├── cipher
+│       ├── comp
+│       ├── crl
+│       ├── crt
+│       ├── crypt
+│       ├── custom
+│       ├── dh
+│       ├── dhcp
+│       ├── digest
+│       ├── ecdh
+│       ├── firewall
+│       ├── hmac
+│       ├── if
+│       ├── key
+│       ├── local
+│       ├── ncp
+│       │   └── ciphers
+│       ├── nm
+│       ├── nocert
+│       ├── pdns
+│       ├── plan
+│       ├── plan1
+│       ├── plan2
+│       ├── plan3
+│       ├── poll
+│       ├── port
+│       ├── proto
+│       ├── r1
+│       ├── r2
+│       ├── remote
+│       ├── reneg
+│       ├── rgw
+│       ├── sn
+│       ├── static
+│       └── userpass
+├── wait
+│   └── time
+├── wan
+│   ├── 6rd
+│   ├── addget
+│   ├── checker
+│   ├── ck
+│   │   └── pause
+│   ├── ckmtd
+│   ├── dhcp
+│   │   └── pass
+│   ├── dns
+│   │   └── auto
+│   ├── domain
+│   ├── gateway
+│   │   └── get
+│   ├── get
+│   │   ├── dns
+│   │   └── domain
+│   ├── hilink
+│   │   └── ip
+│   ├── hostname
+│   ├── hwaddr
+│   ├── hwname
+│   ├── iface
+│   ├── ifname
+│   ├── ifnames
+│   ├── ifnameX
+│   ├── ipaddr
+│   ├── l2tp
+│   │   └── server
+│   │       └── ip
+│   ├── lease
+│   ├── mac
+│   ├── modem
+│   │   ├── apn
+│   │   ├── band
+│   │   ├── dev
+│   │   ├── init
+│   │   ├── ipaddr
+│   │   ├── pin
+│   │   ├── roam
+│   │   ├── speed
+│   │   └── type
+│   ├── msroutes
+│   ├── mtu
+│   │   └── enable
+│   ├── netmask
+│   ├── ppp
+│   │   ├── ac
+│   │   ├── custom
+│   │   ├── demand
+│   │   │   └── dnsip
+│   │   ├── get
+│   │   │   ├── ac
+│   │   │   ├── ip
+│   │   │   └── srv
+│   │   ├── idletime
+│   │   ├── mlppp
+│   │   ├── mru
+│   │   ├── mtu
+│   │   ├── passwd
+│   │   ├── redialperiod
+│   │   ├── service
+│   │   ├── static
+│   │   │   └── ip
+│   │   └── username
+│   ├── pppoe
+│   │   ├── ifname
+│   │   ├── lef
+│   │   └── lei
+│   ├── pptp
+│   │   ├── dhcp
+│   │   └── server
+│   │       └── ip
+│   ├── primary
+│   ├── proto
+│   ├── qos
+│   │   ├── encap
+│   │   ├── ibw
+│   │   ├── obw
+│   │   └── overhead
+│   ├── routes
+│   ├── routes1
+│   ├── routes2
+│   ├── run
+│   │   └── mtu
+│   ├── speed
+│   ├── status
+│   │   └── script
+│   ├── unit
+│   ├── weight
+│   └── wins
+├── wan2
+│   ├── addget
+│   ├── ck
+│   │   └── pause
+│   ├── ckmtd
+│   ├── dns
+│   │   └── auto
+│   ├── gateway
+│   ├── hilink
+│   │   └── ip
+│   ├── hwaddr
+│   ├── hwname
+│   ├── iface
+│   ├── ifname
+│   ├── ipaddr
+│   ├── l2tp
+│   │   └── server
+│   │       └── ip
+│   ├── mac
+│   ├── modem
+│   │   ├── apn
+│   │   ├── band
+│   │   ├── dev
+│   │   ├── init
+│   │   ├── ipaddr
+│   │   ├── pin
+│   │   ├── roam
+│   │   ├── speed
+│   │   └── type
+│   ├── mtu
+│   │   └── enable
+│   ├── netmask
+│   ├── ppp
+│   │   ├── custom
+│   │   ├── demand
+│   │   │   └── dnsip
+│   │   ├── idletime
+│   │   ├── mlppp
+│   │   ├── passwd
+│   │   ├── redialperiod
+│   │   ├── service
+│   │   └── username
+│   ├── pppoe
+│   │   ├── lef
+│   │   └── lei
+│   ├── pptp
+│   │   ├── dhcp
+│   │   └── server
+│   │       └── ip
+│   ├── proto
+│   ├── qos
+│   │   ├── encap
+│   │   ├── ibw
+│   │   ├── obw
+│   │   └── overhead
+│   ├── status
+│   │   └── script
+│   └── weight
+├── wan3
+│   ├── addget
+│   ├── ck
+│   │   └── pause
+│   ├── ckmtd
+│   ├── dns
+│   │   └── auto
+│   ├── gateway
+│   ├── hilink
+│   │   └── ip
+│   ├── hwaddr
+│   ├── hwname
+│   ├── iface
+│   ├── ifname
+│   ├── ipaddr
+│   ├── l2tp
+│   │   └── server
+│   │       └── ip
+│   ├── mac
+│   ├── modem
+│   │   ├── apn
+│   │   ├── band
+│   │   ├── dev
+│   │   ├── init
+│   │   ├── ipaddr
+│   │   ├── pin
+│   │   ├── roam
+│   │   ├── speed
+│   │   └── type
+│   ├── mtu
+│   │   └── enable
+│   ├── netmask
+│   ├── ppp
+│   │   ├── custom
+│   │   ├── demand
+│   │   │   └── dnsip
+│   │   ├── idletime
+│   │   ├── mlppp
+│   │   ├── passwd
+│   │   ├── redialperiod
+│   │   ├── service
+│   │   └── username
+│   ├── pppoe
+│   │   ├── lef
+│   │   └── lei
+│   ├── pptp
+│   │   ├── dhcp
+│   │   └── server
+│   │       └── ip
+│   ├── proto
+│   ├── qos
+│   │   ├── encap
+│   │   ├── ibw
+│   │   ├── obw
+│   │   └── overhead
+│   ├── status
+│   │   └── script
+│   └── weight
+├── wan4
+│   ├── addget
+│   ├── ck
+│   │   └── pause
+│   ├── ckmtd
+│   ├── dns
+│   │   └── auto
+│   ├── gateway
+│   ├── hilink
+│   │   └── ip
+│   ├── hwaddr
+│   ├── hwname
+│   ├── iface
+│   ├── ifname
+│   ├── ipaddr
+│   ├── l2tp
+│   │   └── server
+│   │       └── ip
+│   ├── mac
+│   ├── modem
+│   │   ├── apn
+│   │   ├── band
+│   │   ├── dev
+│   │   ├── init
+│   │   ├── ipaddr
+│   │   ├── pin
+│   │   ├── roam
+│   │   ├── speed
+│   │   └── type
+│   ├── mtu
+│   │   └── enable
+│   ├── netmask
+│   ├── ppp
+│   │   ├── custom
+│   │   ├── demand
+│   │   │   └── dnsip
+│   │   ├── idletime
+│   │   ├── mlppp
+│   │   ├── passwd
+│   │   ├── redialperiod
+│   │   ├── service
+│   │   └── username
+│   ├── pppoe
+│   │   ├── lef
+│   │   └── lei
+│   ├── pptp
+│   │   ├── dhcp
+│   │   └── server
+│   │       └── ip
+│   ├── proto
+│   ├── qos
+│   │   ├── encap
+│   │   ├── ibw
+│   │   ├── obw
+│   │   └── overhead
+│   ├── status
+│   │   └── script
+│   └── weight
+├── wandevs
+├── watchdog
+├── web
+│   ├── adv
+│   │   └── scripts
+│   ├── css
+│   ├── dir
+│   ├── mx
+│   ├── pb
+│   ├── svg
+│   └── wl
+│       └── filter
+├── webmon
+│   ├── bkp
+│   ├── dir
+│   └── shrink
+├── wg
+│   └── adns
+├── wg0
+│   ├── aip
+│   ├── com
+│   ├── dns
+│   ├── enable
+│   ├── endpoint
+│   ├── file
+│   ├── firewall
+│   ├── fw
+│   ├── fwmark
+│   ├── ip
+│   ├── ka
+│   ├── key
+│   ├── lan
+│   ├── mtu
+│   ├── nat
+│   ├── peer
+│   │   └── dns
+│   ├── peers
+│   ├── poll
+│   ├── port
+│   ├── postdown
+│   ├── postup
+│   ├── predown
+│   ├── preup
+│   ├── prio
+│   ├── rgw
+│   ├── rgwr
+│   ├── route
+│   └── routing
+│       └── val
+├── wg1
+│   ├── aip
+│   ├── com
+│   ├── dns
+│   ├── enable
+│   ├── endpoint
+│   ├── file
+│   ├── firewall
+│   ├── fw
+│   ├── fwmark
+│   ├── ip
+│   ├── ka
+│   ├── key
+│   ├── lan
+│   ├── mtu
+│   ├── nat
+│   ├── peer
+│   │   └── dns
+│   ├── peers
+│   ├── poll
+│   ├── port
+│   ├── postdown
+│   ├── postup
+│   ├── predown
+│   ├── preup
+│   ├── prio
+│   ├── rgw
+│   ├── rgwr
+│   ├── route
+│   └── routing
+│       └── val
+├── wg2
+│   ├── aip
+│   ├── com
+│   ├── dns
+│   ├── enable
+│   ├── endpoint
+│   ├── file
+│   ├── firewall
+│   ├── fw
+│   ├── fwmark
+│   ├── ip
+│   ├── ka
+│   ├── key
+│   ├── lan
+│   ├── mtu
+│   ├── nat
+│   ├── peer
+│   │   └── dns
+│   ├── peers
+│   ├── poll
+│   ├── port
+│   ├── postdown
+│   ├── postup
+│   ├── predown
+│   ├── preup
+│   ├── prio
+│   ├── rgw
+│   ├── rgwr
+│   ├── route
+│   └── routing
+│       └── val
+├── wl
+│   ├── ack
+│   │   └── ratio
+│   ├── akm
+│   ├── ampdu
+│   │   ├── mpdu
+│   │   ├── rr
+│   │   │   └── rtylimit
+│   │   │       └── tid
+│   │   ├── rts
+│   │   └── rtylimit
+│   │       └── tid
+│   ├── amsdu
+│   ├── antdiv
+│   ├── ap
+│   │   └── isolate
+│   ├── assoc
+│   │   └── retry
+│   │       └── max
+│   ├── atf
+│   ├── auth
+│   │   └── mode
+│   ├── bcn
+│   │   └── rotate
+│   ├── bss
+│   │   ├── enabled
+│   │   ├── maxassoc
+│   │   └── opmode
+│   │       └── cap
+│   │           └── reqd
+│   ├── btc
+│   │   └── mode
+│   ├── channel
+│   ├── clap
+│   │   └── hwaddr
+│   ├── closed
+│   ├── corerev
+│   ├── country
+│   │   ├── code
+│   │   └── rev
+│   ├── crypto
+│   ├── dfs
+│   │   ├── postism
+│   │   └── preism
+│   ├── distance
+│   ├── dtim
+│   ├── frag
+│   ├── frameburst
+│   ├── gmode
+│   │   └── protection
+│   ├── hwaddr
+│   ├── ifname
+│   ├── ifnames
+│   ├── igs
+│   ├── infra
+│   ├── itxbf
+│   ├── key
+│   ├── key1
+│   ├── key2
+│   ├── key3
+│   ├── key4
+│   ├── lazywds
+│   ├── leddc
+│   ├── mac
+│   │   └── deny
+│   ├── macaddr
+│   ├── maclist
+│   ├── macmode
+│   ├── maxassoc
+│   ├── mcast
+│   │   └── regen
+│   │       └── bss
+│   │           └── enable
+│   ├── mfp
+│   ├── mimo
+│   │   └── preamble
+│   ├── mitigation
+│   │   └── ac
+│   ├── mode
+│   ├── mrate
+│   ├── nband
+│   ├── nbw
+│   │   └── cap
+│   ├── nctrlsb
+│   ├── net
+│   │   ├── mode
+│   │   └── reauth
+│   ├── nmcsidx
+│   ├── nmode
+│   │   └── protection
+│   ├── nreqd
+│   ├── obss
+│   │   └── coex
+│   ├── optimizexbox
+│   ├── passphrase
+│   ├── phytype
+│   ├── phytypes
+│   ├── plcphdr
+│   ├── probresp
+│   │   └── sw
+│   ├── psta
+│   │   └── inact
+│   ├── radio
+│   │   └── pwrsave
+│   │       ├── enable
+│   │       ├── level
+│   │       ├── pps
+│   │       ├── quiet
+│   │       │   └── time
+│   │       └── stas
+│   │           └── assoc
+│   │               └── check
+│   ├── radioids
+│   ├── radius
+│   │   ├── ipaddr
+│   │   ├── key
+│   │   └── port
+│   ├── rate
+│   ├── rateset
+│   ├── reg
+│   │   └── mode
+│   ├── rifs
+│   │   └── advert
+│   ├── rts
+│   ├── rxchain
+│   │   └── pwrsave
+│   │       ├── enable
+│   │       ├── pps
+│   │       ├── quiet
+│   │       │   └── time
+│   │       └── stas
+│   │           └── assoc
+│   │               └── check
+│   ├── rxstreams
+│   ├── security
+│   │   └── mode
+│   ├── ssid
+│   ├── sta
+│   │   └── retry
+│   │       └── time
+│   ├── stbc
+│   │   ├── rx
+│   │   └── tx
+│   ├── subunit
+│   ├── tnoise
+│   ├── turbo
+│   │   └── qam
+│   ├── txant
+│   ├── txbf
+│   │   ├── bfe
+│   │   │   └── cap
+│   │   ├── bfr
+│   │   │   └── cap
+│   │   └── imp
+│   ├── txpwr
+│   ├── txq
+│   │   └── thresh
+│   ├── txstreams
+│   ├── unit
+│   ├── user
+│   │   └── rssi
+│   ├── vifnames
+│   ├── vifs
+│   ├── vlan
+│   │   └── prio
+│   │       └── mode
+│   ├── vreqd
+│   ├── wds
+│   │   ├── enable
+│   │   └── timeout
+│   ├── wep
+│   │   ├── bit
+│   │   ├── buf
+│   │   ├── gen
+│   │   └── last
+│   ├── wme
+│   │   ├── ap
+│   │   │   ├── be
+│   │   │   ├── bk
+│   │   │   ├── vi
+│   │   │   └── vo
+│   │   ├── apsd
+│   │   ├── bss
+│   │   │   └── disable
+│   │   ├── no
+│   │   │   └── ack
+│   │   ├── sta
+│   │   │   ├── be
+│   │   │   ├── bk
+│   │   │   ├── vi
+│   │   │   └── vo
+│   │   └── txp
+│   │       ├── be
+│   │       ├── bk
+│   │       ├── vi
+│   │       └── vo
+│   ├── wmf
+│   │   ├── bss
+│   │   │   └── enable
+│   │   ├── igmpq
+│   │   │   └── filter
+│   │   ├── mdata
+│   │   │   └── sendup
+│   │   ├── ucast
+│   │   │   └── upnp
+│   │   └── ucigmp
+│   │       └── query
+│   └── wpa
+│       ├── gtk
+│       │   └── rekey
+│       └── psk
+├── wl0
+│   ├── ack
+│   │   └── ratio
+│   ├── akm
+│   ├── ampdu
+│   │   ├── mpdu
+│   │   ├── rr
+│   │   │   └── rtylimit
+│   │   │       └── tid
+│   │   ├── rts
+│   │   └── rtylimit
+│   │       └── tid
+│   ├── amsdu
+│   ├── antdiv
+│   ├── ap
+│   │   └── isolate
+│   ├── assoc
+│   │   └── retry
+│   │       └── max
+│   ├── atf
+│   ├── auth
+│   │   └── mode
+│   ├── bcn
+│   │   └── rotate
+│   ├── bss
+│   │   ├── enabled
+│   │   ├── maxassoc
+│   │   └── opmode
+│   │       └── cap
+│   │           └── reqd
+│   ├── btc
+│   │   └── mode
+│   ├── bw
+│   │   └── cap
+│   ├── channel
+│   ├── chanspec
+│   ├── clap
+│   │   └── hwaddr
+│   ├── closed
+│   ├── corerev
+│   ├── country
+│   │   ├── code
+│   │   └── rev
+│   ├── crypto
+│   ├── dfs
+│   │   ├── postism
+│   │   └── preism
+│   ├── distance
+│   ├── dtim
+│   ├── frag
+│   ├── frameburst
+│   ├── gmode
+│   │   └── protection
+│   ├── hw
+│   │   ├── rxchain
+│   │   └── txchain
+│   ├── hwaddr
+│   ├── ifname
+│   ├── igs
+│   ├── infra
+│   ├── itxbf
+│   ├── key
+│   ├── key1
+│   ├── key2
+│   ├── key3
+│   ├── key4
+│   ├── lazywds
+│   ├── leddc
+│   ├── mac
+│   │   └── deny
+│   ├── macaddr
+│   ├── maclist
+│   ├── macmode
+│   ├── maxassoc
+│   ├── mcast
+│   │   └── regen
+│   │       └── bss
+│   │           └── enable
+│   ├── mfp
+│   ├── mimo
+│   │   └── preamble
+│   ├── mitigation
+│   │   └── ac
+│   ├── mode
+│   ├── mrate
+│   ├── nband
+│   ├── nbw
+│   │   └── cap
+│   ├── nctrlsb
+│   ├── net
+│   │   ├── mode
+│   │   └── reauth
+│   ├── nmcsidx
+│   ├── nmode
+│   │   └── protection
+│   ├── nreqd
+│   ├── obss
+│   │   └── coex
+│   ├── optimizexbox
+│   ├── passphrase
+│   ├── phytype
+│   ├── phytypes
+│   ├── plcphdr
+│   ├── probresp
+│   │   └── sw
+│   ├── psta
+│   │   └── inact
+│   ├── radio
+│   │   └── pwrsave
+│   │       ├── enable
+│   │       ├── level
+│   │       ├── pps
+│   │       ├── quiet
+│   │       │   └── time
+│   │       └── stas
+│   │           └── assoc
+│   │               └── check
+│   ├── radioids
+│   ├── radius
+│   │   ├── ipaddr
+│   │   ├── key
+│   │   └── port
+│   ├── rate
+│   ├── rateset
+│   ├── reg
+│   │   └── mode
+│   ├── rifs
+│   │   └── advert
+│   ├── rts
+│   ├── rxchain
+│   │   └── pwrsave
+│   │       ├── enable
+│   │       ├── pps
+│   │       ├── quiet
+│   │       │   └── time
+│   │       └── stas
+│   │           └── assoc
+│   │               └── check
+│   ├── rxstreams
+│   ├── security
+│   │   └── mode
+│   ├── ssid
+│   ├── sta
+│   │   └── retry
+│   │       └── time
+│   ├── stbc
+│   │   ├── rx
+│   │   └── tx
+│   ├── subunit
+│   ├── tnoise
+│   ├── turbo
+│   │   └── qam
+│   ├── txant
+│   ├── txbf
+│   │   ├── bfe
+│   │   │   └── cap
+│   │   ├── bfr
+│   │   │   └── cap
+│   │   └── imp
+│   ├── txchain
+│   ├── txpwr
+│   ├── txstreams
+│   ├── unit
+│   ├── user
+│   │   └── rssi
+│   ├── vifnames
+│   ├── vifs
+│   ├── vlan
+│   │   └── prio
+│   │       └── mode
+│   ├── vreqd
+│   ├── wds
+│   │   ├── enable
+│   │   └── timeout
+│   ├── wep
+│   │   ├── bit
+│   │   ├── buf
+│   │   ├── gen
+│   │   └── last
+│   ├── wme
+│   │   ├── ap
+│   │   │   ├── be
+│   │   │   ├── bk
+│   │   │   ├── vi
+│   │   │   └── vo
+│   │   ├── apsd
+│   │   ├── bss
+│   │   │   └── disable
+│   │   ├── no
+│   │   │   └── ack
+│   │   ├── sta
+│   │   │   ├── be
+│   │   │   ├── bk
+│   │   │   ├── vi
+│   │   │   └── vo
+│   │   └── txp
+│   │       ├── be
+│   │       ├── bk
+│   │       ├── vi
+│   │       └── vo
+│   ├── wmf
+│   │   ├── bss
+│   │   │   └── enable
+│   │   ├── igmpq
+│   │   │   └── filter
+│   │   ├── mdata
+│   │   │   └── sendup
+│   │   ├── ucast
+│   │   │   └── upnp
+│   │   └── ucigmp
+│   │       └── query
+│   └── wpa
+│       ├── gtk
+│       │   └── rekey
+│       └── psk
+├── wl0.1
+│   └── hwaddr
+├── wl0.10
+│   └── hwaddr
+├── wl0.11
+│   └── hwaddr
+├── wl0.12
+│   └── hwaddr
+├── wl0.13
+│   └── hwaddr
+├── wl0.14
+│   └── hwaddr
+├── wl0.15
+│   └── hwaddr
+├── wl0.2
+│   └── hwaddr
+├── wl0.3
+│   └── hwaddr
+├── wl0.4
+│   └── hwaddr
+├── wl0.5
+│   └── hwaddr
+├── wl0.6
+│   └── hwaddr
+├── wl0.7
+│   └── hwaddr
+├── wl0.8
+│   └── hwaddr
+├── wl0.9
+│   └── hwaddr
+├── wl1
+│   ├── ack
+│   │   └── ratio
+│   ├── akm
+│   ├── ampdu
+│   │   ├── mpdu
+│   │   ├── rr
+│   │   │   └── rtylimit
+│   │   │       └── tid
+│   │   ├── rts
+│   │   └── rtylimit
+│   │       └── tid
+│   ├── amsdu
+│   ├── antdiv
+│   ├── ap
+│   │   └── isolate
+│   ├── assoc
+│   │   └── retry
+│   │       └── max
+│   ├── atf
+│   ├── auth
+│   │   └── mode
+│   ├── bcn
+│   │   └── rotate
+│   ├── bss
+│   │   ├── enabled
+│   │   ├── maxassoc
+│   │   └── opmode
+│   │       └── cap
+│   │           └── reqd
+│   ├── btc
+│   │   └── mode
+│   ├── bw
+│   │   └── cap
+│   ├── channel
+│   ├── chanspec
+│   ├── clap
+│   │   └── hwaddr
+│   ├── closed
+│   ├── corerev
+│   ├── country
+│   │   ├── code
+│   │   └── rev
+│   ├── crypto
+│   ├── dfs
+│   │   ├── postism
+│   │   └── preism
+│   ├── distance
+│   ├── dtim
+│   ├── frag
+│   ├── frameburst
+│   ├── gmode
+│   │   └── protection
+│   ├── hw
+│   │   ├── rxchain
+│   │   └── txchain
+│   ├── hwaddr
+│   ├── ifname
+│   ├── igs
+│   ├── infra
+│   ├── itxbf
+│   ├── key
+│   ├── key1
+│   ├── key2
+│   ├── key3
+│   ├── key4
+│   ├── lazywds
+│   ├── leddc
+│   ├── mac
+│   │   └── deny
+│   ├── macaddr
+│   ├── maclist
+│   ├── macmode
+│   ├── maxassoc
+│   ├── mcast
+│   │   └── regen
+│   │       └── bss
+│   │           └── enable
+│   ├── mfp
+│   ├── mimo
+│   │   └── preamble
+│   ├── mitigation
+│   │   └── ac
+│   ├── mode
+│   ├── mrate
+│   ├── nband
+│   ├── nbw
+│   │   └── cap
+│   ├── nctrlsb
+│   ├── net
+│   │   ├── mode
+│   │   └── reauth
+│   ├── nmcsidx
+│   ├── nmode
+│   │   └── protection
+│   ├── nreqd
+│   ├── obss
+│   │   └── coex
+│   ├── optimizexbox
+│   ├── passphrase
+│   ├── phytype
+│   ├── phytypes
+│   ├── plcphdr
+│   ├── probresp
+│   │   └── sw
+│   ├── psta
+│   │   └── inact
+│   ├── radio
+│   │   └── pwrsave
+│   │       ├── enable
+│   │       ├── level
+│   │       ├── pps
+│   │       ├── quiet
+│   │       │   └── time
+│   │       └── stas
+│   │           └── assoc
+│   │               └── check
+│   ├── radioids
+│   ├── radius
+│   │   ├── ipaddr
+│   │   ├── key
+│   │   └── port
+│   ├── rate
+│   ├── rateset
+│   ├── reg
+│   │   └── mode
+│   ├── rifs
+│   │   └── advert
+│   ├── rts
+│   ├── rxchain
+│   │   └── pwrsave
+│   │       ├── enable
+│   │       ├── pps
+│   │       ├── quiet
+│   │       │   └── time
+│   │       └── stas
+│   │           └── assoc
+│   │               └── check
+│   ├── rxstreams
+│   ├── security
+│   │   └── mode
+│   ├── ssid
+│   ├── sta
+│   │   └── retry
+│   │       └── time
+│   ├── stbc
+│   │   ├── rx
+│   │   └── tx
+│   ├── subunit
+│   ├── tnoise
+│   ├── turbo
+│   │   └── qam
+│   ├── txant
+│   ├── txbf
+│   │   ├── bfe
+│   │   │   └── cap
+│   │   ├── bfr
+│   │   │   └── cap
+│   │   └── imp
+│   ├── txchain
+│   ├── txpwr
+│   ├── txstreams
+│   ├── unit
+│   ├── user
+│   │   └── rssi
+│   ├── vifnames
+│   ├── vifs
+│   ├── vlan
+│   │   └── prio
+│   │       └── mode
+│   ├── vreqd
+│   ├── wds
+│   │   ├── enable
+│   │   └── timeout
+│   ├── wep
+│   │   ├── bit
+│   │   ├── buf
+│   │   ├── gen
+│   │   └── last
+│   ├── wme
+│   │   ├── ap
+│   │   │   ├── be
+│   │   │   ├── bk
+│   │   │   ├── vi
+│   │   │   └── vo
+│   │   ├── apsd
+│   │   ├── bss
+│   │   │   └── disable
+│   │   ├── no
+│   │   │   └── ack
+│   │   ├── sta
+│   │   │   ├── be
+│   │   │   ├── bk
+│   │   │   ├── vi
+│   │   │   └── vo
+│   │   └── txp
+│   │       ├── be
+│   │       ├── bk
+│   │       ├── vi
+│   │       └── vo
+│   ├── wmf
+│   │   ├── bss
+│   │   │   └── enable
+│   │   ├── igmpq
+│   │   │   └── filter
+│   │   ├── mdata
+│   │   │   └── sendup
+│   │   ├── ucast
+│   │   │   └── upnp
+│   │   └── ucigmp
+│   │       └── query
+│   └── wpa
+│       ├── gtk
+│       │   └── rekey
+│       └── psk
+├── wl1.1
+│   └── hwaddr
+├── wl1.10
+│   └── hwaddr
+├── wl1.11
+│   └── hwaddr
+├── wl1.12
+│   └── hwaddr
+├── wl1.13
+│   └── hwaddr
+├── wl1.14
+│   └── hwaddr
+├── wl1.15
+│   └── hwaddr
+├── wl1.2
+│   └── hwaddr
+├── wl1.3
+│   └── hwaddr
+├── wl1.4
+│   └── hwaddr
+├── wl1.5
+│   └── hwaddr
+├── wl1.6
+│   └── hwaddr
+├── wl1.7
+│   └── hwaddr
+├── wl1.8
+│   └── hwaddr
+├── wl1.9
+│   └── hwaddr
+├── xhci
+│   └── ports
+├── xtalfreq
+└── zfs
+    └── mount
+        └── script
+
+607 directories, 1773 files
+#+end_verse
+#+begin_verse
+.
+├── acs
+│   ├── 2g
+│   │   └── ch
+│   │       └── no
+│   │           └── restrict
+│   ├── mode
+│   └── no
+│       └── restrict
+│           └── align
+├── action
+│   └── service
+├── adblock
+│   ├── blacklist
+│   │   └── custom
+│   ├── enable
+│   ├── limit
+│   ├── logs
+│   ├── path
+│   └── whitelist
+├── blink
+│   └── wl
+├── block
+│   └── wan
+│       └── limit
+│           └── icmp
+├── board
+│   └── id
+├── boardflags
+├── boardflags2
+├── boardnum
+├── boardrev
+├── boardtype
+├── boot
+│   └── wait
+├── bt
+│   ├── auth
+│   ├── autoadd
+│   ├── binary
+│   │   └── custom
+│   ├── blocklist
+│   │   └── url
+│   ├── check
+│   │   └── time
+│   ├── custom
+│   ├── dht
+│   ├── dir
+│   ├── dl
+│   │   ├── enable
+│   │   └── queue
+│   │       ├── enable
+│   │       └── size
+│   ├── enable
+│   ├── incomplete
+│   ├── log
+│   │   └── path
+│   ├── login
+│   ├── lpd
+│   ├── message
+│   ├── password
+│   ├── peer
+│   │   └── limit
+│   │       ├── global
+│   │       └── per
+│   │           └── torrent
+│   ├── pex
+│   ├── port
+│   │   └── gui
+│   ├── ratio
+│   │   ├── enable
+│   │   └── idle
+│   │       └── enable
+│   ├── rpc
+│   │   ├── enable
+│   │   └── wan
+│   ├── settings
+│   │   └── custom
+│   ├── sleep
+│   ├── ul
+│   │   ├── enable
+│   │   ├── queue
+│   │   │   ├── enable
+│   │   │   └── size
+│   │   └── slot
+│   │       └── per
+│   │           └── torrent
+│   └── utp
+├── btn
+│   ├── override
+│   └── reset
+├── bwl
+│   ├── enable
+│   ├── lan
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── tcp
+│   │   ├── udp
+│   │   ├── ulc
+│   │   └── ulr
+│   ├── lan1
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── ulc
+│   │   └── ulr
+│   ├── lan2
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── ulc
+│   │   └── ulr
+│   ├── lan3
+│   │   ├── dlc
+│   │   ├── dlr
+│   │   ├── enable
+│   │   ├── prio
+│   │   ├── ulc
+│   │   └── ulr
+│   └── rules
+├── caldata
+│   └── ready
+├── cfe
+│   └── version
+├── cifs1
+├── cifs2
+├── clkfreq
+├── console
+│   └── loglevel
+├── cstats
+│   └── enable
+├── ct
+│   ├── hashsize
+│   ├── max
+│   ├── tcp
+│   │   └── timeout
+│   ├── timeout
+│   └── udp
+│       └── timeout
+├── ctf
+│   └── disable
+├── ddnsx
+│   └── custom
+│       └── if
+├── ddnsx0
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── ddnsx1
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── ddnsx2
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── ddnsx3
+│   ├── cache
+│   ├── cktime
+│   ├── ip
+│   ├── opendns
+│   ├── refresh
+│   └── save
+├── debug
+│   ├── cprintf
+│   │   └── file
+│   ├── ddns
+│   ├── logsegfault
+│   └── nocommit
+├── dhcp
+│   ├── domain
+│   ├── lease
+│   └── moveip
+├── dhcp1
+│   └── lease
+├── dhcp2
+│   └── lease
+├── dhcp3
+│   └── lease
+├── dhcpc
+│   ├── 121
+│   ├── 33
+│   ├── custom
+│   └── minpkt
+├── dhcpd
+│   ├── dmdns
+│   ├── endip
+│   ├── gwmode
+│   ├── lmax
+│   ├── ostatic
+│   ├── slt
+│   ├── startip
+│   └── static
+├── dhcpd1
+│   ├── endip
+│   ├── ostatic
+│   └── startip
+├── dhcpd2
+│   ├── endip
+│   ├── ostatic
+│   └── startip
+├── dhcpd3
+│   ├── endip
+│   ├── ostatic
+│   └── startip
+├── dmz
+│   ├── enable
+│   ├── ipaddr
+│   ├── ra
+│   └── sip
+├── dns
+│   ├── fwd
+│   │   └── local
+│   ├── intcpt
+│   ├── norebind
+│   └── priv
+│       └── override
+├── dnscrypt
+│   ├── ephemeral
+│   │   └── keys
+│   ├── log
+│   ├── manual
+│   ├── port
+│   ├── priority
+│   ├── provider
+│   │   ├── key
+│   │   └── name
+│   ├── proxy
+│   └── resolver
+│       └── address
+├── dnsmasq
+│   ├── custom
+│   ├── debug
+│   ├── edns
+│   │   └── size
+│   ├── gen
+│   │   └── names
+│   ├── norestart
+│   ├── onion
+│   │   └── support
+│   ├── pxelan
+│   ├── pxelan1
+│   ├── pxelan2
+│   ├── pxelan3
+│   ├── q
+│   ├── safe
+│   ├── static
+│   │   └── only
+│   └── tftp
+│       └── path
+├── dnssec
+│   ├── enable
+│   └── method
+├── dpsta
+│   ├── ifnames
+│   ├── lan
+│   │   └── uif
+│   └── policy
+├── DSCP
+│   └── fix
+│       └── enable
+├── ehci
+│   └── ports
+├── emf
+│   ├── enable
+│   ├── entry
+│   ├── rtport
+│   │   └── entry
+│   └── uffp
+│       └── entry
+├── env
+│   └── path
+├── et
+│   └── txq
+│       └── thresh
+├── et0macaddr
+├── et0mdcport
+├── et0phyaddr
+├── force
+│   └── igmpv2
+├── ftp
+│   └── enable
+├── fw
+│   ├── blackhole
+│   ├── nat
+│   │   └── tuning
+│   └── strict
+│       └── input
+├── g
+│   ├── reboot
+│   └── upgrade
+├── gpio0
+├── gro
+│   └── disable
+├── http
+│   ├── enable
+│   ├── id
+│   │   └── warn
+│   ├── ipv6
+│   ├── lan
+│   │   └── listeners
+│   ├── lanport
+│   ├── nocache
+│   ├── passwd
+│   ├── username
+│   └── wanport
+│       └── bfm
+├── https
+│   ├── crt
+│   │   ├── cn
+│   │   ├── file
+│   │   └── save
+│   ├── enable
+│   └── lanport
+├── idle
+│   └── enable
+├── ipsec
+│   └── pass
+├── ipv6
+│   ├── 6rd
+│   │   ├── borderrelay
+│   │   ├── ipv4masklen
+│   │   └── prefix
+│   │       └── length
+│   ├── accept
+│   │   └── ra
+│   ├── debug
+│   ├── dhcpd
+│   ├── dns
+│   │   └── lan
+│   ├── duid
+│   │   └── type
+│   ├── fast
+│   │   └── ra
+│   ├── get
+│   │   └── dns
+│   ├── ia
+│   │   ├── na
+│   │   │   └── id
+│   │   └── pd
+│   │       └── id
+│   ├── ifname
+│   ├── isp
+│   │   ├── gw
+│   │   └── opt
+│   ├── lease
+│   │   └── time
+│   ├── pd
+│   │   └── norelease
+│   ├── pdonly
+│   ├── portforward
+│   ├── prefix
+│   │   ├── len
+│   │   │   └── wan
+│   │   └── length
+│   ├── radvd
+│   ├── relay
+│   ├── rtr
+│   │   └── addr
+│   ├── service
+│   ├── tun
+│   │   ├── addr
+│   │   ├── addrlen
+│   │   ├── mtu
+│   │   ├── ttl
+│   │   └── v4end
+│   ├── vlan
+│   └── wan
+│       └── addr
+├── jffs2
+│   ├── auto
+│   │   └── unmount
+│   ├── exec
+│   ├── format
+│   └── on
+├── jumbo
+│   └── frame
+│       ├── enable
+│       └── size
+├── lan
+│   ├── desc
+│   ├── dhcp
+│   ├── domain
+│   ├── gateway
+│   ├── hostname
+│   ├── hwaddr
+│   ├── hwnames
+│   ├── ifname
+│   ├── ifnames
+│   ├── invert
+│   ├── ipaddr
+│   ├── lease
+│   ├── netmask
+│   ├── proto
+│   ├── route
+│   ├── state
+│   ├── stp
+│   └── wins
+├── lan1
+│   ├── ipaddr
+│   ├── netmask
+│   └── stp
+├── lan2
+│   ├── ipaddr
+│   ├── netmask
+│   └── stp
+├── lan3
+│   ├── ipaddr
+│   ├── netmask
+│   └── stp
+├── landevs
+├── led
+│   └── override
+├── log
+│   ├── dropdups
+│   ├── events
+│   ├── file
+│   │   ├── custom
+│   │   ├── keep
+│   │   ├── path
+│   │   └── size
+│   ├── in
+│   ├── limit
+│   ├── mark
+│   ├── min
+│   │   └── level
+│   ├── out
+│   ├── remote
+│   ├── remoteip
+│   ├── remoteport
+│   ├── wm
+│   ├── wmdmax
+│   ├── wmip
+│   ├── wmsmax
+│   └── wmtype
+├── macnames
+├── manual
+│   └── boot
+│       └── nv
+├── mdns
+│   ├── debug
+│   ├── enable
+│   └── reflector
+├── ms
+│   ├── autoscan
+│   ├── custom
+│   ├── dbdir
+│   ├── dirs
+│   ├── enable
+│   ├── ifname
+│   ├── port
+│   ├── sas
+│   ├── stdlna
+│   └── tivo
+├── multicast
+│   ├── custom
+│   ├── lan
+│   ├── lan1
+│   ├── lan2
+│   ├── lan3
+│   ├── pass
+│   └── quickleave
+├── mwan
+│   ├── ckdst
+│   ├── cktime
+│   ├── debug
+│   ├── diff
+│   ├── init
+│   ├── num
+│   ├── state
+│   │   └── init
+│   └── tune
+│       └── gc
+├── mysql
+│   ├── allow
+│   │   └── anyhost
+│   ├── binary
+│   │   └── custom
+│   ├── check
+│   │   └── time
+│   ├── datadir
+│   ├── dlroot
+│   ├── enable
+│   ├── init
+│   │   ├── priv
+│   │   └── rootpass
+│   ├── key
+│   │   └── buffer
+│   ├── max
+│   │   ├── allowed
+│   │   │   └── packet
+│   │   └── connections
+│   ├── net
+│   │   └── buffer
+│   │       └── length
+│   ├── passwd
+│   ├── port
+│   ├── query
+│   │   └── cache
+│   │       └── size
+│   ├── read
+│   │   ├── buffer
+│   │   │   └── size
+│   │   └── rnd
+│   │       └── buffer
+│   │           └── size
+│   ├── server
+│   │   └── custom
+│   ├── sleep
+│   ├── sort
+│   │   └── buffer
+│   │       └── size
+│   ├── table
+│   │   └── open
+│   │       └── cache
+│   ├── thread
+│   │   ├── cache
+│   │   │   └── size
+│   │   └── stack
+│   ├── tmpdir
+│   ├── usb
+│   │   └── enable
+│   └── username
+├── NC
+│   ├── AllowedWebHosts
+│   ├── BridgeLAN
+│   ├── DocumentRoot
+│   ├── enable
+│   ├── ExcludePorts
+│   ├── ForcedRedirect
+│   ├── GatewayMode
+│   ├── GatewayName
+│   ├── GatewayPort
+│   ├── HomePage
+│   ├── IdleTimeout
+│   ├── LoginTimeout
+│   ├── MaxMissedARP
+│   ├── PeerChecktimeout
+│   ├── RenewTimeout
+│   └── Verbosity
+├── ne
+│   ├── shlimit
+│   ├── snat
+│   ├── syncookies
+│   ├── valpha
+│   ├── vbeta
+│   ├── vegas
+│   └── vgamma
+├── nf
+│   ├── ftp
+│   ├── h323
+│   ├── l7in
+│   ├── loopback
+│   ├── pptp
+│   ├── rtsp
+│   ├── sip
+│   └── ttl
+├── nfs
+│   ├── enable
+│   │   └── v2
+│   └── exports
+├── nginx
+│   ├── custom
+│   ├── docroot
+│   ├── enable
+│   ├── fqdn
+│   ├── h5aisupport
+│   ├── httpcustom
+│   ├── keepconf
+│   ├── override
+│   ├── overridefile
+│   ├── php
+│   ├── phpconf
+│   ├── phpfpmconf
+│   ├── port
+│   ├── priority
+│   ├── remote
+│   ├── servercustom
+│   ├── upload
+│   └── user
+├── ntp
+│   ├── ready
+│   ├── server
+│   └── updates
+├── ntpd
+│   ├── enable
+│   └── server
+│       └── redir
+├── ohci
+│   └── ports
+├── os
+│   ├── date
+│   └── version
+│       └── last
+├── pbr
+│   └── rules
+├── pci
+│   ├── 1
+│   │   └── 1
+│   │       ├── aa2g
+│   │       ├── agbg0
+│   │       ├── agbg1
+│   │       ├── agbg2
+│   │       ├── antswitch
+│   │       ├── boardflags
+│   │       ├── boardflags2
+│   │       ├── boardflags3
+│   │       ├── boardnum
+│   │       ├── boardrev
+│   │       ├── boardtype
+│   │       ├── boardvendor
+│   │       ├── cckbw202gpo
+│   │       ├── cckbw20ul2gpo
+│   │       ├── ccode
+│   │       ├── devid
+│   │       ├── dot11agduphrpo
+│   │       ├── dot11agduplrpo
+│   │       ├── dot11agofdmhrbw202gpo
+│   │       ├── epagain2g
+│   │       ├── femctrl
+│   │       ├── gainctrlsph
+│   │       ├── macaddr
+│   │       ├── maxp2ga0
+│   │       ├── maxp2ga1
+│   │       ├── maxp2ga2
+│   │       ├── mcsbw202gpo
+│   │       ├── mcsbw402gpo
+│   │       ├── measpower
+│   │       ├── measpower1
+│   │       ├── measpower2
+│   │       ├── noiselvl2ga0
+│   │       ├── noiselvl2ga1
+│   │       ├── noiselvl2ga2
+│   │       ├── ofdmlrbw202gpo
+│   │       ├── pa2ga0
+│   │       ├── pa2ga1
+│   │       ├── pa2ga2
+│   │       ├── papdcap2g
+│   │       ├── pdgain2g
+│   │       ├── pdoffset2g40ma0
+│   │       ├── pdoffset2g40ma1
+│   │       ├── pdoffset2g40ma2
+│   │       ├── pdoffset2g40mvalid
+│   │       ├── pdoffset40ma0
+│   │       ├── pdoffset40ma1
+│   │       ├── pdoffset40ma2
+│   │       ├── pdoffset80ma0
+│   │       ├── pdoffset80ma1
+│   │       ├── pdoffset80ma2
+│   │       ├── regrev
+│   │       ├── rpcal2g
+│   │       ├── rxchain
+│   │       ├── rxgainerr2ga0
+│   │       ├── rxgainerr2ga1
+│   │       ├── rxgainerr2ga2
+│   │       ├── rxgains2gelnagaina0
+│   │       ├── rxgains2gelnagaina1
+│   │       ├── rxgains2gelnagaina2
+│   │       ├── rxgains2gtrelnabypa0
+│   │       ├── rxgains2gtrelnabypa1
+│   │       ├── rxgains2gtrelnabypa2
+│   │       ├── rxgains2gtrisoa0
+│   │       ├── rxgains2gtrisoa1
+│   │       ├── rxgains2gtrisoa2
+│   │       ├── sar2g
+│   │       ├── sromrev
+│   │       ├── subband5gver
+│   │       ├── subvid
+│   │       ├── tempoffset
+│   │       ├── temps
+│   │       │   └── period
+│   │       ├── tempthresh
+│   │       ├── tssifloor2g
+│   │       ├── tssiposslope2g
+│   │       ├── tworangetssi2g
+│   │       ├── txchain
+│   │       ├── venid
+│   │       └── xtalfreq
+│   └── 2
+│       └── 1
+│           ├── aa5g
+│           ├── aga0
+│           ├── aga1
+│           ├── aga2
+│           ├── agbg0
+│           ├── agbg1
+│           ├── agbg2
+│           ├── antswitch
+│           ├── boardflags
+│           ├── boardflags2
+│           ├── boardflags3
+│           ├── boardnum
+│           ├── boardrev
+│           ├── boardtype
+│           ├── ccode
+│           ├── devid
+│           ├── dot11agduphrpo
+│           ├── dot11agduplrpo
+│           ├── epagain5g
+│           ├── femctrl
+│           ├── gainctrlsph
+│           ├── macaddr
+│           ├── maxp5ga0
+│           ├── maxp5ga1
+│           ├── maxp5ga2
+│           ├── mcsbw1605ghpo
+│           ├── mcsbw1605glpo
+│           ├── mcsbw1605gmpo
+│           ├── mcsbw205ghpo
+│           ├── mcsbw205glpo
+│           ├── mcsbw205gmpo
+│           ├── mcsbw405ghpo
+│           ├── mcsbw405glpo
+│           ├── mcsbw405gmpo
+│           ├── mcsbw805ghpo
+│           ├── mcsbw805glpo
+│           ├── mcsbw805gmpo
+│           ├── mcslr5ghpo
+│           ├── mcslr5glpo
+│           ├── mcslr5gmpo
+│           ├── measpower
+│           ├── measpower1
+│           ├── measpower2
+│           ├── noiselvl5ga0
+│           ├── noiselvl5ga1
+│           ├── noiselvl5ga2
+│           ├── pa5ga0
+│           ├── pa5ga1
+│           ├── pa5ga2
+│           ├── papdcap5g
+│           ├── pdgain5g
+│           ├── pdoffset40ma0
+│           ├── pdoffset40ma1
+│           ├── pdoffset40ma2
+│           ├── pdoffset80ma0
+│           ├── pdoffset80ma1
+│           ├── pdoffset80ma2
+│           ├── phycal
+│           │   └── tempdelta
+│           ├── rawtempsense
+│           ├── regrev
+│           ├── rpcal5gb0
+│           ├── rpcal5gb1
+│           ├── rpcal5gb2
+│           ├── rpcal5gb3
+│           ├── rxchain
+│           ├── rxgainerr5ga0
+│           ├── rxgainerr5ga1
+│           ├── rxgainerr5ga2
+│           ├── rxgains5gelnagaina0
+│           ├── rxgains5gelnagaina1
+│           ├── rxgains5gelnagaina2
+│           ├── rxgains5ghelnagaina0
+│           ├── rxgains5ghelnagaina1
+│           ├── rxgains5ghelnagaina2
+│           ├── rxgains5ghtrelnabypa0
+│           ├── rxgains5ghtrelnabypa1
+│           ├── rxgains5ghtrelnabypa2
+│           ├── rxgains5ghtrisoa0
+│           ├── rxgains5ghtrisoa1
+│           ├── rxgains5ghtrisoa2
+│           ├── rxgains5gmelnagaina0
+│           ├── rxgains5gmelnagaina1
+│           ├── rxgains5gmelnagaina2
+│           ├── rxgains5gmtrelnabypa0
+│           ├── rxgains5gmtrelnabypa1
+│           ├── rxgains5gmtrelnabypa2
+│           ├── rxgains5gmtrisoa0
+│           ├── rxgains5gmtrisoa1
+│           ├── rxgains5gmtrisoa2
+│           ├── rxgains5gtrelnabypa0
+│           ├── rxgains5gtrelnabypa1
+│           ├── rxgains5gtrelnabypa2
+│           ├── rxgains5gtrisoa0
+│           ├── rxgains5gtrisoa1
+│           ├── rxgains5gtrisoa2
+│           ├── sar5g
+│           ├── sb20in40hrpo
+│           ├── sb20in40lrpo
+│           ├── sb20in80and160hr5ghpo
+│           ├── sb20in80and160hr5glpo
+│           ├── sb20in80and160hr5gmpo
+│           ├── sb20in80and160lr5ghpo
+│           ├── sb20in80and160lr5glpo
+│           ├── sb20in80and160lr5gmpo
+│           ├── sb40and80hr5ghpo
+│           ├── sb40and80hr5glpo
+│           ├── sb40and80hr5gmpo
+│           ├── sb40and80lr5ghpo
+│           ├── sb40and80lr5glpo
+│           ├── sb40and80lr5gmpo
+│           ├── sromrev
+│           ├── subband5gver
+│           ├── subvid
+│           ├── tempcorrx
+│           ├── tempoffset
+│           ├── temps
+│           │   ├── hysteresis
+│           │   └── period
+│           ├── tempsense
+│           │   ├── option
+│           │   └── slope
+│           ├── tempthresh
+│           ├── tssifloor5g
+│           ├── tssiposslope5g
+│           ├── tworangetssi5g
+│           ├── txchain
+│           └── xtalfreq
+├── pmon
+│   └── ver
+├── portforward
+├── pptpc
+│   ├── crypt
+│   ├── custom
+│   ├── dfltroute
+│   ├── eas
+│   ├── mru
+│   ├── mruenable
+│   ├── mtu
+│   ├── mtuenable
+│   ├── nat
+│   ├── passwd
+│   ├── peerdns
+│   ├── srvip
+│   ├── srvsub
+│   ├── srvsubmsk
+│   ├── stateless
+│   ├── username
+│   └── usewan
+├── pptpd
+│   └── chap
+├── qos
+│   ├── ack
+│   ├── burst0
+│   ├── burst1
+│   ├── cake
+│   │   ├── prio
+│   │   │   └── mode
+│   │   └── wash
+│   ├── classify
+│   ├── classnames
+│   ├── default
+│   ├── enable
+│   ├── fin
+│   ├── icmp
+│   ├── irates
+│   ├── mode
+│   ├── orates
+│   ├── orules
+│   ├── pfifo
+│   ├── reset
+│   ├── rst
+│   ├── syn
+│   └── udp
+├── rast
+│   └── idlrt
+├── remote
+│   ├── management
+│   ├── mgt
+│   │   └── https
+│   └── upgrade
+├── restore
+│   └── defaults
+├── rmgt
+│   └── sip
+├── router
+│   └── name
+├── routes
+│   └── static
+│       └── saved
+├── rrule0
+├── rruleN
+├── rrules
+│   ├── activated
+│   ├── radio
+│   └── timewarn
+├── rrulewp
+├── rstats
+│   ├── bak
+│   ├── data
+│   ├── enable
+│   ├── exclude
+│   ├── offset
+│   ├── path
+│   ├── sshut
+│   └── stime
+├── sch
+│   ├── c1
+#+end_verse

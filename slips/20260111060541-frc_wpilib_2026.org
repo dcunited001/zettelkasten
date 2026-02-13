@@ -728,3 +728,101 @@ coppercore
 │   └── sim
 └── tuning
 #+end_verse
+* VH-109
+
+
+#+begin_src dot :file img/frc-roborio-radio.png
+graph G {
+  label="Powering VH-109 (via VH-117) and RoboRIO (via Lab Bench)\nTo Test Networks From Laptop"
+  rankdir=RL
+  compound=true
+  node [style=filled,fillcolor=white,shape=rect];
+
+  subgraph cluster_laptop {
+    label="Laptop"
+    node [style=filled,fillcolor=lightskyblue2,shape=rect];
+    laptop_en0[label="en0"]
+    node [style=filled,fillcolor=lightgreen,shape=rect];
+    laptop_wifi_2_4[label="WiFi\n2.4Ghz"]
+    laptop_wifi_6e[label="WiFi\n6e"]
+  }
+  subgraph cluster_benchpower {
+    label="Lab Bench"
+    node [style=filled,fillcolor=indianred2,shape=rect];
+    bench12v[label="12V\nConstant\nVoltage"]
+  }
+
+  subgraph cluster_roborio {
+    label="RoboRIO"
+    node [style=filled,fillcolor=lightskyblue2,shape=rect];
+    roborio_eth0[label="eth0"]
+    node [style=filled,fillcolor=indianred1,shape=rect];
+    roborio_12v[label="12V"]
+  }
+
+  // subgraph cluster_poeinjector {
+  //   label="PoE\nInj Cable"
+  //   inj_M[label="Eth (M)"]
+  //   inj_F[label="Eth (F)"]
+  //   inj_12v[label="12V\n(inj)"]
+  // }
+
+  subgraph cluster_vh109 {
+    label="VH-109"
+    node [style=filled,fillcolor=violet,shape=rect];
+    vh109_rio[label="RIO"]
+    node [style=filled,fillcolor=lightskyblue2,shape=rect];
+    vh109_aux1[label="AUX1"]
+    vh109_aux2[label="AUX2"]
+    vh109_ds[label="DS"]
+    node [style=filled,fillcolor=lightgreen,shape=rect];
+    vh109_2_4[label="WiFi\n2.4ghz"]
+    vh109_6e[label="WiFi\n6e"]
+    node [style=filled,fillcolor=indianred2,shape=rect];
+    vh109_12v[label="12V"]
+  }
+
+  subgraph cluster_vh117 {
+    label="VH-117\nAC Adapter"
+    node [style=filled,fillcolor=lightskyblue2,shape=rect];
+    vh117_lan[label="LAN"]
+    node [style=filled,fillcolor=violet,shape=rect];
+    vh117_poe[label="PoE"]
+    node [style=filled,fillcolor=red,shape=rect];
+    vh117_ac[label="AC"]
+
+    vh117_lan -- vh117_poe [color=blue]
+  }
+
+  // subgraph cluster_switch {
+  //   label="Switch"
+  //   switch_lan1[label="lan1"]
+  //   switch_lan2[label="lan2"]
+  //   switch_wan[label="wan"]
+  //   switch_wifi_2_4[label="wifi 2.4Ghz"]
+  //   switch_wifi_5_0ghz[label="wifi 5.0Ghz"]
+  //   switch_wifi_6e[label="wifi 6e"]
+  // }
+
+  laptop_en0 -- vh109_ds [color=blue, label="data"]
+  laptop_wifi_6e -- vh109_6e [color=green, label="6e"]
+  laptop_wifi_2_4 -- vh109_2_4 [color=darkgreen, label="2.4\nGHz"]
+
+  roborio_12v -- bench12v [color=red, label="power"]
+  roborio_eth0 -- vh117_lan [color=blue, label="data only"]
+
+  // ----------[ NOT data+power! ]-------------------------
+  // roborio_eth0 -- vh109_aux1 [color=purple, label="data\n(+ power???)"]
+
+  vh117_poe -- vh109_rio [color=red, label="power\nto radio"]
+  vh117_poe -- vh109_rio [color=blue, label="data"]
+
+  // vh109_rio -- inj_F [color=purple, label="power+data"]
+  // vh117_poe -- inj_M [color=red, label="power"]
+
+  legend[fontsize=8,shape=rectangle,label="Power+Data: purple\nData: lightskyblue2\nPower:indianred2\nWifi: green"]
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/frc-roborio-radio.png]]

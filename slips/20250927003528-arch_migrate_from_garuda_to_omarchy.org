@@ -35,6 +35,67 @@ but meant for servers/infrastructure. It's overkill for a desktop.
 + [[https://man.archlinux.org/man/systemd-network-generator.service.8.en][systemd-network-generator.service (8)]] one-shot, waits for at least one online
   interface
 
+**** From omarchy discord
+
+***** =20-ethernet.network=
+
+Matching with "Type=ether" causes issues with containers because [[https://bugs.archlinux.org/task/70892][it also matches
+virtual Ethernet interfaces (veth*).]] Instead match by globbing the network
+interface name.
+
+#+begin_src conf
+[Match]
+Name=en*
+Name=eth*
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+MulticastDNS=yes
+#+end_src
+
+Explicitly set route metric, so that Ethernet is preferred over Wi-Fi and Wi-Fi
+is preferred over mobile broadband. Use values from NetworkManager. From
+nm_device_get_route_metric_default in [[https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/blob/main/src/core/devices/nm-device.c][src/core/devices/nm-device.c
+]]
++ [[https://github.com/systemd/systemd/issues/17698][systemd-networkd does not set per-interface-type default route metrics]]
+
+#+begin_src conf
+[DHCPv4]
+RouteMetric=100
+
+[IPv6AcceptRA]
+RouteMetric=100
+#+end_src
+
+
+***** =20-wlan.network=
+
+#+begin_src conf
+[Match]
+Name=wl*
+
+[Link]
+RequiredForOnline=routable
+
+[Network]
+DHCP=yes
+MulticastDNS=yes
+
+# systemd-networkd does not set per-interface-type default route metrics
+# https://github.com/systemd/systemd/issues/17698
+# Explicitly set route metric, so that Ethernet is preferred over Wi-Fi and Wi-Fi is preferred over mobile broadband.
+# Use values from NetworkManager. From nm_device_get_route_metric_default in
+# https://gitlab.freedesktop.org/NetworkManager/NetworkManager/-/blob/main/src/core/devices/nm-device.c
+[DHCPv4]
+RouteMetric=600
+
+[IPv6AcceptRA]
+RouteMetric=600 
+#+end_src
+
 * Usage
 
 ** XDG
