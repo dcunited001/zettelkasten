@@ -728,6 +728,58 @@ coppercore
 │   └── sim
 └── tuning
 #+end_verse
+** Profiling
+
+*** Lambdas and Memory Leaks
+
+In [[https://www.oracle.com/technical-resources/articles/java/architect-lambdas-part1.html][architect-lambdas-part1]], see listing 11 onwards:
+
++ Using static method passing like =Math::floor= where possible will help prevent
+  unintentially marking objects as long-lived for GC (and other issues)
++ One trap is when lambdas include =objReference.someProperty= from outer scope
+  and either there are consistency issues or the compiler/JVM assumes the object
+  could be referenced again
+
+*** VisualVM
+polling =ssh root@roborio-9999-FRC.local 'cat /proc/meminfo >> /u/meminfo'= maybe
+every 60s could help... maybe. getting this from the java process itself is
+better, though idk how to do it natively. =/proc= defintely requires FS access and
+Java probably does the same.
+
++ [[Https://visualvm.github.io/download.html][Install visual vm]]
++ Heap dumps can also be collected by rebooting the RoboRIO and running:
+  - =scp root@roborio-9999-FRC.local:/u/frc-usercode.$time.hprof ./log=
+  - then =ssh root@roborio-9999-FRC.local 'rm /u/frc-usercode.$time.hprof'=
++ [[https://docs.wpilib.org/en/stable/docs/software/basic-programming/java-gc.html#disabling-the-system-web-server][Disabling the RoboRIO webadmin]] is probably not a good idea
+
+Configure Heap Dumps
+
+#+begin_example groovy
+artifacts {
+  frcJava(getArtifactTypeClass('FRCJavaArtifact')) {
+  jvmArgs.add("-XX:+UnlockExperimentalVMOptions")
+  jvmArgs.add("-XX:GCTimeRatio=5")
+  jvmArgs.add("-XX:+UseSerialGC") // https://www.baeldung.com/jvm-garbage-collectors
+  jvmArgs.add("-XX:MaxGCPauseMillis=50")
+
+  // If you have other configuration here, you do not need to remove it
+  // Enable automatic heap dumps on OutOfMemoryError
+
+  // NOTE: the heap dump path here is a path on a USB flash drive, see below.
+  // change the path to the equivalent of "/u/frc-usercode.$(date +%s).hprof"
+  jvmArgs.add("-XX:HeapDumpPath=/u/frc-usercode.hprof")
+  jvmArgs.add("-XX:+HeapDumpOnOutOfMemoryError")
+
+  // NOTE: the lines below can be changed to intentionally trigger an early OOM error
+
+  // The options below may improve performance, but should only be enabled on the RIO 2
+  // final MAX_JAVA_HEAP_SIZE_MB = 100;
+  // jvmArgs.add("-Xmx" + MAX_JAVA_HEAP_SIZE_MB + "M")
+  // jvmArgs.add("-Xms" + MAX_JAVA_HEAP_SIZE_MB + "M")
+  // jvmArgs.add("-XX:+AlwaysPreTouch")
+}
+#+end_example
+
 * VH-109
 
 
