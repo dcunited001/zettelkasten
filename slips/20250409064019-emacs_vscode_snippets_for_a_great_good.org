@@ -89,3 +89,51 @@ curl -d $data -H 'Content-Type: application/json' $url |\
 #+begin_example json
 3
 #+end_example
+
+* Alternative
+
+** Generate a temporary patch
+
+Use case: need to generate some simple java classes. I don't know Swing/etc, but
+I can read some of the templates. 85% of the time, the destination doesn't
+exist.
+
++ diffing with =/dev/null= works, but then that string needs to be replaced with
+  the destination path.
++ date format: the output from =$(date --rfc-3339=ns)= is close enough, but needs
+  a space before the time zone
+
+#+begin_src shell :results output code :wrap example diff
+diffheaderline(){
+    case "$1" in
+        add) action='+++';;
+        rm) action='---';;
+        ,*) echo 'fdsa' && return 1
+    esac
+
+    f=${2:-/dev/null}
+    echo "$action	$f	$(date --rfc-3339=ns)"
+}
+
+# diffheaderline add /dev/null
+# diffheaderline rm /tmp/some/snippet
+
+diffheader(){
+    source_path="$1"
+    virtual_path="${2:-1}"
+
+    diffheaderline rm $source_path
+    diffheaderline add $virtual_path
+}
+
+# render a set of snippets, then merge them together into a patch, then apply
+diffheader path/to/dest/foo /tmp/tmp.pathXXXXX/bar
+
+# content follows
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+---	path/to/dest/foo	2026-01-21 02:12:47.099977441-05:00
++++	/tmp/tmp.pathXXXXX/bar	2026-01-21 02:12:47.102291823-05:00
+#+end_example

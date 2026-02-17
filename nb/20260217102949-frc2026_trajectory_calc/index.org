@@ -1,0 +1,127 @@
+:PROPERTIES:
+:ID:       f089ac43-7465-484b-8e84-725e1b7c0d3c
+:END:
+#+TITLE: FRC 2026: Trajectory Calc
+#+CATEGORY: slips
+#+TAGS:
+
+... i hope this is right lol
+
+#+begin_quote
+note to self: these files are duplicated elsewhere
+#+end_quote
+
+* Org
+
+
+#+begin_src emacs-lisp
+(plist-put org-format-latex-options :scale 4.0)
+#+end_src
+
+* Trajectory
+
+Endpoints
+
+|---+------------+--------+--------+--------+---------|
+|   |            | Meters |        | Inches |         |
+|---+------------+--------+--------+--------+---------|
+| H | Range      |    2.2 |    4.0 | 86.614 | 157.480 |
+| H | Turret/Hub |   0.45 | 1.8288 | 17.717 |  72.000 |
+|---+------------+--------+--------+--------+---------|
+#+tblfm: $5=$3*100/2.54;%.3f
+#+tblfm: $6=$4*100/2.54;%.3f
+
+** Arcs
+
+*** Arc between Hub height(s)
+
+|----+-------+-------+-------|
+|    |   Hub |       | delta |
+|----+-------+-------+-------|
+| t  | 0.778 | 1.883 | 1.105 |
+| K  | 0.780 |   4.6 | 3.820 |
+| Vz | 1.907 | 4.613 | 2.706 |
+|----+-------+-------+-------|
+#+tblfm: $4=$3-$2;%.3f
+
+*** Arc from Turret to Hub
+
+|----+--------+-------+-------|
+|    | Turret |       | delta |
+|----+--------+-------+-------|
+| K  |  3.675 | 7.455 | 3.780 |
+| Vz |  4.141 | 5.898 | 1.757 |
+|----+--------+-------+-------|
+#+tblfm: $4=$3-$2;%.3f
+
+*** Arc from Turret to first pass through hub plane
+
++ hadn't needed this so far, but it's easier to calc this way.
+
+|--------+--------+-------+--------|
+|        | Turret |       |  delta |
+|--------+--------+-------+--------|
+| Vz Avg |  3.024 | 5.256 |  2.232 |
+| t      |  0.456 |  0.26 | -0.196 |
+|--------+--------+-------+--------|
+#+tblfm: $4=$3-$2;%.3f
+
+** Times
+
+Based on $V_y$ and work
+
++ turret to hub plane
++ hub plane to hub
+
+|-------+-------+-------|
+|  T2HP |  HP2H | Total |
+|-------+-------+-------|
+| 0.456 | 0.778 | 1.234 |
+|  0.26 | 1.883 | 2.143 |
+|-------+-------+-------|
+#+tblfm: $3=$1+$2;%.3f
+
+** Valid Arcs
+
+*** Theta: 45
+
+|        |       |       | ratio |
+|--------+-------+-------+-------|
+| H      |   2.2 |   4.0 |  1.82 |
+| Vx     | 4.414 | 5.898 |  1.34 |
+| V      | 5.857 | 8.341 |  1.42 |
+| Hub Vx | 1.907 | 4.613 |  2.42 |
+| Hub V  | 2.697 | 6.523 |  2.42 |
+#+tblfm: $4=$3/$2;%.2f
+
+*** Theta: 70
+
+|        |       |       | ratio |
+|--------+-------+-------+-------|
+| H      |   2.2 |   4.0 |  1.82 |
+| Vx     | 0.805 | 1.147 |  1.42 |
+| V      | 4.218 | 6.009 |  1.42 |
+| Hub Vx | 0.370 | 0.897 |  2.42 |
+| Hub V  | 1.942 | 4.700 |  2.42 |
+#+tblfm: $4=$3/$2;%.2f
+
+* fdsa
+#+begin_src python
+VX_TH_MAX = (1/math.tan(TH_MAX))*VZ_RANGE
+V_TH_MAX  = VZ_RANGE/math.sin(TH_MAX)
+VX_TH_MIN = (1/math.tan(TH_MIN))*VZ_RANGE
+V_TH_MIN  = VZ_RANGE/math.sin(TH_MIN)
+
+VX_TH_MAX_HUB = (1/math.tan(TH_MAX))*VZ_RANGE_HUB
+V_TH_MAX_HUB = VZ_RANGE_HUB/math.sin(TH_MAX)
+VX_TH_MIN_HUB = (1/math.tan(TH_MIN))*VZ_RANGE_HUB
+V_TH_MIN_HUB = VZ_RANGE_HUB/math.sin(TH_MIN)
+
+pprint(
+[VX_TH_MAX,V_TH_MAX,
+VX_TH_MIN,V_TH_MIN,
+VX_TH_MAX_HUB,V_TH_MAX_HUB,
+VX_TH_MIN_HUB,V_TH_MIN_HUB])
+
+#+end_src
+

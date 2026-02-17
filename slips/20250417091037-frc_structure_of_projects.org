@@ -1227,10 +1227,10 @@ even works)
 
 #+begin_src diff
 diff --git a/docs/build.gradle b/docs/build.gradle
-index 43d150f0e3..9b18dd7e01 100644
+index 5a3784a883..ae6bd487d4 100644
 --- a/docs/build.gradle
 +++ b/docs/build.gradle
-@@ -177,13 +177,20 @@ tasks.register("zipCppDocs", Zip) {
+@@ -142,13 +142,20 @@ tasks.register("zipCppDocs", Zip) {
      into '/'
  }
 
@@ -1240,51 +1240,111 @@ index 43d150f0e3..9b18dd7e01 100644
  configurations {
 +    umlDoclet
      javaSource {
-         transitive false
+         transitive = false
      }
  }
 
 +dependencies {
-+    umlDoclet "nl.talsmasoftware:umldoclet:2.2.1"
++    umlDoclet "nl.talsmasoftware:umldoclet:2.2.4"
 +}
 +
  task generateJavaDocs(type: Javadoc) {
      classpath += project(":wpilibj").sourceSets.main.compileClasspath
      options.links("https://docs.oracle.com/en/java/javase/17/docs/api/")
-@@ -247,6 +254,31 @@ task generateJavaDocs(type: Javadoc) {
+@@ -214,6 +221,39 @@ task generateJavaDocs(type: Javadoc) {
      }
  }
 
 +// shows up as docs:generateJavaDocsUML
 +task generateJavaDocsUML(type: Javadoc) {
 +    classpath += project(":wpilibj").sourceSets.main.compileClasspath
++    options.links("https://docs.oracle.com/en/java/javase/17/docs/api/")
++    options.links("https://docs.opencv.org/4.x/javadoc/")
++    options.linkSource(true)
++
++    // options.addStringOption('Xdoclint:none', '-quiet')
 +
 +    options.docletpath = configurations.umlDoclet.files.asType(List)
 +    options.doclet = "nl.talsmasoftware.umldoclet.UMLDoclet"
 +    // options.addStringOption "failOnCyclicPackageDependencies", "true"
++    options.addBooleanOption "createPumlFiles", true
 +
 +    dependsOn project(':wpilibj').generateJavaVersion
-+    // source project(':apriltag').sourceSets.main.java
-+    // source project(':cameraserver').sourceSets.main.java
-+    // source project(':cscore').sourceSets.main.java
-+    // source project(':epilogue-runtime').sourceSets.main.java
-+    // source project(':hal').sourceSets.main.java
-+    // source project(':ntcore').sourceSets.main.java
-+    // source project(':wpilibNewCommands').sourceSets.main.java
++    source project(':apriltag').sourceSets.main.java
++    source project(':cameraserver').sourceSets.main.java
++    source project(':cscore').sourceSets.main.java
++    source project(':epilogue-runtime').sourceSets.main.java
++    source project(':hal').sourceSets.main.java
++    source project(':ntcore').sourceSets.main.java
++    source project(':wpiannotations').sourceSets.main.java
++    source project(':wpilibNewCommands').sourceSets.main.java
 +    source project(':wpilibj').sourceSets.main.java
-+    // source project(':wpimath').sourceSets.main.java
-+    // source project(':wpinet').sourceSets.main.java
-+    // source project(':wpiunits').sourceSets.main.java
-+    // source project(':wpiutil').sourceSets.main.java
-+    // source project(':romiVendordep').sourceSets.main.java
-+    // source project(':xrpVendordep').sourceSets.main.java
++    source project(':wpimath').sourceSets.main.java
++    source project(':wpinet').sourceSets.main.java
++    source project(':wpiunits').sourceSets.main.java
++    source project(':wpiutil').sourceSets.main.java
++    source project(':romiVendordep').sourceSets.main.java
++    source project(':xrpVendordep').sourceSets.main.java
 +}
++
 +
  tasks.register("zipJavaDocs", Zip) {
      archiveBaseName = zipBaseNameJava
-     destinationDirectory = outputsFolder
+     archiveVersion = ""
 
 #+end_src
+
+Start container
+
+#+begin_src bash
+podman run --rm -it \
+    --userns=keep-id -u 1000:1000 \
+    -v "$(pwd)":/wpilib -w /wpilib \
+    wpilib/ubuntu-base:24.04
+#+end_src
+
+Setup gradle and generate docs
+
+#+begin_src bash
+# test environment
+./gradlew tasks
+
+# generate docs
+./gradlew docs:generateJavaDocsUML
+#+end_src
+
+Uncomment =options.addStringOption('Xdoclint:none', '-quiet')= if it fails for doc warnings/errors.
+
+
+**** WPILib Geometry
+
+
+***** Dump geometry puml paths
+
+#+begin_src bash
+cd $allwpilib
+find ./docs/build -name '*.puml' -printf '%p\n' \
+    | grep geometry | grep -vE '(struct|proto)' | sort
+#+end_src
+
+#+RESULTS:
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/CoordinateAxis.puml   |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/CoordinateSystem.puml |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Ellipse2d.puml        |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/package.puml          |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Pose2d.puml           |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Pose3d.puml           |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Quaternion.puml       |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Rectangle2d.puml      |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Rotation2d.puml       |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Rotation3d.puml       |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Transform2d.puml      |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Transform3d.puml      |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Translation2d.puml    |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Translation3d.puml    |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Twist2d.puml          |
+| docs/build/docs/javadoc/edu/wpi/first/math/geometry/Twist3d.puml          |
+
 
 ** Containers
 
