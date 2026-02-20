@@ -1,0 +1,533 @@
+:PROPERTIES:
+:ID:       a771d960-6980-47c4-b22f-b1dd3bcfb52e
+:END:
+#+TITLE: Java: State Machines and Reactive Programming
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:97ae00f5-9337-4108-b85f-1edfc7f86ed7][Java]]
++ [[id:4cdfd5a2-08db-4816-ab24-c044f2ff1dd9][Programming]]
+  
+* Resources
+
+** State machines
+
++ [[https://stately.ai/blog/2024-01-23-state-machines-whats-in-a-name][State Machines: What's In A Name]]
+
+** Reactive Programming
+
+Discussion on [[https://www.reddit.com/r/javascript/comments/mba02l/what_the_hell_is_reactive_programming_anyway/][What is reactive programming anyways]]. Most of the discussion
+essentially contrasts =React JS= and =Angular=
+
+*** In Java
+ [[https://www.baeldung.com/rx-java][Baeldung: RxJava]]
+
+#+begin_quote
+[[https://reactivex.io/intro.html][ReactiveX]] extends the Observer pattern to support sequences of data and/or
+events and adds operators that allow you to compose sequences together
+declaratively while abstracting away concerns about things like low-level
+threading, synchronization, thread-safety, concurrent data structures, and
+non-blocking I/O.
+#+end_quote
+
+** Java
++ [[https://www.baeldung.com/a-guide-to-java-enums][Baeldung: Guide to Java Enums]]
+
+*** Generics
+[[https://tmsvr.com/practical-use-of-generics-in-java/][Practical Use of Generics in Java]] covers the =<?>= wildcards and "type erasure",
+the latter of which I wasn't aware of.
++ no primatives, problems with method overloading
++ no instantiation of generic arrays
+
+author of [[https://github.com/tmsvr/tmsvr-databases?ref=tmsvr.com][tmsvr/tmsvr-databases]] ... the URL for which contains a
+=?ref=muhblog.com= parameter ... on a github repo. didn't know you could do that
+lol. Anyways, other code in there implements "merge trees", bloom filters and
+other data structures.
+  
+* Notes
+
+
+* Java State Machines
+
+** Pizza Delivery
+
+From [[https://www.baeldung.com/a-guide-to-java-enums][Baeldung: Guide to Java Enums]]
+
+*** Enums
+
+#+begin_src java
+public enum PizzaStatus {
+    ORDERED,
+    READY, 
+    DELIVERED; 
+}
+#+end_src
+
+#+begin_src java
+public class Pizza {
+    private PizzaStatus status;
+    public enum PizzaStatus {
+        ORDERED,
+        READY,
+        DELIVERED;
+    }
+
+    public boolean isDeliverable() {
+        if (getStatus() == PizzaStatus.READY) {
+            return true;
+        }
+        return false;
+    }
+    
+    // Methods that set and get the status variable.
+}
+
+#+end_src
+
+#+begin_src java
+if(testPz.getStatus().equals(Pizza.PizzaStatus.DELIVERED)); 
+if(testPz.getStatus() == Pizza.PizzaStatus.DELIVERED); 
+
+#+end_src
+
+#+begin_src java
+if(testPz.getStatus().equals(TestColor.GREEN));
+if(testPz.getStatus() == TestColor.GREEN);
+
+#+end_src
+
+**** Enums in =switch=
+
+#+begin_src java
+public int getDeliveryTimeInDays() {
+    switch (status) {
+        case ORDERED: return 5;
+        case READY: return 2;
+        case DELIVERED: return 0;
+    }
+    return 0;
+}
+#+end_src
+
+*** Fields, Methods, Constructors
+
+#+begin_src java
+public class Pizza {
+
+    private PizzaStatus status;
+    public enum PizzaStatus {
+        ORDERED (5){
+            @Override
+            public boolean isOrdered() {
+                return true;
+            }
+        },
+        READY (2){
+            @Override
+            public boolean isReady() {
+                return true;
+            }
+        },
+        DELIVERED (0){
+            @Override
+            public boolean isDelivered() {
+                return true;
+            }
+        };
+
+        private int timeToDelivery;
+
+        public boolean isOrdered() {return false;}
+
+        public boolean isReady() {return false;}
+
+        public boolean isDelivered(){return false;}
+
+        public int getTimeToDelivery() {
+            return timeToDelivery;
+        }
+
+        PizzaStatus (int timeToDelivery) {
+            this.timeToDelivery = timeToDelivery;
+        }
+    }
+
+    public boolean isDeliverable() {
+        return this.status.isReady();
+    }
+
+    public void printTimeToDeliver() {
+        System.out.println("Time to delivery is " + 
+          this.getStatus().getTimeToDelivery());
+    }
+    
+    // Methods that set and get the status variable.
+}
+
+#+end_src
+
+#+begin_src java
+@Test
+public void givenPizaOrder_whenReady_thenDeliverable() {
+    Pizza testPz = new Pizza();
+    testPz.setStatus(Pizza.PizzaStatus.READY);
+    assertTrue(testPz.isDeliverable());
+}
+#+end_src
+
+*** EnumSet
+
+Internally uses a =BitVector= representation (... gemini says it uses =HashMap= ...
+pretty sure that's wrong)
+
++ Mainly, it doesn't allow duplicate values (neither would =EnumMap=, right? since
+  it's precompiled)
++ [[https://stackoverflow.com/questions/14536665/why-an-enumset-or-an-enummap-is-likely-to-be-more-performant-than-their-hashed-c][Why EnumSet vs EnumMap]] TLDR probaly just use =EnumSet=, unless more items than
+  can fit in a bitmasked integer.
+
+#+begin_src java
+public class Pizza {
+
+    private static EnumSet<PizzaStatus> undeliveredPizzaStatuses =
+      EnumSet.of(PizzaStatus.ORDERED, PizzaStatus.READY);
+
+    private PizzaStatus status;
+
+    public enum PizzaStatus {
+        ...
+    }
+
+    public boolean isDeliverable() {
+        return this.status.isReady();
+    }
+
+    public void printTimeToDeliver() {
+        System.out.println("Time to delivery is " + 
+          this.getStatus().getTimeToDelivery() + " days");
+    }
+
+    public static List<Pizza> getAllUndeliveredPizzas(List<Pizza> input) {
+        return input.stream().filter(
+          (s) -> undeliveredPizzaStatuses.contains(s.getStatus()))
+            .collect(Collectors.toList());
+    }
+
+    public void deliver() { 
+        if (isDeliverable()) { 
+            PizzaDeliverySystemConfiguration.getInstance().getDeliveryStrategy()
+              .deliver(this); 
+            this.setStatus(PizzaStatus.DELIVERED); 
+        } 
+    }
+    
+    // Methods that set and get the status variable.
+}
+
+#+end_src
+
+#+begin_src java
+@Test
+public void givenPizaOrders_whenRetrievingUnDeliveredPzs_thenCorrectlyRetrieved() {
+    List<Pizza> pzList = new ArrayList<>();
+    Pizza pz1 = new Pizza();
+    pz1.setStatus(Pizza.PizzaStatus.DELIVERED);
+
+    Pizza pz2 = new Pizza();
+    pz2.setStatus(Pizza.PizzaStatus.ORDERED);
+
+    Pizza pz3 = new Pizza();
+    pz3.setStatus(Pizza.PizzaStatus.ORDERED);
+
+    Pizza pz4 = new Pizza();
+    pz4.setStatus(Pizza.PizzaStatus.READY);
+
+    pzList.add(pz1);
+    pzList.add(pz2);
+    pzList.add(pz3);
+    pzList.add(pz4);
+
+    List<Pizza> undeliveredPzs = Pizza.getAllUndeliveredPizzas(pzList); 
+    assertTrue(undeliveredPzs.size() == 3); 
+}
+#+end_src
+
+*** EnumMap
+
+#+begin_src java
+EnumMap<Pizza.PizzaStatus, Pizza> map;
+#+end_src
+
+#+begin_src java
+public static EnumMap<PizzaStatus, List<Pizza>> 
+  groupPizzaByStatus(List<Pizza> pizzaList) {
+    EnumMap<PizzaStatus, List<Pizza>> pzByStatus = 
+      new EnumMap<PizzaStatus, List<Pizza>>(PizzaStatus.class);
+    
+    for (Pizza pz : pizzaList) {
+        PizzaStatus status = pz.getStatus();
+        if (pzByStatus.containsKey(status)) {
+            pzByStatus.get(status).add(pz);
+        } else {
+            List<Pizza> newPzList = new ArrayList<Pizza>();
+            newPzList.add(pz);
+            pzByStatus.put(status, newPzList);
+        }
+    }
+    return pzByStatus;
+}
+
+#+end_src
+
+#+begin_src java
+@Test
+public void givenPizaOrders_whenGroupByStatusCalled_thenCorrectlyGrouped() {
+    List<Pizza> pzList = new ArrayList<>();
+    Pizza pz1 = new Pizza();
+    pz1.setStatus(Pizza.PizzaStatus.DELIVERED);
+
+    Pizza pz2 = new Pizza();
+    pz2.setStatus(Pizza.PizzaStatus.ORDERED);
+
+    Pizza pz3 = new Pizza();
+    pz3.setStatus(Pizza.PizzaStatus.ORDERED);
+
+    Pizza pz4 = new Pizza();
+    pz4.setStatus(Pizza.PizzaStatus.READY);
+
+    pzList.add(pz1);
+    pzList.add(pz2);
+    pzList.add(pz3);
+    pzList.add(pz4);
+
+    EnumMap<Pizza.PizzaStatus,List<Pizza>> map = Pizza.groupPizzaByStatus(pzList);
+    assertTrue(map.get(Pizza.PizzaStatus.DELIVERED).size() == 1);
+    assertTrue(map.get(Pizza.PizzaStatus.ORDERED).size() == 2);
+    assertTrue(map.get(Pizza.PizzaStatus.READY).size() == 1);
+}
+#+end_src
+
+*** Strategy Pattern
+
+Using a Java =enum= Singleton (instead of interface + implementation)
+
+#+begin_src java
+public enum PizzaDeliverySystemConfiguration {
+    INSTANCE;
+    PizzaDeliverySystemConfiguration() {
+        // Initialization configuration which involves
+        // overriding defaults like delivery strategy
+    }
+
+    private PizzaDeliveryStrategy deliveryStrategy = PizzaDeliveryStrategy.NORMAL;
+
+    public static PizzaDeliverySystemConfiguration getInstance() {
+        return INSTANCE;
+    }
+
+    public PizzaDeliveryStrategy getDeliveryStrategy() {
+        return deliveryStrategy;
+    }
+}
+#+end_src
+
+#+begin_src java
+public enum PizzaDeliveryStrategy {
+    EXPRESS {
+        @Override
+        public void deliver(Pizza pz) {
+            System.out.println("Pizza will be delivered in express mode");
+        }
+    },
+    NORMAL {
+        @Override
+        public void deliver(Pizza pz) {
+            System.out.println("Pizza will be delivered in normal mode");
+        }
+    };
+
+    public abstract void deliver(Pizza pz);
+}
+#+end_src
+*** Java 8 (... now with lambdas!)
+
+Seriously? Who's not using Java 8? (the earliest adopters)
+
+#+begin_src java
+public void deliver() {
+    if (isDeliverable()) {
+        PizzaDeliverySystemConfiguration.getInstance().getDeliveryStrategy()
+          .deliver(this);
+        this.setStatus(PizzaStatus.DELIVERED);
+    }
+}
+#+end_src
+
+#+begin_src java
+@Test
+public void givenPizaOrder_whenDelivered_thenPizzaGetsDeliveredAndStatusChanges() {
+    Pizza pz = new Pizza();
+    pz.setStatus(Pizza.PizzaStatus.READY);
+    pz.deliver();
+    assertTrue(pz.getStatus() == Pizza.PizzaStatus.DELIVERED);
+}
+#+end_src
+
+*** With =@JsonFormat=
+
+#+begin_src java
+public static List<Pizza> getAllUndeliveredPizzas(List<Pizza> input) {
+    return input.stream().filter(
+      (s) -> !deliveredPizzaStatuses.contains(s.getStatus()))
+        .collect(Collectors.toList());
+}
+
+
+#+end_src
+
+#+begin_src java
+public static EnumMap<PizzaStatus, List<Pizza>> 
+  groupPizzaByStatus(List<Pizza> pzList) {
+    EnumMap<PizzaStatus, List<Pizza>> map = pzList.stream().collect(
+      Collectors.groupingBy(Pizza::getStatus,
+      () -> new EnumMap<>(PizzaStatus.class), Collectors.toList()));
+    return map;
+}
+#+end_src
+
+*** With =@JsonFormat=
+
+Enums are JSON-Serializable (when using =Jackson= for JSON)
+
+#+begin_src java
+@JsonFormat(shape = JsonFormat.Shape.OBJECT)
+public enum PizzaStatus {
+    ORDERED (5){
+        @Override
+        public boolean isOrdered() {
+            return true;
+        }
+    },
+    READY (2){
+        @Override
+        public boolean isReady() {
+            return true;
+        }
+    },
+    DELIVERED (0){
+        @Override
+        public boolean isDelivered() {
+            return true;
+        }
+    };
+
+    private int timeToDelivery;
+
+    public boolean isOrdered() {return false;}
+
+    public boolean isReady() {return false;}
+
+    public boolean isDelivered(){return false;}
+
+    @JsonProperty("timeToDelivery")
+    public int getTimeToDelivery() {
+        return timeToDelivery;
+    }
+
+    private PizzaStatus (int timeToDelivery) {
+        this.timeToDelivery = timeToDelivery;
+    }
+}
+
+#+end_src
+
+#+begin_src java
+Pizza pz = new Pizza();
+pz.setStatus(Pizza.PizzaStatus.READY);
+System.out.println(Pizza.getJsonString(pz));
+#+end_src
+
+#+begin_src json
+{
+  "status" : {
+    "timeToDelivery" : 2,
+    "ready" : true,
+    "ordered" : false,
+    "delivered" : false
+  },
+  "deliverable" : true
+}
+#+end_src
+
+** Vending Machine
+
+From Gemini
+
+#+begin_src java
+// 1. Define the generic event type (e.g., an enum)
+public enum VendingMachineEvent {
+    INSERT_COIN, SELECT_ITEM, DISPENSE_ITEM
+}
+
+// 2. Define the generic state interface
+public interface IState<E, S> {
+    void enter();
+    void exit();
+    // getNextState returns the next state identifier based on an event
+    S getNextState(E event); 
+}
+
+// 3. Define the concrete states as an enum implementing the interface
+public enum VendingMachineState implements IState<VendingMachineEvent, VendingMachineState> {
+    IDLE {
+        @Override
+        public void enter() { System.out.println("Entering IDLE state"); }
+        @Override
+        public void exit() { System.out.println("Exiting IDLE state"); }
+        @Override
+        public VendingMachineState getNextState(VendingMachineEvent event) {
+            if (event == VendingMachineEvent.INSERT_COIN) {
+                return SELECTING;
+            }
+            return IDLE; // Stay in IDLE for other events
+        }
+    },
+    SELECTING {
+        @Override
+        public void enter() { System.out.println("Entering SELECTING state"); }
+        @Override
+        public void exit() { System.out.println("Exiting SELECTING state"); }
+        @Override
+        public VendingMachineState getNextState(VendingMachineEvent event) {
+            if (event == VendingMachineEvent.SELECT_ITEM) {
+                return DISPENSING;
+            }
+            return SELECTING;
+        }
+    },
+    DISPENSING {
+        @Override
+        public void enter() { System.out.println("Entering DISPENSING state"); }
+        @Override
+        public void exit() { System.out.println("Exiting DISPENSING state"); }
+        @Override
+        public VendingMachineState getNextState(VendingMachineEvent event) {
+            if (event == VendingMachineEvent.DISPENSE_ITEM) {
+                return IDLE;
+            }
+            return DISPENSING;
+        }
+    };
+
+    // Default implementations for simplicity, concrete enums can override
+    @Override
+    public void enter() {}
+    @Override
+    public void exit() {}
+    @Override
+    public VendingMachineState getNextState(VendingMachineEvent event) {
+        return this; // Default to staying in the current state
+    }
+}
+#+end_src
+ 

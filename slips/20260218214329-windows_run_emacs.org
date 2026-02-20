@@ -1,0 +1,118 @@
+:PROPERTIES:
+:ID:       dcf46b8b-27a1-4a76-b81a-b15b3b5ec703
+:END:
+#+TITLE: Windows: Run Emacs and Test Github Desktop
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
+
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:65aca91d-9285-412c-b2bd-bb81cea1a7ac][Windows]]
+
+* Issues
+
++ Can't pin both the normal =Emacs= shortcut and my custom =Emacs Debug= shortcut to
+  the start menu.
+
+* Setup
+
++ Ran =winget install -e --id GNU.Emacs= to install
++ Opened =Emacs=.
+  - Use the shortcut with capital =Emacs=.
+  - This runs =C:\Program Files\Emacs\bin\runemacs.exe=
+
+** Find =user-emacs-directory=
+
++ =F1 v= to open =user-emacs-directory=, move point to it.
++ =F1 x= to check =find-file-at-point=, then run with  =M-x=
++ This translates =~/.emacs.d= into the windows path
+  - which is here =c:/Users/dc/AppData/Roaming/.emacs.d=
+  - Then discover most open source programs set up their configs here.
+    
+** Pull dotfiles for reference 
+
++ Cloned dotfiles to =~/.emacs.d=. Symlinks point to a file containing text, as
+  they do in Linux. Elsewhere in windows they work, like in =GitBash=
++ Check over =~/.dotfiles/.emacs.hop=, including =custom.el= and =init.el=
+  - contains necessary defaults and somewhat uses =custom.el=
+  - tries to auto-install packages from M/ELPA
++ Copy =~/.dotfiles/.emacs.hop/{init.el,custom.proto.el,projects}= into =~/.emacs.d=
+  and then copy =custom.proto.el= to =custom.el=
+  - Also needed to copy =../.emacs.console/modules/*.el= since it was symlinked
+
+Here, go ahead and update the package lists:
+
++ In =init.el=, find the melpa line =C-x C-e= to eval it.
++ Run =M-x package-list= and then =M-x package-refresh-contents=
+
+I copied =~/.dotfiles/.dir-locals.el= to =~/.emacs.d/.dir-locals.el=, then remove
+the guix & scheme stuff. This isn't essential, but idk. May even be causing
+weird indentation stuff...
+
+*** Running in debug
+
+At this point, running =emacs= will fail until packages are setup
+
++ Check for [[https://emacs.stackexchange.com/questions/47221/how-to-init-emacs-with-an-option-such-as-debug-init][How to init emacs with an option (such as `--debug-init`)]]. Then
+  create that shortcut
+
+** Setup basic =init.el=
+
+*** Unhook =lispy= until packages are installed...
+
+There are some frustrating quirks here with an otherwise simple config. Until
+installed, =lispy= will:
+
++ prevent evaluation of lisp during package installation
++ and error out entry into =emacs-lisp-mode=...
+
+There are some comments added. I fixed this by checking whether 
+
+*** Fix =custom.el=
+
+If any emacs process remains open, it will write to =custom.el=, so close all of
+them before copying that over, then reopen with =--init-debug=
+
+*** Install Packages
+
++ =custom.el= sets =package-selected-packages= but needs just one & only one
+  command invocation to function (damit, this is not working)
++ If packages are refreshed, run =M-x package-install-selected-packages=
+
+Check =M-x package-list= with =g= to refresh and =S= on a column to sort. Then =C-s= and
+partial =package-name= to jump to it. Hit =C-g= or =return= to get focus back from
+=isearch= and into the package list buffer
+
+** Once packages are installed...
+
+It seems ready to go.
+
+Maybe check the package compilation buffers with =C-x C-b=. Emacs retains the
+output of most commands you run. When you open a buffer, you're mainly seening a
+special view on the underlying bits/bytes for a file a socket or some process
+output. This is a key idea.
+
+Copying all the files to a new user is a bad idea in windows, since many small
+files get built into =~/.emacs.d/elpa=. Occasionally, this needs to be cleaned up.
+When mixing Emacs frameworks like Spacemacs or Doom, they may unintentionally
+load code from another emacs build -- and things could get weirdly buggy kinda
+fast.
+
+* Tips
+
+** Killer Features
+
+Packages distributed with Emacs. These work of the box: no packages required.
+
+| dired | ibuffer |
+
+Requires packages
+
+| magit | consult/vertico |
+
+** Troubleshooting
+*** Checking variable values
+
++ Hit =F1 v= & enter =package-selected-packages=, tabbing for completion. Check value
++ Or hit =M-:= and type the variable name to evaluate it.
