@@ -1,0 +1,183 @@
+:PROPERTIES:
+:ID:       95fc3321-4321-4175-b2b0-9a4ed1acff59
+:END:
+#+TITLE: Git Stack
+#+TAGS:
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+#+OPTIONS: ':nil *:t -:t ::t <:t \n:nil ^:t arch:headline
+#+OPTIONS: author:nil c:nil d:(not "LOGBOOK") date:nil
+#+OPTIONS: e:t email:nil f:t inline:t num:nil p:nil pri:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:nil todo:t |:t
+#+OPTIONS: toc:nil
+#+OPTIONS: html-style:link
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="git-stack.css" />
+# #+BIND: org-html-htmlize-output-type nil
+#+SELECT_TAGS:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+
+Run =git stack= to see the trees. Then =git stack --dump-config -= to check the config
+
+| Command                                     | Purpose                                                                    |
+|---------------------------------------------+----------------------------------------------------------------------------|
+| ~git config --global set stack.stack current~ | Makes =git-stack= commands safer for random clones until they're configured.                          |
+| ~git stack --protect develop~                 | Protect additional branches. On a team, you'll need branch naming patterns |
+| ~git config set stack.stack dependents~       | Limit the default scope of ~git-stack~ commands                              |
+
+* Stacking Modes
+
+| Stack Type  | Selector                 | Desc                                                                                        |
+|-------------+--------------------------+---------------------------------------------------------------------------------------------|
+| current     | Branches in ~BASE..HEAD~   | Fairly useless                                                                               |
+| dependents  | Branches in ~BASE..HEAD..~ | Runs up stack, listing refs depending on this branch/stack. Safe. Mostly useful if on a team |
+| descendants | Branches in ~BASE..~       | Traces up stack & down to their common ancestor. Limited by =protect-commit-age=. Less safe.   |
+| all         | Show all branches        | Not really safe/useful for automation.                                                       |
+
+The =stack.stack= config will require using =git stack -s all= to get the pretty
+tree back. This limits the scope of automation that =git-stack= can perform.
+
+Next, ensure that each branch you care about has a =ref= set in
+=branch.featname.merge=.
+
+* Command
+
+~git log --graph --all --oneline --decorate main..HEAD~
+
+The main =git-stack= command is functionally equivalent to the above. It also
+assumes user intent based on context.
+
+|-----+----------------+---------+--------------------------------+----------------------------------------------------------------|
+| Opt | Option         | Default | Values                         | Desc                                                           |
+|-----+----------------+---------+--------------------------------+----------------------------------------------------------------|
+| ~-r~  | ~--rebase~       |         |                                | Rebase the selected stacks                                     |
+|     | ~--pull~         |         |                                | Pull the parent branch and rebase onto it                      |
+|     | ~--push~         |         |                                | Push all ready branches                                        |
+| ~-s~  | ~--stack~        | all     | current,dependents,descendants | Which branch stacks to include                                 |
+|     | ~--base~         | ~$branch~ |                                | Branch to evaluate from. Default: most recent protected branch |
+|     | ~--onto~         | ~$base~   |                                | Branch to rebase onto                                          |
+|     | ~--fixup~        | ignore  | move,squash                    | Action to perform with fixup-commits                           |
+|     | ~--repair~       |         |                                | Repair Diverging branch                                        |
+|     | ~--format~       | graph   | silent,list,debug              |                                                                |
+|     | ~--show-commits~ |         | none,unprotected,all           |                                                                |
+|     | ~--protected~    |         |                                | Show protected branches                                        |
+|     | ~--protect~      |         | ~$branch~                        | Protect ~$branch~'s that match =gitignore= syntax.                 |
+|     | ~--dump-config~  |         | ~$output_file~                   | Use =-= for stdout                                               |
+|-----+----------------+---------+--------------------------------+----------------------------------------------------------------|
+** Actions
+
+| Action   | Alternative                                               | Benefit                                                            |
+|----------+-----------------------------------------------------------+--------------------------------------------------------------------|
+| ~--rebase~ | ~git rebase -i --autosquash master~                         | No need to manually select the base                                |
+| ~--repair~ | ~repo forall~ or raw bash                                   | Update dependent stacks of new commit(s) in their parent stack     |
+| ~--push~   | ~git push --set-upstream --force-with-lease origin $branch~ | Prevents pushing branches if multi-stack or if include ~WIP~ commits |
+
+=git-stack --push= doesn't prevent pushing =fixup!= commits. to avoid that, use
+the =commited= CLI tool
+
+** Subcommands
+
+Auto-rebase will rebase child commits/branches, given the assumed stack logic
+for a scope set by =-s $stack_type= or by =git config get stack.stack=.
+
+Most commands don't offer =-s=, so choosing the correct project config is
+necessary.
+
+| Subcommand | Alternative                       | Benefit                                |
+|------------+-----------------------------------+----------------------------------------|
+| sync       | ~git pull --rebase upstream main~   |                                        |
+| next       | ~git stack && git checkout $ref~    | No need to copy =$ref=                   |
+| previous   | ~git stack && git checkout $ref~    |                                        |
+| reword     | ~git commit --amend~                | Auto-rebase                            |
+|            | ~git rebase -i $ref~ then setting ~r~ | Auto-rebase. Less steps                |
+| amend      | ~git commit --amend --no-edit~      |                                        |
+| run        | ~repo forall~                       | You probably don't have =repo= installed |
+
+Running =git-stack --rebase= will squash the ~fixup!~ commits, depending on
+=stack.auto-fixup=.
+
+*** Global
+
+=git-stack sync= only takes these options, which apply to all subcommands.
+
+| Opt | Option        | Default | Values       | Desc                       |
+|-----+---------------+---------+--------------+----------------------------|
+| ~-n~  | ~--dry-run~     |         |              | Don't actually switch      |
+|     | ~--color $when~ | auto    | always,never | Controls when to use color |
+| ~-v~  | ~--verbose...~  |         |              | Increase logging verbosity |
+| ~-q~  | ~--quiet...~    |         |              | Decrease logging verbosity |
+| ~-h~  | ~--help~        |         |              | Print help                 |
+|-----+---------------+---------+--------------+----------------------------|
+
+*** =git-stack run=
+
+| Opt | Option         | Desc                                  |
+|-----+----------------+---------------------------------------|
+| ~-s~  | ~--switch~       | Switch to the first commit that fails |
+|     | ~--no-fail-fast~ | Keep going                            |
+|-----+----------------+---------------------------------------|
+*** =git-stack {reword,amend}=
+
+=git-stack amend -m $message [OPTIONS] [REV]=
+
+=git-stack reword -m $message [REV]=
+
+Only =-m= is valid for reword.
+
+| Opt | Option        | Value    | Desc                         |
+|-----+---------------+----------+------------------------------|
+| ~-a~  | ~--all~         |          | Commit all changed files     |
+| ~-i~  | ~--interactive~ |          | Interactively add changes    |
+| ~-e~  | ~--edit~        |          | Force edit of commit message |
+| ~-m~  | ~--message~     | ~$MESSAGE~ | Commit message               |
+|-----+---------------+----------+------------------------------|
+
+*** =git-stack {next,previous}=
+
+| Opt | Option      | Desc                                   |
+|-----+-------------+----------------------------------------|
+| ~-b~  | ~--branch~    | Jump directly to the previous branch   |
+|     | ~--stash~     | Stash prior to switch                  |
+|     | ~--oldest~    | On ambiguity, select the oldest commit |
+|     | ~--protected~ | Traverse across protected commits      |
+|-----+-------------+----------------------------------------|
+
+
+
+* noexport :noexport:
+
+#+begin_src css :tangle git-stack.css
+/* org reset --------------------------------------------- */
+body { font-size: 0.9em; margin: 0.1em; padding: 0em }
+p { font-size: 0.9em; }
+th { background-color: seagreen; color: #F6F6F6; }
+table { border: 1px solid darkgreen; border-radius: 3px; }
+th,td { border: 1px solid darkgreen; padding: 0.1em; font-size: 0.9em; line-height: 0.9em }
+#content { max-width: 100% !important }
+code { color: indigo; }
+h1,h2,h3,h4,h5 { margin: 0.2em; padding: 0.1em}
+ul,ol { margin: 0.1em; }
+
+dd { margin: 0.1em 2em; }
+li { margin: 0.1em;font-size: 0.9em; }
+
+/* cheatsheet --------------------------------------------- */
+table { display: table; }
+pre { padding: 0.2em; margin: 0.2em; display:table; }
+h2 { color: darkblue; font-size: 1.4em; line-height: 1.4em; margin: 0.1em; }
+h3 { color: maroon; font-size: 1.3em; line-height: 1.3em; margin: 0.1em; }
+h4 { color: darkgreen; font-size: 1.2em; line-height: 1.2em; margin: 0.1em; }
+h5 { color: indigo; font-size: 1.0em; line-height: 1.0em; margin: 0.1em; }
+p { margin: 0.1em }
+
+/* this rule is needed twice for some reason */
+p.verse b { color: darkgreen !important; }
+p.verse b { color: darkgreen; }
+p.verse i { color: darkblue !important; }
+p.verse span.underline { color: maroon !important; }  /* font-weight: 550; */
+/* p.verse b { color: darkgreen; } */
+p.verse { font-family: monospace; line-height: 0.7em; padding: 0; margin: 0.2em}; }
+
+pre { border-color: #777; background-color: #eee }
+#+end_src

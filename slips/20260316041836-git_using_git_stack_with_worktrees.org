@@ -1,0 +1,930 @@
+:PROPERTIES:
+:ID:       62f037c8-f324-4f18-8cc9-c7cd233ab48c
+:END:
+#+TITLE: Git: Using git-stack with worktrees
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:53fc747a-3f12-411a-976a-345bb1924e2d][VCS Version Control]]
++ [[id:95fc3321-4321-4175-b2b0-9a4ed1acff59][Git Stack]]
+
+* ToC
+
+| Setup =git-stack=             | Basic usage after common setup (for each clone!)                                   |
+| Overview                    |                                                                                    |
+| Worktree                    |                                                                                    |
+| MissingNo: =stack.org=        | Missing notes on using =git-stack=, probably with some copy/paste from their docs    |
+| MissingNo: =tools/README.org= | some probably confusing notes further describing usage (at various points in time) |
+
+* Overview
+
+This is what i had tried, in case someone (me) is curious. i expected to need to
+change branches frequently. It seemed simple until I wanted to start/stop
+services and run multiple instances of the app simultaneously.
+
+- I was driving the browser & debugger on a separate laptop I used multiple
+  chromium profiles for themes to keep the instances separate.
+
+- The laptop was running Guix, for which VSCode and anything JS/TS is simply
+  anathema. VSCode downloads random LSP binaries and makes web development
+  incredibly difficult on Nix/Guix without VM/Container workflow. The tunnels
+  helped quite a bit at first.
+
+- I was using =git-stack= to keep multiple branches rebased. It's like graphite,
+  but can work with multiple forges.
+
+- The =tools= directory was an orphan branch. That worked until I needed to
+  change the scripts or .envrc.
+
+- I eventually settled on copying =.envrc= and other templates into checkouts,
+  since it was tough to keep it straight.
+
+- I used =git config get 'mkr...= in scripts bc I had some issue with
+  relative/absolute paths in environment variables while using =direnv=. Git is
+  weird about paths, esp with worktrees.
+  
+** Directory Structure
+
+In =/worktrees/root=, i had this directory structure. =.config= acted as though it
+was at the top of my =XDG_CONFIG_DIRS=, though idk whether i actually used =.envrc=
+to set =*_DIRS= or =*_HOME= to that
+
+#+begin_verse
+└── astro             └── .bare            └── feat                └── small              
+    ├── .astro            ├── branches         ├── .bin                ├── .bin       
+    ├── .bin              ├── hooks            ├── fm                  ├── doc        
+    ├── dist              ├── info             ├── .frontmatter        ├── .github    
+    ├── doc               ├── logs             ├── .github             └── site       
+    ├── .fm               ├── objects          ├── public          
+    ├── fm                ├── refs             ├── scripts           
+    ├── .frontmatter      ├── rr-cache         ├── site            └── tools          
+    ├── .github           └── worktrees        ├── src                 ├── .bin       
+    ├── node_modules                           ├── svg                 └── ltximg   
+    ├── public                                 └── .vscode                              
+    ├── scripts       └── .config                                          
+    ├── site              └── chromium                             └── .tpl 
+    ├── src                                └── main            
+    ├── svg                                    ├── .bin        
+    ├── tmp           └── .patches             ├── doc         
+    └── .vscode                                ├── .github    
+                                               └── site       
+#+end_verse
+** Git Config
+
+*** Git stack config
+
+#+begin_src gitconfig
+
+[stack]
+  pull-remote=origin
+  push-remote=myuser
+
+  # limit stack operations to current (change with --stack=all)
+  stack=current
+#+end_src
+
+Here's an appropriately bit-rotted description of the configs, which totally
+won't bite me (the sole reader and biggest fan). This table is ripped from [[https://github.com/gitext-rs/git-stack/blob/main/docs/reference.md#configuration][here]]
+
+| Default                | Field                        | Argument    | Format                                                     | Description                                                                               |
+|------------------------+------------------------------+-------------+------------------------------------------------------------+-------------------------------------------------------------------------------------------|
+| main,master,dev,stable | stack.protected-branch       | -           | multivar of globs                                          | Branch names that match these globs (=.gitignore= syntax) are considered protected branches |
+| 50                     | stack.protect-commit-count   | -           | integer                                                    | Protect commits that are on a branch with =count=+ commits                                |
+| 14days                 | stack.protect-commit-age     | -           | time delta (e.g. 10days)                                   | Protect commits that older than the specified time                                        |
+| 500                    | stack.auto-base-commit-count | -           | integer                                                    | Split off branches that are more than =count= commits away from the implied base            |
+| all                    | stack.stack                  | -s, --stack | "current", "dependents", "descendants", "all"              | Which development branch-stacks to operate on                                             |
+| origin                 | stack.push-remote            | -           | string                                                     | Development remote for pushing local branches                                             |
+| origin                 | stack.pull-remote            | -           | string                                                     | Upstream remote for pulling protected branches                                            |
+| graph                  | stack.show-format            | --format    | "silent", "branches", "branch-commits", "commits", "debug" | How to show the stacked diffs at the end                                                  |
+| true                   | stack.show-stacked           | -           | bool                                                       | Show branches as stacked on top of each other, where possible                             |
+| move                   | stack.auto-fixup             | --fixup     | "ignore", "move", "squash"                                 | Default fixup operation with =--rebase=                                                     |
+| true                   | stack.auto-repair            | -           | bool                                                       | Perform branch repair with =--rebase=                                                       |
+| n/a                    | stack.gpgSign                | -           | bool                                                       | Sign commits, falling back to =commit.gpgSign=                                              |
+
+=git-stack --dump-config -= shows this for an unconfigured repo...
+
+#+begin_src gitconfig
+[core]
+	editor = vim
+[stack]
+	protected-branch = main
+	protected-branch = main
+	protected-branch = master
+	protected-branch = dev
+	protected-branch = stable
+	protect-commit-count = 50
+	protect-commit-age = 14days
+	auto-base-commit-count = 500
+	stack = all
+	push-remote = origin
+	pull-remote = origin
+	show-format = graph
+	show-commits = unprotected
+	show-stacked = true
+	auto-fixup = move
+	auto-repair = true
+[branch-stash]
+	capacity = 30
+#+end_src
+
+... that's without =git-worktree= -- which shouldn't change the output, but there
+are some specific usage concerns when combining them with =git-stack=. i probably
+won't try using again for awhile & *especially not* on a Redhat Java project. Two
+open VSCode's is about all the extra load my 16GB laptop can handle
+
+*** Basic Config
+
+#+begin_src gitconfig
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+	logallrefupdates = true
+[remote]
+	pushDefault = dc
+  
+[remote "origin"]
+	url = git@github.com:makeroanoke/makeroanoke.org
+	fetch = +refs/heads/*:refs/remotes/origin/*
+[remote "dc"]
+	url = git@github.com:dcunited001/makeroanoke.org
+	fetch = +refs/heads/*:refs/remotes/dc/*
+
+[branch "main"]
+	remote = origin
+	merge = refs/heads/main
+[branch "frontmatter"]
+	remote = dc
+	merge = refs/heads/cherrypick-squash
+	rebase = false
+[branch "pages-cms"]
+	remote = .
+	merge = refs/heads/frontmatter
+	rebase = true
+[branch "20240305_requested_changes"]
+	remote = origin
+	merge = refs/heads/20240305_requested_changes
+	rebase = true
+#+end_src
+
+*** Worktree config
+
+#+begin_src gitconfig
+[alias]
+wt = worktree
+wtl = worktree list
+wtr = "!f() { git worktree remove -f $1; git branch -D $1; }; f"
+
+# new worktree named:
+#   $1 at $2
+wtb = "!f() { git branch -f $1 $2; git worktree add $1 $1; }; f"
+# $1 at master/main
+wtbm = "!f() { git branch -f $1 origin/$(git remote show origin | \
+  awk '/HEAD branch/ {print $NF}'); git worktree add $1 $1; }; f"
+
+#+end_src
+
+*** A =tools= branch
+
+A tools branch, which was hard to sync the =.envrc= stuff for -- and to sync updates
+to tooling... which i eventually used =git config= variables for (see =mkr= below)
+
+#+begin_src gitconfig
+[branch "tools"]
+	remote = dc
+	merge = refs/heads/tools
+	rebase = true
+#+end_src
+
+*** Custom =git-config= vars
+
+These defined vars that required absolute paths
+
+#+begin_src gitconfig
+[mkr]
+  chromeUserData=/worktree/root/.config/chromium
+  tools=/worktree/root/tools
+  toolsBin=/worktree/root/tools/.bin
+#+end_src
+
+* Setup script for =git-worktree=
+
+This setup script describes how i configured worktrees in the bare repo. There
+are an unlimited set of ways to do this... so =caveat lector=.
+
+#+begin_src shell
+#!/bin/sh
+# via https://blog.cryptomilk.org/2023/02/10/sliced-bread-git-worktree-and-bare-repo/
+
+_master=master
+_forge_user=git
+_forge_name=github.com
+
+# TODO: create .config folder?
+# TODO: create .patches directory?
+# TODO: check for or create a tools orphan branch?
+
+_print_usage() {
+echo "`basename $0` [+-b <master_branch>] [+-F <forge_name>] [+-U <forge_user>] [--] <repo> [<worktree_root>]"
+echo
+echo "This will clone a bare checkout in <worktree_root>/.bare"
+echo "and then set up some defaults for git with worktrees. It will"
+echo "also check out the default branch to <worktree_root>/<master_branch>."
+echo
+echo "The command is intended, in theory, to only create the changes"
+echo "necessary so that it can be run repeatedly."
+echo
+echo "It wasn't the best of scripts. It wasn't the worst of scripts."
+echo
+echo "repo: the repository path on the forge (e.g. myorg/myrepo)"
+echo "worktree_root: the root path inside which checkouts are located"
+echo
+echo "master_branch: the default branch ref (default: master)"
+echo "forge_name: DNS name (default: github.com)"
+echo "forge_user: git user (default: git)"
+}
+
+while getopts :b:F:U: OPT; do
+case $OPT in
+b|+b)
+_master="$OPTARG"
+;;
+        F|+F)
+            _forge_name="$OPTARG"
+            ;;
+        U|+U)
+            _forge_user="$OPTARG"
+            ;;
+        ,*)
+            _print_usage
+            exit 2
+    esac
+done
+shift `expr $OPTIND - 1`
+OPTIND=1
+
+_repo=$1
+if [ -z "$_repo" ]; then
+    _print_usage
+    echo ""
+    echo "repo is required." && exit 1
+fi
+
+# usage says its optional ... it is not! LOL
+_wtroot=$2
+if [ -z "$_wtroot" ]; then
+    _wtroot=$(pwd)
+fi
+
+# ssh auth or gtfo
+_repo_url="$_forge_user@$_forge_name:$_repo"
+
+_git_cmd="git"
+
+cd $_wtroot
+if [ ! -d ".bare" ]; then
+    $_git_cmd clone --bare "git@github.com:$_repo" $_wtroot/.bare
+fi
+
+if [ ! -f ".git" ]; then
+    echo 'gitdir: ./.bare' > .git
+fi
+
+if [ -z "$(git config --get remote.origin.fetch)" ]; then
+    $_git_cmd config --replace-all remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+fi
+
+$_git_cmd config --replace-all core.logallrefupdates true
+
+$_git_cmd fetch --all
+
+_fetch_status=$?
+if [ $_fetch_status -ne 0 ]; then
+    echo "`git fetch` exited with $_fetch_status. Check your config. Terminating..." && exit 1
+fi
+
+$_git_cmd config --replace-all alias.wt "worktree"
+$_git_cmd config --replace-all alias.wtl "worktree list"
+
+# check remote branches for $_master
+if [ -z "$(git branch -r --list origin/"$_master")" ]; then
+    echo "`git branch -r` shows no such ref: origin/$_master. Terminating..." && exit 1
+fi
+
+if [ -z "$(git branch --list "$_master")" ]; then
+    $_git_cmd branch -f "$_master" "origin/$_master"
+fi
+
+if [ -z "$(git worktree list | grep $_master)" ]; then
+    $_git_cmd worktree add $_master $_master
+fi
+#+end_src
+
+* Worktrees
+
+#+begin_quote
+This was moved from =./topics/vcs.org= in my zettelkasten
+#+end_quote
+
+Don't use =git worktrees= if you have submodules (or so i've read)
+
++ [[https://stackoverflow.com/questions/31871888/what-goes-wrong-when-using-git-worktree-with-git-submodules][A brief history of time and worktree/submodule [in]compatibility]] ~2016
+  - and [[https://stackoverflow.com/questions/34460811/git-submodule-update-is-slow-how-can-i-debug-why-its-slow/52452587#52452587][the epilogue]] ~2018-2020
+
+** Usage
+
+Don't use the same branch names across remotes
+
+#+begin_quote
+If <commit-ish> is a branch name (call it <branch>) and is not found, and
+neither -b nor -B nor --detach are used, but there does exist a tracking branch
+in exactly one remote (call it <remote>) with a matching name, treat as
+equivalent to:
+
+=git worktree add --track -b <branch> <path> <remote>/<branch>=
+#+end_quote
+
+** Scripts
+
+*** =core.worktreeConfig=
+
+See [[https://git-scm.com/docs/git-config#Documentation/git-config.txt---worktree][git config --worktree]]. worktree-specific configs requires
+=core.worktreeConfig=true= in =$GIT_DIR/worktree=
+
+Without =worktreeConfig=, then the worktree's =config= will set =commondir=. This may
+cause problems when converting from one =git-worktree= layout to another.
+
+*** Setting =commondir=
+
+Without
+
+*** Getting paths
+
+You may like some consistent paths for scripts or for sanity check
+
++ git rev-parse --git-path config.worktree :: find the config path for the
+  current worktree (only for =core.worktreeConfig=)
++ git rev-parse --git-path config :: get the path to the =main-worktree= config
++ git rev-parse --git-path HEAD :: returns the path to =HEAD= for the current
+  worktree.
+
+Though my zettelkasten project doesn't use worktrees, this returns the relative
+path to the specified ref:
+
+#+begin_src shell :results output
+echo HEAD
+git rev-parse --git-path HEAD
+echo
+echo contains:
+cat "$(git rev-parse --git-path HEAD)"
+echo
+echo refs/heads/master
+git rev-parse --git-path refs/heads/master
+echo
+echo contains:
+cat "$(git rev-parse --git-path refs/heads/master)"
+#+end_src
+
+#+RESULTS:
+#+begin_example
+HEAD
+../.git/HEAD
+
+contains:
+ref: refs/heads/master
+
+refs/heads/master
+../.git/refs/heads/master
+
+contains:
+449c3bad1ad24bf1861cbe08a6eb3caf76c1d042
+#+end_example
+
+** Initial setup using =--bare= without =core.worktreeConfig=
+
+For the initial clone, you either need to chose to:
+
++ create git worktrees to exist in a parent of the first worktree
++ or to run =git clone --bare= (like [[https://morgan.cugerone.com/blog/how-to-use-git-worktree-and-in-a-clean-way/][this example]]), which also requires some
+  extra config (see another [[https://morgan.cugerone.com/blog/workarounds-to-git-worktree-using-bare-repository-and-cannot-fetch-remote-branches/][blog with the fix]] from the same author)
+
+I would prefer the bare clone, to make configuration simpler. I hope this will
+be okay when using multiple editors on the project ... (i don't want VSCode to
+stomp on whatever magit has buffered)
+
+With one worktree configured, my =.bare/config= file looks like:
+
+#+begin_example gitconfig
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = true
+[remote]
+	pushDefault = dc
+[remote "origin"]
+	url = git@github.com:the-origin/the-project
+  fetch = +refs/heads/*:refs/remotes/origin/*
+[remote "dc"]
+  url = git@github.com:dcunited001/the-project
+  fetch = +refs/heads/*:refs/remotes/dc/*
+[branch "main"]
+	remote = origin
+	merge = refs/heads/main
+#+end_example
+
+This is what my directory looks like with =tree -aL 2 .=
+
+#+begin_quote
+.
+├── .bare
+│   ├── branches
+│   ├── config
+│   ├── HEAD
+│   ├── refs
+│   └── worktrees
+│       └── main
+│           └── gitdir
+├── .git
+├── .bin
+└── main
+    ├── .git
+    ├── .github
+    ├── .gitignore
+    ├── LICENSE
+    ├── README.md
+    └── site
+#+end_quote
+
++ The =.git= file points to =gitdir: ./.bare= so all of git's local state is in
+  there, somewhere.
++ The =./main/.git= file points to: =gitdir: /worktree/root/.bare/worktrees/main=
++ The =.bare/worktrees/main/gitdir= points to: =/worktree/root/main/.git=
+
+So these last two are absolute references and will break when moved. I think
+changing them to relative paths will work and that there is probably CLI to
+avoid the need to fix ... but I usually end up editing the config files.
+
+*** magit
+
+When using =magit= I do end up with multiple =magit-status= buffers. Opening in
+the directory that contains =.bare/= will open a =magit-status= there (and
+associated process). Opening in the =main= worktree will open a =magit-status=
+there.
+
+Since I'm using the =.bare= checkout, everything points to a pretty well-defined
+=gitconfig= definition, though i think one can get this with/out the =.bare=
+checkout by simply designating a single =main= clone in a =$parent/main=
+directory, then using =git worktree add $wtname ../$wtdir=. This would have
+basically the same result.
+
+What worries me is automation in the background for most editors (that hide
+details from users). It would come down to how the tools access the index -- i
+believe the =git= CLI was designed to handle cases where multiple processes
+attempt to access index files. As long as everything uses the =git= CLI as a
+common interface from which it extracts data ... then at least the git index
+AFAIK should be ok.
+
+... the worktrees that are checked out ... idk. I would scope one editor per worktree.
+
+*** magit with forge.el
+
+As for Forge, it adds remotes to a database keying on the remote URL, so I think
+it will mostly work -- though there is still the need to keep the multiple
+=magit-status= buffers in mind... I was worried about extra state/structure
+increasing the cognitive load.
+
++ In neither the =./.bare= clone nor the =./main= worktree can I directly access
+  the pull requests from the =magit-status= buffer for that directory. I can use
+  use =Nlp= to list them, then access the contents from there.
++
+
+*** Migrating unfinished work
+
+To help migrate over, i moved my original =git clone= to a sibling directory
+=./www2/=, then created a new directory in its place and cloned the =.bare=
+inside of it.
+
+Then I examined the unpushed local brances in the original checkout and used
+=magit= to =format patch=. This saves a branch to a bunch of files in sequence
+that can be applied later. If the changes are atomic/independent, then applying
+the patches should not result in merge conflicts.
+
+
+
+* MissingNo: =tools/README.org=
+
+#+begin_quote
+The =tools= branch was a worktree checked out to an orphan branch named =tools=
+because i was literally insane enough to try that.
+#+end_quote
+
+** Tasks
+
+*** TODO describe scripting functionality in tools for git worktree projects
+
++ [ ] just use =dc.gitvars= and expect that this is custom (unshared) functionality
++ [ ] expect a =.bare= checkout elsewhere on the local network to use as a
+  file-based remote
++ [ ] maybe use =ERB= templates for things like =.jekyll.env=
+
+** Overview
+
+*** Old Setup
+
+The "Old Setup" section should be ignored, as using =GNU stow= would result in
+dangling links if changes to stow were not managed like =unstow= $\circ$
+=rebase= $\circ$ =stow=.
+
+#+begin_quote
+"Only a fool learns from his own mistakes. The wise man learns from the mistakes
+of others." Otto von Bismark
+#+end_quote
+
+I'm glad that I didn't need to actually try it to figure that out. Worktrees
+have already been extremely burdonsome in a similar way.
+
+** Setup
+
+*** Templated files
+
+**** Envrc
+
+By extracting environment shared between worktrees in =git config=, then linking
+to the single =.envrc= in the tools branch should suffice. Either link from a
+=.envrc= in the parent directory to =tools/.envrc.eg= or create a =.envrc= in
+the worktree
+
+***** TODO doublecheck and revise .envrc
+
+**** Docker Compose
+
+***** Environment Files
+
+A =.env= file will be automatically consumed by =docker compose= if it exists,
+but an alternative file can be used with =-e $dotenv=. The format expected is in
+=.jekyll.env=.
+
+Since these files can be sourced, they are also used in some scripts, like
+=jtunnel=. Where this occurs, the =-e= argument should also work in the same
+way, but only for the =pwd=. However, just as in =docker compose= the variables
+are not exported to child processes -- for Docker, not provided to the container
+image.
+
+*** Git
+
+**** Config
+
+***** .bin scripts
+
+For scripts in the =.bin= directory
+
+#+begin_example gitconfig
+# these must be absolute paths
+[mkr]
+  chromeUserData=/worktrees/root/.config/chromium
+  tools=/worktrees/root/tools
+  mkr=/worktrees/root/tools/bin
+
+[alias]
+  
+#+end_example
+
+To run these:
+
++ Append to path (somewhere in project)
++ Or add a git alias.
++ Or a VSCode run configuration
+
+For VSCode
+
+#+begin_example json
+{
+  // See https://go.microsoft.com/fwlink/?LinkId=733558
+  // for the documentation about the tasks.json format
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run tests",
+      "type": "shell",
+      "command": "",
+      "windows": {
+        "command": ".\\scripts\\test.cmd"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}
+
+#+end_example
+
+** Managing Worktrees
+
+These are tools to help manage files across worktrees, esp when symlinks or
+scripts drift. 
+
+*** Comparing
+
+**** Filetrees
+
+#+begin_example sh
+tree -ad -I "_site" $bare/..
+#+end_example
+
+***** Site
+
+#+begin_example sh
+# tree -aI "(_site,2023,2024)" site
+tree -aI _site -I 2023 -I 2024 site
+
+#+end_example
+
+**** Files
+
+
+With multiple similarly-named files in worktrees, this can get confusing.
+
++ I still don't have a means of quickly comparing versions of files across file
+  trees with =diff= (works by default but not when the files have different and
+  not with more than two file trees)
++ =czkrawka= can dedupe files but it's a bit heavy handed.
+
+The =tree= command can help somewhat. This will find a quoted glob pattern
+across many file trees, pruning out the subdirectories that provide no results
+
+#+begin_example sh
+alias treef='tree --prune -aP'
+#+end_example
+
+So =treef 'docker-compose*.yml'= will show you where those all are.
+
+** Old Setup
+
+The files here should be tangled, but gitignore must be added.
+
+#+begin_src gitignore :tangle .gitignore
+docker-compose.yml
+.env
+#+end_src
+
+*** GNU Stow
+
+These tools should be stowable
+
+**** Stow local ignore
+
+Stow should ignore these
+
+#+begin_src stow :tangle .stow-local-ignore
+\.gitignore
+^/docker-compose\.eg\.yml
+^/\.github
+^/\.env
+#+end_src
+
+in worktree branches with bare checkout, .git links to a config in ../.bare
+
+#+begin_src stow :tangle .stow-local-ignore
+^/\.git
+#+end_src
+
+These are in the repo, but maybe should be removed, eventually
+
+#+begin_src stow :tangle .stow-local-ignore
+^/\.bin/jstart
+^/\.bin/crstart
+#+end_src
+
+#+begin_src stow :tangle .stow-local-ignore
+# =============================================
+# TO STOW:
+# ---------------------------------------------
+
+# /.bin
+# /docker-compose.yml
+# /.git
+# /.envrc (should work on any worktree)
+# /.vscode
+# /.env.eg
+
+# unsure:
+# /tmp
+
+#+end_src
+
+* MissingNo: =stack.org=
+
+#+begin_quote
+These were in an old project
+#+end_quote
+
+** Notes
++ don't name branches the same across remotes (generally bad idea)
+
++ pass =-v= to get better output or =--format=debug= to get json
+
+*** Basics
+
+**** Remotes
+
+Either =stack.pull-remote= and =stack.push-remote= differ or their the
+same. These determine which branches are protected. There's no real way to force
+a branch to be unprotected.
+
+***** Different Pull/Push Remotes
+
+
+
+***** Same Pull/Push Remotes
+
+
+#+begin_quote
+Assuming that git-stack will resolve branche upstreams by ref
+#+end_quote
+
+In this case, your local branches should not have their
+=branch.<name>.merge= set to their upstream
+
+*** Config
+
+** =git-stack= Reference
+
+*** Concepts
+
+**** Protected Branch
+
+These are branches like =main= or =v3= that =git-stack= must not modify. If there is a
+matching branch in the =stack.push-remote=, we assume that is the canonical
+version of the branch (the one being modified) and we will track the local
+branch to that.
+
+=git-stack= finds the best-match protected base branch for each development
+branch:
+
++ =--pull= will only pull protected bases
++ =--rebase= will move development development branches to the latest
+commit of this protected base
+
+**** pull-remote
+
+The remote that contains shared branches you are developing against. Because
+these are shared branches, we do not want to modify their history locally.
+
+**** push-remote
+
+The remote that contains your personal branches in preparation for being merged
+into a shared branch in the pull-remote. =git-stack= assumes the local version is
+canonical (that no edits are happening in the remote) and that =git-stack= is free
+to modify and force-push to this remote.
+
+This may be the same as the =pull-remote= when working directly in the upstream
+org, rather than on a fork.
+
+*** Commands
+
+**** =git stack alias=
+
+View, register, and unregister =git stack= specific aliases.
+
+Use case: keep commands short while avoiding name conflicts with existing
+aliases or other installed commands.
+
+**** =git stack=
+
+Visualizes the branch stacks on top of their protected bases.
+
+Why not =git log --graph --all --oneline --decorate main..HEAD=? - Doesn't show
+status as you progress through review - Fairly verbose - Have to manually select
+your base to limit to relevant commits - Slower because it loads the entire
+commit graph into memory to sort it
+
+**** =git sync=
+
+i.e. =git stack sync=
+
+Pulls your protected branches from the =stack.pull-remote= and then rebases your
+development branches on top of their relevant protected branches.
+
+Unlike =--rebase=, this does not perform any "auto" operations.
+
+Note: - This also performs a fetch of your =stack.push-remote= to prune any
+removed remotes
+
+Use case: detect merge and semantic conflicts early
+
+Why not =git pull --rebase upstream main=? - Have to manually select your
+remote/branch - Only updates current branch - Even looping over all branches,
+the relationship between branches gets lost, requiring rebasing branches back on
+top of each other, making sure you do it in a way to avoid conflicts. - Have to
+manually delete merged branches - Only fetches from =upstream=, leaving your
+deleted =origin= branches lingering locally
+
+**** =git next=
+
+i.e. =git stack next=
+
+Switch to a child commit.
+
+Use case: easily navigate to edit commits with commands like =git amend=.
+
+Why not =git stack && git checkout <ref>=? - Saves you from having to type or
+copy/paste =<ref>=
+
+**** =git prev=
+
+i.e. =git stack prev=
+
+Switch to a parent commit.
+
+Use case: easily navigate to edit commits with commands like =git amend=.
+
+Why not =git stack && git checkout <ref>=? - Saves you from having to type or
+copy/paste =<ref>=
+
+**** =git reword=
+
+i.e. =git stack reword=
+
+Edit the current commit's message.
+
+Use case: easily edit parent commits.
+
+Why not =git commit --amend=? - Automatically rebases all children commits /
+branches - Avoid accidentally editing a protected commit or a commit with fixups
+referencing it
+
+Why not =git rebase -i <ref>= and setting it the action to =r=? - Fewer steps (no
+need to choose ref, go to correct line and edit it to then edit the message) -
+Automatically rebases all children commits / branches
+
+**** =git amend=
+
+i.e. =git stack amend=
+
+Squash staged changes into the current commit.
+
+Use case: easily edit parent commits.
+
+Why not =git commit --amend --no-edit=? - Automatically rebases all children
+commits / branches - Avoid accidentally editing a protected commit or a commit
+with fixups referencing it
+
+**** =git run=
+
+i.e. =git stack run=
+
+Run a command across the current stack of commits.
+
+Use case: verify your commits still build after editing history.
+
+**** =git stack --rebase=
+
+Rebase development branches on their relevant protected branches.
+
+This performs "auto" operations, like - =stack.auto-fixup=: see =--fixup=
+
+Why not =git rebase -i --autosquash master=? - Have to manually select the base -
+By default, it will squash the =fixup!= commits. If this isn't what you want, you
+are likely to defer this until you are ready to squash and you won't know of any
+merge-conflicts that arise from moving the =fixup!= commits.
+
+**** =git stack --fixup <action>=
+
+Process [[https://git-scm.com/docs/git-commit#Documentation/git-commit.txt---fixupamendrewordltcommitgt][fixup!]] commits according to the specified action.
+
+Note: - This can be used to override =stack.auto-fixup= during a =--rebase=.
+
+**** =git stack --repair=
+
+This attempts to clean up stacks - If you commit directly on a parent stack,
+this will update the dependent stacks to be on top of that new commit - If you
+used =git rebase=, then the stack will be split in two. This will merge them.
+
+**** =git stack --push=
+
+Push all "ready" development branches to your =stack.push-remote=.
+
+A branch is ready if - It is not stacked on top of any other development
+branches (see [[https://github.com/gitext-rs/git-stack/blob/main/README.md#how-do-i-stack-my-prs-in-github]["How do I stack my PRs in Github"]]) - It has no [[https://github.com/gitext-rs/git-stack/blob/main/README.md#when-is-a-commit-considered-wip][WIP commits]].
+
+We consider branches with [[https://git-scm.com/docs/git-commit#Documentation/git-commit.txt---fixupamendrewordltcommitgt][=fixup!= commits]] to be ready in case you are wanting
+reviewers to see some intermediate states. You can use a tool like [[https://github.com/crate-ci/committed][committed]] to
+prevent these from being merged.
+
+Why not =git push --set-upstream --force-with-lease origin <branch>=? - A bit
+verbose to do this right - Might forget to clean up your branch (e.g. WIP,
+fixup)
+
+**** =git branch-stash=
+
+While =git stash= backs up and restores your working tree, [[https://github.com/gitext-rs/git-branch-stash][=git branch-stash=]]
+backs up and restores the state of all of your branches.
+
+=git-stack= implicitly does a =git branch-stash= whenever modifying the tree.
+
+Why not =git reflog= and manually restoring the branches? - A lot of manual work
+to find the correct commit SHAs and adjust the branches to point to them
