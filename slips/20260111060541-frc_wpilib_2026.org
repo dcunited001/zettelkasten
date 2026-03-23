@@ -44,6 +44,163 @@ Dimension Drawings Useful Pages
 + [[https://github.com/Mattiemateo/2025-2026_FTC_DECODE/tree/main/TeamCode/src/main/java/org/firstinspires/ftc/teamcode][Mattiemateo/2025-2026_FTC_DECODE]] An FTC project with an auto-aiming turret
 
 + https://github.com/Hoya-Robotics/RobotCode2026
+** Tuning
+
+*** Recalc
+**** Extract Values
+
++ Enter values, ensure everything necessary is expanded & in the correct
+  "disabled" state.
++ The selector =inputs= returns all inputs... but no select boxes.
+  - =[data-testid]= is set for all =input= and =select= boxes. this keeps everything
+    in order.
+  - labels are accessible from the object they belong to, but need to test for
+    presence
+
+#+begin_src javascript
+recalcElements = Array.from(document.querySelectorAll('[data-testid]'))
+
+recalcForm = recalcForm.map((el,i) => [
+  i,
+  el.id,
+  el.value,
+  (el.attributes.getNamedItem("type")
+   ? el.attributes.getNamedItem("type").nodeValue
+   : ''),
+  (el.id.match(/^select.*/) ? true : false),
+  (el.labels.length > 0
+   ? el.labels[0].textContent
+   : "")
+])
+
+// need to check whether it's a select box...
+recalcTable = recalcForm.map(row => row.join(' | '))
+console.log(`| ${recalcTable.join(' |\n| ')} |`)
+console.log('\n\n')
+
+// or without the dropdowns
+recalcTable = recalcForm.filter(row => !row[4]).map(row => row.join(' | '))
+console.log(`| ${recalcTable.join(' |\n| ')} |`)
+#+end_src
+
+The javascript dumps two tables. The second table just exclues the rows where
+the id matches =^select=. These contain the units, which are _critical_ for PID
+later. The units for these are not consistent by default, unless you toggled
+them.
+
+|  0 | motor                |      2 | number   | false | Motor                       |
+|  2 | efficiency           |    100 | number   | false | Efficiency (%)              |
+|  3 | currentLimit         |     40 | number   | false | Current Limit               |
+|  5 | shooterRatio         |      1 | number   | false | Shooter Ratio               |
+|  7 | shooterMaxSpeed      |   5784 | number   | false | Shooter Max Speed           |
+|  9 | shooterRPM           |   4500 | number   | false | Target Shooter RPM          |
+| 11 | projectileWeight     |    0.5 | number   | false | Projectile Weight           |
+| 13 | shooterRadius        |      4 | number   | false | Shooter Radius              |
+| 15 | shooterWeight        |      1 | number   | false | Shooter Weight              |
+| 17 | useCustomShooterMOI  |     on | checkbox | false | Use Custom Shooter MOI      |
+| 18 | customShooterMOI     |  2.653 | number   | false | Custom Shooter MOI          |
+| 20 | flywheelRadius       |      4 | number   | false | Flywheel Radius             |
+| 22 | flywheelWeight       |      1 | number   | false | Flywheel Weight             |
+| 24 | flywheelShooterRatio |      1 | number   | false | Flywheel:Shooter Ratio      |
+| 26 | useCustomFlywheelMOI |     on | checkbox | false | Use Custom Flywheel MOI     |
+| 27 | customFlywheelMOI    |  4.000 | number   | false | Custom Flywheel MOI         |
+| 29 | windupTime           |   1.24 | number   | false | Estimated Windup Time       |
+| 31 | recoveryTime         | 0.1382 | number   | false | Estimated Recovery Time     |
+| 33 | surfaceSpeed         | 157.08 | number   | false | Shooter Wheel Surface Speed |
+| 35 | projectileSpeed      |  42.64 | number   | false | Estimated Projectile Speed  |
+| 37 | speedAfterShot       |   4212 | number   | false | Estimated Speed After Shot  |
+| 39 | flywheelEnergy       |    216 | number   | false | Flywheel Energy             |
+| 41 | projectileEnergy     |     27 | number   | false | Projectile Energy           |
+| 43 | kV                   |   0.19 | number   | false | kV                          |
+| 45 | kA                   |   0.16 | number   | false | kA                          |
+| 47 | systemResponseTime   |  821.4 | number   | false | System Response Time        |
+| 49 | dt                   |      0 | number   | false | Loop Time (dt)              |
+| 51 | measurementDelay     |      0 | number   | false | Measurement Delay           |
+| 53 | kp                   |   0.00 | number   | false | kP                          |
+
+Change the =|= to =,= and it should basically log to CSV. Unfortunately, I'm too
+lazy to completely automate this and it's just a hack anyways. In emacs or
+whatever CSV app, delete the unnecessary columns, then do some manual
+realignment to get what's below along with the units. This can double as
+documentation with =pandoc= or changing the above =console.log=.
+
+I couldn't find a great solution in Java to generate constants files from JSON
+or YAML. Potential solutions for code-generation involve:
+
++ Spring/Hibernate: overkill and idk how to use it
++ jsonschema2pojo: this could work, but generates way too much code. It's
+  intended to be simple and "lightweight", but doesn't work for embedded. Also,
+  it mainly generates builders with validator logic ... not =final= objects
+  constructed at compile-time.
++ JSON Reader: Roborio file-system access is too slow
++ Annotations: even if it means copying the file from the generated namespace
+  - this would work well, but still requires some manual munging, unless they
+    read from JSON/YAML at compile time. This wouldn't be simple with complex
+    data types or trees.
+
+Honestly the main things I'm looking for here:
+
++ Fairly automated (from inputs to outputs).
++ At least easy to edit (the recalc URLs help a ton)
++ potentially diffable (even if it's just JSON/YAML/CSV)
++ Handles units or at least documents them (these are easy to change in recalc)
++ Consistent naming between subsystems/mechanisms! IMO, this is the most
+  important for me. If these domain models have already been explored, I
+  don't want to worry about naming.
+
+So, multi-cursor editing gets me 75% of the way there.
+
+There's some examples of doing stuff like this in code for =Choreo= & =PathPlanner=
+
+**** Shooter
+
+| motor              |       2 | Kraken X60 (FOC) | Motor              |
+| efficiency         |     100 |                  | Efficiency (%)     |
+| selectshooterRatio | Step-up |                  |                    |
+| currentLimit       |      40 | A                | Current Limit      |
+| shooterRatio       |       1 | Step-up          | Shooter Ratio      |
+| shooterMaxSpeed    |    5784 | rpm              | Shooter Max Speed  |
+| shooterRPM         |    4500 | rpm              | Target Shooter RPM |
+| projectileWeight   |     0.5 | lbs              | Projectile Weight  |
+
+***** Shooter Wheel
+
+| shooterRadius       |      4 | in       | Shooter Radius         |
+| shooterWeight       |      1 | lbs      | Shooter Weight         |
+| useCustomShooterMOI |     on |          | Use Custom Shooter MOI |
+| customShooterMOI    | 2.6532 | in^2 lbs | Custom Shooter MOI     |
+
+***** Flywheel
+
+| flywheelRadius       |  4 | in        | Flywheel Radius         |
+| flywheelWeight       |  1 | lbs       | Flywheel Weight         |
+| flywheelShooterRatio |  1 | Reduction | Flywheel:Shooter Ratio  |
+| useCustomFlywheelMOI | on |           | Use Custom Flywheel MOI |
+| customFlywheelMOI    |  4 | in^2 lbs  | Custom Flywheel MOI     |
+
+***** Outputs
+
+| windupTime       |   1.24 | s   | Estimated Windup Time       |
+| recoveryTime     | 0.1382 | s   | Estimated Recovery Time     |
+| surfaceSpeed     |  47.88 | m/s | Shooter Wheel Surface Speed |
+| projectileSpeed  |  13.00 | m/s | Estimated Projectile Speed  |
+| speedAfterShot   |   4212 | rpm | Estimated Speed After Shot  |
+| flywheelEnergy   |    216 | J   | Flywheel Energy             |
+| projectileEnergy |     27 | J   | Projectile Energy           |
+
+***** Control
+
+Feedforward gains, feedback gains and delays
+
+| kV                 |              0.19 | V*s/m   | kV                   |
+| kA                 |              0.16 | V*s^2/m | kA                   |
+| systemResponseTime |             821.4 | ms      | System Response Time |
+| maxEffort          |                 4 |         | Max Effort           |
+| velTolerance       | 6.153902486299058 |         | Velocity Tolerance   |
+| dt                 |                20 | ms      | Loop Time (dt)       |
+| measurementDelay   |                20 | ms      | Measurement Delay    |
+| kp                 |              0.43 | V*s/m   | kP                   |
+
 
 ** PhotonVision
 
@@ -204,6 +361,8 @@ for z in AdvantageKit_*.zip; do
      fi
 done
 #+end_src
+*** DS & FMS
+
 ** Emacs
 
 *** VSCode Functionality & Gradle Tasks
