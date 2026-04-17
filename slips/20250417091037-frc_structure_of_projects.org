@@ -1191,6 +1191,53 @@ Now run =./gradlew tasks=. it does a bunch of things (in parallel), including:
 
 
 
+** Photonvision Docs with UML
+
+Start a the same container used for WPILib, run =./gradlew run=. wait for it to
+build, then apply this patch.
+
+After that, run =./gradlew generateJavaDocs=.
+
+#+begin_src diff
+diff --git a/photon-docs/build.gradle b/photon-docs/build.gradle
+index 6d808469..550f9260 100644
+--- a/photon-docs/build.gradle
++++ b/photon-docs/build.gradle
+@@ -96,11 +96,16 @@ tasks.register("zipCppDocs", Zip) {
+ 
+ // Java
+ configurations {
++    umlDoclet
+     javaSource {
+         transitive = false
+     }
+ }
+ 
++dependencies {
++    umlDoclet "nl.talsmasoftware:umldoclet:2.3.0"
++}
++
+ ext {
+     sharedCvConfigs = [:]
+     staticCvConfigs = [:]
+@@ -126,6 +131,10 @@ task generateJavaDocs(type: Javadoc) {
+     options.linkSource(true)
+     failOnError = true
+ 
++    options.docletpath = configurations.umlDoclet.files.asType(List)
++    options.doclet = "nl.talsmasoftware.umldoclet.UMLDoclet"
++    options.addBooleanOption "createPumlFiles", true
++
+     title = "PhotonVision $pubVersion"
+     ext.entryPoint = "$destinationDir/index.html"
+ 
+#+end_src
+
+The docs are in: =find . -wholename '*build*javadoc' -type d= ... but it didn't
+work. There are also ={,java}common.gradle= where some javadoc customization is
+handled.
+
+
 ** Build WPI Docs
 
 Run =./gradlew javadoc= or  =./gradlew javadoc --rerun= to regen
@@ -1344,8 +1391,6 @@ find ./docs/build -name '*.puml' -printf '%p\n' \
 | docs/build/docs/javadoc/edu/wpi/first/math/geometry/Translation3d.puml    |
 | docs/build/docs/javadoc/edu/wpi/first/math/geometry/Twist2d.puml          |
 | docs/build/docs/javadoc/edu/wpi/first/math/geometry/Twist3d.puml          |
-
-
 ** Containers
 
 In 2025, containers are built from Ubuntu 22.04
