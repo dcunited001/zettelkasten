@@ -38,6 +38,26 @@ confusing and isn't appropriate for more secure contexts.
     this doesn't require =source= or changing to =vbash=
 + Script comments will silently error. This doesn't seem to affect much. idk
 
+** Chains
+
+under =set firewall=
+
+#+begin_verse
+bridge                 flowtable              group                   ipv4                   ipv6
+├── forward            └── custom_flow_table  ├── address-group       ├── forward            ├── forward
+│   └── filter +           └── +              ├── domain-group        │   └── filter +       │   └── filter +
+├── input                                     ├── interface-group     ├── input              ├── input
+│   └── filter +       global-options         ├── ipv6-address-group  │   └── filter +       │   └── filter +
+├── name               ├── +                  ├── ipv6-network-group  ├── name               ├── ipv6-name
+│   └── custom_name +  ├── all-ping           ├── mac-group           │   └── custom_name +  │   └── custom_name +
+├── output             └── broadcast-ping     ├── network-group       ├── output             ├── output
+│   └── filter +                              └── port-group          │   ├── filter +       │   ├── filter +
+└── prerouting         zone                                           │   └── raw +          │   └── raw +
+    └── filter +       └── custom_zone_name                           └── prerouting         └── prerouting
+                           └── +                                          └── raw +              └── raw +
+#+end_verse
+
+
 ** R2
 
 shell in operation mode
@@ -129,7 +149,7 @@ exit
 EOF
 #+end_src
 
-* Routing
+** Routing
 
 For NTP/DNS/etc and stuff, ensure there's a valid default route.
 
@@ -138,7 +158,85 @@ delete protocols static route 0.0.0.0/0 interface eth0
 set protocols static route 0.0.0.0/0 next-hop 172.16.180.1 interface eth2.160
 #+end_src
 
-* NTP
+*** NAT
+
+**** Hosts
+
+#+begin_src shell :session *r2conf* :results output silent
+set service dns forwarding authoritative-domain home.eg.tld records a   comp1 address 172.16.180.37
+set service dns forwarding authoritative-domain home.eg.tld records a   comp2 address 172.16.180.73
+set service dns forwarding authoritative-domain home.eg.tld records a server1 address  172.16.250.1
+#+end_src
+
+**** Routing
+
+#+begin_src shell :session *r2conf* :results output silent
+set service dns forwarding authoritative-domain home.eg.tld records a      wan.r2.route address  172.24.24.102
+set service dns forwarding authoritative-domain home.eg.tld records a     home.r2.route address  172.16.45.102
+set service dns forwarding authoritative-domain home.eg.tld records a      dev.r2.route address 172.16.180.102
+set service dns forwarding authoritative-domain home.eg.tld records a    build.r2.route address 172.16.240.102
+set service dns forwarding authoritative-domain home.eg.tld records a  servers.r2.route address 172.16.250.102
+set service dns forwarding authoritative-domain home.eg.tld records a      lab.r2.route address 172.20.100.102
+#+end_src
+
+The other addresses are explicitly configured to avoid ARP problems... right,
+xfinity?
+
+#+begin_src shell :session *vy2conf* :results output silent
+set interfaces ethernet eth0 address 172.24.24.45/24
+set interfaces ethernet eth0 address 172.24.24.180/24
+set interfaces ethernet eth0 address 172.24.24.240/24
+set interfaces ethernet eth0 address 172.24.24.250/24
+set interfaces ethernet eth0 address 172.24.24.150/24
+#+end_src
+
+These address groups are for reference only. Breaking the nat out should maybe
+help track what's talking to what..... if the "xfinity" doesn't throw errors
+like "ERR: nope-finity on ARP" or "ERR: interface blackbox-logic BS".
+
+#+begin_src shell
+set firewall group address-group nat_oxelio_home    address 172.24.24.45
+set firewall group address-group nat_oxelio_dev     address 172.24.24.180
+set firewall group address-group nat_oxelio_build   address 172.24.24.240 
+set firewall group address-group nat_oxelio_servers address 172.24.24.250 
+set firewall group address-group nat_oxelio_lab     address 172.24.24.150
+# NOTE: This addressing requires updating the DHCP pool
+#+end_src
+
+This address-specific NAT requires setting up the firewall =network-group='s in
+addition to additional ip addresses on the =eth0= interface.
+
+The interface's primary address
+
+#+begin_src shell :session *vy2conf* :results output silent
+set interfaces ethernet eth0 address 172.24.24/24
+#+end_src
+
+And the NAT configuration
+
+#+begin_src shell :session *vy2conf* :results output silent
+set nat source rule 11200 outbound-interface name eth0
+set nat source rule 11200 source group network-group oxelio_lan
+set nat source rule 11200 translation address 172.24.24.45
+
+set nat source rule 11600 outbound-interface name eth0
+set nat source rule 11600 source group network-group oxelio_dev
+set nat source rule 11600 translation address 172.24.24.180
+
+set nat source rule 12400 outbound-interface name eth0
+set nat source rule 12400 source group network-group oxelio_farm
+set nat source rule 12400 translation address 172.24.24.240
+
+set nat source rule 13200 outbound-interface name eth0
+set nat source rule 13200 source group network-group oxelio_svc
+set nat source rule 13200 translation address 172.24.24.250
+
+set nat source rule 13600 outbound-interface name eth0
+set nat source rule 13600 source group network-group oxelio_lab
+set nat source rule 13600 translation address 172.24.24.150
+#+end_src
+
+** NTP
 
 #+begin_src shell :session *r2conf* :results output silent
 set service ntp server us.pool.ntp.org pool
@@ -164,7 +262,7 @@ was seeing like five different times here:
 
 See [[https://docs.redhat.com/en/documentation/red_hat_enterprise_linux/10/html/configuring_time_synchronization/overview-of-network-time-security-nts-in-chrony][Enabling Network Time Security (NTS) on a client]]
 
-** Chrony
+*** Chrony
 
 sudo cat /run/chrony/chrony.conf
 
@@ -204,14 +302,14 @@ deny all
 #+end_example
 
 
-* DNS
+** DNS
 
-** TODO DNS fix =source-address= and ensure =DNSSEC=
+*** TODO DNS fix =source-address= and ensure =DNSSEC=
 
 + [ ] set a correct =source-address= (instead of the dev interface address)
 + [ ] ensure =DNSSEC= 
 
-** v4
+*** v4
 
 =name-server= needs to be the more authoritative DNS server.
 
@@ -226,7 +324,7 @@ To use the =system= DNS instead
 set service dns forwarding system
 #+end_src
 
-*** Hosts
+**** Hosts
 
 #+begin_src shell :session *r2conf* :results output silent
 set service dns forwarding authoritative-domain home.eg.tld records a   comp1 address 172.16.180.37
@@ -234,7 +332,7 @@ set service dns forwarding authoritative-domain home.eg.tld records a   comp2 ad
 set service dns forwarding authoritative-domain home.eg.tld records a server1 address  172.16.250.1
 #+end_src
 
-*** Routing
+**** Routing
 
 #+begin_src shell :session *r2conf* :results output silent
 set service dns forwarding authoritative-domain home.eg.tld records a      wan.r2.route address  172.24.24.102
@@ -253,7 +351,7 @@ unsure
 # set service dns forwarding authoritative-domain home.eg.tld records a  util.r2.route address 172.17.180.12
 #+end_src
 
-*** DNSSEC
+**** DNSSEC
 
 DNSSEC isn't enabled for system DNS, as =options edns0= isn't set in
 =/etc/resolve.conf=. omarchy also has =trust-ad= which i can't find
@@ -276,7 +374,7 @@ to force system DNS traffic via a specific VRF.
 (I think) that this means DNS lookups from the box itself need some guidance in
 order to be validated.
 
-**** Dummy device
+***** Dummy device
 
 configs like =set vrf bind-to-all= would definitely prevent this from working,
 though I haven't tried it.
@@ -367,6 +465,12 @@ web, file, web services, misc
 |       |   |     | synct_web | W |  8384 |              |   |      | nntp   | . |  119 |      |
 |       |   |     |           |   |       |              |   |      | nntps  | . |  563 |      |
 
+** Interface
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall group interface-group WAN interface eth0
+#+end_src
+
 ** Network
 
 #+begin_example shell
@@ -375,13 +479,44 @@ yq -rj '.aliases.network | map([.name,.content] | @csv) | join("\n")' \
 | tr -d "\"" | tr ',' '|'
 #+end_example
 
+*** ipv4
+
+Private
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall group network-group ipv4-private network 10.0.0.0/8
+set firewall group network-group ipv4-private network 172.16.0.0/12 
+set firewall group network-group ipv4-private network 192.168.0.0/16
+set firewall group network-group ipv4-private network 127.0.0.0/8   
+set firewall group network-group ipv4-private network 100.64.0.0/10 
+set firewall group network-group ipv4-private network 169.254.0.0/16
+#+end_src
+
+*** ipv6
+
+private
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall group ipv6-network-group ipv6-private network fd00::/8
+set firewall group ipv6-network-group ipv6-private network fe00::/10
+set firewall group ipv6-network-group ipv6-private network ::/128
+#+end_src
+
+address space
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall group ipv6-network-group ipv6-linklocal network ff02::/16
+set firewall group ipv6-network-group ipv6-allnodes  network fe80::/10
+# set firewall group ipv6-network-group ipv6-colophon  ::/128
+#+end_src
+
 ** Address
 
 *** DNS v4
 
 adguard, google, cloudflare
 
-#+begin_src shell :session *r2conf* :results output silent
+#+begin_src shell :session *vy2conf* :results output silent
 set firewall group address-group dns_adguard_v4 address 94.140.14.14
 set firewall group address-group dns_adguard_v4 address 94.140.15.15
 set firewall group address-group dns_google_v4 address 8.8.8.8
@@ -390,9 +525,9 @@ set firewall group address-group dns_cloudflare_v4 address 1.1.1.1
 set firewall group address-group dns_cloudflare_v4 address 1.0.0.1
 #+end_src
 
-AWS (for some bs redirects idk)
+aws (for some bs redirects idk)
 
-#+begin_src shell :session *r2conf* :results output silent
+#+begin_src shell :session *vy2conf* :results output silent
 set firewall group domain-group dns_aws address dns-external-master.amazon.com
 set firewall group domain-group dns_aws address root.amazon.com
 #+end_src
@@ -401,7 +536,7 @@ set firewall group domain-group dns_aws address root.amazon.com
 
 adguard, google, cloudflare
 
-#+begin_src shell :session *r2conf* :results output silent
+#+begin_src shell :session *vy2conf* :results output silent
 set firewall group ipv6-address-group dns_adguard_v6 address 2a10:50c0::bad1:ff
 set firewall group ipv6-address-group dns_adguard_v6 address 2a10:50c0::bad2:ff
 set firewall group ipv6-address-group dns_google_v6 address 2001:4860:4860::8888
@@ -520,34 +655,168 @@ misc
 # set firewall group domain-group reg_misc address production.cloudflare.docker.io
 #+end_src
 
+* Firewall
+
+** Initial
+
+*** Global
+
+Always respond to pings _to_ firewall
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall global-options all-ping
+#+end_src
+
+These are evaluated immediately, but pre-empt any other ipv4 handling of L4
+firewall logic for stateful connections:
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall global-options state-policy established action accept
+set firewall global-options state-policy related action accept
+set firewall global-options state-policy invalid action drop
+#+end_src
+
+Drop everything from outside
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall ipv4 name OUTSIDE-IN default-action 'drop'
+
+set firewall ipv4 forward filter rule 5500 action jump
+set firewall ipv4 forward filter rule 5500 jump-target OUTSIDE-IN
+set firewall ipv4 forward filter rule 5500 inbound-interface group WAN
+set firewall ipv4 forward filter rule 5500 destination group network-group oxelio
+#+end_src
+
+**** TODO Management access, SSH, services
+
+https://docs.vyos.io/en/latest/quick-start.html#allow-management-access
+
+**** Granular handling of stateful connections
+
+Alternative to =firewall global-options state-policy=: chain specific to 
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall ipv4 name CONN_FILTER default-action 'return'
+
+set firewall ipv4 name CONN_FILTER rule 10 action 'accept'
+set firewall ipv4 name CONN_FILTER rule 10 state established
+set firewall ipv4 name CONN_FILTER rule 10 state related
+
+set firewall ipv4 name CONN_FILTER rule 20 action 'drop'
+set firewall ipv4 name CONN_FILTER rule 20 state invalid
+
+set firewall ipv4 forward filter rule 10 action 'jump'
+set firewall ipv4 forward filter rule 10 jump-target CONN_FILTER
+
+set firewall ipv4 input filter rule 10 action 'jump'
+set firewall ipv4 input filter rule 10 jump-target CONN_FILTER
+#+end_src
+
+*** OPNSense
+
+Implement OPNSense port 0 blocking
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall ipv4 input filter rule 11000 description 'Drop: Port 0'
+set firewall ipv4 input filter rule 11000 action 'drop'
+set firewall ipv4 input filter rule 11000 port 0
+
+set firewall ipv6 input filter rule 11000 description 'Drop: Port 0'
+set firewall ipv6 input filter rule 11000 action 'drop'
+set firewall ipv6 input filter rule 11000 port 0
+#+end_src
+
+Implement OPNSense Bogon-logic
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall ipv4 name IPV4-PRIVATE-IN default-action 'return'
+
+set firewall ipv4 name IPV4-PRIVATE-IN rule 1000 action 'drop'
+set firewall ipv4 name IPV4-PRIVATE-IN rule 1000 source group network-group ipv4-private
+
+set firewall ipv6 name IPV6-PRIVATE-IN default-action 'return'
+
+set firewall ipv6 name IPV6-PRIVATE-IN rule 1000 action 'drop'
+set firewall ipv6 name IPV6-PRIVATE-IN rule 1000 source group network-group ipv6-private
+#+end_src
+
+OPNSense RFC4890 IPV6 ICMP logic (outbound)
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall ipv6 name IPV6-ICMP-OUT default-action 'return'
+
+for n in {128,129,133,134,135,136}; do
+  nrule=$(( n + 1000 ));
+  set firewall ipv6 name IPV6-ICMP-OUT rule "${nrule}" description  'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (self) -out-> (all-nodes,link-local)'
+  set firewall ipv6 name IPV6-ICMP-OUT rule "${nrule}" action 'accept'
+  set firewall ipv6 name IPV6-ICMP-OUT rule "${nrule}" destination address 'fe80::/10'
+  set firewall ipv6 name IPV6-ICMP-OUT rule "${nrule}" destination address 'ff02::/16'
+  set firewall ipv6 name IPV6-ICMP-OUT rule "${nrule}" icmpv6 type "${n}"
+done
+#+end_src
+
+OPNSense RFC4890 IPV6 ICMP logic (inbound)
+
+#+begin_src shell :session *vy2conf* :results output silent
+set firewall ipv6 name IPV6-ICMP-IN default-action 'return'
+
+for n in {1,2,135,136}; do
+  nrule=$(( n + 1000 ));
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" description 'RFC4890: ipv6-icmp6[1,2,135,136]: (*) -in/out-> (*)'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" action 'accept'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" icmpv6 type "${n}"
+done
+
+for n in {128,129,133,134,135,136}; do
+  nrule=$(( n + 2000 ));
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" description 'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (all-nodes) -in-> (all-nodes,link-local)'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" action 'accept'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" source address 'fe80::/10'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" destination address 'fe80::/10'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" destination address 'ff02::/16'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" icmpv6 type "${n}"
+done
+
+for n in {128,129,133,134,135,136}; do
+  nrule=$(( n + 3000 ));
+
+set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" description 'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (link-local) -in-> (all-nodes)'
+set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" action 'accept'
+set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" source address 'ff02::/16'
+set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" destination address 'fe80::/10'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" icmpv6 type "${n}"
+done
+
+for n in {128,129,133,134,135,136}; do
+  nrule=$(( n + 4000 ));
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" description 'RFC4890: ipv6-icmp6[128,129,133,134,135,136]: (::) -in-> (link-local)'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" action 'accept'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" source address '::'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" destination address 'ff02::/16'
+  set firewall ipv6 name IPV6-ICMP-IN rule "${nrule}" icmpv6 type "${n}"
+done
+
+# set firewall ipv6 name IPV6-ICMP-IN rule 1140 action 'accept'
+# set firewall ipv6 name IPV6-ICMP-IN rule 1140 description
+# set firewall ipv6 name IPV6-ICMP-IN rule 1140 icmpv6 type 136
+
+# set firewall ipv6 name IPV6-ICMP-IN rule 1150 action 'accept'
+# set firewall ipv6 name IPV6-ICMP-IN rule 1150 description
+# set firewall ipv6 name IPV6-ICMP-IN rule 1150 icmpv6 type 136
+#+end_src
+
+***** TODO icmpv6: match on =protocol==icmpv6= and =jump= to =IPV6-ICMP-IN/OUT=
+
+***** TODO icmpv6 redirects?
+
+
 * Notes
 
 #+begin_quote
-Random ... probably wrong
+Random ... +probably wrong+ ... definitely wrong lmao
 
 Designing from a blank slate kinda sucks
 #+end_quote
-
-** Chains
-
-under =set firewall=
-
-#+begin_verse
-bridge                 flowtable              group                   ipv4                   ipv6
-├── forward            └── custom_flow_table  ├── address-group       ├── forward            ├── forward
-│   └── filter +           └── +              ├── domain-group        │   └── filter +       │   └── filter +
-├── input                                     ├── interface-group     ├── input              ├── input
-│   └── filter +       global-options         ├── ipv6-address-group  │   └── filter +       │   └── filter +
-├── name               ├── +                  ├── ipv6-network-group  ├── name               ├── ipv6-name
-│   └── custom_name +  ├── all-ping           ├── mac-group           │   └── custom_name +  │   └── custom_name +
-├── output             └── broadcast-ping     ├── network-group       ├── output             ├── output
-│   └── filter +                              └── port-group          │   ├── filter +       │   ├── filter +
-└── prerouting         zone                                           │   └── raw +          │   └── raw +
-    └── filter +       └── custom_zone_name                           └── prerouting         └── prerouting
-                           └── +                                          └── raw +              └── raw +
-#+end_verse
-
-
 
 ** Numbering
 
