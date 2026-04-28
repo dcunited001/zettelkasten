@@ -1,0 +1,204 @@
+:PROPERTIES:
+:ID:       d6655f4a-0b21-4799-8b17-50c5c6b61dfd
+:END:
+#+TITLE: Firewall: 25 Network Security Engineer Interview Qs
+#+CATEGORY: slips
+#+TAGS:
+
+Via Youtube's =timedtext= API response, handily logged in devtools and processed
+with jq: [[id:893100e9-5bad-4c4d-91ce-aa6ecfb8252e][Language: Extract youtube transcripts]].
+
+Notes from [[https://www.youtube.com/watch?v=szE_wiTK8QM&t=825s][25 Lead Network Security Engineer Interview Questions & Expert
+Answers (2025 Edition)]] One way to look at this is plagerism... a better way to
+look at it is "Hey free tokens." =</sarcasm>= Anyways, quote blocks are
+paraphrased; other details are summarized.
+
++ The questions are fairly good: generally telos-oriented: problem-centric. This
+  means explanations/answers may involve some design assumptions.
+  + Constructing good interview questions is difficult. It's a time-bound
+    [[https://en.wikipedia.org/wiki/Knights_and_Knaves][knights & knaves puzzle]].
+  + Certification tests kinda suck: they're in-depth on "what" and maybe "how",
+    but lack the time to test the "why".
+  + Neither situation can build sufficient context to test intuition/experience
+    for open-ended design.
+
+That's less relevant for entry-level jobs. The more senior the role, the more
+speculative an interview assessment ... likely to involve more background,
+due-diligence and validation of being instrumental/determinative. Expectations
+are probably more fully developed. Networking would then be more critical.
+
+* Roam
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:265a53db-5aac-4be0-9395-85e02027e512][PFSense and OPNSense]]
+
+| What causes a packet to be dropped without appearing in traffic logs?                                           |
+| Which profile is evaluated first: zone protection or DOS protection?                                            |
+| What's the difference between virtual routers and virtual systems?                                              |
+| How do you troubleshoot VPN issues?                                                                             |
+| What is split tunneling and how is it configured?                                                               |
+| What are the key components of a PaloAlto security policy rule?                                                 |
+| How does the firewall determine rule match order for security policies?                                         |
+| What happens when traffic hits a default deny rule?                                                             |
+| Explain the firewalls packet flow logic and how it affects logging.                                             |
+| What are the key log types in PaloAlto?                                                                         |
+| what is application caching and how does it impact app ID?                                                      |
+| What's the significance of the control plane vs. data plane?                                                    |
+| Walk through the steps for initial configuration of a +PaloAlto+ firewall from scratch.                           |
+| What interface types are available on a PaloAlto firewall? ...                                                  |
+| What is tap mode and how is it different from VWire or layer 3 mode?                                            |
+| How does Vire work and in what realworld scenario would it be preferred?                                        |
+| Explain the use case for deploying layer 3 interfaces in active HA mode                                         |
+| What are the key differences between active passive and active active HA deployments?                           |
+| How does zone protection differ from DOS protection in PaloAlto firewalls?                                      |
+| What are the key differences between physical & virtual PaloAlto firewall platforms?                            |
+| Explain how to configure HA for a pair of physical firewalls in an active active mode.                          |
+| What is outofband access? Why is it important in enterprise environments?                                       |
+| How do you configure a management interface for outofband access                                                |
+| Explain how to configure HA for a pair of physical firewalls                                                    |
+| How do you apply security patches and software updates to the PAN OS to maintain the firewall security posture? |
+| How have you integrated user ID with Active Directory for user authentication?                                  |
+
+* What causes a packet to be dropped without appearing in traffic logs?
+
+See [[https://knowledgebase.paloaltonetworks.com/KCSArticleDetail?id=kA10g000000ClVHCA0][Packet Flow in Palo Alto]]
+
+Packets can be dropped at/during
+
+| ingress                | malformed packet                              |
+| zone protection checks | packet dies in nftables "setup" for zones (?) |
+| TCP normalization      | violates TCP state rules                      |
+
+leverage deeper diagnostics tools:
+
+| debug data plane | packet capture | flow basics |
+
+* Which profile is evaluated first: zone protection or DOS protection?
+
+#+begin_quote
+... *Zone protection profile* evaluates before *DOS protection profile* on PaloAlto
+firewalls. ZP checks are part of _ingress stage_ before main security policy
+engine.
+#+end_quote
+
+... false (apparently).
+
+| SECTION 2: | INGRESS STAGE        | SECTION 3: | FIREWALL SESSION LOOKUP      |
+|------------+----------------------+------------+------------------------------|
+|        2.1 | PACKET PARSING       |       3.1. | ZONE PROTECTION CHECKS       |
+|        2.2 | TUNNEL DECAPSULATION |       3.2. | TCP STATE CHECK              |
+|        2.3 | IP DEFRAGMENTATION   |       3.3. | FORWARDING SETUP             |
+|            |                      |       3.4. | NAT POLICY LOOKUP            |
+|            |                      |       3.5. | USER-ID                      |
+|            |                      |       3.6. | DOS PROTECTION POLICY LOOKUP |
+|            |                      |       3.7. | SECURITY POLICY LOOKUP       |
+|            |                      |       3.8. | SESSION ALLOCATION           |
+
+I would assume a little of both: "There are no clear distinctions between any
+two things." Woops. Philosophy. Anyways, the ToC clearly reinforces artificial
+semantic distinctions.
+
+
+
+This includes validating the source and destination zones as well as performing
+checks for invalid or malformed packets.
+
+Only after the zonebased protection checks are completed will the packet then be
+evaluated against the dos protection profile.
+
+This profile is designed to mitigate denial of service attacks by monitoring traffic patterns and applying rate limiting or blocking rules if thresholds are exceeded.
+
+* What's the difference between virtual routers and virtual systems?
+
+#+begin_quote
+On PaloAlto: the scope/isolation of network functions provided by each *box*
+abstraction. 
+#+end_quote
+
+VRouters use VRF & VSystems use more comprehensive namespace isolation
+
+#+begin_quote
+VRouters: independent routing/forwarding instances; separate routing tables,
+interfaces, and policies. Segments networking functionality only.
+
+VSystem (VSY): self-contained firewall instance with separate security policies,
+user accounts, logs, etc. Isolation is sufficient for multi-tenancy.
+#+end_quote
+
+"Everything is a box with little boxes. Some boxes are heavy, some are like
+cattle & others like pets; some poke through the walls of other boxes. Even
+network layers & protocol abstractions are like boxes. VRFs are a type of box
+that feel flipped inside out. Don't mix the wrong boxes.
+
+"Often, if there isn't physical separation, the _distance_ through network
+isolation is probably diminished. Distance/space via network abstractions
+creates increased cost/complexity to attack ... until it increases
+cost/complexity to defend. Very small networks have limited capacity for netflow
+collection or planes (mgmt/etc) ... and lack flexibility to change configuration
+(e.g. migrate routers to new switch stack; migrate addressing for
+firewall/router)"
+
+* Walk through the steps for initial configuration of a generic firewall from scratch.
+
+Not a bad question. Not a bad response. I was worried it would be 75 words. It's
+only 300 though
+
+#+begin_quote
++ Physical install, network interfaces, power supply, & console management ports
++ On console port, setup management access: ip/mask/gw for connectivity
++ Licensing. Ensures features: threat prevention, URL filtering and wildfire.
++ Interfaces, vlans, etc. Then zones. Associate ifx/vlans
++ IP addressing, DHCP servers, other interface level config
++ Virtual Router for routing: static routes, dynamic protocols like OSPF and BGP
+#+end_quote
+
+... probably wait on the wan and protocols, right? BGP usually involves control
+over tunnels, requiringor [[https://docs.vyos.io/en/latest/configexamples/azure-vpn-bgp.html][GRE tunnels]] or [[https://docs.vyos.io/en/latest/configexamples/bgp-ipv6-unnumbered.html][IKE tunnels]] first. That would
+definitely require WAN. (idrk though; links to vyos)
+
+#+begin_quote
++ Ensure connectivity to internal network and external/infacing interfaces
++ Config user ID agent for LDAP/AD (Security policy)
+#+end_quote
+
+Also, probably wait on LDAP/AD integration unless the box is insulated.
+
+#+begin_quote
++ Security policy: initial traffic flows & applications.
++ Start permissive, then integrate environment req., user ID & application
+  identification. Enable app ID.
+
+VPN: site-to-site, remote access.
+#+end_quote
+
+You'd need WAN and some routing. Maybe more.
+
++ [[https://github.com/FRRouting/frr/blob/master/tests/topotests/bgp_features/test_bgp_features.pdf][FRRouting/frr ./tests/topotests/bgp_features/test_bgp_features.pdf]]
++ [[https://github.com/FRRouting/frr/blob/master/tests/topotests/bgp_ecmp_topo1/bgp-ecmp-topo1.pdf][FRRouting/frr ./tests/topotests/bgp_ecmp_topo1/bgp-ecmp-topo1.pdf]]
+
+#+begin_quote
++ Define IKE IPSC params, auth methods, routing
+#+end_quote
+
+oh ... how much routing is this firewall doing?
+
+#+begin_quote
+Logging/reporting
+
++ Configure logs to forward to SIEM/monitoring
++ Customize the dashboard and reporting capabilities to provide visibility into
+  network traffic and security events.
+
+Configure updates
+#+end_quote
+
+Take the web portal GUI around back and shoot it. Just in case.
+
+... unless these are not accessed on the device.
+
+* How do you troubleshoot VPN issues?
+
+#+begin_quote
++ phase 1 half-VPN issues?
++ traffic not flowing despite tunnels being up?
+#+end_quote
