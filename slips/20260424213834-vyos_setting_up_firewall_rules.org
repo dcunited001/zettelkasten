@@ -60,6 +60,15 @@ bridge                 flowtable              group                   ipv4      
 
 ** R2
 
+=vy2ops= session has weird term control. it paginates command output if
+interactive. Bash commands like =set= are disabled (prob. intentionally)
+
+#+begin_quote
+For now, only this works for vyos operational commands:
+
+=ssh -t r2 vbash -ilc "\"$cmd\"" 2>/dev/null | jq .=
+#+end_quote
+
 shell in operation mode
 
 #+name: *r2ops*
@@ -108,6 +117,22 @@ ESTAB 0      0         172.16.180.102:ssh    172.16.180.73:45018
 #+end_example
 
 ** Issues
+*** Shell initialization
+
+Running the =source= after logging in hits an error.
+
+#+begin_example
+source /opt/vyatta/etc/functions/script-template
+
+-vbash: /opt/vyatta/share/vyatta-cfg/functions/interpreter/vyatta-cfg-run: line 228: syntax error near unexpected token `('
+-vbash: /opt/vyatta/share/vyatta-cfg/functions/interpreter/vyatta-cfg-run: line 228: `reboot ()'
+#+end_example
+
+Also, =vbash -s= has a few other issues:
+
++ One where =C-d= must be used to kill the =ssh= because it won't exit. 
++ One returns a blank terminal with no output (doesn't allocate tty?)
+
 
 These don't work, since =vbash -s= ends early
 
@@ -839,14 +864,14 @@ This is temporary.
 
 Early sessions
 
-| 020000 |                       |
-| 021000 | network setup         |
-| 022000 | network chain jumps   |
-| 025000 |                       |
-| 026000 |                       |
-| 028000 |                       |
-| 050000 | applications          |
-| 100000 | reserved              |
+| 020000 |                     |
+| 021000 | network setup       |
+| 022000 | network chain jumps |
+| 025000 |                     |
+| 026000 |                     |
+| 028000 |                     |
+| 050000 | applications        |
+| 100000 | reserved            |
 
 
 *** Design

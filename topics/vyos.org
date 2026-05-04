@@ -37,6 +37,20 @@ VyOS has =nftables= and a decent DSL with fairly good ansible support.
 + [[https://docs.vyos.io/en/stable/troubleshooting/index.html][Troubleshooting]]
 + [[https://support.vyos.io/support/solutions/articles/103000096255-what-are-the-hardware-requirements-][Hardware Requirements]]
 
+Build the docs, convert to docset using [[https://github.com/ppwwyyxx/dash-docset-tensorflow/blob/master/generate-docset.sh][dashing]]. See [[id:765d942f-30be-49ae-abc3-f16ddd5440bc][VyOS: Build Dash Docsets]]
+
+#+begin_src shell
+# git clone git@github.com:vyos/vyos-documentation
+podman build -t vyos/vyos-documentation docker
+podman run --rm -it \
+    -v "$(pwd)":/vyos -w /vyos/docs \
+    -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
+    vyos/vyos-documentation make html
+
+# https://kapeli.com/docsets#supportedentrytypes
+# https://github.com/technosophos/dashing
+#+end_src
+
 ** How to
 
 + [[https://docs.vyos.io/en/stable/configexamples/index.html][Configuration Blueprints]] and [[https://docs.vyos.io/en/stable/configexamples/index.html#configuration-blueprints-autotest][Autotest Blueprints]]
@@ -76,6 +90,37 @@ metaprogramming
 * Topics
 
 
+
+** File Systems
+
+*** Persistence
+
+[[https://forum.vyos.io/t/how-does-persistence-work-for-vyos-on-bare-metal-installs-between-upgrades/14862][How does persistence work for VyOS on bare metal?]]
+
+| ext4     | /dev/sda3  | ~/usr/lib/live/mount/persistence~                            |
+| squashfs | /dev/loop0 | ~/usr/lib/live/mount/rootfs/999.202604xxxxxx.squashfs~       |
+| overlay  |            | ~/~                                                          |
+| overlay  |            | ~/config~                                                    |
+| ext4     | /dev/sda3  | ~/boot~                                                      |
+| ext4     | /dev/sda3  | ~/boot/grub~                                                 |
+| ext4     | /dev/sda3  | ~/usr/lib/live/mount/persistence/boot/999.202604240749/grub~ |
+
++ /usr/lib/live/mount/persistence :: persists data between reboots
+  - ./boot{,/grub} :: 
+  - ./container :: not copied during upgrades
++ /config :: overlaid from the squashfs built at each upgrade (& install?)
+
+Other directories in =./persistence= are not managed by VyOS during upgrade and
+are not overlaid onto (sourced from the squashfs loaded during initramfs)
+
+The mounts in =/etc/fstab= are order-sensitive ("duh?"... i guess, it's an
+overlay? idk). There are race conditions mentioned for some services &
+interfaces, so it would be safer to stick to one main file system until you're
+sure.
+
+It's super handy to be able to run containers on the router, esp. during the
+homelab bootstrap. Apparently, it's got a =TFTP= server, which i somehow missed...
+and it can run in a VRF which makes it a bit easier to control.
 
 ** Automation
 
@@ -138,8 +183,6 @@ digraph g {
 
 #+RESULTS:
 [[file:img/vyos/fw-workflow.svg]]
-
-
 ** From A Live ISO
 
 #+name: tmpdir
