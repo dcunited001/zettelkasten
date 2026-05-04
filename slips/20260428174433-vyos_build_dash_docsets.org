@@ -1,0 +1,147 @@
+:PROPERTIES:
+:ID:       765d942f-30be-49ae-abc3-f16ddd5440bc
+:END:
+#+TITLE: VyOS: Build Dash Docsets
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:706e72e2-575a-4c23-8410-bc14aa205140][Documentation]]
++ [[id:765d942f-30be-49ae-abc3-f16ddd5440bc][VyOS: Build Dash Docsets]]
+
+* Dash
+
++ [[https://kapeli.com/docsets#supportedentrytypes][Kapeli: Supported Entry Types]]
++ [[https://github.com/technosophos/dashing][technosophos/dashing]]
+
+* Build VyOS Docs
+
+#+begin_src shell
+# git clone git@github.com:vyos/vyos-documentation && cd vyos-documentation
+docsroot=$(pwd)
+podman build -t vyos/vyos-documentation docker
+podman run --rm -it \
+    -v "$docsroot":/vyos -w /vyos/docs \
+    -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
+    vyos/vyos-documentation make html
+#+end_src
+
+* Build Dash =docset= for Zeal
+
+Check out the vyos HTML, then init the =dashing.json= in the built =_html=
+
+#+begin_src shell
+cd $docsroot/docs/_build
+dashing init
+#+end_src
+
+The YAML looks like:
+
+#+begin_example yaml
+name: Dashing
+package: dashing
+index: index.html
+selectors:
+  dt a: Command
+  title: Package
+ignore:
+  - ABOUT
+icon32x32: ''
+allowJS: false
+ExternalURL: ''
+#+end_example
+
+Figuring this out was weird and I almost noped out. It was pretty easy, but
+=dashing= assumes you have a bit more control over the documentation build/layout.
+
++ The feedback loop was weird, since it wasn't clear whether the =docset= built
+  had been ingested by Zeal.
++ Add selectors for the =index.html= pages. Initially, it should be an exact
+  =1-cover=, unless you want multiple nodes to show up in multiple docset types.
++ Multiple results could return per page (here the navbar also gets selected
+  when i was trying to create entries using the lists on =index.html= pages)
++ It uses a Go regexp lib, which is slightly restricted. Can't do
+  =(?!index)\\.html=. Only the =.= needs escape, i think?
+
+And the =docset= categories imply that it's meant for more structured docs output
+(javadocs, doxygen) ... though IMO those are too large. You _could_ post-precess
+the =sqlite= database it generates later.
+
+Also disable javascript.
+
+#+begin_example yaml
+name: VyOS
+package: VyOS
+index: index.html
+externalURL: https://docs.vyos.io
+selectors:
+  toctree-wrapper a.reference.internal:
+    type: Example
+    matchpath: .*/configexamples/index.html
+allowJS: false
+icon32x32: icon@2x.png
+icon16x16: icon.pngname: VyOS
+package: VyOS
+index: index.html
+externalURL: https://docs.vyos.io
+selectors:
+  .document section h1:
+    - type: Category
+      matchpath: ".*/genindex\\.html"
+    - type: Category
+      matchpath: ".*/quick-start\\.html"
+    - type: Category
+      matchpath: ".*/index\\.html"
+    - type: Resource
+      matchpath: ".*/(contributing|documentation|troubleshooting)/.*([^i]|i[^n]|in[^d]|ind[^e]|inde[^x])\\.html"
+    - type: Procedure
+      matchpath: ".*/(automation|installation)/.*([^i]|i[^n]|in[^d]|ind[^e]|inde[^x])\\.html"
+    - type: Guide
+      matchpath: ".*/(configexamples|vpp)/.*([^i]|i[^n]|in[^d]|ind[^e]|inde[^x])\\.html"
+    - type: Command
+      matchpath: ".*/(operation)/.*([^i]|i[^n]|in[^d]|ind[^e]|inde[^x])\\.html"
+    - type: Section
+      matchpath: ".*/(configuration)/.*([^i]|i[^n]|in[^d]|ind[^e]|inde[^x])\\.html"
+allowJS: false
+icon32x32: icon@2x.png
+icon16x16: icon.png
+#+end_example
+
+Then, with =dashing.json=, run
+
+#+begin_src shell
+dashing build --source ./html # helps to grep on Match or Category
+
+# destination is different for flatpak installs
+zealdocsets="$XDG_DATA_HOME/Zeal/Zeal/docsets"
+thisdocset="$(jq -r .name dashing.json).docset"
+cp "$(jq -r .name).docset" "$zealdocsets"
+#+end_src
+
+The =cp= will behave strangely and will copy into the docset
+
+- run =rm -rf "$zealdocsets/$thisdocset"= to delete it
+- or use =rsync= instead. there's also =dashing update= but idkwid
+
+For me, deleting the destination docset, then restarting zeal was necessary
+
+Note: Zeal runs a webserver. Disable javascript in =dashing.json= (for various reasons).
+
+#+begin_quote
+[quote="crueter, post:245, topic:519275"]
+FYI, Ryan said he may distribute an AppImage package alongside the .deb packages. This particular type of AppImage uses its own **bundled libc** and is capable of running on just about any Linux system made in the past 10 years, **even non-FHS** and other silly distributions like NixOS and Alpine. This includes older Ubuntu/Debian versions.
+[/quote]
+
+this is amazing. thanks a ton!
+
+i used to be on Guix, but switched to Omarchy on laptop to avoid `libc` issues. on a NixOS desktop, i've been able to build robot code & run the simulator from VSCode... when everything's bundled correctly with `nix-ld`. 
+
+However, NixOS is pretty wild. i'm just not committed to learning the tooling at all, so it's a bummer. I assumed it was functionally identical to Guix. It's not. Guix is 20x better, once you get past guile/geiser issues. one CLI and API wrap everything that Nix provides in like 20 different places. no flakes. Guix it has no systemd & lacks a lot of services. 
+
+The reproducibility guarantees in Guix are the norm, not the exception (don't quote me on that to any nix folks lol... seriously). you can copy profiles over ssh. etc. it allows building systems with multiple boot entries where the ISO 9660 image contains several non-Guix partitions (either specified in code or just written to the bootloader config). and instead of using an external tool like disko, the core Guix API handles all of that. you can create/build/write bootloader images for ARM or embedded... which for appliances like photonvision would be a bad idea (need to source/build/pack custom drivers & etc). 
+
+idk that i would build ISOs with Guix for FRC, but it's been a bit of a bummer to lose it as a daily driver to seek stability or a simpler interface to run distributed binaries. 
+
+I think it would be a good way to approach some lower-level hardware dev (to enable images to debug embedded hardware), but i haven't gotten far enough to get experience. it's maybe a terrible way to do that idk.Sys
+#+end_quote
