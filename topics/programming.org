@@ -408,7 +408,7 @@ ensure completeness of expressions contained in YAML.
 From [[https://github.com/antlr/grammars-v4/tree/master/cpp/Python3][antlr/grammars-v4 ./cpp/Python3]]
 
 #+begin_src shell
-git clone https://github.com/antlr4/grammars-v4
+git clone https://github.com/antlr/grammars-v4
 cd cpp
 
 # the second one gives you the antlr4 python import
@@ -484,5 +484,103 @@ langauge to behave -- there are about 10 languages per language.
 + [[https://github.com/antlr/grammars-v4/blob/master/_scripts/templates/Python3/st.Test.py][_scripts/templates/Python3/st.Test.py]] this may help.
 + OmegaConf is like built like a machine ... I can't bounce around 50+ python
   files for =antlr= on a whim without some context clues.
+
+**** Testing =socat= addresses
+
+#+begin_src shell :session *guix-antlr*
+guix shell python java-antlr4-runtime-python antlr4
+#+end_src
+
+#+RESULTS:
+| guix                     | shell:                                                            | [1m[0mpackage  | '[1mjava-antlr4-runtime-python[0m' | has         | been   | superseded | by | '[1mpython-antlr4-runtime[0m' |
+| [1;35mThe              | following                                                         | derivation         | will                                   | be          | built: |            |    |                                   |
+| [0m                    | [2m/gnu/store/nixnglf0zyr69zmn5r3na46jl5mbki7v-[0mprofile.drv |                    |                                        |             |        |            |    |                                   |
+|                          |                                                                   |                    |                                        |             |        |            |    |                                   |
+| [1m[0m[Kbuilding | CA                                                                | certificate        | bundle...                              |             |        |            |    |                                   |
+| [K[Klisting      | Emacs                                                             | sub-directories... |                                        |             |        |            |    |                                   |
+| [K[Kbuilding     | fonts                                                             | directory...       |                                        |             |        |            |    |                                   |
+| [K[Kbuilding     | directory                                                         | of                 | Info                                   | manuals...  |        |            |    |                                   |
+| [K[Kbuilding     | profile                                                           | with               | 3                                      | packages... |        |            |    |                                   |
+
+Build in =*guix-antlr*= shell:
+
+#+begin_src shell
+antlr4 -Dlanguage=Python3 SocatAddressLexer.g4
+#+end_src
+
+Unsure of how to get a "grammar" out of it. Would be interesting to permute as a
+data-structure though. For graph traversal or smth idk. Permute topology to
+expand using the opposite of edge cuts with constraints on addressing/etc for
+orchestration.
+
+#+name: antlrSocatAddress
+#+begin_example antlr
+grammar SocatAddress;
+
+/////// option is a reserved word, i think
+// address : type ':' options? addrBody ;
+// options : (option ',')* ;
+
+// grammar rules
+
+fragment AddrPath : AddrType Path;
+fragment AddrIP : IPAddress ':' Port;
+
+Address : AddrType ':' Opts? AddrBody ;
+Opts : Opt (',' Opts)?;
+Opt  : Identifier ('=' (Identifier | Number | Path))? ;
+
+AddrBody: Path | (IPAddress ':' Port) | AddressPair ;
+
+AddrType
+    : 'TCP'
+    | 'TCP4'
+    | 'TCP6'
+    | 'UDP'
+    | 'UDP4'
+    | 'UDP6'
+    | 'UNIX'
+    | 'OPEN'
+    | 'EXEC'
+    | 'SYSTEM'
+    | 'STDIO'
+    | 'PIPE'
+;
+
+// lexers
+IPAddress : [0-9.]+ ;
+Port      : [0-9]+  ;
+AddressPair : Address ':' Address ;
+Path      : '/' [a-zA-Z0-9.\-/_]+ ;
+Identifier : [a-zA-Z0-9\-]+ ;
+Number    : [0-9]+ ;
+
+WS : [ \t\r\n]+ -> skip ;
+#+end_example
+
+From gemini. Not bad. A little incomplete.
+
+#+begin_example antlr
+grammar SocatAddress;
+
+// Parser Rules
+address : type ':' options? addrBody ;
+
+options : (option ',')* ;
+option  : Identifier ('=' (Identifier | Number | Path))? ;
+
+addrBody: Path | IPAddress ':' Port | AddressPair ;
+
+type    : 'TCP' | 'TCP4' | 'TCP6' | 'UDP' | 'UDP4' | 'UDP6' | 'UNIX' | 'OPEN' | 'EXEC' | 'SYSTEM' | 'STDIO' | 'PIPE' ;
+
+IPAddress : [0-9.]+ ;
+Port      : [0-9]+ ;
+AddressPair : [a-zA-Z0-9.\-_]+ ':' [a-zA-Z0-9.\-_]+ ;
+Path      : '/' [a-zA-Z0-9.\-/_]+ ;
+Identifier : [a-zA-Z0-9\-]+ ;
+Number    : [0-9]+ ;
+
+WS : [ \t\r\n]+ -> skip ;
+#+end_example
 
 ** Issues
