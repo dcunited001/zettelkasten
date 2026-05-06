@@ -1,0 +1,704 @@
+#+title: Socat Cheatsheet
+#+TAGS:
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+#+OPTIONS: ':nil *:t -:t ::t <:t \n:nil ^:t arch:headline
+#+OPTIONS: author:nil c:nil d:(not "LOGBOOK") date:nil
+#+OPTIONS: e:t email:nil f:t inline:t num:nil p:nil pri:nil stat:t
+#+OPTIONS: tags:t tasks:t tex:t timestamp:nil todo:t |:t
+#+OPTIONS: toc:nil
+#+OPTIONS: html-style:link
+#+HTML_HEAD: <link rel="stylesheet" type="text/css" href="git-stack.css" />
+# #+BIND: org-html-htmlize-output-type nil
+#+SELECT_TAGS:
+#+EXCLUDE_TAGS: noexport
+#+KEYWORDS:
+#+LANGUAGE: en
+
+#+begin_quote
++Adapted+ Copied from this gist: [[https://gist.github.com/mario21ic/c09f0a648130ad6a91abdde41cb011c8][mario21ic/socat_examples]]. Note, these are a bit
+old, but good. Many servers don't have =socat= and are likely more strict.
+#+end_quote
+
+ Examples for using =socat= and =filan=.
+
+ + socat :: requires priviledge escalation
+ + ./socat :: normal users can run these, depending on environment
+
+** similar to netcat
+
+connect to =10.1.1.1= on port =80= and relay to and from stdio
+
+#+begin_src shell
+./socat - TCP:10.1.1.1:80	# similar to "netcat 10.1.1.1 80"
+#+end_src
+
+listen on port =25=, wait for an incoming connection, use =CR+NL= on this
+connection, relay data to and from =stdio=; then emulate a mailserver by hand :-)
+
+#+begin_src shell
+# requires privileges
+socat - TCP-LISTEN:25,crlf
+#+end_src
+
+listen on port =25=, wait for an incoming connection, use =CR+NL= on this
+connection, relay data to and from =stdio=, but have line editing and history;
+then emulate a mailserver by hand :-)
+
+#+begin_src shell
+# requires privileges
+socat readline TCP-LISTEN:25,crlf
+#+end_src
+
+provide a transient history enabled front end to stupid line based interactive
+programs
+
+#+begin_src shell
+./socat readline exec:"nslookup",pty,ctty,setsid,echo=0
+# same works for =ftp= (but password is not hidden)
+#+end_src
+
+you may also use a file based history list
+
+#+begin_src shell
+./socat readline,history=.nslookup_hist \
+    exec:"nslookup",pty,ctty,setsid,echo=0
+# using ~ as abbreviation for $HOME does not work!
+#+end_src
+
+poor mans =telnetd= replacement
+
+#+begin_src shell
+# requires privileges
+socat tcp-l:2023,reuseaddr,fork \
+    exec:/bin/login,pty,setsid,setpgid,stderr,ctty
+#+end_src
+
+use =ssl= with client and server certificate for improved security;
+replace =/bin/login= by =/bin/bash= when using SSL client authentication, can be
+run without =root= then
+
+this is a cool trick, proposed by Christophe Lohr, to dump communications to
+two files; it would also work for other manipulations (recode, compress...)
+and it might also work with =netcat= ;-)
+
+#+begin_src shell
+./socat TCP-LISTEN:5555 \
+    SYSTEM:'tee l2r | socat - "TCP:remote:5555"  | tee r2l' 
+#+end_src
+
+** emergence solution because usleep(1) is not always available
+
+this will =sleep= for 0.1s
+
+#+begin_src shell
+./socat -T 0.1 pipe pipe
+#+end_src
+
+** a very primitive HTTP/1.0 echo server
+
++ problems: sends reply headers before request; hangs if client does not
+  shutdown - HTTP keep-alive
++ wait for a connection on port =8000=; do not wait for request, but immediately
+  start a shell that sends reply headers and an empty line; then echo all
+  incoming data back to client
+
+#+begin_src shell
+./socat TCP-LISTEN:8000,crlf \
+    SYSTEM:"echo HTTP/1.0 200; echo Content-Type\: text/plain; echo; cat"
+#+end_src
+
+a less primitive HTTP echo server that sends back not only the reqest but also
+server and client address and port. Might have portability issues with echo
+
+#+begin_src shell
+./socat -T 1 -d -d\
+    tcp-l:10081,reuseaddr,fork,crlf \
+    system:"echo -e \"\\\"HTTP/1.0 200 OK\\\nDocumentType: text/html\\\n\\\n<html>date: \$\(date\)<br>server:\$SOCAT_SOCKADDR:\$SOCAT_SOCKPORT<br>client: \$SOCAT_PEERADDR:\$SOCAT_PEERPORT\\\n<pre>\\\"\"; cat; echo -e \"\\\"\\\n</pre></html>\\\"\""
+#+end_src
+
+** for communicating with an attached modem, I had reasonable results with
+
+following command line. Required privileges depend on device mode. after leaving
+socat, type "sane".
+
+replace =/dev/ttyS0= by the correct serial line or with =/dev/modem=
+
+#+begin_src shell
+./socat readline /dev/ttyS0,raw,echo=0,crlf # or:
+./socat readline /dev/ttyS0,raw,echo=0,crlf,nonblock
+#+end_src
+
+then enter =at$=. priviledges depend on =dialout= group
+
+** relay TCP port 80
+
++ relay =80= from everywhere (internet, intranet, dmz) through your firewall to
+  your DMZ webserver (like plug-gw) listen on port 80;
++ whenever a connection is made, fork a new process (parent process keeps
+  accepting connections),
++ =su= to =nobody=, and connect to =www.dmz.mydomain.org= on port =80=.
+  
+attention: this is a substitute for a reverse proxy without providing
+application level security.
+
+#+begin_src shell
+# requires privileges
+socat TCP-LISTEN:80,reuseaddr,fork,su=nobody TCP:www.dmz.mydomain.org:80
+#+end_src
+
+Note: parent process keeps running as =root=, =su= after forking
+
+** relay mail from your DMZ server through your firewall.
+
+accept connections only on =dmz= interface and allow connections only from
+=smtp.dmz.mydomain.org=
+
+the advantages over =plug-gw= and other relays are:
+
++ you can bind to an IP address (even an alias), therefore enhance security in
+  your OS
++ you can create several IP aliases and bind another =socat= daemon to each,
+  making several application servers addressable
++ lots of options, like switching user, =chroot=, IP performance tuning no need
+  for =inetd=
+
+#+begin_src shell
+# requires privileges
+socat -lm -d -d TCP-LISTEN:25,bind=fw.dmz.mydomain.org,fork,su=nobody,range=smtp.dmz.mydomain.org/32 TCP:smtp.intra.mydomain.org:25
+#+end_src
+
+** convert line terminator in ascii streams, =stdin= to =stdout=
+
+use unidirectional mode, convert =nl= to =crnl=
+
+#+begin_src shell
+./socat -u - -,crlf
+#+end_src
+
+or =cr= to =nl=
+  
+#+begin_src shell
+./socat -u -,cr -
+#+end_src
+
+** save piped data similar to =tee=
+
+copies =stdin= to =stdout=, but writes everything to the file too
+
+#+begin_src shell
+./socat -,echo=0 open:/tmp/myfile,create,trunc,ignoreeof!!/tmp/myfile
+#+end_src
+
+** X11 intrusion testing
+
+found an XWindow Server behind IP filters with FTP data hole? (you are lucky!)
+
+prepare your host:
+
+#+begin_src shell
+# requires privileges
+rm -f /tmp/.X11-unix/X1
+#+end_src
+
+relay a pseudo display =:1= on your machine to =victim:0=
+
+#+begin_src shell
+# requires privileges
+socat UNIX-LISTEN:/tmp/.X11-unix/X1,fork TCP:host.victim.org:6000,sp=20 &
+#+end_src
+
+and try to take a screendump (must be very lucky - when server has not even host
+based authentication!)
+
+#+begin_src shell
+# requires privileges
+xwd -root -display :1 -silent >victim.xwd
+#+end_src
+
+you sit behind a socks firewall that has IP filters but lazily allows socks
+connections to loopback and has only host based X11 security. like above, but
+from your inside client:
+
+#+begin_src shell
+# requires privileges
+socat UNIX-LISTEN:/tmp/.X11-unix/X1,fork SOCKS4:firewall:loopback:6000
+#+end_src
+
+or for the HTTP proxy:
+
+#+begin_src shell
+# requires privileges
+socat UNIX-LISTEN:/tmp/.X11-unix/X1,fork PROXY:firewall:loopback:6000
+#+end_src
+
+** forms of stdin with stdout
+
+all equivalent
+
+#+begin_src shell
+./socat echo -
+./socat echo STDIO
+./socat echo STDIN!!STDOUT
+./socat echo STDIO!!STDIO
+./socat echo -!!-
+./socat echo FD:0!!FD:1
+./socat echo 0!!1
+./socat echo /dev/stdin!!/dev/stdout # if your OS provides these
+#+end_src
+
+** some echo address examples
+
+#+begin_src shell
+./socat - PIPE
+./socat - PIPE:/tmp/pipi                      # other version of echo
+./socat - PIPE:/tmp/pipi,nonblock!!/tmp/pipi  # other version of echo
+./socat - EXEC:/bin/cat   # another echo
+./socat - SYSTEM:/bin/cat # another echo
+./socat - TCP:loopback:7  # if inetd echo/TCP service activated
+./socat - UDP:loopback:7  # if inetd echo/UDP service activated
+./socat - /tmp/hugo,trunc,ignoreeof!!/tmp/hugo  # with delay
+./socat - UDP:loopback:2000,bind=:2000          # self "connection"
+./socat - TCP:loopback:2000,bind=:2000          # Linux bug?
+#+end_src
+
+raw protocol, self "connected"
+ 
+#+begin_src shell
+# requires privileges
+socat - IP:loopback:222
+#+end_src
+
+(attention: Linux might drop packets with less than 8 bytes payload)
+
+** unidirectional data transfer
+
+#+begin_src shell
+./socat -u - -
+#+end_src
+
+like =tail -f= but start with showing all file contents
+
+#+begin_src shell
+./socat -u FILE:/var/log/syslog.debug,ignoreeof -	
+#+end_src
+
+like =tail -f=, but do not show existing file contents
+
+#+begin_src shell
+./socat -u FILE:/var/log/syslog.debug,ignoreeof,seek-end -
+#+end_src
+
+write to new file, create with given permission and group (must be member) -
+race condition with group!!!
+
+#+begin_src shell
+./socat -u - CREATE:/tmp/outfile1,group=floppy,perm=0640
+#+end_src
+
+for an existing file =/tmp/outfile1=
+
+#+begin_src shell
+# requires privileges
+socat -u - FILE:/tmp/outfile1,group=floppy,perm=0700,user=4321
+#+end_src
+
+** file handling
+
+prints =outfile1=, then echoes input and protocols into file (appends to old data)
+
+#+begin_src shell
+./socat - FILE:/tmp/outfile1,ignoreeof!!FILE:/tmp/outfile1,append
+#+end_src
+
+** unix socket handling
+
+create a listening unix socket
+
+#+begin_src shell
+rm -f /tmp/mysocket; ./socat UNIX-LISTEN:/tmp/mysocket -
+#+end_src
+
+from another terminal, connect to this socket
+
+#+begin_src shell
+./socat UNIX:/tmp/mysocket -
+#+end_src
+
+then transfer data bidirectionally
+
+** transport examples
+
+=socks= relay (externally socksify applications); your =ssh= client and OS are not
+socksified, but you want to pass a =socks= server with =ssh=:
+
+#+begin_src shell
+./socat TCP-LISTEN:10022,fork SOCKS4:socks.mydomain.org:ssh-serv:22
+#+end_src
+
+#+begin_src shell
+ssh -p 10022 loopback
+#+end_src
+
+or better define a =ProxyCommand= in ~/.ssh/config:
+
+#+begin_src shell
+# no priveledges
+ProxyCommand socat - SOCKS:socks.mydomain.org:%h:%p
+#+end_src
+
+And with proxy:
+
+#+begin_src shell
+ # no priveledges (dep on ports)
+ProxyCommand socat - PROXY:proxy.mydomain.org:%h:%p,proxyport=8000
+#+end_src
+
+** application examples
+
+run sendmail daemon with your favorite network options
+
+#+begin_src shell
+# requires privileges
+socat TCP-LISTEN:25,fork,ip-ttl=4,ip-tos=7,tcp-maxseg=576 \
+    EXEC:"/usr/sbin/sendmail -bs",nofork
+#+end_src
+
+local mail delivery over UNIX socket - no SUID program required
+
+#+begin_src shell
+# requires privileges
+socat UNIX-LISTEN:/tmp/postoffice,fork,perm-early=0666 \
+    EXEC:"/usr/sbin/sendmail -bs"
+#+end_src
+
+#+begin_src shell
+./socat - /tmp/postoffice
+#+end_src
+
+** want to use chat from the ppp package?
+
++ note: some OS's do not need "-e" for echo to print control characters
++ note: chat might send bytes one by one
++ with =AIX=, a similar program is available under the name =pppdial=
+  
+#+begin_src shell
+./socat -d -d tcp:localhost:25,crlf,nodelay \
+    exec:'/usr/sbin/chat -v -s "\"220 \"" "\"HELO loopback\"" "\"250 \"" "\"MAIL FROM: <hugo@localhost>\"" "\"250 \"" "\"RCPT TO: root\"" "\"250 \"" "\"DATA\"" "\"354 \"" "\"test1'$(echo -e "\r.")'\"" "\"250 \"" "\"QUIT\"" "\"221 \""',pty,echo=0,cr
+#+end_src
+
+** IP6
+
+#+begin_src shell
+# requires privileges
+socat readline TCP6:[::1]:21	# if your inetd/ftp is listening on ip6
+#+end_src
+
+* uses of filan
+
+see what your operating system opens for you
+
+#+begin_src shell
+filan
+#+end_src
+
+or if that was too detailled
+
+#+begin_src shell
+filan -s
+#+end_src
+
+see what file descriptors are passed via exec function
+
+#+begin_src shell
+./socat - EXEC:filan,nofork
+./socat - EXEC:filan
+./socat - EXEC:filan,pipes,stderr
+./socat - EXEC:filan,pipes
+./socat - EXEC:filan,pty
+#+end_src
+
+see what's done by your shell and with option "pipes"
+
+#+begin_src shell
+./socat - SYSTEM:filan,pipes
+#+end_src
+
+see if =gdb= gives you an equivalent environment or opens some files for your
+program
+
+#+begin_src shell
+$ gdb ./filan
+# (gdb) r
+# (gdb) r -s
+#+end_src
+
+* application server solutions
+
+run a program (here: =/bin/sh=) chrooted, unprivileged; parent process stays in
+real =/= running as root
+
+#+begin_src shell
+# requires privileges
+socat -d -d - EXEC:/bin/sh,chroot=/home/sandbox,su=sandbox,pty
+#+end_src
+
+** make a program available on the network chrooted, unprivileged;
+
++ parent process stays in =/= running as =root=
++ script path is already chrooted
+
+#+begin_src shell
+# requires privileges
+"${chrooted:-}"/socat -lm -d -d TCP-LISTEN:5555,fork \
+    EXEC:/bin/myscript,chroot=/home/sandbox,su=sandbox,pty,stderr
+#+end_src
+
+to avoid terminal problems, you might - instead of telnet - connect using
+
+#+begin_src shell
+./socat -,icanon=0,echo=0 tcp:target:5555; reset
+#+end_src
+
+** access local display from ssh server
+
++ when ssh port forwarding is disabled
++ =socat= must be installed on ssh server host
++ might have to use xauth...
+
+This example is one-shot because =ssh= can handle only one channel
+
+#+begin_src shell
+./socat -d -d \
+    exec:"ssh www.dest-unreach.org rm -f /tmp/.X11-unix/X9; ~/bin/socat -d -d unix-l\:/tmp/.X11-unix/X9\,fork -" \
+    unix:/tmp/.X11-unix/X0  # xterm1
+ssh target                  # xterm2
+DISPLAY=:9 myxapplication   # target
+#+end_src
+
+** touch with perms:
+
+no race condition for perms (applied with =creat()= call)
+
+#+begin_src shell
+./socat -u /dev/null creat:/tmp/tempfile,perm=0600
+#+end_src
+
+** touch with owner and perms:
+
+race condition before changing owner, but who cares - only =root= may access
+
+#+begin_src shell
+# requires privileges
+socat -u /dev/null creat:/tmp/tempfile,user=user1,perm=0600
+#+end_src
+
+** invoke an interactive =ssh= with =exec=
+
+first example passes control chars (=^C= etc.) to remote server as usual
+
+#+begin_src shell
+./socat -,echo=0,raw exec:'ssh server',pty,setsid,ctty
+#+end_src
+
+second example interprets control chars on local command line
+
+#+begin_src shell
+./socat -,echo=0,icanon=0 exec:'ssh server',pty,setsid,ctty
+#+end_src
+
+afterwards, type =reset=!
+
+** convince ssh to provide an "interactive" shell to your script
+
+three main versions for entering password:
+
+1) from your TTY; have 10 seconds to enter password:
+   
+#+begin_src shell
+(sleep 10; echo "ls"; sleep 1) \
+    | ./socat - exec:'ssh server',pty
+#+end_src
+
+2) from XWindows (DISPLAY !); again 10 seconds
+
+#+begin_src shell
+(sleep 10; echo "ls"; sleep 1) \
+    | ./socat - exec:'ssh server',pty,setsid
+#+end_src
+
+3: from script
+
+#+begin_src shell
+(sleep 5; echo PASSWORD; echo ls; sleep 1) \
+    | ./socat - exec:'ssh server',pty,setsid,ctty
+#+end_src
+
+
+** download with proxy =CONNECT=
+
+use =echo -e= if required for =\n=
+
+#+begin_src shell
+(echo -e "CONNECT 128.129.130.131:80 HTTP/1.0\n"; sleep 5;
+ echo -e "GET /download/file HTTP/1.0\n"; sleep 10) \
+     | ./socat -d -d -t 3600 - tcp:proxy:8080,crlf
+#+end_src
+
+** retrieve a file from an =sshd= site with sourceforge style entry menu;
+
+fill in your personal values; cat lets you enter your password (will be visible
+on screen)
+
+#+begin_src shell
+(sleep 10; read pass; echo $pass;
+ sleep 10; echo M;
+ sleep 5; echo cat FILENAME;
+ sleep 10) \
+     | ./socat -d -d -ly - \
+       EXEC:'ssh -c 3des -l USER cf.sourceforge.net',pty,setsid,ctty \
+     | tee FILENAME
+#+end_src
+
+** multicast community on local network:
+
+start the following command on all participating hosts; like a conference call:
+
+#+begin_src shell
+# requires privileges
+socat -d -d -d -d - \
+    udp-datagram:224.0.0.2:6666,bind=:6666,ip-add-membership=224.0.0.2:eth0,bindtodevice=eth0
+# or...
+socat -d -d -d -d - \
+    udp-datagram:224.0.0.2:6666,bind=:6666,ip-add-membership=224.0.0.2:eth0
+#+end_src
+
+possible reasons for failure:
+
++ iptables or other filters (open your filters as required)
++ packets leave via wrong interface (set route: ...)
++ socket bound to specific address
+
+* Generic Function Calls
+
+=ioctl()=: open CD drive (given value valid on Linux)
+
+on my Linux system I find in =/usr/include/linux/cdrom.h= the define:
+
+#+begin_src c
+#define CDROMEJECT 0x5309 /* Ejects the cdrom media */
+#+end_src
+
++ the following command makes something like =ioctl(fd, CDROMEJECT, NULL)=
+  - (don't care about the read error)
+
+#+begin_src shell
+./socat /dev/cdrom,o-nonblock,ioctl-void=0x5309 -
+# setsockopt(): SO_REUSEADDR
+#+end_src
+
+the following command performs - beyond lots of overhead - something like:
+
+#+begin_src c
+myint=1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &myint, sizeof(myint))
+#+end_src
+
+#+begin_src shell
+./socat -u udp-recv:7777,setsockopt-int=1:2:1 -
+# setsockopt(): SO_BINDTODEVICE
+#+end_src
+
+* not tested, just ideas, or have problems
+** traverse firewall
+*** connect internal =telnet= to external, skipping =syn-filter=
+
+make internal telnet server accessible for outside telnet client, when only
+outbound traffic =syn-filter= is allowed:
+
++ on external client run "double server". this process waits for a connection
+  from localhost on port =10023=
++  when it is established, waits for a connection from anywhere to port =20023=:
+
+#+begin_src shell
+# external
+./socat -d TCP-LISTEN:10023,range=localhost \
+    TCP-LISTEN:20023
+#+end_src
+
+on internal server run double client:
+
+#+begin_src shell
+# internal
+./socat -d TCP:localhost:23 \
+    TCP:extclient:10023
+#+end_src
+
+or, with socks firewall:
+
+#+begin_src shell
+# internal
+./socat -d TCP:localhost:23 \
+    SOCKS:socksserver:extclient:10023
+#+end_src
+
+login with:
+
+#+begin_src shell
+# external
+telnet localhost 20023
+#+end_src
+
+you can make a double server capable of handling multiple instances:
+
+#+begin_src shell
+# external
+./socat -d TCP-LISTEN:10023,range=localhost,fork \
+    TCP-LISTEN:20023,reuseaddr
+#+end_src
+
+*** access remote display via =ssh=, when =ssh= port forwarding is disabled
+
+#+begin_src shell
+./socat -d -d \
+    EXEC:"ssh target socat - UNIX:/tmp/.X11-unix/X0" \
+    TCP-LISTEN:6030
+xclock -display localhost:30
+#+end_src
+
+*** relay multiple webserver addresses through your firewall into your =DMZ=:
+
+make IP aliases on your firewall, and then:
+
+#+begin_src shell
+socat -d -d TCP-L:80,bind=fw-addr1,fork \
+    TCP:dmz-www1:80 # requires privileges
+socat -d -d TCP-L:80,bind=fw-addr2,fork \
+    TCP:dmz-www2:80 # requires privileges
+#+end_src
+
+and for improved security:
+
+#+begin_src shell
+# requires privileges
+socat -d -d TCP-L:80,bind=fw-addr3,su=nobody,fork TCP:dmz-www3:80
+#+end_src
+
+*** proxy an arbitrary IP protocol over your firewall
+
+replies won't be received
+
+#+begin_src shell
+# requires privileges
+socat -d -d IP:0.0.0.0:150,bind=fwnonsec IP:sec-host:150,bind=fwsec
+#+end_src
+
+*** proxy an unsupported IP protocol over your firewall, point to point
+
+end points see firewall interfaces as IP peers!
+
+#+begin_src shell
+# requires privileges
+socat -d -d IP:nonsec-host:150,bind=fwnonsec IP:sec-host:150,bind=fwsec
+#+end_src
+
+note that, for IPsec, you might face problems that are known with NAT
