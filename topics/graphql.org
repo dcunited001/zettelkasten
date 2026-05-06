@@ -51,7 +51,103 @@ Formats:
 ** Tools
 
 + [[github:dotansimha/graphql-code-generator][dotansimha/graphql-code-generator]]
+  
+** IDEs
+
++ [[https://github.com/APIs-guru/graphql-voyager][APIs-guru/graphql-voyager]] Visualization only, runs in a host [[https://github.com/APIs-guru/graphql-voyager/blob/main/example/cdn/index.html][HTML body]]
+  - based on [[https://nathanrandal.com/graphql-visualizer/][NathanRSmith/graphql-visualizer]] free online schema visualization
+
 * Topics
+
+** IDEs
+
+
+*** Voyager
+:PROPERTIES:
+:header_args+: :var obtmp=(or (bound-and-true-p ob@alacritty_auto) (setq ob@alacritty_auto (make-temp-file "roam-" t)))
+:END:
+
++ Noweb only works with ~#+begin_src html :noweb yes :exports none~
++ No ~<script type=\"application/graphql\"/>~ without a webserver
+
+The graphql folks basically made this easier than ever, which is fantastic.
+However, I have tried every possible hack to load a local schema from file and
+basically nothing works except serving the JSON locally.
+
+CORS requires that it must either be a chromium webapp or that the =index.html=
+is not served from =file:///=
+
+#+begin_quote
+Unsafe attempt to load URL file:///home/me/site/graphql.html from frame with URL
+file:///home/me/site/graphql.html. 'file:' URLs are treated as unique security
+origins.
+#+end_quote
+
+**** In HTML
+
+#+begin_src emacs-lisp :noweb yes :exports none
+(setq-local org-html-head-include-default-style nil
+            org-html-head "
+    <style>
+      body { height: 100%; margin: 0; width: 100%; overflow: hidden; }
+      #voyager { height: 100vh; }
+    </style>
+    <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/graphql-voyager/dist/voyager.css\" />
+    <script src=\"https://cdn.jsdelivr.net/npm/graphql-voyager/dist/voyager.standalone.js\"></script>")
+#+end_src
+
+#+begin_export html
+<!-- <script id="graphql-schema" type="application/graphql"> -->
+<div id="graphql-schema" style="width: 0px; height: 0px; visibility: false;">
+#+end_export
+
+#+name: graphqlSchema
+#+headers: :results output htmlh :exports results :eval yes
+#+begin_src shell :var sdl="../assets/github.json"
+cat $sdl
+#+end_src
+
+#+begin_export html
+</div>
+<!-- </script> -->
+<div id="voyager">Loading...</div>
+<script type="module">
+  const { voyagerIntrospectionQuery: query } = GraphQLVoyager;
+  const graphqlSchema = document.getElementById('graphql-schema').textContent;
+  console.log(graphqlSchema);
+
+  // Render <Voyager /> into the body.
+  GraphQLVoyager.renderVoyager(document.getElementById('voyager'), {
+    graphqlSchema,
+  });
+  
+  // const graphqlSchema = document.getElementById('graphql-schema').innerText
+</script>
+#+end_export
+
+**** On Docker
+
+~<div id="graphql-schema" style="{ width: 0px; height: 0px; visibility: false;
+}"></div>~
+
+meh, i don't want to build it (i'm so lazy. html so easy)
+
+#+begin_src dockerfile :exports none
+    # :dir (identity obtmp)
+FROM node:24
+
+WORKDIR /app
+
+COPY ./graphql-voyager-*.tgz graphql-voyager.tgz
+
+COPY ./example/webpack ./example/webpack
+
+WORKDIR /app/example/webpack
+RUN npm install && npm test
+
+EXPOSE  9090
+CMD ["npm", "start"]
+#+end_src
 
 ** [[https://the-guild.dev/graphql/config/docs][graphql-config]]
 
