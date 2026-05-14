@@ -1,0 +1,136 @@
+
++ [[https://wiki.gentoo.org/wiki/Dracut#List_of_modules][Gentoo Wiki: List of Dracut Modules]]
+
+* Issues
+
+** BTRFS Snapshots
+
++ [[https://gitlab.com/garuda-linux/pkgbuilds/-/issues/10][BTRFS fix for garuda-dracut-support]] requires mounting/remounting
+  btrfs subvolumes for snapshot support. so ... not replicating this
+  elsewhere will break boot from snapshot.
+
+* fdsa
+
+
+** UKI
+
+*** dracut-ukify
+
++ can't easily be installed from =garuda-chroot= (afaik...)
++ seems like it would be compatible with garuda's boot packages, which
+  already build to =/boot= instead of =/boot/efi=
+
+Includes these files
+
+| alpm    | 10-dracut-ukify-pre-install.hook |
+|         | 60-dracut-ukify-remove.hook      |
+|         | 90-dracut-ukify-dkms-remove.hook |
+|         | 90-dracut-ukify-install.hook     |
+| conf    | dracut-ukify.conf                |
+| wrapper | dracut-ukify                     |
+
+**** Install into running ISO
+
++ from chroot: pacman -Syu systemd-ukify
++ from live: yay -Syu dracut-ukify
+  - nevermind ... conflicts with garuda-dracut-support (completely
+    breaks a few things)
+
+** Garuda Packages
+
+from chroot: =pacman -Qs garuda=
+
+|       1.0.7-1 | garuda-bash-config        | Bash configuration for Garuda Linux                                                                                         |
+|     1.0.5-1.3 | garuda-boot-options       | A Boot options utility for Garuda Linux                                                                                     |
+|       1.2.4-1 | garuda-browser-settings   | Garuda Linux settings browser defaults                                                                                      |
+|       2.7.3-1 | garuda-common-settings    | Garuda Linux common settings                                                                                                |
+|       1.1.1-1 | garuda-dracut-support     | Dracut support for Garuda Linux                                                                                             |
+|      1.5.24-2 | garuda-fish-config        | Fish configuration of Garuda Linux                                                                                          |
+|      2.13.0-2 | garuda-hooks              | Additions and enhancements for Garuda Linux                                                                                 |
+|       1.1.2-1 | garuda-hotfixes           | Emergency hotfixes for Garuda Linux                                                                                         |
+|     0.4.166-2 | garuda-hyprland-settings  | Garuda Linux Hyprland settings                                                                                              |
+| r48.aab2662-1 | garuda-icons              | Base icons for Garuda Linux                                                                                                 |
+|       1.6.0-2 | garuda-libs               | Libraries commonly used by Garuda Linux software                                                                            |
+|       2.6.0-1 | garuda-migrations         | Automatically applies system configuration changes                                                                          |
+|     1.1.4-1.3 | garuda-network-assistant  | A Boot options utility for Garuda Linux                                                                                     |
+|       3.0.2-1 | garuda-rani               | Garuda's Reliable Assistant for Native Installations                                                                        |
+|     1.0.5-3.2 | garuda-settings-manager   | Garuda Linux system settings (Manjaro settings manager ported to work with Arch standards and limited to only DKMS drivers) |
+|       4.2.0-1 | garuda-setup-assistant    | A setup utility for Garuda Linux which helps setting up & installing applications                                           |
+|       1.0.3-1 | garuda-starship-prompt    | Starship terminal prompt preset for Garuda Linux                                                                            |
+|     3.0.0-2.4 | garuda-system-maintenance | Automated Garuda system maintenance tool                                                                                    |
+|      4.10.2-1 | garuda-update             | The Garuda Linux update command, in a separate package to allow separate updating                                           |
+|   2:1.1.6-1.1 | garuda-video-linux-config | Meta configuration package for common open source drivers on Garuda Linux                                                   |
+| r94.9982951-1 | garuda-wallpapers         | Garuda's default wallpaper collection                                                                                       |
+|      1.1.10-1 | garuda-zsh-config         | Zsh configuration for Garuda Linux                                                                                          |
+|        2.06-2 | grub-garuda               | Meta-package for using GRUB on Garuda Linux                                                                                 |
+| r26.972b17c-2 | grub-theme-garuda         | Garuda Linux GRUB theme                                                                                                     |
+|   2:1.1.6-1.1 | mhwd-db-garuda            | MHWD-db backported to Archlinux with additional features and limited to DKMS drivers                                        |
+|       1.1.4-3 | mhwd-garuda               | MHWD-db backported to Archlinux with additional features and limited to DKMS drivers                                        |
+
+
+*** Garuda Bootloader
+
++ garuda/garuda-dracut-support :: =pacman -Fq /usr/share/libalpm/hooks/60-dracut-remove.hook=
++ garuda/grub-garuda :: metapackage: grub, update-grub, os-prober-btrfs, efibootmgr, memtest86+
+
+**** garuda-dracut-support
+
+**** garuda-hooks
+
+=pacman -Fl garuda-hooks=
+
+#+begin_example text
+.
+└── usr
+    ├── bin
+    │   └── dracut-rebuild
+    ├── lib
+    │   └── dracut
+    │       ├── dracut.conf.d
+    │       │   └── 05-garuda.conf
+    │       └── modules.d
+    │           └── 91btrfs-snapshot-overlay
+    │               ├── module-setup.sh
+    │               └── snapshot-overlay.sh
+    └── share
+        └── libalpm
+            ├── hooks
+            │   ├── 60-dracut-remove.hook
+            │   └── 90-dracut-install.hook
+            └── scripts
+                ├── dracut-install
+                └── dracut-remove
+#+end_example
+
+=pacman -Fl garuda-hooks | sed -e 's/.* //g' | tree --fromfile .=
+
+#+begin_example text
+.
+├── etc
+│   └── pacman.d
+│       └── hooks
+│           └── 90-mkinitcpio-install.hook
+├── usr
+│   ├── bin
+│   │   └── check-broken-packages
+│   └── share
+│       └── libalpm
+│           ├── hooks
+│           │   ├── 01-snapshot-reject.hook
+│           │   ├── 20-grub-config.hook
+│           │   ├── 20-lsb-release.hook
+│           │   ├── 20-os-release.hook
+│           │   ├── 80-check-broken-packages.hook
+│           │   ├── 99-foreign.hook
+│           │   ├── 99-grub-install.hook
+│           │   ├── 99-orphans.hook
+│           │   ├── 99-pacnew-check.hook
+│           │   ├── 99-update-grub.hook
+│           │   ├── garuda-hooks-runner.hook
+│           │   └── zzz_post.hook
+│           └── scripts
+│               └── garuda-hooks-runner
+└── var
+    └── lib
+        └── garuda
+#+end_example

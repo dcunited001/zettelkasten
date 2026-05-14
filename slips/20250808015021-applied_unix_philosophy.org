@@ -1,0 +1,131 @@
+:PROPERTIES:
+:ID:       e22399c8-43e3-4d51-a0ae-8c29460c9ad3
+:END:
+#+TITLE: Applied Unix Philosophy
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+
+... others
+
+* Embrace the FHS
+
++ You should be able to =stow= any subset of paths in a project (not that you
+  would, but you should know where you've set up "root" of a relative FHS)
++ Almost all packages are deployed like this. RPM's are just =cpio= archives.
++ This greatly reduces the cognitive overhead. It's almost impossible to use
+  Linux if you don't know *to* do this. Everyone knows *what* FHS and *HOW* it's
+  organized. It's not exactly obvious that you should reapply this where
+  possible.
+
+TODO: more on this
+
+* Everything Is A File
+
+Note: i got a bit lost in this and forgot the point:
+
++ *Everything _is_ a file*: system interfaces are exposed as file-like objects that
+  can be handled by programs as such.
+  - "There's nothing special about device files; there's no special
+    configuration interface like the registry." This explanation only gets you
+    halfway.
++ *Files are just data*: this is difficult to state succinctly without seeming
+  obvious. Files could also be interfaces.
+  - Older Unix & Linux software will occasionally treat the file system as a
+    database. You can "host" a static site as flat files using the =file:///=
+    protocol. There are other examples of this.
+  - Parts of URI path components can correspond to subtrees inside of files
+
+There's nothing special about the "file-ness" of a file. It's just data. This is
+perspective less useful now, but very helpful when thinking about how to
+organize files for an application or desktop system.
+
+The desktop metaphor had always motivated naming concepts/aspects in computer
+systems... but this system of names/semantics results in lower-parity semantic
+representation. We've sense lost the basis for that semantic naming system --
+literal spreadsheets, file indexes/directories/etc -- so this muddies the
+semantics even more.
+
+** Everything Is A File
+
+#+begin_quote
+Below, I had forgotten the umm "eureka" (files are just data) and lost the plot.
+#+end_quote
+
+1) ~Everything is a file~ -- literally files, directories, sockets and devices --
+   is at first taken to mean there's some uniformity in how Linux CLI tools
+   interoperate with each other.
+2) Later, it becomes more clear that this is a kernel construct which
+   higher-level tools can leverage -- via assumptions, validation on inputs and
+   multi-valent
+3) But there's some nuance in that mantra, since technically
+   + ~Everything := File~
+   + and ~File := (File | Dir | Socket | Device)~
+   + So, part of what a "file" *is* is more difficult to define.
+   + Everyone knows this, but they often forget that =Even /files/ are files=
+
+TODO: how to convey this last bit? it seems overly tautological
+
+** File Descriptors
+
+An example of #2 above, which is often not implemented with Unix-philosophy in
+Javascript tooling.
+
+#+begin_quote
+e.g. =clifoo -f $file= expects a file, but in its source may treat file
+descriptors as more than files ... but if so, may handle them as a subtype or
+entirely different type. So as a pseudo-lang type ~CLIFoo::FileOptionFile :=
+(File | FileDescriptor | ...)~. If it's a descriptor, setup/teardown are
+different.
+#+end_quote
+
+The source code of traditional C/C++ tools or python tools will tend to provide
+better handling of files/descriptors.
+
++ Javascript tooling rarely handles file descriptors properly.
++ When POSIX-naive interfaces are forced on top of Unix (to support
+  interoperability while offering a uniform interface), it impedes a lot of
+  functionality that you can leverage from POSIX concepts. This makes scripting
+  more difficult (and thus, frustrating/etc)
+
+The problem isn't so much in whether the option is provided (or whether a second
+newer CLI option works for file descriptors, convoluting the interface) -- but
+rather that when I pass files and file descriptors to =gpg= or =sops= or =step cli= or
+=ansible vault=... I kinda wanna know that it closes that shit as soon as
+possible.
+
++ For short-running commands, the file descriptor will live for as long as the
+  process that the parent shell exec'd (when you hit enter).
++ For services and scripts, esp. those that result in longer-lived
+  processes/services, that file-descriptor can hang around. I want it in the
+  final processes' memory and ONLY in that memory. I do NOT want services to
+  unnecessarily retain open file descriptors OR files.
++ So that javascript has trouble understanding these concerns at the fairly
+  primary level of establishing an CLI interface -- which should NOT change
+  because your downstream users scripting breaks -- makes me feel like I need to
+  look to see what each tool does
+  - When I see that it doesn't handle FD's on the CLI options, then one question
+    is already answered: I know that it can't be composed and lacks the feature
+    of FD-passing...
+  - But I don't know whether the internals will close sensitive files (AS SOON
+    AS POSSIBLE). Why? Because =node= CLI tools run on the command-line and
+    typescript tooling is somewhat pushed by Microsoft to windows-compatible
+    tooling that _appears_ to close the feature-gap. So it needs to work in WSL2,
+    containers, on native linux and, in some cases, on the browser.
+  - When it does permit FD-passing, I still don't have the confidence to know
+    what the memory footprint of sensitive data actually is, since =node= was an
+    afterthought and NOT the primary design concern of the =javascript= language.
++ Javascript doesn't give you lower level control of garbage collection,
+  necessarily. In C/C++, this is done prima facie as a "cost of doing business"
+  with the language and its compiler. Other scripting languages are less
+  complicated, as compiling their runtime to the browser is handled by other
+  tooling downstream from =python= or =ruby=, etc.
+  - seeing how =Ruby= or =Rails= handles application secrets gives you insight into
+    how the language handles this.
+  - seeing how =Android= and =iOS= handle this data shows even more flow-control and
+    compartmentalization when interfacing with secrets.
+

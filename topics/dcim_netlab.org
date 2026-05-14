@@ -2,7 +2,7 @@
 :ID:       b6e7ff48-50c4-4932-ade2-22d778b66bb1
 :END:
 #+TITLE: DCIM: Netlab
-#+DESCRIPTION: 
+#+DESCRIPTION:
 #+TAGS:
 
 * Roam
@@ -18,6 +18,128 @@
 * Resources
 
 * Topics
+** Graphs
+
+#+name: netlabProject
+#+begin_src emacs-lisp
+(setq-local netlab-project (or (and (bound-and-true-p netlab-project) netlab-project) (read-string "netlab-project: ")))
+#+end_src
+
+*** Topology
+
+#+begin_quote
+Note: this kinda works, but i'm subbing in different values for hosts/ips, so i
+hope to come back to this later. The IPs are incorrect, but it's intended to to
+match what's in [[id:57607f58-32d2-4e2b-9327-551164929fa7][VyOS: Setting Up Firewall Rules]]. It's also missing a lot of the
+network
+#+end_quote
+
+Create with:
+
+#+begin_src shell :dir (identity netlab-project) :results output file link
+netlab graph -q -t topology --topology topology2.yml -f vlan 2>/dev/null 1>/dev/null
+dot graph.dot -T svg -o graph.svg 2>/dev/null
+echo -n "$(pwd)/graph.svg"
+#+end_src
+
+#+RESULTS:
+[[file:img/graph.svg]]
+
+Topology
+
+#+begin_src yaml :tangle (expand-file-name "topology2.yml" netlab-project)
+provider: clab
+
+groups:
+  routers:
+    members: [ r1, r2 ]
+    module: [ vlan]
+    device: vyos
+    graph.fill: gray48
+  wanuplink:
+    members: [ wan1 ]
+    module: [ vlan]
+    device: vyos
+    graph.fill: mintcream
+  switches:
+    members: [ sw2 ]
+    module: [ vlan ]
+    device: iosv
+    graph.fill: gray64
+  home_hosts:
+    members: [ ws2, ws1 ]
+    module: [ vlan ]
+    device: linux
+    graph.fill: lightsteelblue1
+  dev_hosts:
+    members: [ server1 ]
+    module: [ vlan ]
+    device: linux
+    graph.fill: palegreen1
+
+vlans:
+  wan:
+    id: 1
+    prefix: 172.24.24.0/24
+  home:
+    id: 80
+    prefix: 172.16.45.0/24
+  dev:
+    id: 160
+    prefix: 172.16.180.0/24
+  build:
+    id: 240
+    prefix: 172.16.240.0/24
+  servers:
+    id: 320
+    prefix: 172.16.250.0/24
+  lab:
+    id: 360
+    prefix: 172.20.100.0/24
+
+nodes:
+  wan1:
+  ws2:
+  ws1:
+  sw2:
+  server1:
+  r1:
+  r2:
+
+links:
+
+  # wan
+- wan1:
+    ipv4: 172.24.24.1/24
+  r2:
+    ipv4: 172.24.24.102/24
+  # vlan.access: wan
+
+  # trunks
+- sw2:
+  r1:
+  vlan.trunk: [ home, dev, build, servers, lab ]
+- sw2:
+  r2:
+  vlan.trunk: [ home, dev, build, servers, lab ]
+
+  # dev
+- ws2:
+    ipv4: 64
+  sw2:
+    vlan.access: dev
+- ws1:
+    ipv4: 80
+  sw2:
+    vlan.access: dev
+
+  # servers
+- server1:
+    ipv4: 32
+  sw2:
+    vlan.access: servers
+#+end_src
+
 ** Usage
 
 *** Environment
@@ -26,29 +148,73 @@
 run on. See Vagrantfile there and in the netlab project. It doesn't mention
 netlab per se, but odds are the network deps there are sufficient (or close)
 
+netlabCheckout
+
+#+name: netlabCheckout
+#+begin_src emacs-lisp
+(setq-local netlab-checkout (or (and (bound-and-true-p netlab-checkout) netlab-checkout) (read-string "netlab-checkout: ")))
+#+end_src
+
 **** Devcontainer
 
 Blog strongly recommends to run in a devcontainer, hosted on ghcr.io
 [[https://github.com/ipspace/netlab/pkgs/container/netlab%2Fdevcontainer][netlab/devcontainer]]. There isn't a =Dockerfile= likely bc of the difficult/issues
 that arise with Docker-in-Docker or Docker-to-Docker.
 
-+ See [[https://github.com/ipspace/netlab/blob/dev/.devcontainer/devcontainer.json][.devcontainer/devcontainer.json in netlab]]. user is =vscode=. 
++ See [[https://github.com/ipspace/netlab/blob/dev/.devcontainer/devcontainer.json][.devcontainer/devcontainer.json in netlab]]. user is =vscode=.
 
 + [[https://containers.dev/implementors/json_schema/][devcontainer.json.schema]]
   - workspaceMount :: the =--mount= param for docker run. it defaults to
     =/workspace/$project=... (i really don't actually know. i live on mars)
   - workspaceFolder :: path to the workspace dir inside the container
 
-*** Via docker
+*** Via =uv=
 
-#+name: netlabCheckout
-#+begin_src emacs-lisp
-(setq-local netlab-checkout (or (and (bound-and-true-p netlab-checkout) netlab-checkout) (read)))
+Well that was easy.
+
+#+begin_src shell
+uv tool install "networklab@latest"
 #+end_src
+
+
+
+*** Via docker
 
 #+begin_src shell
 podman pull ghcr.io/ipspace/netlab/devcontainer:26.04
-podman run --rm -it -w /workspace \
-    ghcr.io/ipspace/netlab/devcontainer:26.04
+podman run --rm -it ghcr.io/ipspace/netlab/devcontainer:26.04
 #+end_src
 
+* Misc
+
+
+#+begin_src yaml
+# defaults.attributes:
+#   link.dhcp:
+#     client: bool
+#     server: str
+# groups:
+  # dhcp_server:
+  #   members: [ srv ]
+  #   module: [ ospf ]
+  #   # config: [ dhcp-server ]
+  #   device: iosv
+  # dhcp_client:
+  #   members: [ cl_a, cl_b ]
+  #   # config: [ dhcp-client ]
+  #   device: iosv
+
+# - cl_a:
+#     dhcp.client: True
+#   sw1:
+#     dhcp.server: srv
+#   vlan.access: client
+# - cl_b:
+#     dhcp.client: True
+#   sw2:
+#     dhcp.server: srv
+#   vlan.access: client
+
+# defaults.outputs:
+#   _include: [ outputs/format.yml ]
+#+end_src
