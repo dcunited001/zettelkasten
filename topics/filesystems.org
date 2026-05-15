@@ -133,7 +133,133 @@ This relates to compression and CoW, so it is relevant to SSD's
 ** Issues
 *** Repair
 + dumpe2fs $device | grep -i superblock :: find alternate superblocks
-+
+
+** Topics
+*** debugfs
+ 
+**** logdump
+
+Params
+
+| -b | block        | print journal records referring to specified block |
+| -n | num_trans    |                                                    |
+| -i | filespec     | dump from the internal inode via ~filespec~          |
+| -f | journal_file |                                                    |
+| -s |              | utilize backup info in the superblock              |
+| -n |              | continue past journal block missing a magic number |
+
+Output
+
+| -a | contents of all descriptor blocks                                              |
+| -S | contents of journal superblock                                                 |
+| -O | display old (checkpointed) journal entries, even after journal's been replayed |
+| -c | print contents of data blocks specified by ~-a~ and ~-b~ options                   |
+
+*** Forensics
+**** Compare two transaction logs for backups images of the same disk
+
+#+begin_src shell
+i0=loop.img
+d0=/dev/loop0; s0=/dev/mapper/s0;
+d1=/dev/sdd2; s1=/dev/mapper/s1;
+d2=/dev/sdd3; s2=/dev/mapper/s2;
+
+losetup -f $i0 && cryptsetup open $d0 s0
+cryptsetup open $d1 s1
+cryptsetup open $d2 s2
+#+end_src
+
+Now that there's a mapped block device, =debugfs= can read it as a extfs partition
+
+#+begin_src shell
+debugfs -R 'logdump -S' $s0 > s0.superblock
+debugfs -R 'logdump -S' $s1 > s1.superblock
+debugfs -R 'logdump -S' $s2 > s2.superblock
+#+end_src
+
+Compare (lol eight transactions? =rm=)
+
+#+begin_src shell :results output :wrap example diff
+diff {s1,s2}.superblock
+#+end_src
+
+#+begin_example diff
+6c6
+< Journal sequence:         0x00006357
+---
+> Journal sequence:         0x00006350
+9c9
+< Journal checksum:         0xc476d10b
+---
+> Journal checksum:         0xe9e2e6f5
+11c11
+< Journal starts at block 0, transaction 25431
+---
+> Journal starts at block 0, transaction 25424
+#+end_example
+
+Extract the =ext4= journal
+
+#+begin_src shell
+debugfs -R 'cat <8>' /dev/mapper/secrets > s0.journal
+#+end_src
+
+Apparently... this only shows something when there's a problem (transaction log
+not reconciled). I'm not sure what to do with the journal file. =TSK= and =Tsurugi=
+have tools like =jla= which can analyze it...
+
+Instead of =czkawka=, I can use ~rsync -rvn --checksum /mnt/img{1,2}~, but czkawka
+creates a database ... as do =TSK= tools in =autopsy=.
+
+#+begin_quote
+I can't ever imagine that the cops would ask me to do contract work. Shucks. Not
+that i really want to hang out at a police station. Nothing i ever do is
+"gainful". Too many reasons for people to preemptively exclude me. "Defenders"
+are one or two degrees away from the popo. Nothing is really actually like Mr.
+Robot. Too much liability for perceived volatility.
+#+end_quote
+
+***** Entering the key
+
+This can't pass =/dev/fd/63= to the =sudo= environment
+
+#+begin_src shell
+sudo strace -e all cryptsetup open \
+   --key-file=<(echo -n 'fdsa' | sha256sum | awk '{print $1}') \
+   /dev/sdd3 s3
+#+end_src
+
+***** Why?
+
+Because if i wrote anything to these disks ... after mounting them ... there was
+probably a reason. i switched to a loopback device at some point idk. I'm going
+to use czkawka to dedupe the files.
+
+#+begin_quote
+because i never completed a basic network:
+
++ =syncthing= was not persistent. it worked, but specifying config to avoid =.git=
+  repos i may actually touch was PITA. it fell apart without a node that could
+  collect multiple versions.
++ ideally, there would be gitlab, but almost every single product like that just
+  dealt you =FUD= about running it in docker with/out service deps like redis.
++ i just found out about =restic= (like late 2025).
+
+i also made some idiotic decisions while floating in outer space, like keeping
+  some network config & ansible shit on a luks drive.... yay
+
+I never really had sufficient _contiguous_ time blocks to implement what i
+designed, so invariably, i'd have a skeleton project just sitting there with two
+playbooks. at any point $200-500 would've solved MOST of these problems.
+
+and no: unexpected $30 AWS/GCP bill would cost me over $100 if i overwithdraw.
+so NO. it was never even worth setting up. that's a liability. no one in my
+"income bracket" can even begin to relate (not anyone's fault, really)
+
+it's been shitton of completely unnecessary suffering/struggling that just
+foments mischaracterization. I can't imagine much with a greater magnitude
+effect in the exact opposite direction of what should have happened.
+#+end_quote
 
 * LUKS
 :PROPERTIES:
