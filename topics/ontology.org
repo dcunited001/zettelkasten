@@ -43,6 +43,65 @@ and that quite a bit of my newsfeed was manipulated. This section doesn't
 describe that, per se, but it is apropos to some of the "grey hat or black hat"
 social media marketing techniques that would enable such.
 
+
+* Applied Schemas
+** Standards
+*** IETF RFC
+
+**** Mapping
++ [[https://github.com/msparks/rfcgraph][msparks/rfcgraph]] generates a map of RFC relationships. 
++ [[https://github.com/raybellis/rfcdeps][raybellis/rfcdeps]] takes a config file and produces graphviz files describing
+  obselets/updates between RFCs. does the same thing in perl, but scoped to an
+  XML file
+
+***** rfcgraph
+:PROPERTIES:
+:header-args+: :var obtmp=(or (bound-and-true-p ob@ontology) (setq ob@ontology (make-temp-file "roam-" t)))
+:END:
+
+
++ wget https://raw.githubusercontent.com/msparks/rfcgraph/refs/heads/master/rfcgraph.py
++ wget https://www.rfc-editor.org/rfc-index.xml
++ wget https://www.rfc-editor.org/rfc-index.xsd
++ wget https://www.rfc-editor.org/in-notes/tar/xmlsource-all.tar.gz (not necessary)
+
+#+begin_src shell :dir (identity ob@ontology)
+nix shell nixpkgs#python314Packages.pydot -- ./rfcgraph.py -f svg -o rfcs.svg
+#+end_src
+
+#+RESULTS:
+
+****** xq
+
+#+name: rfcBCP
+#+begin_src shell :dir (identity ob@ontology) :results output code :wrap example json
+q='."rfc-index"."bcp-entry"
+  | map(."is-also" // empty)
+  | map(."doc-id")
+  | flatten | sort | unique'
+xq "$q" rfc-index.xml
+#+end_src
+
+
+
+#+begin_src shell :dir (identity ob@ontology) :results silent output
+q='
+. as $in
+  | (."rfc-index"."bcp-entry"
+    | map(."is-also" // empty)
+    | map(."doc-id")
+    | flatten | sort | unique) as $bcp
+  | $in."rfc-index"."rfc-entry"
+  | map(select(."doc-id" | IN("RFC1915", "RFC0223"))) | length'
+# ... okay nevermind then
+
+#  | select(IN(. | map(".doc-id"); $bcp))'
+xq "$q" rfc-index.xml
+#+end_src
+
+
+
+
 * Schemata
 
 Considering there are so many of these, a few factors should prioritize your

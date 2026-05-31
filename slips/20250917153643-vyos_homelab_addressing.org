@@ -20,7 +20,7 @@
 Python
 
 + [[https://github.com/blacklanternsecurity/radixtarget][blacklanternsecurity/radixtarget]]
-+ [[https://github.com/mjschultz/py-radixhttps://github.com/mjschultz/py-radix][mjschultz/py-radix]] (fork: [[https://github.com/SEKOIA-IO/py-radix][SEKOIA-IO/py-radix]])
++ [[https://github.com/mjschultz/py-radix][mjschultz/py-radix]] (fork: [[https://github.com/SEKOIA-IO/py-radix][SEKOIA-IO/py-radix]])
 + [[https://github.com/jsommers/pytricia][jsommers/pytricia]]
 
 Rust
@@ -28,13 +28,47 @@ Rust
 + [[https://github.com/Orange-OpenSource/iptrie/blob/master/examples/simple-lctrie.pdf][Orange-OpenSource/iptrie]] the cli is unclear, but the graphviz integration is nice
 
 Go
+
+* cidrblock/subnetting
+:PROPERTIES:
+:header-args+: :var obtmp=(or (bound-and-true-p ob@vyos_homelab_addressing) (setq ob@vyos_homelab_addressing (make-temp-file "roam-" t)))
+:header-args+: :dir (identity ob@vyos_homelab_addressing) :tangle-dir (identity ob@vyos_homelab_addressing)
+:END:
+
+
+Runs in node v20. It's 10 years old, so it's hard to tell.
+
+#+begin_src dockerfile :tangle (expand-file-name "Dockerfile" ob@vyos_homelab_addressing)
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+# RUN npm ci --only=production
+RUN npm install
+COPY . .
+EXPOSE 3000
+# CMD ["node", "app.js"]
+CMD ["/bin/sh"]
+#+end_src
+
+Then
+
+#+begin_src shell
+cd $obtmp
+podman build -t --replace cidrblock/subnetter
+podman run --rm -it --name subnetter cidrblock/subnetter
+#+end_src
+
+nevermind. this frontend doesn't run. it seems to have been developed before
+CORS or something.
+
 * Emacs
+
 ** Babel
 
 ** Networking
 *** ipv4
 
-#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.doom.d/modules")
 (defun ipv4-cidr-vec (cidr)
   "Returns the bitmask for ipv4 `cidr'."
   (when (or (< cidr 0) (> cidr 32))
@@ -75,7 +109,7 @@ And test...
 
 Get the network address
 
-#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.doom.d/modules")
 (defun ipv4-net-vec (ipv4 cidr)
   "Returns the network address for `ipv4' given `cidr' bits."
   (let ((ipv4-len (length ipv4)))
@@ -153,7 +187,7 @@ And actually test the function above ...
 
 *** ipv6
 
-#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.doom.d/modules")
 (defun ipv6-cidr-vec (cidr)
   "Returns the bitmask for ipv6 `cidr'."
   (when (or (< cidr 0) (> cidr 128))
@@ -204,7 +238,7 @@ And test....
 
 **** ipv6 network address
 
-#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.emacs.d/modules")
+#+begin_src emacs-lisp :tangle (expand-file-name "dc-ip-calc.el" "~/.dotfiles/.doom.d/modules")
 (defun ipv6-net-vec (ipv6 cidr)
   "Returns the network address for `ipv6' given `cidr' bits."
   (let ((ipv6-len (length ipv6)))
@@ -426,28 +460,27 @@ Applications need to be encouraged to transmit =ipv6= to/from addresses.
 Anyways, my best guess:
 
 #+begin_quote
-with containers/namespaces, you can depend on network setup/teardown to
-handle: default gateway, altered routes, fw logic, interface, vlan... but
-you don't want to.
+with containers/namespaces, you can depend on network setup/teardown to handle:
+default gateway, altered routes, fw logic, interface, vlan... but you don't want
+to.
 
 at the network layer, you can handle some of this at:
 
-- the receiving layer2 interface (ff2x, ff3x, etc are multicast only
-  though) ... but that's a lot of interfaces
+- the receiving layer2 interface (ff2x, ff3x, etc are multicast only though) ...
+  but that's a lot of interfaces
 - the WAN interfaces ... but 3-10 WAN interfaces (< 1,000's) is too many
 - a 6to4, 4to6, 6to6 tunnel broker ... but that's a lot of state. also, your
-  tunnel brokers are going to need tunnel broker brokers -- probably just
-  one layer, but now you have /distributed state/, which is the root of all
-  evil.
+  tunnel brokers are going to need tunnel broker brokers -- probably just one
+  layer, but now you have /distributed state/, which is the root of all evil.
 - the transmitting interface (through system admin). this would involve some
   =ethtool= maybe... at least on physical interfaces, maybe. or some tricks to
   force clients to prefer specific protocols/params for specific routes
-  - in terms of spatial complexity, this is definitely *definitely* the worst.
-    you can't store a naive hashmap with 2^128 addresses in memory (and the
-    data changes)
-- the transmitting interface ... given its assumptions about the ipv6
-  addressing scheme. This would basically mean 95% of your problems go away.
-  still, some analysis/logging/tweaks are needed.
+  - in terms of spatial complexity, this is definitely *definitely* the worst. you
+    can't store a naive hashmap with 2^128 addresses in memory (and the data
+    changes)
+- the transmitting interface ... given its assumptions about the ipv6 addressing
+  scheme. This would basically mean 95% of your problems go away. still, some
+  analysis/logging/tweaks are needed.
   - for every =10b= =ULA= site prefix, you need to distribute routes & default
     gateway config (mostly routes)
   - the application must select ipv6 or its sessions/streams start
@@ -534,6 +567,7 @@ Addressing
 #+TBLFM: $22='(format "%x" $ipv4host);N
 #+TBLFM: $2='(format-network-address (cl-map 'vector #'hexnib (list $ipv6prefix $ipv6org $ipv6site $ipv6subnet "0" "0" "0" $ipv6host)));
 #+TBLFM: $3='(format-network-address (ipv6-net-vec (cl-map 'vector #'hexnib (list $ipv6prefix $ipv6org $ipv6site $ipv6subnet "0" "0" "0" $ipv6host)) (string-to-number $ipv6cidr)));
+
 *** Python Setup
 
 #+name: startPython
@@ -716,3 +750,4 @@ fdsa
 #+begin_src shell :var netlist=ipv6nets
 echo $netlist  | tree --fromfile . -d
 #+end_src
+

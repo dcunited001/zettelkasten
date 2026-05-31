@@ -1,0 +1,253 @@
+:PROPERTIES:
+:ID:       81b2c85d-b0ad-4847-9b67-e4bbeaad5988
+:END:
+#+TITLE: Guix: Misc issues
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* Docs
+
+Guix Manual
+
++ [[https://guix.gnu.org/manual/devel/en/guix.html#Application-Setup-1][Application Setup]]
+
+* SSL Error on =guix pull=
+
+On running =guix pull= as root, getting this weird failure when trying to specify
+my channels to codeberg & nonguix.
+
+#+begin_example log
+error: Git error: SSL error: syscall failure: Resource temporarily unavailable
+#+end_example
+
+The fix was to set channels to =%default-guix-channel=, commenting out the
+codeberg channel and nonguix. Because of the =--unsafe-channel-evaluation= issues,
+this will fail on the next run.
+
+The last time I had updated was 2025/05 and [[https://guix.gnu.org/blog/2025/migrating-to-codeberg/][git.savannah.gnu.org has been phased
+out]]. like two days ago (lucky me).
+
+#+begin_quote
+This is why i don't like investing so much effort just to downgrade to more
+"normal" distributions. what i use is great and all ... just not so much when
+you mix it together randomly.
+
++ Those distributions make it difficult to use systemd -- it's basically
+  impossible to manage without tooling hosted in the network (ansible runners,
+  etc).
++ Systemd's ini format is just ridiculously terse to manipulate with vim/nano...
+  it's seriously _untenable_ and kinda insane to assume _sustainable_
++ Desktop usage comes as an afterthought... unless you want to run defaults.
++ customizing =/etc/ssh=, =/etc/profile{,.d}= is already exhausting without even
+  touching systemd. i just never, ever, ever get to that.
+
+For this an other reasons, i'd like to do something else: use a distribution
+where i can clearly see a path towards manageable usage.
+
++ ✓ automated updates without strong contraints on software availability
++ ✓ declarative configuration where i blow away a system if i don't like it
++ ✓ granular control over configuration
++ ✓ programmatic specification of services & automation
+
+the herd mentality is ridiculous IMO.
+#+end_quote
+
+....
+
+* On NixOS =/gnu/store= is now root-owned
+
+
+
+* Ensure =GUIX_LOCPATH= has a valid locale
+
+** Overview
+
+Locale problems are not =aΩ¥ ϕUn @at@= all... Usually it's pretty simple. But it
+can cause things to go very horribly wrong, depending on the problem &
+environment.
+
++ if you're lucky, you can browse files without unicode squares.
++ Server processes could record garbage data. 
++ =glib= mismatch and your binaries could shit the bed.
++ =d-bus= could spread the locale mismatch like a virus (in theory... idk)
++ this +would+ could almost certainly affect reproducibility, right?  
+
+Processes like =guix copy= which operate over the network could experience things
+like below -- maybe, I'm still not sure. There's an similar error message in
+[[https://codeberg.org/guix/guix/issues/2398#issuecomment-15941063][guix/guix#2398]], but it's unrelated.
+
+#+begin_example
+guix copy: sending 4913 store items (6,164 MiB) to 'nixosdesktop.home.arpa'...
+guix copy: error: corrupt input while restoring archive from #<closed: file 7faf7655fee0>
+#+end_example
+
+*** For clarity
+
++ Via [[https://guix.gnu.org/manual/devel/en/guix.html#Application-Setup-1][Application Setup]]
+
+#+begin_quote
+The GUIX_LOCPATH variable plays a role similar to LOCPATH (see LOCPATH in The
+GNU C Library Reference Manual). There are two important differences though:
+
+1. GUIX_LOCPATH is honored only by the libc in Guix, and not by the libc provided
+  by foreign distros. Thus, using GUIX_LOCPATH allows you to make sure the
+  programs of the foreign distro will not end up loading incompatible locale data.
+
+2. libc suffixes each entry of GUIX_LOCPATH with /X.Y, where X.Y is the libc
+  version—e.g., 2.22. This means that, should your Guix profile contain a mixture
+  of programs linked against different libc version, each libc version will only
+  try to load locale data in the right format.
+#+end_quote
+
+** Fix
+
+*** For non-Guix distros (i think...)
+
+Run =guix pull= as root (sudo doesn't suffice) and =systemctl restart guix-daemon=
+
+For regular users
+
++ ensure =guix package -u= runs on a timer, if =~/.guix-profile= is where
+  =glibc-locales= is stored
+
+For root
+
++ add a timer to regularly update root guix with =guix pull=
+  - also update =guix install glibc-locales=
+  - check for locale drift between Nix and Guix (and Arch/AUR packages)
++ add a similar timer for =guix package -u=
++ once this is correct, _I think_ that a user's =GUIX_LOCALE= can fall through to a
+  foundational =GUIX_LOCPATH=.
+
+#+begin_src sh
+# probably be cautious with this (it sucks to break your GUI apps' glyphs ...
+# that's not even that bad.)
+GUIX_LOCPATH="$GUIX_LOCPATH:/var/guix/profiles/per-user/root/guix-profile/lib/locale"
+
+# ... idk whether to export or what
+#+end_src
+  
++ If you don't remember to run =guix pull= for the root's =guix=
+  + lack of GC will inflate anyways. if your =/gnu/store= gets huge, this is why.
+  + you risk forwards/backwards guix API compatibility issues
+    - this depends on how =guix-daemon= build processes actually consume a channel
+      spec (for a build or a =guix time-machine= invocation)
+    - and how they produce the underlying environment to interpret build
+      instructions
+      - and gexp =#$(your gexp)= are serialized, interpreted and run
+  + the more drift between the =guix-daemon= binary that spawns (and the layers
+    that allow it forwards-compatibility), the more likely problems become
+
+#+begin_quote
+if you think this sounds complicated, GLHF with WASM: the underlying bytecode
+specification doesn't really handle string-encoding (only higher-level tools do)
+#+end_quote
+
+*** For Guix System
+
+It just pretty much works
+
++ If you use Nix, you have the same problem, but from the nix perspective
++ If you use flatpaks, these basically must solve the same problem
+  - It's mostly solved though (via zygotes and bubblewrap... idk)
+  - appimages also solve the same problem in a manner similar to flatpak
+
+** Problem 
+
+Anyways, [[https://guix.gnu.org/manual/devel/en/guix.html#Application-Setup-1][Application Setup]] seems to imply i should =guix install glibc-locales=,
+but I'm not sure how that helps the build daemons.
+
+Here's the problem though: =</llm-cliche>=
+
++ You can't really forget to update that locale.
++ Ideally, on a foreign distribution, _the glib version matches_ the host system.
+  =RE: snarky d-bus comment above...= Most IPC should encode/decode along
+  application boundaries, but who knows.
++ Either way, this isn't always simple. The =glib= target is a very deep
+  dependency. Different distributions update along various schedules.
+
+... and ultimately, I'm not real certain about any of this.
+
+*** Locale is missing in my user's environment
+
+#+begin_src shell
+echo $GUIX_LOCPATH | pathtr
+# /home/dc/.config/guix/current/lib/locale
+# /home/dc/.guix-home/profile/lib/locale
+# /home/dc/.guix-profile/lib/locale
+
+ls -al $(echo $GUIX_LOCPATH | pathtr)
+# ls: cannot access '/home/dc/.config/guix/current/lib/locale': No such file or directory
+# ls: cannot access '/home/dc/.guix-home/profile/lib/locale': No such file or directory
+# ls: cannot access '/home/dc/.guix-profile/lib/locale': No such file or directory
+#+end_src
+
+Running this however is fine
+
+#+begin_src shell
+guix shell hello
+ls -al $(echo $GUIX_LOCPATH | pathtr)
+# ls: cannot access '/home/dc/.config/guix/current/lib/locale': No such file or directory
+# ls: cannot access '/home/dc/.guix-home/profile/lib/locale': No such file or directory
+# ls: cannot access '/home/dc/.guix-profile/lib/locale': No such file or directory
+/gnu/store/drapg7ap0g0n2hilibvrp9snhplrb0zx-glibc-utf8-locales-2.41/lib/locale:
+total 0
+dr-xr-xr-x 1 root root   8 Dec 31  1969 .
+dr-xr-xr-x 1 root root  12 Dec 31  1969 ..
+dr-xr-xr-x 1 root root 236 Dec 31  1969 2.41
+#+end_src
+
+
+*** Locale is missing in =guix-daemon= environment
+
+Getting warnings like these during builds:
+
+#+begin_example guix-build-log
+phase `unpack' succeeded after 0.0 seconds
+sh: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
+starting phase `patch-usr-bin-file'
+phase `patch-usr-bin-file' succeeded after 0.0 seconds
+sh: warning: setlocale: LC_ALL: cannot change locale (C.UTF-8): No such file or directory
+starting phase `patch-source-shebangs'
+#+end_example
+
+** Cause
+
+=systemctl cat --all guix-daemon=
+
+#+begin_src  conf
+# /etc/systemd/system/guix-daemon.service -> /nix/store/1vhmahkb36ykfj5fr12z97c5zwdadvhi-unit-guix-daemon.service/guix-daemon.service
+[Unit]
+RequiresMountsFor=/gnu/store
+RequiresMountsFor=/var
+
+[Service]
+Environment="GUIX_LOCPATH=/var/guix/profiles/per-user/root/guix-profile/lib/locale"
+Environment="LC_ALL=C.UTF-8"
+Environment="LOCALE_ARCHIVE=/nix/store/dcba1234-glibc-locales-2.42-61/lib/locale/locale-archive"
+Environment="PATH=/nix/store/dcba12345-coreutils-9.10/bin:/nix/store/vhsirn9m1ifmnw5g1qczzhvqkx6lw1if-findutils......"
+Environment="TZDIR=/nix/store/dcba123456-tzdata-2026a/share/zoneinfo"
+ExecStart=/nix/store/nigjc9iq424dd69p0lcs89p6s9xlvd33-unit-script-guix-daemon-start/bin/guix-daemon-start
+OOMPolicy=continue
+RemainAfterExit=yes
+Restart=always
+TasksMax=8192
+
+[Install]
+WantedBy=multi-user.target
+#+end_src
+
+
+*** guix2.nix
+
+On NixOS, I've [[https://github.com/dcunited001/ellipsis/blob/master/nixos/modules/nixos/services/guix2.nix#L1][kinda customized the nixpkgs guix service]] ... with duct tape
+(temporarily). It broke, there were issues & PRs, but I couldn't wait for the
+fix. I should probably fix this bc I'm not paying attention to upstream updates.
+
+This was probably fixed in a week or so, but it's been well over 2 months...
+
+It's considerably intimidating to think about contributing to nixpkgs. There are
+over like 400,000 issues and 100,000 packages and ... idk.
