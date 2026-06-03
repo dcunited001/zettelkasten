@@ -9,7 +9,280 @@
 + [[id:7a4a7eea-5795-44e5-86e8-eec2afebf110][GraphQL]]
 + [[id:8fb0a586-9c0f-4f36-b1ab-dc5c26681d15][Open Source]]
 
-* Docs
+* Using new =ghub-query=
+
+#+name: orgRepos
+#+begin_src emacs-lisp :var login="clickhouse" nrepos=(identity 100) :results vector value :exports code
+(let* ((n nrepos)
+       (q '(query
+            [($login String!)
+             ($first Int!)
+             ($orderBy RepositoryOrder!)]
+            (organization
+             [(login $login)]
+             (repositories
+              [(first $first)
+               (orderBy $orderBy)]
+              (edges
+               (node
+                (owner login)
+                name
+                (defaultBranchRef prefix name)
+                url
+                updatedAt
+                diskUsage
+                isFork
+                isArchived))))))
+       (vars `((login . "clickhouse")
+               (first . ,n)
+               (orderBy . ((field . "UPDATED_AT")
+                           (direction . "DESC")))))
+       (response (cdr (ghub-query q vars
+                   :paginate 100
+                   :synchronous t))))
+(setq gql-response response)
+  (let-alist response .organization.repositories))
+#+end_src
+
+
+#+name: orgBundles
+#+begin_src emacs-lisp :var repos=orgRepos :results value table :exports code :noweb yes :eval query
+(thread-first
+  (thread-last
+    repos
+    ;; (a-get* (nthcdr 0 ) 'data 'organization 'repositories 'edges)
+    ;; (mapcar (lambda (el) (a-get* el 'node)))
+
+    ;; filter archived repos
+    (seq-filter (lambda (el) (not (a-get* el 'isFork))))
+    (seq-filter (lambda (el) (not (a-get* el 'isArchived))))
+
+    (mapcar (lambda (el)
+              (list (a-get* el 'diskUsage)
+                    (a-get* el 'owner 'login)
+                    (a-get* el 'defaultBranchRef 'prefix)
+                    (a-get* el 'defaultBranchRef 'name)
+                    (a-get* el 'name)
+                    (a-get* el 'updatedAt)
+                    (a-get* el 'isFork)
+                    (a-get* el 'isArchived)
+                    (a-get* el 'url))))))
+#+end_src
+
+#+RESULTS: orgBundles
+|    2175 | ClickHouse | refs/heads/ | main   | clickhouse-cs                            | 2026-06-03T14:45:33Z | nil | nil | https://github.com/ClickHouse/clickhouse-cs                            |
+|     180 | ClickHouse | refs/heads/ | main   | clickhouse-c                             | 2026-06-03T14:38:44Z | nil | nil | https://github.com/ClickHouse/clickhouse-c                             |
+|    1008 | ClickHouse | refs/heads/ | main   | pg_clickhouse                            | 2026-06-03T14:38:35Z | nil | nil | https://github.com/ClickHouse/pg_clickhouse                            |
+| 6781589 | ClickHouse | refs/heads/ | master | ClickHouse                               | 2026-06-03T14:33:51Z | nil | nil | https://github.com/ClickHouse/ClickHouse                               |
+|     378 | ClickHouse | refs/heads/ | main   | silk                                     | 2026-06-03T14:29:36Z | nil | nil | https://github.com/ClickHouse/silk                                     |
+|     448 | ClickHouse | refs/heads/ | main   | clickstack-demo-subscription-app         | 2026-06-03T14:26:31Z | nil | nil | https://github.com/ClickHouse/clickstack-demo-subscription-app         |
+|  617624 | ClickHouse | refs/heads/ | main   | mintlify-docs-dev                        | 2026-06-03T14:24:29Z | nil | nil | https://github.com/ClickHouse/mintlify-docs-dev                        |
+| 1266804 | ClickHouse | refs/heads/ | main   | clickhouse-docs                          | 2026-06-03T12:39:28Z | nil | nil | https://github.com/ClickHouse/clickhouse-docs                          |
+|   78006 | ClickHouse | refs/heads/ | main   | ClickBench                               | 2026-06-03T12:24:28Z | nil | nil | https://github.com/ClickHouse/ClickBench                               |
+|    2798 | ClickHouse | refs/heads/ | main   | clickhouse-js                            | 2026-06-03T12:12:15Z | nil | nil | https://github.com/ClickHouse/clickhouse-js                            |
+|    1970 | ClickHouse | refs/heads/ | main   | terraform-provider-clickhouse            | 2026-06-03T11:58:24Z | nil | nil | https://github.com/ClickHouse/terraform-provider-clickhouse            |
+|  117377 | ClickHouse | refs/heads/ | main   | examples                                 | 2026-06-03T10:31:02Z | nil | nil | https://github.com/ClickHouse/examples                                 |
+|     994 | ClickHouse | refs/heads/ | main   | ClickStack                               | 2026-06-03T09:26:54Z | nil | nil | https://github.com/ClickHouse/ClickStack                               |
+|    3495 | ClickHouse | refs/heads/ | main   | spark-clickhouse-connector               | 2026-06-03T08:21:02Z | nil | nil | https://github.com/ClickHouse/spark-clickhouse-connector               |
+|    2688 | ClickHouse | refs/heads/ | master | clickhouse-cpp                           | 2026-06-03T08:15:18Z | nil | nil | https://github.com/ClickHouse/clickhouse-cpp                           |
+|    1735 | ClickHouse | refs/heads/ | main   | clickhousectl                            | 2026-06-03T07:31:04Z | nil | nil | https://github.com/ClickHouse/clickhousectl                            |
+|    1257 | ClickHouse | refs/heads/ | main   | nerve                                    | 2026-06-03T04:11:49Z | nil | nil | https://github.com/ClickHouse/nerve                                    |
+|    1142 | ClickHouse | refs/heads/ | main   | dbt-clickhouse                           | 2026-06-03T02:50:15Z | nil | nil | https://github.com/ClickHouse/dbt-clickhouse                           |
+|    4081 | ClickHouse | refs/heads/ | main   | clickhouse-kafka-connect                 | 2026-06-03T02:06:43Z | nil | nil | https://github.com/ClickHouse/clickhouse-kafka-connect                 |
+|    2818 | ClickHouse | refs/heads/ | main   | flink-connector-clickhouse               | 2026-06-03T01:58:05Z | nil | nil | https://github.com/ClickHouse/flink-connector-clickhouse               |
+|     710 | ClickHouse | refs/heads/ | main   | aspire-clickhouse-gateway-analytics-demo | 2026-06-03T01:20:59Z | nil | nil | https://github.com/ClickHouse/aspire-clickhouse-gateway-analytics-demo |
+|    1369 | ClickHouse | refs/heads/ | main   | pg_stat_ch                               | 2026-06-02T23:56:52Z | nil | nil | https://github.com/ClickHouse/pg_stat_ch                               |
+|    1545 | ClickHouse | refs/heads/ | main   | clickhouse-operator                      | 2026-06-02T21:42:29Z | nil | nil | https://github.com/ClickHouse/clickhouse-operator                      |
+|    1199 | ClickHouse | refs/heads/ | main   | clickhouse-rs                            | 2026-06-02T21:01:36Z | nil | nil | https://github.com/ClickHouse/clickhouse-rs                            |
+|    5720 | ClickHouse | refs/heads/ | main   | clickhouse-go                            | 2026-06-02T19:33:43Z | nil | nil | https://github.com/ClickHouse/clickhouse-go                            |
+|    3512 | ClickHouse | refs/heads/ | main   | CostBench                                | 2026-06-02T16:12:37Z | nil | nil | https://github.com/ClickHouse/CostBench                                |
+|      18 | ClickHouse | refs/heads/ | main   | dotnet-otel-clickstack-demo              | 2026-06-02T16:11:02Z | nil | nil | https://github.com/ClickHouse/dotnet-otel-clickstack-demo              |
+|   30255 | ClickHouse | refs/heads/ | main   | click-ui                                 | 2026-06-02T15:58:04Z | nil | nil | https://github.com/ClickHouse/click-ui                                 |
+|     399 | ClickHouse | refs/heads/ | main   | ClickHouse.EntityFrameworkCore           | 2026-06-02T15:32:30Z | nil | nil | https://github.com/ClickHouse/ClickHouse.EntityFrameworkCore           |
+|   13747 | ClickHouse | refs/heads/ | main   | clickhouse-java                          | 2026-06-02T15:25:36Z | nil | nil | https://github.com/ClickHouse/clickhouse-java                          |
+|   64072 | ClickHouse | refs/heads/ | main   | kubenetmon                               | 2026-06-02T10:30:37Z | nil | nil | https://github.com/ClickHouse/kubenetmon                               |
+|     581 | ClickHouse | refs/heads/ | main   | mcp-clickhouse                           | 2026-06-02T08:55:21Z | nil | nil | https://github.com/ClickHouse/mcp-clickhouse                           |
+|    3461 | ClickHouse | refs/heads/ | main   | tpc-h-openhouse                          | 2026-06-02T08:46:55Z | nil | nil | https://github.com/ClickHouse/tpc-h-openhouse                          |
+|     847 | ClickHouse | refs/heads/ | main   | JSONBench                                | 2026-06-02T08:14:29Z | nil | nil | https://github.com/ClickHouse/JSONBench                                |
+|     638 | ClickHouse | refs/heads/ | main   | ai-sdk-cpp                               | 2026-06-02T06:54:35Z | nil | nil | https://github.com/ClickHouse/ai-sdk-cpp                               |
+|      40 | ClickHouse | refs/heads/ | main   | byoc-tools                               | 2026-06-02T03:15:30Z | nil | nil | https://github.com/ClickHouse/byoc-tools                               |
+|     782 | ClickHouse | refs/heads/ | main   | librechat-admin-panel                    | 2026-06-02T01:29:31Z | nil | nil | https://github.com/ClickHouse/librechat-admin-panel                    |
+|    2784 | ClickHouse | refs/heads/ | main   | clickhouse-connect                       | 2026-06-01T21:56:28Z | nil | nil | https://github.com/ClickHouse/clickhouse-connect                       |
+|      94 | ClickHouse | refs/heads/ | main   | clickhouse-claude-code-plugin            | 2026-06-01T20:28:50Z | nil | nil | https://github.com/ClickHouse/clickhouse-claude-code-plugin            |
+|      52 | ClickHouse | refs/heads/ | main   | clickhouse-kiro-power                    | 2026-06-01T20:28:38Z | nil | nil | https://github.com/ClickHouse/clickhouse-kiro-power                    |
+|      41 | ClickHouse | refs/heads/ | main   | clickhouse-cursor-plugin                 | 2026-06-01T20:28:17Z | nil | nil | https://github.com/ClickHouse/clickhouse-cursor-plugin                 |
+|     113 | ClickHouse | refs/heads/ | main   | adbc_clickhouse                          | 2026-06-01T16:25:13Z | nil | nil | https://github.com/ClickHouse/adbc_clickhouse                          |
+|     223 | ClickHouse | refs/heads/ | main   | agent-skills                             | 2026-06-01T11:47:45Z | nil | nil | https://github.com/ClickHouse/agent-skills                             |
+|     113 | ClickHouse | refs/heads/ | main   | Serilog.Sinks.ClickHouse                 | 2026-06-01T09:21:54Z | nil | nil | https://github.com/ClickHouse/Serilog.Sinks.ClickHouse                 |
+|     658 | ClickHouse | refs/heads/ | main   | gitTrends                                | 2026-06-01T08:56:14Z | nil | nil | https://github.com/ClickHouse/gitTrends                                |
+|     401 | ClickHouse | refs/heads/ | main   | ClickStack-helm-charts                   | 2026-06-01T01:29:54Z | nil | nil | https://github.com/ClickHouse/ClickStack-helm-charts                   |
+|     221 | ClickHouse | refs/heads/ | main   | agentic-data-stack                       | 2026-06-01T00:42:28Z | nil | nil | https://github.com/ClickHouse/agentic-data-stack                       |
+|     160 | ClickHouse | refs/heads/ | main   | PostgresBench                            | 2026-05-31T23:56:13Z | nil | nil | https://github.com/ClickHouse/PostgresBench                            |
+| 3724488 | ClickHouse | refs/heads/ | master | clickhouse-presentations                 | 2026-05-31T11:35:40Z | nil | nil | https://github.com/ClickHouse/clickhouse-presentations                 |
+|     646 | ClickHouse | refs/heads/ | main   | github-explorer                          | 2026-05-31T09:16:46Z | nil | nil | https://github.com/ClickHouse/github-explorer                          |
+|     481 | ClickHouse | refs/heads/ | master | alexeyprompts                            | 2026-05-31T04:03:04Z | nil | nil | https://github.com/ClickHouse/alexeyprompts                            |
+|      16 | ClickHouse | refs/heads/ | main   | clickhouse-serilog-demo                  | 2026-05-30T21:13:42Z | nil | nil | https://github.com/ClickHouse/clickhouse-serilog-demo                  |
+|    1043 | ClickHouse | refs/heads/ | main   | ClickCannon                              | 2026-05-30T16:48:32Z | nil | nil | https://github.com/ClickHouse/ClickCannon                              |
+|      81 | ClickHouse | refs/heads/ | master | libgsasl                                 | 2026-05-30T15:43:33Z | nil | nil | https://github.com/ClickHouse/libgsasl                                 |
+|    4934 | ClickHouse | refs/heads/ | main   | stock-anomaly-udf                        | 2026-05-30T02:46:56Z | nil | nil | https://github.com/ClickHouse/stock-anomaly-udf                        |
+|    2579 | ClickHouse | refs/heads/ | main   | ch-go                                    | 2026-05-29T14:40:04Z | nil | nil | https://github.com/ClickHouse/ch-go                                    |
+|     162 | ClickHouse | refs/heads/ | main   | docker-library                           | 2026-05-29T13:07:13Z | nil | nil | https://github.com/ClickHouse/docker-library                           |
+|      60 | ClickHouse | refs/heads/ | main   | pg_re2                                   | 2026-05-27T15:02:31Z | nil | nil | https://github.com/ClickHouse/pg_re2                                   |
+|     760 | ClickHouse | refs/heads/ | main   | clickhouse-fivetran-destination          | 2026-05-27T09:09:42Z | nil | nil | https://github.com/ClickHouse/clickhouse-fivetran-destination          |
+|    9799 | ClickHouse | refs/heads/ | master | clickhouse-odbc                          | 2026-05-27T04:22:13Z | nil | nil | https://github.com/ClickHouse/clickhouse-odbc                          |
+|   25928 | ClickHouse | refs/heads/ | main   | NoiSQL                                   | 2026-05-26T17:24:08Z | nil | nil | https://github.com/ClickHouse/NoiSQL                                   |
+|      81 | ClickHouse | refs/heads/ | main   | hn-news-analyzer                         | 2026-05-26T17:07:50Z | nil | nil | https://github.com/ClickHouse/hn-news-analyzer                         |
+|    1568 | ClickHouse | refs/heads/ | master | houseofagents                            | 2026-05-26T11:05:24Z | nil | nil | https://github.com/ClickHouse/houseofagents                            |
+|    3887 | ClickHouse | refs/heads/ | main   | clickpy                                  | 2026-05-26T00:00:04Z | nil | nil | https://github.com/ClickHouse/clickpy                                  |
+|     277 | ClickHouse | refs/heads/ | main   | ClickHouse.Aspire                        | 2026-05-25T12:44:05Z | nil | nil | https://github.com/ClickHouse/ClickHouse.Aspire                        |
+|    1259 | ClickHouse | refs/heads/ | main   | clickhouse-academy                       | 2026-05-24T04:37:11Z | nil | nil | https://github.com/ClickHouse/clickhouse-academy                       |
+|    5035 | ClickHouse | refs/heads/ | master | velocity                                 | 2026-05-22T21:26:18Z | nil | nil | https://github.com/ClickHouse/velocity                                 |
+|     217 | ClickHouse | refs/heads/ | main   | stockhouse                               | 2026-05-22T11:46:01Z | nil | nil | https://github.com/ClickHouse/stockhouse                               |
+|      53 | ClickHouse | refs/heads/ | main   | clickhouse-go-linter                     | 2026-05-22T09:32:00Z | nil | nil | https://github.com/ClickHouse/clickhouse-go-linter                     |
+|      27 | ClickHouse | refs/heads/ | main   | clickhouse-wasm-udf-rs                   | 2026-05-22T07:29:27Z | nil | nil | https://github.com/ClickHouse/clickhouse-wasm-udf-rs                   |
+|     115 | ClickHouse | refs/heads/ | master | ch2rs                                    | 2026-05-21T15:26:12Z | nil | nil | https://github.com/ClickHouse/ch2rs                                    |
+|  375998 | ClickHouse | refs/heads/ | main   | adsb.exposed                             | 2026-05-21T15:26:01Z | nil | nil | https://github.com/ClickHouse/adsb.exposed                             |
+|      48 | ClickHouse | refs/heads/ | main   | ch-migrator-example                      | 2026-05-21T15:23:40Z | nil | nil | https://github.com/ClickHouse/ch-migrator-example                      |
+|     462 | ClickHouse | refs/heads/ | main   | ClickBOM                                 | 2026-05-20T18:59:12Z | nil | nil | https://github.com/ClickHouse/ClickBOM                                 |
+|    7843 | ClickHouse | refs/heads/ | main   | clickhouse.build                         | 2026-05-20T09:49:42Z | nil | nil | https://github.com/ClickHouse/clickhouse.build                         |
+|   60360 | ClickHouse | refs/heads/ | main   | ClickHouse_Demos                         | 2026-05-20T04:12:20Z | nil | nil | https://github.com/ClickHouse/ClickHouse_Demos                         |
+|      15 | ClickHouse | refs/heads/ | main   | integrations-shared-workflows            | 2026-05-19T08:33:31Z | nil | nil | https://github.com/ClickHouse/integrations-shared-workflows            |
+|    1138 | ClickHouse | refs/heads/ | main   | multiagent-terminal                      | 2026-05-18T19:13:51Z | nil | nil | https://github.com/ClickHouse/multiagent-terminal                      |
+|     660 | ClickHouse | refs/heads/ | main   | clickhouse-analyzer                      | 2026-05-18T17:22:04Z | nil | nil | https://github.com/ClickHouse/clickhouse-analyzer                      |
+|     450 | ClickHouse | refs/heads/ | main   | terraform-provider-clickhousedbops       | 2026-05-18T10:02:26Z | nil | nil | https://github.com/ClickHouse/terraform-provider-clickhousedbops       |
+|      70 | ClickHouse | refs/heads/ | main   | power-bi-clickhouse                      | 2026-05-17T22:13:08Z | nil | nil | https://github.com/ClickHouse/power-bi-clickhouse                      |
+|   13878 | ClickHouse | refs/heads/ | main   | HouseClick                               | 2026-05-17T14:27:01Z | nil | nil | https://github.com/ClickHouse/HouseClick                               |
+|    1230 | ClickHouse | refs/heads/ | master | clickhouse_exporter                      | 2026-05-16T23:57:31Z | nil | nil | https://github.com/ClickHouse/clickhouse_exporter                      |
+|      61 | ClickHouse | refs/heads/ | main   | aws_vpc_logs_demo                        | 2026-05-14T01:07:23Z | nil | nil | https://github.com/ClickHouse/aws_vpc_logs_demo                        |
+|      97 | ClickHouse | refs/heads/ | main   | ClickHouse.SemanticKernel                | 2026-05-13T12:27:54Z | nil | nil | https://github.com/ClickHouse/ClickHouse.SemanticKernel                |
+|     235 | ClickHouse | refs/heads/ | main   | tachikoma                                | 2026-05-13T05:05:02Z | nil | nil | https://github.com/ClickHouse/tachikoma                                |
+
+#+name: orgReposExclude
+| .github                  |
+| clickhouse-presentations |
+| clickhouse-docs          |
+| mintlify-docs-dev        |
+| rust_vendor              |
+| adsb.exposed             |
+| grpc                     |
+
+#+name: clickhouseReposXML
+#+begin_src emacs-lisp :var repos=orgRepos repos-exclude=orgReposExclude :results value html
+(let* ((repos-exclude (flatten-list repos-exclude)))
+  (thread-first
+    (thread-last
+      repos
+      (seq-filter (lambda (el) (not (a-get* el 'isArchived))))
+      (seq-filter (lambda (el) (not (a-get* el 'isFork))))
+      (seq-filter (lambda (el) (not (member (a-get* el 'name) repos-exclude))))
+      (mapcar (lambda (el)
+                (let* ((raw-name (a-get* el 'name))
+                       (path-dirs (list "clickhouse" raw-name))
+
+                       ;; (path-dirs (cond (repo-core? (list "core" raw-name))
+                       ;;                 (t (list "misc" raw-name))))
+
+                       (path (string-join path-dirs "/"))
+                       (ref (concat (a-get* el 'defaultBranchRef 'prefix)
+                                    (a-get* el 'defaultBranchRef 'name)))
+                       (name (string-join (list (a-get* el 'owner 'login)
+                                                (a-get* el 'name)) "/")))
+                  (concat "<project"
+                          " name=\"" name
+                          "\" path=\"" path
+                          "\" revision=\"" ref "\" remote=\"github\"/>")))))
+    (cl-sort 'string-lessp :key 'downcase)
+    (string-join "\n")))
+#+end_src
+
+#+RESULTS: clickhouseReposXML
+#+begin_export html
+<project name="ClickHouse/adbc_clickhouse" path="clickhouse/adbc_clickhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/agent-skills" path="clickhouse/agent-skills" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/agentic-data-stack" path="clickhouse/agentic-data-stack" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ai-sdk-cpp" path="clickhouse/ai-sdk-cpp" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/alexeyprompts" path="clickhouse/alexeyprompts" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/aspire-clickhouse-gateway-analytics-demo" path="clickhouse/aspire-clickhouse-gateway-analytics-demo" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/aws_vpc_logs_demo" path="clickhouse/aws_vpc_logs_demo" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/byoc-tools" path="clickhouse/byoc-tools" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ch-go" path="clickhouse/ch-go" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ch-migrator-example" path="clickhouse/ch-migrator-example" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ch2rs" path="clickhouse/ch2rs" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/click-ui" path="clickhouse/click-ui" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickBench" path="clickhouse/ClickBench" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickBOM" path="clickhouse/ClickBOM" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickCannon" path="clickhouse/ClickCannon" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickHouse" path="clickhouse/ClickHouse" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/clickhouse-academy" path="clickhouse/clickhouse-academy" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-analyzer" path="clickhouse/clickhouse-analyzer" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-c" path="clickhouse/clickhouse-c" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-claude-code-plugin" path="clickhouse/clickhouse-claude-code-plugin" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-connect" path="clickhouse/clickhouse-connect" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-cpp" path="clickhouse/clickhouse-cpp" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/clickhouse-cs" path="clickhouse/clickhouse-cs" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-cursor-plugin" path="clickhouse/clickhouse-cursor-plugin" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-fivetran-destination" path="clickhouse/clickhouse-fivetran-destination" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-go" path="clickhouse/clickhouse-go" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-go-linter" path="clickhouse/clickhouse-go-linter" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-java" path="clickhouse/clickhouse-java" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-js" path="clickhouse/clickhouse-js" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-kafka-connect" path="clickhouse/clickhouse-kafka-connect" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-kiro-power" path="clickhouse/clickhouse-kiro-power" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-odbc" path="clickhouse/clickhouse-odbc" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/clickhouse-operator" path="clickhouse/clickhouse-operator" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-rs" path="clickhouse/clickhouse-rs" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-serilog-demo" path="clickhouse/clickhouse-serilog-demo" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse-wasm-udf-rs" path="clickhouse/clickhouse-wasm-udf-rs" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickHouse.Aspire" path="clickhouse/ClickHouse.Aspire" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse.build" path="clickhouse/clickhouse.build" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickHouse.EntityFrameworkCore" path="clickhouse/ClickHouse.EntityFrameworkCore" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickHouse.SemanticKernel" path="clickhouse/ClickHouse.SemanticKernel" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickHouse_Demos" path="clickhouse/ClickHouse_Demos" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickhouse_exporter" path="clickhouse/clickhouse_exporter" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/clickhousectl" path="clickhouse/clickhousectl" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickpy" path="clickhouse/clickpy" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickStack" path="clickhouse/ClickStack" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/clickstack-demo-subscription-app" path="clickhouse/clickstack-demo-subscription-app" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/ClickStack-helm-charts" path="clickhouse/ClickStack-helm-charts" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/CostBench" path="clickhouse/CostBench" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/dbt-clickhouse" path="clickhouse/dbt-clickhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/docker-library" path="clickhouse/docker-library" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/dotnet-otel-clickstack-demo" path="clickhouse/dotnet-otel-clickstack-demo" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/examples" path="clickhouse/examples" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/flink-connector-clickhouse" path="clickhouse/flink-connector-clickhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/github-explorer" path="clickhouse/github-explorer" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/gitTrends" path="clickhouse/gitTrends" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/hn-news-analyzer" path="clickhouse/hn-news-analyzer" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/HouseClick" path="clickhouse/HouseClick" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/houseofagents" path="clickhouse/houseofagents" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/integrations-shared-workflows" path="clickhouse/integrations-shared-workflows" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/JSONBench" path="clickhouse/JSONBench" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/kubenetmon" path="clickhouse/kubenetmon" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/libgsasl" path="clickhouse/libgsasl" revision="refs/heads/master" remote="github"/>
+<project name="ClickHouse/librechat-admin-panel" path="clickhouse/librechat-admin-panel" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/mcp-clickhouse" path="clickhouse/mcp-clickhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/multiagent-terminal" path="clickhouse/multiagent-terminal" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/nerve" path="clickhouse/nerve" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/NoiSQL" path="clickhouse/NoiSQL" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/pg_clickhouse" path="clickhouse/pg_clickhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/pg_re2" path="clickhouse/pg_re2" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/pg_stat_ch" path="clickhouse/pg_stat_ch" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/PostgresBench" path="clickhouse/PostgresBench" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/power-bi-clickhouse" path="clickhouse/power-bi-clickhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/Serilog.Sinks.ClickHouse" path="clickhouse/Serilog.Sinks.ClickHouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/silk" path="clickhouse/silk" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/spark-clickhouse-connector" path="clickhouse/spark-clickhouse-connector" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/stock-anomaly-udf" path="clickhouse/stock-anomaly-udf" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/stockhouse" path="clickhouse/stockhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/tachikoma" path="clickhouse/tachikoma" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/terraform-provider-clickhouse" path="clickhouse/terraform-provider-clickhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/terraform-provider-clickhousedbops" path="clickhouse/terraform-provider-clickhousedbops" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/tpc-h-openhouse" path="clickhouse/tpc-h-openhouse" revision="refs/heads/main" remote="github"/>
+<project name="ClickHouse/velocity" path="clickhouse/velocity" revision="refs/heads/master" remote="github"/>
+#+end_export
+
+* Using legacy =ghub-graphql=
+** Docs
 
 + [[https://medium.com/@tharshita13/github-graphql-api-cheatsheet-38e916fe76a3][Github GraphQL Cheatsheet]]
 
@@ -22,7 +295,7 @@ And see [[https://github.com/vermiculus/graphql.el][vermiculus/graphql.el]] for 
 (setq-local org-confirm-babel-evaluate nil)
 #+end_src
 
-** Query Format for Search Interface
+*** Query Format for Search Interface
 
 #+begin_src graphql
 
@@ -53,7 +326,7 @@ query($org:String!){
 
 #+end_src
 
-* Oh so now I figure it out
+** Oh so now I figure it out
 
 Oh and apparently =magit= and =forge= will handle managing an organization's
 repositories for you -- including pulling/syncing. I would have known this if
@@ -75,7 +348,7 @@ going to tell you that? Nobody.
 
 Repo is still better for this purpose though.
 
-* Querying repositories
+** Querying repositories
 
 #+begin_example emacs-lisp
 (graphql-query
@@ -85,7 +358,7 @@ Repo is still better for this purpose though.
 #+RESULTS:
 : query{__schema{types{name{kind description fields{name}}}}}
 
-** Check API Rate Limit
+*** Check API Rate Limit
 
 Running each block with a =:var= that references another block will run that
 again.
@@ -102,7 +375,7 @@ again.
  (resetAt . "2023-05-01T23:35:35Z"))
 #+end_src
 
-** List An Organization's Repositories
+*** List An Organization's Repositories
 
 Get the core repositories. These should go into =/data/ecto/tensorflow/core=.
 
@@ -132,8 +405,6 @@ Get the core repositories. These should go into =/data/ecto/tensorflow/core=.
                           isArchived)))))))
 #+end_src
 
-#+RESULTS: tensorflow-repos
-| data | (organization (repositories (edges ((node (owner (login . tensorflow)) (name . tensorflow) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tensorflow) (updatedAt . 2023-04-26T13:30:55Z) (isArchived))) ((node (owner (login . tensorflow)) (name . nmt) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/nmt) (updatedAt . 2023-04-26T13:11:33Z) (isArchived))) ((node (owner (login . tensorflow)) (name . lucid) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/lucid) (updatedAt . 2023-04-26T12:58:56Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tensor2tensor) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tensor2tensor) (updatedAt . 2023-04-26T12:54:16Z) (isArchived))) ((node (owner (login . tensorflow)) (name . text) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/text) (updatedAt . 2023-04-26T12:53:06Z) (isArchived))) ((node (owner (login . tensorflow)) (name . io) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/io) (updatedAt . 2023-04-26T12:43:37Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tflite-micro) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/tflite-micro) (updatedAt . 2023-04-26T11:50:26Z) (isArchived))) ((node (owner (login . tensorflow)) (name . federated) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/federated) (updatedAt . 2023-04-26T11:19:57Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tflite-support) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tflite-support) (updatedAt . 2023-04-26T11:00:26Z) (isArchived))) ((node (owner (login . tensorflow)) (name . playground) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/playground) (updatedAt . 2023-04-26T10:55:06Z) (isArchived))) ((node (owner (login . tensorflow)) (name . build) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/build) (updatedAt . 2023-04-26T10:03:14Z) (isArchived))) ((node (owner (login . tensorflow)) (name . model-optimization) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/model-optimization) (updatedAt . 2023-04-26T09:55:10Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs) (updatedAt . 2023-04-26T09:49:26Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-models) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-models) (updatedAt . 2023-04-26T09:02:28Z) (isArchived))) ((node (owner (login . tensorflow)) (name . recommenders) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/recommenders) (updatedAt . 2023-04-26T09:01:43Z) (isArchived))) ((node (owner (login . tensorflow)) (name . ecosystem) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/ecosystem) (updatedAt . 2023-04-26T08:51:31Z) (isArchived))) ((node (owner (login . tensorflow)) (name . similarity) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/similarity) (updatedAt . 2023-04-26T08:47:07Z) (isArchived))) ((node (owner (login . tensorflow)) (name . docs-l10n) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/docs-l10n) (updatedAt . 2023-04-26T08:37:18Z) (isArchived))) ((node (owner (login . tensorflow)) (name . models) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/models) (updatedAt . 2023-04-26T08:08:18Z) (isArchived))) ((node (owner (login . tensorflow)) (name . transform) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/transform) (updatedAt . 2023-04-26T07:55:23Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tpu) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tpu) (updatedAt . 2023-04-26T07:38:53Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-core) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-core) (updatedAt . 2023-04-26T07:29:20Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . serving) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/serving) (updatedAt . 2023-04-26T06:29:40Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tflite-micro-arduino-examples) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/tflite-micro-arduino-examples) (updatedAt . 2023-04-26T06:16:21Z) (isArchived))) ((node (owner (login . tensorflow)) (name . recommenders-addons) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/recommenders-addons) (updatedAt . 2023-04-26T06:10:49Z) (isArchived))) ((node (owner (login . tensorflow)) (name . deepmath) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/deepmath) (updatedAt . 2023-04-26T05:44:14Z) (isArchived))) ((node (owner (login . tensorflow)) (name . agents) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/agents) (updatedAt . 2023-04-26T03:49:10Z) (isArchived))) ((node (owner (login . tensorflow)) (name . datasets) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/datasets) (updatedAt . 2023-04-26T03:04:46Z) (isArchived))) ((node (owner (login . tensorflow)) (name . minigo) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/minigo) (updatedAt . 2023-04-26T02:20:02Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . adanet) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/adanet) (updatedAt . 2023-04-26T01:48:05Z) (isArchived))) ((node (owner (login . tensorflow)) (name . examples) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/examples) (updatedAt . 2023-04-26T01:27:16Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfx) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfx) (updatedAt . 2023-04-25T20:53:47Z) (isArchived))) ((node (owner (login . tensorflow)) (name . ranking) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/ranking) (updatedAt . 2023-04-25T20:23:18Z) (isArchived))) ((node (owner (login . tensorflow)) (name . community) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/community) (updatedAt . 2023-04-25T19:47:48Z) (isArchived))) ((node (owner (login . tensorflow)) (name . docs) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/docs) (updatedAt . 2023-04-25T19:37:25Z) (isArchived))) ((node (owner (login . tensorflow)) (name . rust) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/rust) (updatedAt . 2023-04-25T18:41:57Z) (isArchived))) ((node (owner (login . tensorflow)) (name . profiler) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/profiler) (updatedAt . 2023-04-25T17:50:09Z) (isArchived))) ((node (owner (login . tensorflow)) (name . gnn) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/gnn) (updatedAt . 2023-04-25T17:31:05Z) (isArchived))) ((node (owner (login . tensorflow)) (name . swift) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/swift) (updatedAt . 2023-04-25T15:18:19Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . tcav) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tcav) (updatedAt . 2023-04-25T14:07:09Z) (isArchived))) ((node (owner (login . tensorflow)) (name . embedding-projector-standalone) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/embedding-projector-standalone) (updatedAt . 2023-04-25T13:59:37Z) (isArchived))) ((node (owner (login . tensorflow)) (name . compression) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/compression) (updatedAt . 2023-04-25T12:49:02Z) (isArchived))) ((node (owner (login . tensorflow)) (name . addons) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/addons) (updatedAt . 2023-04-25T12:36:39Z) (isArchived))) ((node (owner (login . tensorflow)) (name . java) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/java) (updatedAt . 2023-04-25T12:22:52Z) (isArchived))) ((node (owner (login . tensorflow)) (name . workshops) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/workshops) (updatedAt . 2023-04-25T12:15:03Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . quantum) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/quantum) (updatedAt . 2023-04-25T11:43:15Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-examples) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-examples) (updatedAt . 2023-04-25T09:09:29Z) (isArchived))) ((node (owner (login . tensorflow)) (name . privacy) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/privacy) (updatedAt . 2023-04-25T07:14:17Z) (isArchived))) ((node (owner (login . tensorflow)) (name . lingvo) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/lingvo) (updatedAt . 2023-04-25T06:54:32Z) (isArchived))) ((node (owner (login . tensorflow)) (name . probability) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/probability) (updatedAt . 2023-04-25T03:50:23Z) (isArchived))) ((node (owner (login . tensorflow)) (name . custom-op) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/custom-op) (updatedAt . 2023-04-25T03:20:45Z) (isArchived))) ((node (owner (login . tensorflow)) (name . hub) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/hub) (updatedAt . 2023-04-25T01:52:57Z) (isArchived))) ((node (owner (login . tensorflow)) (name . mesh) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/mesh) (updatedAt . 2023-04-25T00:34:43Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-node) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-node) (updatedAt . 2023-04-24T20:35:50Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . decision-forests) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/decision-forests) (updatedAt . 2023-04-24T14:14:38Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfrc) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfrc) (updatedAt . 2023-04-24T12:41:19Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . java-ndarray) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/java-ndarray) (updatedAt . 2023-04-24T12:30:51Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-wechat) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-wechat) (updatedAt . 2023-04-24T09:56:07Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tensorrt) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tensorrt) (updatedAt . 2023-04-24T06:50:08Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tensorboard) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tensorboard) (updatedAt . 2023-04-24T01:37:22Z) (isArchived))) ((node (owner (login . tensorflow)) (name . neural-structured-learning) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/neural-structured-learning) (updatedAt . 2023-04-23T18:56:22Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-tsne) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-tsne) (updatedAt . 2023-04-23T14:06:34Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . fairness-indicators) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/fairness-indicators) (updatedAt . 2023-04-23T08:18:22Z) (isArchived))) ((node (owner (login . tensorflow)) (name . data-validation) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/data-validation) (updatedAt . 2023-04-23T07:47:21Z) (isArchived))) ((node (owner (login . tensorflow)) (name . model-analysis) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/model-analysis) (updatedAt . 2023-04-22T15:18:42Z) (isArchived))) ((node (owner (login . tensorflow)) (name . haskell) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/haskell) (updatedAt . 2023-04-22T11:37:17Z) (isArchived))) ((node (owner (login . tensorflow)) (name . runtime) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/runtime) (updatedAt . 2023-04-22T10:57:40Z) (isArchived))) ((node (owner (login . tensorflow)) (name . graphics) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/graphics) (updatedAt . 2023-04-22T04:58:22Z) (isArchived))) ((node (owner (login . tensorflow)) (name . gan) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/gan) (updatedAt . 2023-04-21T15:31:24Z) (isArchived))) ((node (owner (login . tensorflow)) (name . mlir-hlo) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/mlir-hlo) (updatedAt . 2023-04-21T06:51:13Z) (isArchived))) ((node (owner (login . tensorflow)) (name . fold) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/fold) (updatedAt . 2023-04-20T07:17:54Z) (isArchived))) ((node (owner (login . tensorflow)) (name . mlir) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/mlir) (updatedAt . 2023-04-19T10:54:34Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . skflow) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/skflow) (updatedAt . 2023-04-19T07:55:19Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . benchmarks) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/benchmarks) (updatedAt . 2023-04-19T06:36:34Z) (isArchived))) ((node (owner (login . tensorflow)) (name . estimator) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/estimator) (updatedAt . 2023-04-19T05:51:48Z) (isArchived))) ((node (owner (login . tensorflow)) (name . model-card-toolkit) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/model-card-toolkit) (updatedAt . 2023-04-18T16:49:46Z) (isArchived))) ((node (owner (login . tensorflow)) (name . lattice) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/lattice) (updatedAt . 2023-04-18T09:24:46Z) (isArchived))) ((node (owner (login . tensorflow)) (name . codelabs) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/codelabs) (updatedAt . 2023-04-18T08:32:38Z) (isArchived))) ((node (owner (login . tensorflow)) (name . networking) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/networking) (updatedAt . 2023-04-18T02:50:21Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfx-addons) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/tfx-addons) (updatedAt . 2023-04-17T09:33:42Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tensorstore) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tensorstore) (updatedAt . 2023-04-17T07:29:29Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . java-models) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/java-models) (updatedAt . 2023-04-17T07:27:22Z) (isArchived))) ((node (owner (login . tensorflow)) (name . kfac) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/kfac) (updatedAt . 2023-04-17T07:26:44Z) (isArchived))) ((node (owner (login . tensorflow)) (name . toolchains) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/toolchains) (updatedAt . 2023-04-17T07:26:25Z) (isArchived))) ((node (owner (login . tensorflow)) (name . moonlight) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/moonlight) (updatedAt . 2023-04-17T07:25:37Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . swift-apis) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/swift-apis) (updatedAt . 2023-04-17T07:24:16Z) (isArchived))) ((node (owner (login . tensorflow)) (name . dtensor-gcp-examples) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/dtensor-gcp-examples) (updatedAt . 2023-04-17T07:24:06Z) (isArchived))) ((node (owner (login . tensorflow)) (name . .allstar) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/.allstar) (updatedAt . 2023-04-17T07:23:27Z) (isArchived))) ((node (owner (login . tensorflow)) (name . oss-fuzz) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/oss-fuzz) (updatedAt . 2023-04-17T07:23:12Z) (isArchived))) ((node (owner (login . tensorflow)) (name . cloud) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/cloud) (updatedAt . 2023-04-17T07:22:51Z) (isArchived))) ((node (owner (login . tensorflow)) (name . sig-tfjs) (defaultBranchRef (prefix . refs/heads/) (name . main)) (url . https://github.com/tensorflow/sig-tfjs) (updatedAt . 2023-04-17T07:22:27Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tf-build-actions) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tf-build-actions) (updatedAt . 2023-04-17T07:21:49Z) (isArchived))) ((node (owner (login . tensorflow)) (name . model-remediation) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/model-remediation) (updatedAt . 2023-04-17T07:21:27Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-website) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-website) (updatedAt . 2023-04-17T07:09:25Z) (isArchived))) ((node (owner (login . tensorflow)) (name . metadata) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/metadata) (updatedAt . 2023-04-17T07:08:41Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfhub.dev) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfhub.dev) (updatedAt . 2023-04-17T07:08:15Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfx-bsl) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfx-bsl) (updatedAt . 2023-04-17T07:08:06Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-vis) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-vis) (updatedAt . 2023-04-11T08:32:12Z) (isArchived . t))) ((node (owner (login . tensorflow)) (name . profiler-ui) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/profiler-ui) (updatedAt . 2023-04-10T17:58:55Z) (isArchived))) ((node (owner (login . tensorflow)) (name . tfjs-converter) (defaultBranchRef (prefix . refs/heads/) (name . master)) (url . https://github.com/tensorflow/tfjs-converter) (updatedAt . 2023-03-30T07:38:19Z) (isArchived . t)))))) |
 
 This query inflates to the following graphql and can be run on the [[https://docs.github.com/en/graphql/overview/explorer][Github Graph
 Explorer]], which is obnoxiously hard to find from Google when you need it.
@@ -165,7 +436,7 @@ Explorer]], which is obnoxiously hard to find from Google when you need it.
 }
 #+end_example
 
-*** Convert to XML
+**** Convert to XML
 
 All hail =ripgrep=. The browser is dead.
 
@@ -282,15 +553,15 @@ All hail =ripgrep=. The browser is dead.
 <project name="tensorflow/transform" path="transform" ref="refs/heads/master" remote="github" />
 #+end_export
 
-* Querying Schema
+** Querying Schema
 
-** with ghub
+*** with ghub
 
 Okay jebus it's 11,500 lines long (and in my kill-ring)
 
-*** Types
+**** Types
 
-**** Repository
+***** Repository
 
 #+name: github-type-repository
 #+header-args: :mkdirp t
@@ -300,7 +571,7 @@ Okay jebus it's 11,500 lines long (and in my kill-ring)
                          name kind description (fields (name))))))
 #+end_src
 
-*** Full Schema
+**** Full Schema
 
 #+name: github-schema
 #+begin_src emacs-lisp :results value file silent :exports code
@@ -308,7 +579,7 @@ Okay jebus it's 11,500 lines long (and in my kill-ring)
  (graphql-query ((__schema (types name kind description (fields (name)))))))
 #+end_src
 
-*** Dump Schema to JSON
+**** Dump Schema to JSON
 
 Hmmm, but i need an =sdl= file
 
@@ -327,7 +598,7 @@ And for a single type
                           name kind description (fields (name)))))))
 #+end_src
 
-** WIth ob-graphql
+*** WIth ob-graphql
 
 I can't get this to work. It doesn't accept the authorization token.
 
@@ -353,7 +624,7 @@ query{
 }
 #+end_src
 
-** With ob-restclient
+*** With ob-restclient
 
 #+name: gql-query-schema
 #+begin_example graphql
