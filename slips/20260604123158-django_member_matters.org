@@ -1,0 +1,323 @@
+:PROPERTIES:
+:ID:       4f480460-c42d-4ebb-a53f-418f8311a9a3
+:END:
+#+TITLE: Django: Member Matters
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+** App
+*** Source
++ [[https://github.com/membermatters/MemberMatters][membermatters/MemberMatters]]
+  + fork [[https://github.com/MakersOfSweden/MemberMatters][MakersOfSweden/MemberMatters]]
+
+*** Docs
++ [[https://github.com/MakersOfSweden/MemberMatters/blob/dev/docs/GETTING_STARTED.md#kiosk-mode][Kiosk Mode]] in getting started
++ environment config and API hooks in [[https://github.com/MakersOfSweden/MemberMatters/blob/dev/docs/POST_INSTALL_STEPS.md][Post Install Steps]]
++ [[https://github.com/MakersOfSweden/MemberMatters/blob/dev/docs/SPACEDIRECTORY.md][SpaceDirectory integration]] via SpaceAPI (push data, including sensors)
+** Integrations
++ SSO for openapi/discourse
++ discord, slack, twilio
++ trello/vikunja
++ space directory
++ moodle, canvas
++ mailchimp, postmark
+
+See [[https://github.com/MakersOfSweden/membermatters/blob/33f77c4dc36561a90a90c5bc15fa64e3fb93194d/memberportal/membermatters/constance_config.py#L170][./membermatters/constance_config.py]]
+
+** Django
++ [[https://djls.joshthomas.dev/en/latest/installation/][Django LS]] (and [[https://github.com/joshuadavidthomas/djls-vscode][joshuadavidthomas/djls-vscode]])
+
+
+* Status
+
+** Features
++ [[orgit-topic:Z2l0aHViLmNvbTpSX2tnRE9OWGRraXc6aXNzdWUyNw==][#27 Ability to change payment plan for a user]]
++ [[orgit-topic:Z2l0aHViLmNvbTpSX2tnRE9OWGRraXc6aXNzdWUyNg==][#26 Ability to change prices of the current payment plans]]
+
+#+begin_quote
+=orgit-store-link= from =forge= is da shiznite
+#+end_quote
+
+* Overview
+** Frontend
++ Routes and menuItems in [[https://github.com/MakersOfSweden/membermatters/blob/33f77c4dc36561a90a90c5bc15fa64e3fb93194d/src-frontend/src/pages/pageAndRouteConfig.ts#L1][./src-frontend/src/pages/pageAndRouteConfig.ts]]
+** Structure
+
+
+*** LLM Input
+
+
+** Services
+
++ postgres
++ redis
++ webapp
++ celery-worker
++ celery-beat
++ celery-prom-exporter
+
+#+begin_src dot :results output file :file img/devops/member-matters-services.svg
+digraph G {
+    {webapp,celeryWorker,celeryBeat} -> {postgres,redis}
+    {celeryWorker,celeryBeat} -> {webapp}
+    {celeryPromExporter} -> {redis,celeryWorker}
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/member-matters-services.svg]]
+** Docker
+
++ by default, compose brings the app up in =Production=
+  - once the database is created, it persists in the volume
+  - ~sed -i -E 's/MM_ENV: "Production"/MM_ENV: "Production"/g'~
++ Running in production requires addressing [[https://github.com/MakersOfSweden/membermatters/blob/33f77c4dc36561a90a90c5bc15fa64e3fb93194d/memberportal/membermatters/settings.py#L41-L63][this]] and [[https://github.com/MakersOfSweden/membermatters/blob/33f77c4dc36561a90a90c5bc15fa64e3fb93194d/memberportal/membermatters/settings.py#L134-L161][this]] at least
+
+#+begin_src shell
+compose=docker/dev-compose.yml
+docker compose -f $compose pull # add repos to avoid selection
+docker compose -f $compose up
+#+end_src
+
++ default login created by [[https://github.com/MakersOfSweden/membermatters/blob/33f77c4dc36561a90a90c5bc15fa64e3fb93194d/memberportal/fixtures/initial.json#L6-L14][./memberportal/fixtures/initial.json]]
+  - password: =MemberMatters!=
++ [[https://github.com/MakersOfSweden/membermatters/blob/33f77c4dc36561a90a90c5bc15fa64e3fb93194d/dev.env#L1][./dev.env]] contains environment setup, corresponding to
+  [[https://github.com/MakersOfSweden/membermatters/blob/33f77c4dc36561a90a90c5bc15fa64e3fb93194d/memberportal/membermatters/settings.py#L29-L36][./membermatters/settings.py]]
+
+#+begin_src shell
+docker run -it docker_mm-webapp_1 bash
+cd /usr/src/app/memberportal
+# python3 manage.py loaddata initial
+/usr/local/bin/python3 manage.py loaddata initial
+#+end_src
+
+** API
++ Django isn't set up for openAPI, but the integrations are probably more
+  important.
+
+** Features
+
+*** Configurable
+
+| signup.enableIntroduction  | enableRegistration       | enableInduction                  |
+| enableNewSubscriptions     | enableMembershipPayments | enableInvoicebillling            |
+| enableStripe               | enableMemberBucks        | emableMembersOnSite              |
+| enableMembershipStatusCard | enableProxyVoting        | enableMembershipApplicationEmail |
+| sms.enable                 | enableReportIssue        | enableWebcamps                   |
+| enableStatsPage            | enableLastSeenPage       | enableRecentSwipesPage           |
+
+* Emacs
+
+** doom emacs defaults
+
+** django-language-server
+
+
+* Schema
+:PROPERTIES:
+:header-args+: :var pguser="membermatters" pgpass="membermatters" pgdb="membermatters"
+:END:
+
+#+name:pguri
+#+begin_src emacs-lisp :results value
+(format "postgres://%s:%s@0.0.0.0:5432/%s?sslmode=disable" pguser pgpass pgdb)
+        ;; uri=postgres://$pguser:$pgpass@0.0.0.0:5432/$pgdb?sslmode=disable
+#+end_src
+
+#+RESULTS: pguri
+: postgres://membermatters:membermatters@0.0.0.0:5432/membermatters?sslmode=disable
+
+
+
+#+begin_src shell
+
+#+end_src
+
+
+#+name: planterpkg
+#+begin_src emacs-lisp
+(format "%s/org/roam/dcguix/packages/golang/planter.scm" (getenv "HOME"))
+#+end_src
+
+#+RESULTS: planterpkg
+: /home/dc/org/roam/dcguix/packages/golang/planter.scm
+
+extract plantuml from schema (seems to return duplicate foreign keys)
+
+#+name: mmSchemaPuml
+#+begin_src shell :var pkg=planterpkg uri=pguri :results output file :file img/devops/membermatters-schema.puml :eval no
+guix shell -f $pkg -- planter $uri
+     # | sed -e 's/@startuml$/@startuml\nleft to right direction/g'
+#+end_src
+
+#+RESULTS: mmSchemaPuml
+[[file:img/devops/membermatters-schema.puml]]
+
+From the PUML, select all table names:
+
+#+begin_src shell :var puml="img/devops/membermatters-schema.puml" :results output table :eval no
+cat "$puml" | grep -E '^entity ' | cut -f3 -d'*'
+#+end_src
+
+#+name: mmTables
+| profile_eventlog              | access_accesscontrolleddevice             | api_admin_tools_membertier                  | constance_config                    | oidc_provider_client                |
+| profile_log                   | access_accesscontrolleddeviceapikey       | api_admin_tools_paymentplan                 | django_admin_log                    | oidc_provider_client_response_types |
+| profile_profile               | access_doorlog                            | api_general_emailverificationtoken          | django_celery_beat_clockedschedule  | oidc_provider_code                  |
+| profile_profile_doors         | access_doors                              | api_general_kiosk                           | django_celery_beat_crontabschedule  | oidc_provider_responsetype          |
+| profile_profile_interlocks    | access_externalaccesscontrolapikey        | api_general_sitesession                     | django_celery_beat_intervalschedule | oidc_provider_token                 |
+| profile_user                  | access_interlock                          | api_meeting_meeting                         | django_celery_beat_periodictask     | oidc_provider_userconsent           |
+| profile_user_groups           | access_interlocklog                       | api_meeting_meeting_attendees               | django_celery_beat_periodictasks    |                                     |
+| profile_user_user_permissions | access_memberbucksdevice                  | api_meeting_proxyvote                       | django_celery_beat_solarschedule    |                                     |
+| profile_usereventlog          | memberbucks_memberbucks                   | api_metrics_metric                          | django_celery_results_chordcounter  |                                     |
+| auth_group                    | memberbucks_memberbucksproduct            | api_spacedirectory_spaceapi                 | django_celery_results_groupresult   |                                     |
+| auth_group_permissions        | memberbucks_memberbucksproductpurchaselog | api_spacedirectory_spaceapisensor           | django_celery_results_taskresult    |                                     |
+| auth_permission               |                                           | api_spacedirectory_spaceapisensorproperties | django_content_type                 |                                     |
+|                               |                                           | rest_framework_api_key_apikey               | django_migrations                   |                                     |
+|                               |                                           |                                             | django_session                      |                                     |
+
+
+convert plantuml to image
+
+#+name: pumlToImg
+#+begin_src shell :var t="svg" f="membermatters-schema" d=(expand-file-name "img/devops") :results output file link
+# f=membermatters-schema
+# d=$(pwd)/img/devops
+# t=svg #
+t=png
+plantuml -v -o $d -t$t $d/$f.puml
+echo -n $d/$f.$t
+#+end_src
+
+#+RESULTS: pumlToImg
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-schema.svg]]
+
+** Per-concept Schema
+
+| django            | profiles       | logs |
+|-------------------+----------------+------|
+| django_celery.*   | profile_user.* | _log |
+| django_session    | api_meeting.*  |      |
+| django_migrations | auth_.*        |      |
+| rest_framework    |                |      |
+| api_metrics       |                |      |
+| api_general_kiosk |                |      |
+| constance_config  |                |      |
+| api_spacedir      |                |      |
+
+#+name: mmFeaturePuml
+#+begin_src shell :results output :var tbl="^auth" xtbl="" pkg=planterpkg uri=pguri
+args=()
+# these args can accept multiple invocations
+[[ -n "$tbl" ]] && args+=("-t" "$tbl")
+[[ -n "$xtbl" ]] && args+=("-x" "$xtbl")
+guix shell -f "$pkg" -- planter $uri ${args[@]} \
+    | sed -e 's/@startuml$/@startuml\nleft to right direction/g'
+#+end_src
+
+needed to reevaluate these to avoid writing some awk script
+
+*** django
+
+*img/devops/membermatters-django.puml*
+
+#+call: mmFeaturePuml(tbl="^(django_celery|constance_)") :results output file :file "img/devops/membermatters-django.puml"
+
+#+RESULTS:
+[[file:img/devops/membermatters-django.puml]]
+
+#+call: pumlToImg(t="svg", f="membermatters-django")
+
+#+RESULTS:
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-django.png]]
+
+*** integrations
+
+*img/devops/membermatters-integrations.puml*
+
+#+call: mmFeaturePuml(tbl="^(constance_|rest_framework|api_metrics|api_general_kiosk|api_spacedir)") :results output file :file "img/devops/membermatters-integrations.puml"
+
+#+RESULTS:
+[[file:img/devops/membermatters-integrations.puml]]
+
+#+call: pumlToImg(t="svg", f="membermatters-integrations")
+
+#+RESULTS:
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-integrations.png]]
+
+*** oidc
+
+*img/devops/membermatters-oidc.puml*
+
+#+call: mmFeaturePuml(tbl="^(oidc_|profile_user$|api_general_)") :results output file :file "img/devops/membermatters-oidc.puml"
+
+#+RESULTS:
+[[file:img/devops/membermatters-oidc.puml]]
+
+#+call: pumlToImg(t="svg", f="membermatters-oidc")
+
+#+RESULTS:
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-oidc.png]]
+
+*** profiles
+
+*img/devops/membermatters-profiles.puml*
+
+#+call: mmFeaturePuml(tbl="^(profile_profile|api_admin_)") :results output file :file "img/devops/membermatters-profiles.puml"
+
+#+RESULTS:
+[[file:img/devops/membermatters-profiles.puml]]
+
+#+call: pumlToImg(t="svg", f="membermatters-profiles")
+
+#+RESULTS:
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-profiles.png]]
+
+*** access
+
+*img/devops/membermatters-access.puml*
+
+#+call: mmFeaturePuml(tbl="^(profile_profile|api_admin_|access_[di]|profile_user$|profile_profile_doors$|profile_profile_interlocks$|access_accesscontrolleddevice$)") :results output file :file "img/devops/membermatters-access.puml"
+
+#+RESULTS:
+[[file:img/devops/membermatters-access.puml]]
+
+
+#+call: pumlToImg(t="svg", f="membermatters-access")
+
+#+RESULTS:
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-access.png]]
+
+*** memberbucks
+
+*img/devops/membermatters-memberbucks.puml*
+
+#+call: mmFeaturePuml(tbl="^(memberbucks|access_memberbucks|profile_log$|profile_eventlog$|profile_user$|profile_profile$)") :results output file :file "img/devops/membermatters-memberbucks.puml"
+
+#+RESULTS:
+[[file:img/devops/membermatters-memberbucks.puml]]
+
+#+call: pumlToImg(t="svg", f="membermatters-memberbucks")
+
+#+RESULTS:
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-memberbucks.png]]
+
+*** users
+
+*img/devops/membermatters-users.puml*
+
+#+call: mmFeaturePuml(tbl="^(profile_user|api_meeting|auth_|profile_profile$)") :results output file :file "img/devops/membermatters-users.puml"
+
+#+RESULTS:
+[[file:img/devops/membermatters-users.puml]]
+
+#+call: pumlToImg(t="svg", f="membermatters-users")
+
+#+RESULTS:
+[[file:/home/dc/org/roam/slips/img/devops/membermatters-users.png]]
+
+* Roam
++ [[id:b4c096ee-6e40-4f34-85a1-7fc901e819f5][Python]]
++ [[id:1fd23f33-ec84-47e2-b326-dce568f1ae83][Web Design]]
++ [[id:6bc438a4-358f-4ba2-9338-7ee4912969ca][Makerspaces]]
