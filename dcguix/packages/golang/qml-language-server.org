@@ -1,0 +1,255 @@
+:PROPERTIES:
+:ID:       475a26b8-ef8f-42fa-aebc-a3bf58504321
+:END:
+#+TITLE: Qml Language Server
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:abd2d6e9-fe5b-4ba4-8533-0e5a3d174743][Golang]]
++ [[id:22d49a77-88d3-4134-9612-a5ba6aa24782][DC Guix: Tree Sitter Qmljs]]
++ [[id:39e14ffe-75c9-49e6-b852-6c492c4ee3e0][KDE]]
+  
+* Example
+
+* Overview
+
+* Packages
+
+#+begin_src scheme
+(define-module (ellipsis packages golang)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix gexp)
+  #:use-module (guix utils)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
+  #:use-module (guix packages)
+  #:use-module (guix build-system go) 
+
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages golang)
+  #:use-module (gnu packages golang-xyz)
+  #:use-module (gnu packages golang-web)   ;; <--- added
+  #:use-module (gnu packages golang-check)
+  #:use-module (gnu packages golang-build) ;; <--- added 
+  ;; #:use-module (gnu packages gcc)
+
+  #:use-module (srfi srfi-1))
+#+end_src
+
+**  go-github-com-cushycush-qml-language-server
+
+The package namespacing is a bit weird (idk golang, so ... really idk). Maybe
+it's because it's not intended to be distributed on gopkgs.
+
++ the module is namespaced as =qml-language-server=, but like =gotreesitter=, i'm
+  not sure how to naively import everything. the recipes for Nix & Arch jus
+  builds it though. They don't declare much special handling. it would be
+  interesting to scan the binaries for =ada.bin=, etc.
++ anyways, as i explain further below, this project's =qml*.bin= grammar is
+  already pre-build. maybe =gotreesitter= is only a develop-time dependency.
+  - a full build of the grammar would then require a =gotreesitter= procedure that
+    accepts build args & runs in the =src/= context to generate =qml*.bin=.
++ in any case, i can just grab the binary release. i was hoping to learn a bit
+  and/or contribute this upstream, since importing a full Qt development env for
+  just for that LSP is um not the best (for quickshell dev)
+  - I realllly do not like LSP lol (VSCode just downloads it straight away no
+    questions asked: just click that "trust me, bro" button)
++ the next failure for this build would result from similar namespacing.
+
+#+begin_src scheme
+(define-public go-github-com-cushycush-qml-language-server
+  (package
+   (name "go-github-com-cushycush-qml-language-server")
+   (version "1.7.0")
+   (source
+    (origin
+     (method git-fetch)
+     (uri (git-reference
+           (url "https://github.com/cushycush/qml-language-server")
+           (commit (string-append "v" version))))
+     (file-name (git-file-name name version))
+     (sha256
+      (base32 "1952wmr4z0fsmip8bh44hgmsbaqqvlmlmcbxv5b9822n6nmr6mfm"))))
+   (build-system go-build-system)
+   (arguments
+    (list
+     #:go go-1.26
+     #:build-flags
+     #~(list (string-append "-ldflags=-X main.version=" #$version))
+     #:unpack-path "qml-language-server"
+     #:import-path "qml-language-server"
+     #:phases
+     #~(modify-phases %standard-phases
+                      (add-before 'build 'specify-grammars
+                                  (lambda _
+                                    (setenv "GOTREESITTER_GRAMMAR_BLOB_DIR"
+                                            "src/qml-language-server/grammars/grammar_blobs")
+                                    (setenv "GOTREESITTER_GRAMMAR_BLOB_MMAP" "false")))
+                      ;; (add-after 'unpack 'delete-grammars
+                      ;;   (lambda _
+                      ;;     (for-each delete-file
+                      ;;               (find-files
+                      ;;                "src/github.com/odvcencio/gotreesitter/grammars/grammar_blobs"
+                      ;;                ".*\\.bin"))))
+                      )
+     ;; #:embed-files #~(list "grammars/grammar_blobs/.*\\.bin")
+     ))
+   (native-inputs
+    (list go-github-com-odvcencio-gotreesitter go-github-com-owenrumney-go-lsp))
+   ;; (propagated-inputs
+   ;;  (list go-github-com-odvcencio-gotreesitter go-github-com-owenrumney-go-lsp))
+   (home-page "https://github.com/cushycush/qml-language-server")
+   (synopsis "qml-language-server")
+   (description
+    "A Go-based Language Server for QML (Qt Meta-Object Language) that provides intelligent code editing features.")
+   (license license:expat)))
+#+end_src
+
+** go-github-com-odvcencio-gotreesitter
+
+This likely needs to be defined as a procedure, since downstream packages can
+tune the build.
+
+#+begin_src scheme
+(define-public go-github-com-odvcencio-gotreesitter
+  (package
+   (name "go-github-com-odvcencio-gotreesitter")
+   (version "0.20.0")
+   (source
+    (origin
+     (method git-fetch)
+     (uri (git-reference
+           (url "https://github.com/odvcencio/gotreesitter")
+           (commit (string-append "v" version))))
+     (file-name (git-file-name name version))
+     (sha256
+      (base32 "1a0ppi1z6bj3hc3by8ip820b156al9zdjmy0icr46dndk59k4hvp"))))
+   (build-system go-build-system)
+   (arguments
+    (list
+     #:import-path "github.com/odvcencio/gotreesitter"
+     #:phases
+     #~(modify-phases %standard-phases
+                      ;; TODO: temp fix failing tests
+                      (delete 'check))))
+   (propagated-inputs (list go-golang-org-x-sync go-gopkg-in-yaml-v3))
+   (home-page "https://github.com/odvcencio/gotreesitter")
+   (synopsis "gotreesitter")
+   (description
+    "Package gotreesitter implements a pure Go tree-sitter runtime.")
+   (license license:expat)))
+#+end_src
+
+These were test failures IIRC
+
+#+begin_example log
+# github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay
+src/github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay/main.go:17:2: cannot find package "github.com/smacker/go-tree-sitter" in any of:
+	/gnu/store/sdgy0niwhf0dgyw1iws53yvdw62h1m5z-go-1.24.13/lib/go/src/github.com/smacker/go-tree-sitter (from $GOROOT)
+	/tmp/guix-build-go-github-com-odvcencio-gotreesitter-0.20.0.drv-0/src/github.com/smacker/go-tree-sitter (from $GOPATH)
+# github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay
+src/github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay/main.go:18:2: cannot find package "github.com/smacker/go-tree-sitter/golang" in any of:
+	/gnu/store/sdgy0niwhf0dgyw1iws53yvdw62h1m5z-go-1.24.13/lib/go/src/github.com/smacker/go-tree-sitter/golang (from $GOROOT)
+	/tmp/guix-build-go-github-com-odvcencio-gotreesitter-0.20.0.drv-0/src/github.com/smacker/go-tree-sitter/golang (from $GOPATH)
+# github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay
+src/github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay/main.go:19:2: cannot find package "github.com/smacker/go-tree-sitter/java" in any of:
+	/gnu/store/sdgy0niwhf0dgyw1iws53yvdw62h1m5z-go-1.24.13/lib/go/src/github.com/smacker/go-tree-sitter/java (from $GOROOT)
+	/tmp/guix-build-go-github-com-odvcencio-gotreesitter-0.20.0.drv-0/src/github.com/smacker/go-tree-sitter/java (from $GOPATH)
+# github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay
+src/github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay/main.go:20:2: cannot find package "github.com/smacker/go-tree-sitter/python" in any of:
+	/gnu/store/sdgy0niwhf0dgyw1iws53yvdw62h1m5z-go-1.24.13/lib/go/src/github.com/smacker/go-tree-sitter/python (from $GOROOT)
+	/tmp/guix-build-go-github-com-odvcencio-gotreesitter-0.20.0.drv-0/src/github.com/smacker/go-tree-sitter/python (from $GOPATH)
+FAIL	github.com/odvcencio/gotreesitter/cgo_harness/cmd/import_replay [setup failed]
+#+end_example
+
+*** As =qml-language-server= dependency
+
+On =qml-language-server=, I was trying this, but =gotreesitter= tries to bundle all
+200 =*.bin= grammar blobs in the repo. The env vars can tune it, but =qml-ls= packs
+its own blob into the repo. It may not be necessary, outside of a full build.
+
+#+begin_src scheme
+(add-before 'build 'specify-grammars
+            (lambda _
+              (setenv "GOTREESITTER_GRAMMAR_BLOB_DIR"
+                      "src/qml-language-server/grammars/grammar_blobs")
+              (setenv "GOTREESITTER_GRAMMAR_BLOB_MMAP" "false")))
+
+;; (add-after 'unpack 'delete-grammars
+;;   (lambda _
+;;     (for-each delete-file
+;;               (find-files
+;;                "src/github.com/odvcencio/gotreesitter/grammars/grammar_blobs"
+;;                ".*\\.bin"))))
+#+end_src
+
+warns on
+
+#+begin_example guix-build-log
+starting phase `build'
+src/qml-language-server/handler/handler.go:12:2: cannot find package "github.com/owenrumney/go-lsp/server" in any of:
+	/gnu/store/sdgy0niwhf0dgyw1iws53yvdw62h1m5z-go-1.24.13/lib/go/src/github.com/owenrumney/go-lsp/server (from $GOROOT)
+	/tmp/guix-build-go-github-com-cushycush-qml-language-server-1.7.0.drv-0/src/github.com/owenrumney/go-lsp/server (from $GOPATH)
+#+end_example
+
+fails on:
+
+#+begin_example guix-build-log
+src/github.com/odvcencio/gotreesitter/grammars/blob_source_embedded.go:7:12: pattern grammar_blobs/*.bin: cannot embed irregular file grammar_blobs/ada.bin
+Building 'qml-language-server' failed.
+#+end_example
+
+
+** go-github-com-owenrumney-go-lsp
+
++ cmd/scaffold.go :: this is just barebones CLI with minimal deps
+  - when intended for use as CLI, it needs to properly embed the =*.tpl= files.
+    that's mostly relevant when downstream pkgs depend on those. idk
++ build was failing until I fixed import/unpack paths. however, it still fails
+  downstream builds. there wasn't a clear entrypoint for the library.
+  - for now, =./server= isn't getting built in & that would fail =qml-ls= (if not
+    for =gotreesitter=)
+
+#+begin_quote
+src/qml-language-server/handler/handler.go:12:2: cannot find package
+"github.com/owenrumney/go-lsp/server" in any of:
+#+end_quote
+
+#+begin_src scheme
+(define-public go-github-com-owenrumney-go-lsp
+  (package
+   (name "go-github-com-owenrumney-go-lsp")
+   (version "0.2.2")
+   (source
+    (origin
+     (method git-fetch)
+     (uri (git-reference
+           (url "https://github.com/owenrumney/go-lsp")
+           (commit (string-append "v" version))))
+     (file-name (git-file-name name version))
+     (sha256
+      (base32 "1bxx21c0lnay5rwj88biyd83nh2668dr8nig4b66p285z1skdmh3"))))
+   (build-system go-build-system)
+   (arguments
+    (list
+     #:go go-1.25
+
+     ;; unpack/import paths seem to have fixed build, but tpls are probably
+     ;; not bundled.
+     #:import-path "github.com/owenrumney/go-lsp/lsp"
+     #:unpack-path "github.com/owenrumney/go-lsp"
+
+     ;; need to ensure cmd/scaffold builds (but it doesn't refer to other packages)
+     ;; 
+     ;; #:embed-files #~(list "cmd/scaffold/*.tpl")
+     ))
+   (propagated-inputs (list go-github-com-gorilla-websocket))
+   (home-page "https://github.com/owenrumney/go-lsp")
+   (synopsis "go-lsp")
+   (description
+    "@@code{go-lsp} is a Go library for building Language Server Protocol servers.
+It gives you the infrastructure for transport, request handling, document
+tracking, and protocol types so you can build an LSP server without
+reimplementing the boilerplate.")
+   (license license:expat)))
+#+end_src
