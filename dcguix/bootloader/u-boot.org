@@ -1,7 +1,273 @@
 :PROPERTIES:
-:ID:       c7f61376-ac64-4ae6-98b9-093599cf7490
+:ID:       c7f61376-ac64-4ae6-98b9-123599cf7490
 :END:
 #+title: Guix Bootloader: U-Boot
 
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
++ [[id:35cdd063-b646-4141-83ea-fcac8b337875][Orange Pi]]
++ [[id:40dcb082-52a4-436c-b13a-975d3bd27cef][Orange Pi: Firmware, u-boot, rkdevtool and SPI Flash]]
 
-[[https://floss.social/@vagrantc/114154024787459911][Made a #MNTReform kernel for #Guix]]
+* Docs
+** Trusted Firmware
+
++ [[https://git.trustedfirmware.org/plugins/gitiles/TF-A/trusted-firmware-a.git/+/refs/heads/lts-v2.12/Makefile][Makefile]]
+
+** U-Boot
+
+*** =u-boot-tools=
+
+Comments in guix make some assumptions about how the user will treat the
+produced binary using =u-boot-tools= (treat as in "subject to a process") in order
+to [[https://codeberg.org/guix/guix.git/src/commit/8336ee644ba48b2c269ac38d138bf2dcbdf9927e/gnu/packages/bootloaders.scm#L1244-L1259][add missing bins which could otherwise interfere with the reproducibility]].
+
+Examples via gemini:
+
++ mkimage -A arm -O linux -T kernel -C none -a 0x80008000 -e 0x80008000 -d
+  zImage uImage :: _Packaging Firmware_: Wrapping a Linux kernel binary and its
+  corresponding device tree (.dtb) into a single image the bootloader can
+  understand:
++ mkenvimage -s 0x20000 -p 0x00 -o uboot-env.bin uboot-env.txt :: _Configuring
+  Boot Defaults_: Creating a persistent environment binary from a text file so
+  your board boots correctly on first power-up:
+
+Commands
+
+| cmd         |            |                                                                                  |
+|-------------+------------+----------------------------------------------------------------------------------|
+| mkimage     | build-side | wrap kernel, device trees, root fs into =uImage= or =FIT= (flat image trees)         |
+| mkenvimage  | build-side | generate image of u-boot env vars from plain text (to flash onto device storage) |
+| dumpimage   | build-side | exracts data (e.g. kernel or device trees) from existing u-boot images           |
+| fw_printenv | host-side  | read u-boot env vars (while OS is running)                                       |
+| fw_setenv   | host-side  | set u-boot env vars (while OS is running)                                        |
+|-------------+------------+----------------------------------------------------------------------------------|
+** Guix
++ [[https://codeberg.org/guix/guix.git/src/commit/8336ee644ba48b2c269ac38d138bf2dcbdf9927e/gnu/packages/bootloaders.scm#L1][(gnu packages bootloaders)]]
++ [[https://codeberg.org/guix/guix.git/src/commit/8336ee644ba48b2c269ac38d138bf2dcbdf9927e/gnu/packages/firmware.scm#L1][(gnu packages firmware)]]
++ [[https://codeberg.org/guix/guix.git/src/commit/8336ee644ba48b2c269ac38d138bf2dcbdf9927e/gnu/bootloader/u-boot.scm#L1][(gnu bootloader u-boot)]]
+
+** Notes
++ [[https://github.com/dcunited001/zettelkasten/blob/master/topics/bootloader.org?plain=1#L1][topics/bootloader.org]]
++ [[https://github.com/dcunited001/zettelkasten/blob/master/slips/20250407224831-orange_pi_firmware_u_boot_rkdevtool_and_spi_flash.org?plain=1#L27][slips/20250407224831-orange_pi_firmware_u_boot_rkdevtool_and_spi_flash.org]]
++ [[https://github.com/dcunited001/zettelkasten/blob/master/slips/20250401204731-orange_pi.org?plain=1#L310][slips/20250401204731-orange_pi.org]]
+  
+* Resources
++ [[https://floss.social/@vagrantc/114154024787459911][Made a #MNTReform kernel for #Guix]]
+
+* Overview
+
+I'm going to try to make it as far as i can. I'll probably clear the modules out
+of my dotfiles if there's no point in keeping it.
+
+Since the definitions for these bootloader packages & images are static (not
+procedures), then keeping dysfunctional code will create guile warnings or
+errors. either way, probably not a great idea.
+
+** Hardware
+
++ orangepi 5+ with rockchip 3588 (or 3588s?)
+
+
+
+
+** Workflow
+
++ I'm using =ares-rs=
++ i'm trying a detangling workflow. it's a bidirectional tangling, so i can
+  still tangle.
+  + thus, the org headlines reference the scheme module namespace (and can _never_
+    change! lol the stakes are high, someone else probably picked better
+    non-arbitrary defaults)
+  + occasionally, tangling doesn't refresh the buffer's contents. use =C-x x g= to
+    =revert-buffer-quick=
+
+*** Goals
+
++ I definitely want to skip =u-boot= as a hard requirement
++ set the orangepi to boot from UEFI
+  - requires setting up vyos & tftp at least there
++ maybe borrow some equipment to monitor the boot over SPI/UART or something (I
+  think SPI).
+
+    
+* Modules
+
+#+begin_src emacs-lisp
+(setq-local ob@ell (expand-file-name ".dotfiles/ellipsis/ellipsis" (getenv "HOME")))
+#+end_src
+
+** =(ellipsis packages bootloaders)=
+
+#+begin_src scheme :tangle (expand-file-name "packages/bootloaders.scm" ob@ell)
+(define-module (ellipsis packages bootloaders)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages bootloaders)
+  #:use-module (gnu packages firmware)
+  #:use-module (guix build-system gnu)
+  #:use-module (guix build-system trivial)
+  #:use-module (guix download)
+  #:use-module (guix gexp)
+  #:use-module (guix git-download)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix packages)
+  #:use-module (guix utils)
+  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-26)
+  #:use-module (ice-9 optargs)
+  #:use-module (ice-9 match)
+  #:use-module (ice-9 regex)
+
+  #:export (ellipsis-packages-bootloaders-foo))
+
+;; NOTE: assume that the code in here does NOT work. i'll be sure to update
+;; here when it does with whatever caveats i have in mind.
+#+end_src
+
+Some placeholders to export so =guile= doesn't complain
+
+#+begin_src scheme :tangle (expand-file-name "packages/bootloaders.scm" ob@ell)
+(define ellipsis-packages-bootloaders-foo "foo")
+(define ellipsis-packages-bootloaders-bar "bar")
+#+end_src
+
+And the naive bootloader _package_... voila!
+
+#+begin_src scheme :tangle (expand-file-name "packages/bootloaders.scm" ob@ell)
+(define-public u-boot-orangepi-5-plus-rk3588
+  ;; this is hacky, but it works
+  ((@@ (gnu packages bootloaders) make-u-boot-rockchip-package)
+   "orangepi-5-plus" 'rk3588))
+#+end_src
+
+*** notes
+
+This comes from =u-boot-rockpro64-rk3399=. I need to figure out how much of the
+build process depends on these
+
+#+begin_example scheme
+(define-public u-boot-orangepi-5-plus-rk3588-with-mods
+  (let ((base (make-u-boot-rockchip-package
+               "orangepi-5-plus" 'rk3588
+               '("CONFIG_USB=y"
+                 "CONFIG_AHCI=y"
+                 "CONFIG_AHCI_PCI=y"
+                 "CONFIG_SATA=y"
+                 "CONFIG_SATA_SIL=y"
+                 "CONFIG_SCSI=y"
+                 "CONFIG_SCSI_AHCI=y"
+                 ;; Disable SPL FIT signatures, due to GPLv2 and
+                 ;; OpenSSL license incompatibilities.
+                 "# CONFIG_SPL_FIT_SIGNATURE is not set"))))
+    (package
+      (inherit base))))
+#+end_example
+
+I need to ensure that the =board= argument isn't =automagickal=
+
+#+begin_example scheme
+(define* (make-u-boot-rockchip-package board soc #:optional configs)
+  "Return the U-Boot package for BOARD with AAarch64 Rockchip SOC
+(System on Chip)."
+  (let* ((board (string-append board "-" (symbol->string soc)))
+         (base (make-u-boot-package board "aarch64-linux-gnu"
+                                    #:configs configs)))
+    (package
+      (inherit base)
+      (arguments
+       (substitute-keyword-arguments arguments
+         ((#:phases phases)
+          #~(modify-phases #$phases
+              (add-after 'unpack 'set-environment
+                (lambda* (#:key inputs #:allow-other-keys)
+                  (setenv "BL31" (search-input-file inputs "/bl31.elf"))))))))
+      (inputs (modify-inputs inputs
+                (append (match soc
+                          ('rk3588 arm-trusted-firmware-rk3588)
+                          ('rk3399 arm-trusted-firmware-rk3399)
+                          ('rk3328 arm-trusted-firmware-rk3328))))))))
+#+end_example
+
+=make-u-boot-rockchip-package= falls through to:
+
+#+begin_example scheme
+(define*-public
+ (make-u-boot-package
+  board triplet
+  #:key defconfig configs name-suffix append-description
+  (u-boot u-boot)))
+#+end_example
+
+** =(ellipsis bootloader u-boot)=
+
+This module needs to define a bootloader _image_. The =bootloader= record eats a
+=package= and, at build time, knows how to turn it into what's needed to write a
+disk image. the =bootloader= inherits from =u-boot-rockchip-bootloader ->
+u-boot-bootloader=.
+
+#+begin_src scheme :tangle (expand-file-name  "bootloader/u-boot.scm" ob@ell)
+(define-module (ellipsis bootloader u-boot)
+  #:use-module (gnu bootloader u-boot)
+  #:use-module (gnu bootloader extlinux)
+  #:use-module (gnu bootloader)
+  #:use-module (gnu packages bootloaders)
+  #:use-module (ellipsis packages bootloaders)
+  #:use-module (guix gexp)
+  #:use-module (ice-9 match)
+
+  #:export (ellipsis-bootloader-foo))
+
+;; NOTE: assume that the code in here does NOT work. i'll be sure to update
+;; here when it does with whatever caveats i have in mind.
+#+end_src
+
+#+begin_src scheme :tangle (expand-file-name  "bootloader/u-boot.scm" ob@ell)
+(define ellipsis-bootloaders-foo "foo")
+#+end_src
+
+#+begin_src scheme :tangle (expand-file-name  "bootloader/u-boot.scm" ob@ell)
+;; does not work...
+;; 
+;; (define %u-boot-rockchip-bootloader
+;;   ((@@ (gnu bootloader u-boot) u-boot-rockchip-bootloader)))
+
+;; also does not work
+;; 
+;; (define -install-rockchip-u-boot
+;;   ((@@ (gnu bootloader u-boot) write-u-boot-image) '(("idbloader.img" 64) ("u-boot.itb" 16384)) 512))
+
+;; (define -u-boot-rockchip-bootloader
+;;   ;; SD and eMMC use the same format
+;;   (bootloader
+;;     (inherit u-boot-bootloader)
+;;     (disk-image-installer -install-rockchip-u-boot)))
+
+;; this should be okay, since (bootloader ...) is just a record
+(define u-boot-orangepi-5-plus-rk3588-bootloader
+  (bootloader
+    (inherit u-boot-pinebook-pro-rk3399)
+    (name "u-boot-orangepi-5-plus-rk3588")
+    (package u-boot-orangepi-5-plus-rk3588)))
+
+;; without setting the name:
+;; 
+;; u-boot-orangepi-5-plus-rk3588-bootloader
+;; 
+;; => #<<bootloader> name: "u-boot-pinebook-pro-rk3399" package: #<package u-boot-orangepi-5-plus-rk3588@2026.01 gnu/packages/bootloaders.scm:1277 722330f398f0> installer: #<origin #<<git-reference> url: "https://source.denx.de/u-boot/u-boot.git" commit: "v2026.01" recursive?: #f> #<content-hash sha256:1ics2b560gjqh7f1b194axy5rdplrgxhpifay61zpa6p5gl4fxsz> ("/gnu/store/mqqvgdpmxgvmllsw2dwjy4cvcph0dk5d-profile/share/guile/site/3.0/gnu/packages/patches/u-boot-allow-disabling-openssl.patch") 722330f1e5a0> disk-image-installer: #<<build-system> name: gnu description: "The GNU Build System—i.e., ./configure && make && make install" lower: #<procedure lower (name #:key source inputs native-inputs outputs target implicit-inputs? implicit-cross-inputs? strip-binaries? system . arguments)>> configuration-file: #<procedure arguments (x)> configuration-file-generator: #<procedure inputs (x)>>
+#+end_src
+
+*** notes
+
+only 3328 and 3399 are mentioned in [[https://codeberg.org/guix/guix.git/src/branch/master/gnu/bootloader/u-boot.scm#L1][./gnu/bootloader/u-boot.scm]]
+
+#+begin_example scheme
+(define install-rockchip-u-boot
+  (write-u-boot-image '(("idbloader.img" 64) ("u-boot.itb" 16384)) 512))
+
+(define u-boot-rockchip-bootloader
+  ;; SD and eMMC use the same format
+  (bootloader
+   (inherit u-boot-bootloader)
+   (disk-image-installer install-rockchip-u-boot)))
+#+end_example
