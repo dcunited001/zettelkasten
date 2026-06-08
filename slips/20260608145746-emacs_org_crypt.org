@@ -1,0 +1,127 @@
+:PROPERTIES:
+:ID:       1728dd34-83d9-418d-9518-f5f4735847e8
+:END:
+#+TITLE: Emacs: Org Crypt
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:b987ce8b-c42f-4de2-83c4-350be3cf5de1][GNUPG]]
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
+
+* Org-Crypt
+
+** Setup
+
+For doom emacs, just enable =(org +crypt)=, though the option doesn't do much
+
+** TODO org-crypt: auto-recrypt after migrating subkeys
+
+This really shouldn't be too difficult... once solved. The problem is that it
+really needs to be an all-in-one transition.
+
++ grep -nr ":CRYPTKEY: $subkey" :: at least gives files/lines
++ then =org-ql= may help from there.
+
+** epa/epg scripting
+
+There are a few other pieces of setup required.
+
+#+begin_src emacs-lisp
+(setopt epg-user-id (format "%s <%s>" user-full-name user-mail-address))
+
+;; (setopt epg-pinentry-mode nil) ; cancel/ask/loopback
+;; (setq epg-debug t)
+
+(defun dc/epg-uid-list (&optional context user-id)
+  "Return a list of GPG identities with my default on top"
+  (let* ((context (epg-make-context))
+         (key-list (epg-list-keys context))
+         (user-id (or user-id epg-user-id)))
+    (->>
+     key-list
+     (mapcar #'epg-key-user-id-list)
+     (mapcar (lambda (k) (car k)))
+     (mapcar #'epg-user-id-string)
+     (-sort (lambda (a b) (equal a epg-user-id))))))
+#+end_src
+
+This will return an =epg-key= struct with all your subkeys
+
+#+begin_src emacs-lisp
+(defun dc/epg-subkey-for (&optional user-id)
+  "Return the most recent subkey for `user-ud'."
+  ;; (epg-key-user-id-list (nth 1 (epg-list-keys (epg-make-context))))
+  ;; (epa-list-keys (nth 1 (epg-list-keys (epg-make-context))))
+  (epa-list-keys (nth 0 (dc/epg-uid-list))))
+#+end_src
+
+This will automatically add a tag and a key
+
+#+begin_src emacs-lisp
+(defun dc/org-crypt-entry (encrypt-to)
+  "Setup `:crypt:' tag and `CRYPTKEY' property. Either use this command or
+set `org-crypt-key' locally to project, which itself falls through to
+`epa-file-encrypt-to'. (it is noob if you don 't handle GPG UID
+selection.)"
+  ;; NOTE: it still sorts my UID second...
+  (interactive (list (completing-read "GPG ID: " (dc/epg-uid-list) nil nil epg-user-id)))
+  (org-entry-put nil "CRYPTKEY" encrypt-to)
+  (org-toggle-tag "crypt" 'on))
+#+end_src
+
+* Test =:CRYPTKEY: David Conner <aionfork@gmail.com>=
+** test crypt :crypt:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ//TvX+II+oNAiLrjSvIN10BrQY1mpblbaTPDRlBipqvOCi
+OsuRi6AfoSR7+3RUfg8JbHrCzY/pqxv02vAWMlmyj6B3IKSfYOXJeAnnhVaMCam8
+eal4VNDeKm98fyv9P9Y7uxlWaGPl3h280H8/lPF/gRRJsJOpJdv5YbwAZRhcmw/M
+w3H+9HacxbUWkSVzw0IHO6Nq8gm7KXyWOnwEhtKruoxLAHLX3GW9sOzGBPKTZ/L4
+X4rzqQf8UkgWMrnb6IIffTndOcITgdeIjaEx04GKGFHcohbrWMwvK2+Jnm6a19e4
+2QmbpO4Qy5xr9GN10zxwguBnFZ3cPvUNqvEFAlatM4g/gTJYdszmlrlXLPTxanuV
+gjorykUAflgeD3T36W++mOjWlUnsy+dNSopZkFXb/Sx8ugGa5D9AUGGuMzkrIf0c
+gl+JEImIZuoN6HIioeQrPkoaPjREL7Kzz8/CuPr/OGfzFG+ak6nRQvRyGDhLR7Dg
+r+zcBRZFZo84zKeTeAB3S8HfqccwvFSp89rswvqJ7QRMc3fWAoBe2kmZ1NpyBeiD
+h1i8PqX/vIFQNTlYm0EUlpVEqajZdcnZCqz8jiS0PY0sib1y5490jmV8uooNa+/N
+AtIrXas0WMzXf3dhA+V5uon1hTPgvH0NrTzQ9nwYdFWhavv79qrK2ay8cnAI6YTS
+SQHs014RjHgw1NQ5Gt+Q7PyazlEIC2ca1w/oygDtB0j/lS6lt13LyAkhGbHk5KRY
+1E51ZgPpj1BxaP931H+0FDVcb0uUEwso8EI=
+=JV/0
+-----END PGP MESSAGE-----
+
+* Test =:CRYPTKEY: $SUBKEYID=
+
+I had regis phone-a-friend to kleopatra for this one.
+
+** Gemini :crypt:
+:PROPERTIES:
+:CRYPTKEY: EBD00ED187CA182ECCB516853D392C14EA0A43B4
+:END:
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ//XmamV0WFj/I2xNe0U9cySPPTCztZd3nkqUYw3n0p/xHc
+2VxDedpcoO9GXy01QjKV1U84dV8ijQDCE5ZMOIk/MxydJNBAiEdQE6lZpB36EMfx
+uKtL8YXu3VRD2BpZ9k5kgbWmOur9fc8PJT02XXxXAFG2RvpzBdzOJhQu5ymIRCTF
++P2ciykhm6NjFe+CzqKdvKVX+55s/ZbNZsLunGqXHswHHXhSoLANOoPNaQn3Zmlh
+MdRtgwm42fkVfJlFPs4Ig1xfjQqiuZjGFollyyVWVkrqTLzGIZWh3j+v0j2CsDm9
+7CKBFAAv/IpcnGAbA9DXkUtUZhGa3czW8Js+gQe0pKAQwdCBkARQ8o6aoZO8/nCX
+3o3AYQ/ZoCstF3e7LohQekqN9XhKrF4zNQkxaKryiUvCxvdYymYGfh6ruIeq7yX0
+VdTsFJ25wPbI6+5AbuZwpx/AWjzPZYnQHHkDTHK2pwhS2FW9XIUFJ9HC/SXiwh2L
+5C835S8ImUrv/x0ZTulXx8/5ldIeAcPJ5o9CAE3DIoimF/JB/fxNmSMBt0SbSdZl
+kgyyktnKJn0EnAsD7vin/4DkOYZ6/xPxr3tZEBg1xOf/GVuxDnlHVqMOfQHeGfzW
+FZMtxAW2S242E5VzlGroPhvGpdQtWhgBIjfhukpGXwfcYJ3GtH9nG0TB9VlNHtjS
+wAgBxTT85Wz8dYcMw+daC5JxJe+ltSLMn10AogToqHN8UJXi97ZBThG41j0j0+6G
+BJok8hMDuXwJe5i/OqidYEvHX0CV1225/F9dWmuKqj6jcejIEqtz+40gqEb3l5pu
+rBRndUYDBttG9Cswfd2Jh228el894F+LLDAOY/oGLfzzIyWfa6quE3+Y/C44FUcg
+g7JOncWT3K8EnGzS51zadyzYSKqKqsjsB13xIRkqy4xMcuwLhUlGB4RKZMDsYx4f
+s8PQGrJYWLzgmw==
+=LpQ5
+-----END PGP MESSAGE-----
+
