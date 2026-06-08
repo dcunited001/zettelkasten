@@ -1,0 +1,146 @@
+:PROPERTIES:
+:ID:       8225d4c1-f1b7-4823-9a72-085a16705d70
+:END:
+#+TITLE: Guix: Work from a local checkout
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:c610536e-71d8-45ad-b320-91696ee56d49][Guix: authenticate local checkout when using google repo]]
++ [[id:81a26cc3-22f3-4332-96c2-c71407d5149d][DC Guix: ts-hyprlang]]
+  
+* Resources
++ [[https://guix.gnu.org/manual/devel/en/guix.html#Building-from-Git][Building-from-Git]]
+
+* Setup
+
+#+begin_src sh
+guix_checkout="$HOME/forge/guix/guix"
+mkdir -p $guix_checkout && cd $guix_checkout/..
+user=aionfork
+git clone ssh://git@codeberg.org/$user/guix.git
+cd guix
+#+end_src
+
+adding this causes guix to read manifest.scm for =guix shell=
+
+#+begin_src sh
+echo $(pwd) >> ~/.config/guix/shell-authorized-directories
+guix shell -CPW # --container --link-profile --nesting -m manifest.scm
+#+end_src
+
+Codeberg is forgejo and =forge.el= doesn't have a complete =ghub.el= API
+implementation for it yet. This is a massive repository. That's one of the best
+aspects of =guix= and =nixpkgs=: every recipe for packaging _and_ system automation is
+all in one place.
+
+** Build
+
+#+begin_src shell
+./bootstrap
+make
+# make check
+make html
+#+end_src
+
+* Build GNU Dash Docsets
+
+This would make more sense as a guix package
+
++ the =make= process requires an isolated guix
++ guix doesn't publish tarballs for dev branches
++ and a few other small things
+
+It may be practical to inherit from the Guix's =guix= package and add an output
+that includes ishprung/dash-docset-builder. Then fetch specific submodules on
+clone, patch the Makefile, then build.
+
+or... better: just add the =guix= package output for docs as a native-input to a
+dash-docset-builder package
+
+Ensure that =make html= completed successfully in the guix checkout. Then after
+applying these patches, run:
+
+#+begin_src shell
+guix shell -D guix python python-beautifulsoup4 python-requests
+make GNU_Guix
+#+end_src
+
+Then replace the docsets in zeal's =docsets= dir
+
+** Patches
+
+#+begin_example diff
+diff --git a/config.mk b/config.mk
+index bb8bb86..1c033b2 100644
+--- a/config.mk
++++ b/config.mk
+@@ -1,20 +1,20 @@
+ SRC_ICON_FILE = $(SOURCE_DIR)/icon.png
+ 
+-VERSION = 1.4.0
++VERSION = 1.5.0
+ MANUAL_URL  = https://ftpmirror.gnu.org/gnu/guix/guix-$(VERSION).tar.gz
+ MANUAL_SRC = tmp/guix-$(VERSION)
+ MANUAL_SRC_MAKEFILE = $(MANUAL_SRC)/Makefile
+ MANUAL_FILE = $(MANUAL_SRC)/doc/guix.html
+ 
+-$(MANUAL_SRC): tmp
+-	curl -L -o $@.tar.gz $(MANUAL_URL)
+-	tar -x -z -f $@.tar.gz -C tmp
++# $(MANUAL_SRC): tmp
++# 	curl -L -o $@.tar.gz $(MANUAL_URL)
++# 	tar -x -z -f $@.tar.gz -C tmp
+ 
+-$(MANUAL_SRC_MAKEFILE): $(MANUAL_SRC)
+-	cd $(MANUAL_SRC) && ./configure
++# $(MANUAL_SRC_MAKEFILE): # $(MANUAL_SRC)
++# 	cd $(MANUAL_SRC) && ./configure
+ 
+-$(MANUAL_FILE): $(MANUAL_SRC_MAKEFILE)
+-	cd $(MANUAL_SRC) && make html
++# $(MANUAL_FILE): $(MANUAL_SRC_MAKEFILE)
++# 	cd $(MANUAL_SRC) && make html
+ 
+ $(DOCUMENTS_DIR): $(RESOURCES_DIR) $(MANUAL_FILE)
+ 	mkdir -p $@
+#+end_example
+
+Select the docs
+
+#+begin_example diff
+diff --git a/Makefile b/Makefile
+index 90bc84b..a0dd8ee 100644
+--- a/Makefile
++++ b/Makefile
+@@ -28,20 +28,14 @@ dist-clean: clean
+ 
+ # All supported docsets should be listed here
+ SUPPORTED_TARGETS = \
+-debmake \
+-Flex \
+-glibc \
+-GNU_Autoconf \
+-GNU_Autoconf_Archive \
+-GNU_Automake \
+-GNU_Bash \
+-GNU_Bison \
+-GNU_Coding_Standards \
+-GNU_Coreutils \
+-GNU_Guix \
+-GNU_Libtool \
+-GNU_Make \
+-ncurses
++GNU_Guix
++# GNU_Guix \
++# GNU_Make \
++# GNU_Bash \
++# GNU_Coreutils \
++# GNU_Coding_Standards \
++# GNU_Autoconf \
++# GNU_Automake
+ 
+ .phony: $(SUPPORTED_TARGETS)
+ $(SUPPORTED_TARGETS):
+#+end_example

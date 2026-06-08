@@ -1,0 +1,176 @@
+:PROPERTIES:
+:ID:       002c7aa0-c961-41ad-b050-4b6a0d094c0b
+:END:
+#+TITLE: Lua: Configure emacs for luals with wireplumber and hypr stubs
+#+CATEGORY: slips
+#+TAGS:
+
+
+* Emacs
+
+* Resources
+** Wireplumber
++ [[https://github.com/PipeWire/wireplumber/blob/master/src/config/wireplumber.conf.d.examples/media-role-nodes.conf][pipewire/wireplumber wireplumber.conf.d.examples/media-role-nodes.conf]]
+  - via [[https://fedoramagazine.org/introduction-to-wireplumber/][Fedora Magazine: Intro To Wireplumber]]
+
+*** Scripting
++ [[https://github.com/qompassai/Lua/tree/main/wireplumber/scripts/lib][utils]] from qompassai/lua. require from other scripts like [[https://github.com/qompassai/Lua/blob/main/wireplumber/scripts/monitors/libcamera/create-node.lua#L5-L6][this]]
+
+#+begin_src lua
+cutils = require('common-utils') ---@type WPUtils
+mutils = require('monitor-utils')
+#+end_src
+
+** Lua
+
+*** Tooling
+
+**** LuaRocks
+
++ [[https://github.com/luarocks/lua-style-guide][luarocks/lua-style-guide]]
++ [[https://github.com/luarocks/luarocks/blob/main/docs/index.md][luarocks/luarocks ./docs/index.md]]
++ may need a [[https://luarocks.org/about][.rockspec]]
+
+**** LuaJIT
+
+**** Lua LS
++ [[https://github.com/LuaLS/LLS-Addons/tree/main/addons][LuaLS/LLS-Addons ./addons]] lists addons & [[https://raw.githubusercontent.com/LuaLS/LLS-Addons/main/schemas/addon_config.schema.json][addon schemas]]
++ [[https://github.com/LuaLS/addon-template][LuaLS/addon-template]]
++ [[https://github.com/LuaLS/vscode-lua][LuaLS/vscode-lua]] is a different build of LuaLS
+  - [[https://github.com/LuaLS/lua-language-server/discussions/1965][LuaLS/lua-language-server#1965]] gives overview (different repo)
+  
+*** Examples
+
++ [[https://github.com/qompassai/hyprlua/blob/main/.luarc.jsonc][qompassai/hyprlua ./.luarc.jsonc]]
+
+*** Other applications
+
++ [[https://github.com/lgi-devs/lgi/tree/master/samples][lgi-devs/lgi ./samples]] of GTK interactions with lua
+
+| neovim | luatex | redis | pandoc | snort | wireplumber | 
+
++ reason & reaper (DAWs for music)
+  
+* Topics
+
+** LuaLS
+
+*** Config
+#+begin_example yaml
+workspace:
+library:
+  - /usr/share/hypr/stubs
+checkThirdParty: false
+diagnostics:
+globals:
+  - hl
+#+end_example
+
+
+
+*** Addons 
+
+
+
+**** Sources
+
+#+begin_example shell
+u=https://github.com/LuaLS/LLS-Addons
+git clone --recurse-submodules --shallow-submodules $u
+#+end_example
+
+**** Configure
+
++ may need a [[https://luarocks.org/about][.rockspec]]
+* Gobject
+
++ [[https://github.com/gjsify/ts-for-gir][gjsify/ts-for-gir]] generates typescript from gobject
+  - plenty of [[https://github.com/gjsify/ts-for-gir/tree/main/examples][examples]], but they import from =gi://= uri's...
++ [[https://github.com/rhx/gir2swift][rhx/gir2swift]] geneates swift
+
+* Wireplumber
+
+** Sandbox
+
+The symbols available in the Lua sandbox are [[https://pipewire.pages.freedesktop.org/wireplumber/scripting/lua_api/lua_introduction.html#sandbox][doc'd here]] and defined here:
+
++ [[https://gitlab.freedesktop.org/pipewire/wireplumber/-/blob/72b67605f3fb8fe40c639ffaf2720360de900828/modules/module-lua-scripting/wplua/sandbox.lua#L27-32][modules/module-lua-scripting/wplua/sandbox.lua]]
+
+** Getting =wpexec= to dump json
+
+It's not that bad
+
+#+begin_example lua
+local node_json = Json.Object({ node = selected_node })
+print(node_json:get_data())
+#+end_example
+
+** Generating from =Wp-0.5.glr= gobject introspection XML
+
+On arch, =/usr/share/gir-1.0/Wp-0.5.glr= is owned by =libwireplumber=
+
+This can be generated +via the =lgi-style= node script or+ via =lua-lgi=
+
+#+begin_quote
+Gemini hallucinated three times in a row, making up repo names and smh...
+#+end_quote
+
+
+
+*** Where to put the =stubs=?
+
+probably in =nvim/lua= ... somewhere
+
+#+begin_src shell
+# locate '/data/ecto/x.files/*/*.lua' \
+fd -Hp '/data/ecto/x.files/.*\.lua' \
+    | sed -E 's/(.*)\/.*\.lua$/\1/g' | sort | uniq \
+    | tree --fromfile .
+#+end_src
+
+Makes more sense to reuse defaults/conventions for [[https://luals.github.io/wiki/settings/#workspacelibrary][workspace.library]]
+
+#+begin_example json
+{
+    "workspace": {
+        "library": [
+            "/path/to/your/generated/stubs"
+        ]
+    }
+}
+#+end_example
+* Network Tools
+
+Wireshark & nmap have lua scripting engines, but they don't seem to be intended
+for use with external editors. Unless it's =Notepad++=. idk though
+
+** Integrating with =nmap='s NSE
+
+I'm curious about this and other linux tools that use lua. Not sure how to
+extract stubs for =nmap= though. It's old and also has a weird build (there were
+formerly a lot of windows-centric tools).
+
+*** NSE Lua Environment
+
+#+begin_src shell :results output code :wrap verse
+# lua-language-server
+guix shell nmap
+tree -ad "$GUIX_ENVIRONMENT/share/nmap"
+# guix shell  nmap -- tree -ad $GUIX_ENVIRONMENT/share/
+#+end_src
+
+Gives this result (which is invisible on github)
+
+#+begin_verse
+/gnu/store/gidy0bdnfslh1gxidfay8857xwc0bkv7-profile/share/nmap
+├── nselib
+│   └── data
+│       ├── jdwp-class
+│       └── psexec
+└── scripts
+#+end_verse
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:711d6a41-5425-4853-97ed-f7698a4a3605][LSP]]
++ [[id:b4aec5d0-2ee8-40c3-b1cf-937737d465e6][Pipewire]]
