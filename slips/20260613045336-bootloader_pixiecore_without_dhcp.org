@@ -173,6 +173,110 @@ boot kernel initrd=initrd0 console=ttyS0 console=tty0 console=ttyAMA0
 # cmdline="console=ttyS0 console=tty0 console=ttyAMA0" # ¯\_(ツ)_/¯
 #+end_example
 
+
+
+* Trying pixiecore (lol)
+
+Requires =--net=host= for DHCP, but doesn't need to hand out DHCP...
+
+#+begin_src shell
+sudo docker run \
+  --net=host \
+  -v .:/image \
+  pixiecore/pixiecore \
+    boot /image/coreos_production_pxe.vmlinuz
+    /image/coreos_production_pxe_image.cpio.gz
+#+end_src
+
+But the image was last updated 5 years ago... (so now you need a container
+registry? which is great bc this is already a hack)
+
+** Vyos
+
+*** Container
+
+#+begin_src shell
+
+#+end_src
+
+*** DHCP
+
+Starting with:
+
+#+begin_src shell
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 option default-router 10.1.20.1
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 option name-server 10.1.20.1
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 lease 86400
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 range 0 start 10.1.20.128
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 range 0 stop 10.1.20.191
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 subnet-id 32
+#+end_src
+
+Add tftp options
+
+#+begin_src shell
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 option tftp-server-name my.pixicore.host
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 option bootfile-name 11-22-33-44-55-66/2
+set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 option bootfile-server "10.8.16.64"
+#+end_src
+
+**** Failed
+
+***** It definitely uses TFTP
+
+(that is how it works)
+
++ option tftp-server-name my.pixicore.host
++ option bootfile-name http://my.pixicore.host/_/ipxe?arch=1&mac=11-22-33-44-55-66
++ option bootfile-server "10.10.20.3"
+
+#+begin_quote
+06:49:39.730019 IP 0.0.0.0.bootpc > 255.255.255.255.bootps: BOOTP/DHCP, Request from 64:00:6a:92:5b:40 (oui Unknown), length 359
+06:49:39.731384 IP 10.1.20.12.bootps > 255.255.255.255.bootpc: BOOTP/DHCP, Reply, length 350
+06:49:39.731672 ARP, Request who-has 10.1.20.1 tell 10.1.20.128, length 46
+06:49:39.731744 IP 10.1.20.128.1333 > my.pixiecore.host.tftp: TFTP, length 87, RRQ
+"http://my.pixiecore.host/_/ipxearch=1&mac=11-22-33-44-55-66" octet tsize 0 blksize 1468
+#+end_quote
+
+***** This causes it to not fucking try TFTP
+
++ option tftp-server-name my.pixicore.host
++ option bootfile-name 11-22-33-44-55-66/2
++ option bootfile-server "10.10.20.3"
+
+#+begin_quote
+07:00:01.857363 IP 0.0.0.0.bootpc > 255.255.255.255.bootps: BOOTP/DHCP, Request from 64:00:6a:92:5b:40 (oui Unknown), length 347
+07:00:01.858667 IP 10.1.20.12.bootps > 255.255.255.255.bootpc: BOOTP/DHCP, Reply, length 312
+06:59:07.723907 ARP, Request who-has 10.1.20.1 tell 10.1.20.128, length 46
+#+end_quote
+
+***** Same thing, no ARP
+
++ option tftp-server-name my.pixicore.host
+
+#+begin_quote
+07:05:33.743941 IP 0.0.0.0.bootpc > 255.255.255.255.bootps: BOOTP/DHCP, Request from 64:00:6a:92:5b:40 (oui Unknown), length 347
+07:05:33.745369 IP 10.1.20.12.bootps > 255.255.255.255.bootpc: BOOTP/DHCP, Reply, length 291
+#+end_quote
+
+Same thing with no IP address
+
+*** Automation
+
+Nope, never going to get there. You have to build a cloud using calculators &
+speakeasy bullshit from salvation army.
+
+No one will actually spend time with you. it's so easy LMAO just do it like the
+text book with screenshots.
+
+**** Up/Down
+
+Up
+
+Down
+
+
+
 * Roam
 + [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
 + [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
