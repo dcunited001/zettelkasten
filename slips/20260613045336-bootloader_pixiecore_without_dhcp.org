@@ -16,8 +16,8 @@
 
 *** KEA
 + [[https://kea.readthedocs.io/en/kea-2.0.0/arm/dhcp4-srv.html][dhcp-srv (KEA docs)]]
-+ [[https://github.com/vyos/vyos-1x/blob/6a5f1961cde6116457cb9e6b958bee7b66603c3b/python/vyos/template.py#L1007-L1055][KEA Template (vyos)]] the template doesn't permit this -- enterprise
-  customers only
++ [[https://github.com/vyos/vyos-1x/blob/6a5f1961cde6116457cb9e6b958bee7b66603c3b/python/vyos/template.py#L1007-L1055][KEA Template (vyos)]] the template doesn't permit this -- enterprise customers
+  only
 
 * Docs
 
@@ -25,7 +25,7 @@
 
 Now this makes more sense
 
-** vyos
+** VyOS
 
 only provides this configuration for matching client-classes (option 82)
 
@@ -35,7 +35,32 @@ There's a way to get this to work ... but it involves CIDR/DCIM (circuit-id) and
 iDrac (better configuration of metadata indicating datacenter location to
 configure sequences of DHCP state transitions) ... HPC stuff.
 
-** ipxe
+*** IPv6
+
++ Offers some better options, but depends on the state of hardware (some cards
+  flash iPXE, who tf knows).
++ Requires ULA with RAs set to broadcast by the local interface
+  - plus DHCPv6, which doesn't show as having
+
+*** DHCP Snooping
+
++ The Cisco switch can intercept DHCP v4 traffic to set the =remote-id= and
+  =circuit-id= of DHCP broadcasts originating within its broadcast domains.
+  - This doesn't really help me and, if used for reasons other than security,
+    implies the usage of a DHCP Relay (plus multiple switches)
++ Trunk ports are usually marked as the trusted authoritative DHCP server.
+
+**** DHCP Relay
+
++ This is just ridiculously messy. Potential security issues.
++ Pixiecore operates as a DHCP relay, somewhat.
+
+*** Netboot and iVentoy
+
+Doesn't simplify anything. VyOS cannot be configured to react differently to the
+client's =platform= option.
+
+** iPXE
 
 + =initrd= and =module= are just aliases for [[https://ipxe.org/cmd/imgfetch?redirect=1][imgfetch]], which can additional shim
   files into the "initrd.magic" filesystem
@@ -222,6 +247,8 @@ set service dhcp-server shared-network-name SVC subnet 10.1.20.0/24 option bootf
 #+end_src
 
 **** Failed
+
+It really seems to hang onto the DHCP lease.
 
 ***** It definitely uses TFTP
 
