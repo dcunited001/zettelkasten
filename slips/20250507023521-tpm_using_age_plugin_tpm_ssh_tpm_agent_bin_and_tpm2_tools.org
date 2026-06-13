@@ -9,6 +9,94 @@
 
 * Overview
 
+** Nix
+
++ [[https://github.com/Mic92/sops-nix?tab=readme-ov-file#templates][sops-nix templates]]
+
+*** TPM Setup
+
+#+begin_src shell
+age-plugin-tpm --generate | gpg -aer me@fdsa.com > age-identity.txt.asc
+#+end_src
+
+**** TPM Usage
+
+via Gemini
+
+#+begin_quote
+If you change your UEFI/BIOS settings or update your kernel in a way that alters
+the PCR state (like Secure Boot measurements changing), the TPM will unseal the
+key successfully only if you accounted for those specific registers.
+#+end_quote
+
+*** Secrets
+
+#+begin_src shell
+# encrypt entire file
+
+# TODO: finalize command and make homeomorphic
+sops --encrypt --output secrets.env.json path/to/your/client.ovpn
+#+end_src
+
+
+*** System
+
+
+
+#+begin_src nix
+{
+  pkgs,
+  lib,
+  inputs,
+  config,
+  ...
+}:
+let
+  # if importing from a flake
+  sopsFolder = lib.toString inputs.nix-secrets + "/sops";
+in
+{
+  environment.systemPackages = [ pkgs.age-plugin-tpm ];
+
+
+  sops = {
+    defaultSopsFile = ''./hosts/${networking.hostName}/secrets.yaml'';
+    # validateSopsFiles = false;
+  }
+
+  # "Make sure permissions on this file are 0600!" -- LLM
+  # 
+  # sops.age.keyFile = "/var/lib/sops/age-identity.txt";
+
+  sops.secrets = {
+    "services/postgres_password" = {
+      owner = "postgres";
+      group = "postgres";
+      mode = "0400";
+    };'
+  };
+}
+#+end_src
+
+=.sops.yaml= 
+
+#+begin_src yaml
+keys:
+  # ...
+  - &hosts:
+    - &tpmhost age1jzrpvffcwjtv4e77v24ye44z2yk3nk3hkyjk60tfluuaxszdtf7s0u3xeh
+
+      - path_regex: ./hosts/tpmhost/secrets.yaml$
+          key_groups:
+          - age:
+            - *tpmhost
+#+end_src
+
+*** Application
+
+
+* Tools
+
 ** age-plugin-tpm
 
 Interacts with =age= identities stored on a TPM backend

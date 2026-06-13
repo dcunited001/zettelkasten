@@ -21,7 +21,7 @@ hygiene & implications of customizing a debian live build.
 
 * Build
 
-Pull container & start
+** Pull container and build vyos ISO
 
 + adding =--sysctl net.ipv6.conf.lo.disable_ipv6=0= is needed when building the
   main =vyos-1x=
@@ -48,6 +48,35 @@ sudo ./build-vyos-image --architecture amd64 --build-by "j.randomhacker@vyos.io"
 #+end_src
 
 *** TODO is =sudo= necessary here (with GOSU_UID)
+
+** Build container, then build VyOS ISO
+
+The build scripts now run =git checkout= which will fail from within a =repo=
+checkout, since =.git= isn't local to the volume that vyos uses as workdir
+=/vyos=....
+
+also, the =vyos/vyos-build:current= image lacks =syft= which is required for SBOM
+
++ correction: =docker pull vyos/vyos-build:rolling= is now online
+
+*** Build docker container
+
+#+begin_src sh :dir /data/ecto/vyos/vyos/vyos-build-lab
+# from vyos-build, build an alternate vyos/vyos-build:rolling tag
+tag=vyos/vyos-build:rolling
+docker build -t $tag docker
+#+end_src
+
+Then build
+
+#+begin_src sh :dir /data/ecto/vyos/vyos/vyos-build-lab
+tag=vyos/vyos-build:rolling
+docker run --rm -it -v "$(pwd)":/vyos -w /vyos --privileged \
+    --sysctl net.ipv6.conf.lo.disable_ipv6=0 \
+    -e GOSU_UID=$(id -u) -e GOSU_GID=$(id -g) \
+    "$tag" bash
+#+end_src
+
 
 ** Build Target
 

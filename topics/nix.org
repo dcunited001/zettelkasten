@@ -438,13 +438,85 @@ From NobbZ
 **** Service
 ** Networking
 
+*** OpenVPN
+
+
+*** Network Manager
+
+On second thought ... does this make connection profiles world-readable? (yes,
+LLM). so the network-manager profile needs to use =vpn.password= fields or
+something.
+
++ [[https://networkmanager.dev/docs/api/latest/nm-settings-keyfile.html][nm-settings-keyfile]]: connection
++ [[https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/configuring_and_managing_networking/assembly_networkmanager-connection-profiles-in-keyfile-format_configuring-and-managing-networking][assembly_networkmanager-connection-profiles-in-keyfile-format_configuring-and-managing-networking]]
++ [[https://github.com/janik-haag/nm2nix][janik-haag/nm2nix]] will convert network manager profiles to =nix=
++ [[https://github.com/EmergentMind/nix-config/blob/08a1335fa595a20b2467c588470acaf248885614/modules/hosts/nixos/wifi.nix#L123][emergentmind/nix-config nmconnection setup]]
++ [[https://gitlab.gnome.org/GNOME/NetworkManager-openvpn/-/tree/main/properties/tests/conf?ref_type=heads][networkmanager-openvpn plugin test =*.ovpn= files]]
++ [[https://man.archlinux.org/man/nm-settings-keyfile.5.en][man nm-settings-keyfile]]
+
+#+begin_src conf
+[connection]
+id=RedHat-openvpn
+uuid=7f9b3356-b210-4c0e-8123-bd116c9c280f
+type=vpn
+timestamp=1385401165
+[vpn]
+service-type=org.freedesktop.NetworkManager.openvpn
+connection-type=password
+password-flags=3
+remote=ovpn.my-company.com
+cipher=AES-256-CBC
+reneg-seconds=0
+port=443
+username=joe
+ca=/etc/openvpn/ISCA.pem
+tls-remote=ovpn.my-company.com
+[ipv6]
+method=auto
+[ipv4]
+method=auto
+ignore-auto-dns=true
+never-default=true
+#+end_src
+
+NM profile example
+
+#+begin_example nix
+  networking.networkmanager = {
+    plugins = [ pkgs.networkmanager-openvpn ];
+
+    ensureProfiles.secrets = {
+
+    };
+    ensureProfiles.profiles = {
+      MyHomelabVPN = {
+        connection = {
+          id = "Homelab VPN";
+          type = "vpn";
+          autoconnect = "false";
+        };
+        vpn = {
+          service-type = "org.freedesktop.NetworkManager.openvpn";
+          
+          # This magic key tells the NM plugin to load your entire SOPS file
+          #
+          # (no it won't, LLM)
+          #
+          # "config" = "${config.sops.secrets.openvpn_config.path}";
+          
+        };
+      };
+    };
+  };
+#+end_example
+
+
 *** Router
 
 + [[https://pavluk.org/blog/2022/01/26/nixos_router.html][My NixOS Router Journey]]
 + [[https://juniorfox.net/article/diy-linux-router-part-2-network-and-internet][DIY Linux Router (Part 2 of 8)]] and source: [[https://github.com/cjuniorfox/juniorfox-site/][cjuniorfox/juniorfox-site]]
 + [[https://github.com/AtaraxiaSjel/nixos-config][AtaraxiaSjel/nixos-config]] sops, podman/docker, oci containers
   - [[https://github.com/AtaraxiaSjel/nixos-config/blob/089cef5e37c222210e345e23d1a5c3af803394f5/modules/nixos/virtualisation/virtualisation.nix][modules/nixos/virtualisation/virtualisation.nix]] sets up oci-containers
-
 ** Overrides
 
 *** Loading an =overlay= with an =override=
