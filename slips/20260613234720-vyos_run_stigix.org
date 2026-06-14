@@ -1,0 +1,146 @@
+:PROPERTIES:
+:ID:       d25efeb9-f75c-4b96-8af4-a9f9f216d2c4
+:END:
+#+TITLE: VyOS: Run Stigix
+#+CATEGORY: slips
+#+TAGS:
+
+* Docs
+
+** Smallstep
+
+** Stigix
+Repo: [[https://github.com/jsuzanne/stigix][jsuzanne/stigix]]
+
++ [[https://github.com/jsuzanne/stigix/tree/main/sample%20config][example config]]
++ Testing [[https://github.com/jsuzanne/stigix/blob/1f837868c725f9320f763fddedecc36d41c7531d/docs/SECURITY_TESTING_FAQ.md#example-testing-without-prisma-access][without Prisma SD-WAN]]
++ [[https://github.com/jsuzanne/stigix/blob/main/docs/API_REFERENCE.md][API Reference]]
+  - Also: [[https://github.com/jsuzanne/stigix/blob/main/docs/PERSISTENT_LOGGING.md][persistent logs]] retrieved as =jsonl= via
+    - =/api/security/results=
+    - =/api/security/stats=
++ [[https://github.com/jsuzanne/stigix/blob/main/docs/TRAFFIC_FLOW_GUIDE.md#%EF%B8%8F-complete-port-reference][Complete Port Reference]]
+  
+*** Deps
++ [[https://github.com/lance0/xfr][lance0/xfr]]
+
+* Resources
+
+It's AI... it's definitely AI (smh... i hope it works)
+
+* Overview
+
+** Structure
+
++ [[https://github.com/jsuzanne/stigix/blob/main/docs/AUTODISCOVERY_GUIDE.md][Peer autodiscovery]]
++ [[https://github.com/jsuzanne/stigix/blob/main/docs/TECHNICAL_DIAGRAM.md][Tech Diagram with traffic flow]]
+
+*** Services
+
+Just =stigix=, but it requires =NET_CAP= and =NET_ADMIN= wherever it runs.
+
+| docker-compose.yml        | host-mode networking |
+| docker-compose.bridge.yml | bridge               |
+
+** Environment
+
+| General & Web UI |                         | Prisma SD-WAN API          |       |
+|------------------+-------------------------+----------------------------+-------|
+| PORT             | 8080                    | PRISMA_SDWAN_REGION        | yagni |
+| JWT_SECRET       | your-secure-secret-here | PRISMA_SDWAN_TSGID         |       |
+| DEBUG            | false                   | PRISMA_SDWAN_CLIENT_ID     |       |
+| BETA             | false                   | PRISMA_SDWAN_CLIENT_SECRET |       |
+
+
+| Traffic Generator      |          | XFR Bandwidth Target |           | Target Ports     |      |
+|------------------------+----------+----------------------+-----------+------------------+------|
+| AUTO_START_TRAFFIC     | true     | XFR_PORT             |      9000 | TARGET_HTTP_PORT | 8082 |
+| SLEEP_BETWEEN_REQUESTS | 1        | XFR_MAX_DURATION     |      3600 |                  |      |
+| CLIENT_ID              | client01 | XFR_RATE_LIMIT       |         2 |                  |      |
+|                        |          | XFR_ALLOW_CIDR       | 0.0.0.0/0 |                  |      |
+
+
+| Registry & Discovery          | (opt. overrides) | Stigix Cloud/Probes      |                            |
+|-------------------------------+------------------+--------------------------+----------------------------|
+| STIGIX_REGISTRY_ENABLED       | true             | STIGIX_REGISTRY_URL      | https://registry.stigix.io |
+| STIGIX_SITE_NAME              |                  | STIGIX_TARGET_BASE_URL   | https://target.stigix.io   |
+| STIGIX_INSTANCE_ID            |                  | STIGIX_TARGET_MASTER_KEY |                            |
+| STIGIX_REGISTRY_HEARTBEAT_SEC | 300              |                          |                            |
+| STIGIX_REGISTRY_DISCOVERY_SEC | 120              |                          |                            |
+| STIGIX_REGISTRY_MODE          | peer             |                          |                            |
+
+        
+** Ports
+
+|------------------------------+-----------------------|
+| Port                         | Service               |
+|------------------------------+-----------------------|
+| "${PORT:-8080:${PORT:-8080}" | Web Dashboard         |
+| "8082:8082"                  | HTTP Echo Target      |
+| "9000:9000"                  | XFR Bandwidth Target  |
+| "5201:5201/tcp"              | iPerf TCP             |
+| "5201:5201/udp"              | iPerf UDP             |
+| "6100:6100/udp"              | Voice RTP             |
+| "6101:6101/udp"              | Voice RTP (secondary) |
+| "6200:6200/udp"              | Failover probes       |
+| "3100:3100"                  | MCP Server            |
+|------------------------------+-----------------------|
+
+* TODO Setup
+
++ Clone the project, then pull the dockerfiles
++ Test running in isolation (it creates empty configs when started)
+
+** Misc
++ [[https://github.com/trfore/ansible-smallstep][trfore/ansible-smallstep]] reallly need this on the VyOS API, even if it's
+  throwaway
+
+** Profiles
+
++ Setup =.env= and prep a means of pushing to remote nodes
+  - disable what's not needed in =.env=
+  - document logs/etc for data collection
+
+The =.env= files should be deployable under profiles
+
+#+begin_src shell :results output replace code :wrap verse
+echo ./profiles{1,2}/{.env,docker-compose.yml,logs/test-results.jsonl}
+    | tr ' ' '\n' | tree -a --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_verse
+.
+├── profiles1
+│   ├── docker-compose.yml
+│   ├── .env
+│   └── logs
+│       └── test-results.jsonl
+└── profiles2
+    ├── docker-compose.yml
+    ├── .env
+    └── logs
+        └── test-results.jsonl
+
+5 directories, 6 files
+#+end_verse
+
+To avoid cloudflare dependency, need to manually handoff the =JWT_SECRET=
+(requires =ssh= connectivity between endpoints)
+
+** Deploy (laptop, desktop, router)
+
+Designate services to test
+
++ plan =xfr= usage: it's for bandwidth testing, but effectively provides profiles
+  for netflow generation/collection
+  - customize =applications-config.json= for internal endpoints
++ plan to start arbitrary services across lab
+
+Setup firewall chain for vyos (see ports below)
+
++ The chain needs to be hooked up where traffic should flow
++ This should be hooked in when needed, unhooked later (=up/down= scripts)
+
+* Roam
++ [[id:d0d5896c-0cf5-4fa7-bf37-a2e3499c69d2][Red Team]]
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
