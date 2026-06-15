@@ -1,0 +1,116 @@
+:PROPERTIES:
+:ID:       c7f61376-ac64-4ae6-9876-123599cf7490
+:END:
+#+title: Guix Bootloader: OCR
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
++ [[id:092144e0-651b-4cfe-93e4-ac3e6eedf290][OCR: Optical Character Recognition]]
++ [[id:3daa7903-2e07-4664-8a20-04df51b715de][C/C++ (cpp)]]
+
+* Docs
+** Guix
++ [[https://codeberg.org/guix/guix/src/commit/2acb5f9da33586b20cb49aeb60d5adcd7468e1fc/gnu/packages/video.scm#L4742][(gnu packages video)]] obs-shaderfilter
+
+** OBS
+
+** CMake
+
+* Resources
+
+* Overview
+** Dependencies
++ Vendors [[https://github.com/pantor/inja/tree/0066e6049e486fa4bbc52c062a22efb594f1cf05][pantor/inja]] as =./vendor/inja= submodule
+  - TODO patch the cmake to use guix-included =inja=?
+
+** CMake
+
+Top-level [[https://github.com/royshil/obs-ocr/blob/main/CMakeLists.txt][CMakeLists.txt]]
+
+| category  | var                  |                                           |
+|-----------+----------------------+-------------------------------------------|
+| frontend  | ENABLE_FRONTEND_API  | ~find_package(obs-frontend-api REQUIRED)~   |
+| qt        | ENABLE_QT            | ~find_package(Qt6 COMPONENTS Widgets Core)~ |
+| opencv    | USE_SYSTEM_OPENCV    |                                           |
+|           |                      |                                           |
+| tesseract | USE_SYSTEM_TESSERACT | ~find_package(Tesseract)~ or use pkg-config |
+
++ if =!USE_SYSTEM_TESSERACT=, it will =include(cmake/fetch_tesseract.cmake)=
+
+* Modules
+
+#+begin_src emacs-lisp
+(setq-local ob@ell (expand-file-name ".dotfiles/ellipsis/ellipsis" (getenv "HOME")))
+#+end_src
+
+** =(ellipsis packages bootloaders)=
+
+#+begin_src scheme :tangle (expand-file-name "packages/video/obs-ocr.scm" ob@ell)
+(define-module (ellipsis packages video obs-ocr)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages bootloaders)
+  #:use-module (gnu packages firmware)
+  #:use-module (guix build-system cmake)
+  #:use-module (guix download)
+  #:use-module (guix gexp)
+  #:use-module (guix git-download)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix packages)
+  #:use-module (guix utils)
+  #:use-module (srfi srfi-1)
+  ;; #:use-module (srfi srfi-26)
+  #:use-module (ice-9 optargs)
+  #:use-module (ice-9 match)
+  #:use-module (ice-9 regex)
+
+  #:export (ellipsis-obs-ocr))
+
+;; NOTE: assume that the code in here does NOT work. i'll be sure to update
+;; here when it does with whatever caveats i have in mind.
+
+;; Some placeholders to export so =guile= doesn't complain
+(define ellipsis-obs-ocr "foo")
+#+end_src
+
+And the naive obs plugin package
+
+#+begin_src scheme :tangle (expand-file-name "packages/video/obs-ocr.scm" ob@ell)
+;; obs-ocr-0.0.8-source.tar.xz
+;; https://github.com/royshil/obs-ocr/releases/download/0.0.8/obs-ocr-0.0.8-source.tar.xz
+
+(define-public obs-shaderfilter
+  (package
+    (name "obs-ocr")
+    (version "0.0.8")
+    (source
+     (origin
+       (method git-fetch)
+       (uri (git-reference
+              (url "https://github.com/royshil/obs-ocr")
+              (commit version)))
+       (file-name (git-file-name name version))
+       (sha256
+        (base32 "0cxk8aiiiamhg8r0rzv8lihrzjiid2g03ib68dn6xmskr367dhs0"))))
+    (build-system cmake-build-system)
+    (arguments
+     (list
+      #:modules '((guix build cmake-build-system)
+                  (guix build utils))
+      #:tests? #f                       ;no tests
+      #:configure-flags
+      #~(list (string-append "-DLIBOBS_INCLUDE_DIR="
+                             #$(this-package-input "obs") "/lib")
+              "-DBUILD_OUT_OF_TREE=On" "-Wno-dev")))
+    (inputs (list obs qtbase-5 simde))
+    (native-inputs (list tesseract))
+    (home-page "https://github.com/royshil/obs-ocr")
+    (synopsis "OCR Plugin for OBS based on Tesseract")
+    (description
+     "The OCR Plugin for OBS provides real-time Optical Characted Recognition (OCR) or
+Text Recognition abilities over any OBS Source that provides an image - can be
+Image, Video, Browser or any other Source. It is based on the incredible
+Tesseract open source OCR engine, compiled and running directly inside OBS for
+real-time operation on every frame rendered.")
+    (license license:gpl2)))
+#+end_src
