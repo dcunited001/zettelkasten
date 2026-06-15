@@ -50,6 +50,7 @@ Just =stigix=, but it requires =NET_CAP= and =NET_ADMIN= wherever it runs.
 | DEBUG            | false                   | PRISMA_SDWAN_CLIENT_ID     |       |
 | BETA             | false                   | PRISMA_SDWAN_CLIENT_SECRET |       |
 
+traffic generation
 
 | Traffic Generator      |          | XFR Bandwidth Target |           | Target Ports     |      |
 |------------------------+----------+----------------------+-----------+------------------+------|
@@ -58,6 +59,7 @@ Just =stigix=, but it requires =NET_CAP= and =NET_ADMIN= wherever it runs.
 | CLIENT_ID              | client01 | XFR_RATE_LIMIT       |         2 |                  |      |
 |                        |          | XFR_ALLOW_CIDR       | 0.0.0.0/0 |                  |      |
 
+stigix registry/discovery and cloud/probes
 
 | Registry & Discovery          | (opt. overrides) | Stigix Cloud/Probes      |                            |
 |-------------------------------+------------------+--------------------------+----------------------------|
@@ -93,6 +95,135 @@ Just =stigix=, but it requires =NET_CAP= and =NET_ADMIN= wherever it runs.
 ** Misc
 + [[https://github.com/trfore/ansible-smallstep][trfore/ansible-smallstep]] reallly need this on the VyOS API, even if it's
   throwaway
+
+** Vyos
+
+#+begin_src shell
+stigix_profile="${stigix_profile:-profile1}"
+
+# implicit on "jump" action
+ifxgroupin="WAN"
+ifxgroupout=""
+
+stigix_ctl_ifx="${stigix_ctl_ifx:-stigix-ctl-$stigix_profile}"
+stigix_ctl_net="${stigix_ctl_net:-stigix-ctl-net-$stigix_profile}"
+
+stigix_xfr_ifx="${stigix_xfr_ifx:-stigix-xfr-$stigix_profile}"
+stigix_xfr_net="${stigix_xfr_net:-stigix-xfr-net-$stigix_profile}"
+
+# 1xx: web dashboard
+# 2xx: http
+# 3xx: xfr
+
+# firewall: in from controlling interface
+ch="stigix-ipv4-in"
+set firewall ipv4 name "$ch" default-action 'return'
+
+n=100; action='accept'; port=''; protocol='tcp_udp';
+desc=''
+
+n=110; action='accept'; port=''; protocol='tcp_udp';
+desc=''
+
+n=130; action='accept'; port=''; protocol='tcp_udp';
+desc=''
+
+n=120; action='accept'; port=''; protocol='tcp_udp';
+desc=''
+
+n=300; action='accept'; port='8082'; protocol='tcp_udp';
+desc='Accept: In for Stigix XFR'
+
+# firewall: out from controlling interface
+ch="stigix-out-ipv4"
+set firewall ipv4 name "$ch" default-action 'return'
+
+n=100; action='accept'; port='8080'; protocol='tcp_udp';
+desc='Accept: Out to Stigix WebDashboard'
+
+n=200; action='accept'; port='8082'; protocol='tcp_udp';
+desc='Accept: Out to Stigix HTTP Echo Target'
+
+n=300; action='accept'; port='8082'; protocol='tcp_udp';
+desc='Accept: Out for Stigix XFR'
+
+# firewall: hook the chains
+#+end_src
+
+
+
+** Vyos Config To Merge
+
++ Still needs a script to delete
+  - Merging these configs should be transactional, so you can commit, then
+    rollback. That may be a PITA though.
+
+*** Templates
+
+Required Groups
+
+#+begin_src terraform :tangle "/tmp/tmp.d2Cph2UaGG/stigixFwTest.vyos" :noweb yes
+firewall {
+  group {
+    interface-group <<ifgExternalIn()>> {
+      interface <<ifgExternalIn()>>
+    }
+    interface-group <<ifgControlOut()>> {
+      name stigix-<<stigixProfile()>> {
+
+  }
+}
+#+end_src
+
+
+
+
+#+begin_src terraform :tangle "/tmp/tmp.d2Cph2UaGG/stigixFwTest.vyos" :noweb yes
+firewall {
+  ipv4 {
+    name stigix-<<stigixProfile()>> {
+      default-action drop
+      rule 100 {
+        action accept
+        description "Accept: Management SSH"
+        destination {
+          port ssh
+        }
+        inbound-interface {
+          group adhoc-ssh
+        }
+        protocol tcp
+        source {
+          group {
+            network-group oxelio-adhoc-ssh
+          }
+        }
+      }
+    }
+  }
+}
+#+end_src
+
+*** Vars
+
+#+name: stigixProfile
+#+begin_src emacs-lisp :var profileName="profile1"
+profileName
+#+end_src
+
+#+name: ifgExternalIn
+#+begin_src emacs-lisp :var name="" ifgList=(list "WAN")
+(format "interface-group {
+
+}" name ifgList)
+#+end_src
+
+#+name: ifgControlOut
+#+begin_src emacs-lisp :var ifg="DEV"
+ifg
+#+end_src
+
+
 
 ** Profiles
 
