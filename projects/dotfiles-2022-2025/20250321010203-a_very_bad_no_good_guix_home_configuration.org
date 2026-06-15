@@ -1,0 +1,338 @@
+#+TITLE:     Home
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+* Geiser
+
+** Load Path Foreign Distro
+
+On foreign distro, geiser syntax check is looking for patches in =$guix_current=
+instead of =$guix_profile=. This is probably left over from when I was messing
+with Doom Emacs and Guile in 2023
+
+#+begin_src shell :results output verbatim
+guix_current=~/.guix-profile/share/guile/site/3.0/gnu \
+guix_profile=~/.config/guix/current/share/guile/site/3.0/gnu
+
+find -L $guix_profile $guix_current \
+    -name "u-boot-*.patch" -print | sed -e 's/home\/dc//g' \
+    | tree --fromfile .
+#+end_src
+
+#+RESULTS:
+#+begin_example
+.
+├── .config
+│   └── guix
+│       └── current
+│           └── share
+│               └── guile
+│                   └── site
+│                       └── 3.0
+│                           └── gnu
+│                               └── packages
+│                                   └── patches
+│                                       ├── u-boot-allow-disabling-openssl.patch
+│                                       ├── u-boot-nintendo-nes-serial.patch
+│                                       └── u-boot-rockchip-inno-usb.patch
+└── .guix-profile
+    └── share
+        └── guile
+            └── site
+                └── 3.0
+                    └── gnu
+                        └── packages
+                            └── patches
+                                ├── u-boot-allow-disabling-openssl.patch
+                                ├── u-boot-fix-build-python-3.10.patch
+                                ├── u-boot-fix-u-boot-lib-build.patch
+                                ├── u-boot-nintendo-nes-serial.patch
+                                ├── u-boot-rk3399-enable-emmc-phy.patch
+                                ├── u-boot-rockchip-inno-usb.patch
+                                └── u-boot-sifive-prevent-reloc-initrd-fdt.patch
+
+19 directories, 10 files
+#+end_example
+
+
+
+* Guix Packages
+
+
+
+| qt | kde             | gtk | gnome |
+|----+-----------------+-----+-------|
+|    | kde             |     |       |
+|    | kde-pim         |     |       |
+|    | kde-games       |     |       |
+|    | kde-utils       |     |       |
+|    | kde-office      |     |       |
+|    | kde-plasma      |     |       |
+|    | kde-internet    |     |       |
+|    | kde-frameworks  |     |       |
+|    | kde-multimedia  |     |       |
+|    | kde-systemtools |     |       |
+
+
+
+* Services
+
+In Progress services. Here, so they don't need a branch or create deprecation
+warnings.
+
+
+** Tmuxinator
+
+#+begin_src scheme
+;;; Copyright © 2025 David Conner <aionfork@gmail.com>
+
+(define-module (dc home services terminator)
+
+  ;; FIXME: /home/dc/.dotfiles/.emacs.d/insert/dotfiles/dc/services/service
+
+  #:use-module (gnu services)
+  #:use-module (gnu services base)
+  #:use-module (gnu services configuration)
+
+  #:use-module (gnu packages terminals)
+
+  #:use-module (guix gexp)
+  #:use-module (srfi srfi-1)
+  #:export (terminator-service-type))
+
+;;; Commentary:
+;;;
+;;; This module provides a service definition for the terminator service.
+;;;
+;;; Code:
+
+;; TODO: create ini-merge/append snippets based on home-mpv-service in ./src/rde/home/services/video.scm
+
+(define-configuration/no-serialization home-terminator-configuration
+  (terminator
+   (file-like terminator)
+   "The terminator package to use"))
+
+(define-configuration/no-serialization home-terminator-layout-configuration
+  )
+
+(define-configuration/no-serialization home-terminator-profile-configuration
+  )
+
+
+(define terminator-service-type
+  (service-type
+   (name 'dc-home-terminator)
+   (extensions
+    (list
+     (service-extension home-bash-service-type
+                        (home-bash-extension
+                         ;; probably going to get rid of this.
+                         ;; tmux or gnu screen seem like a better investment
+                         (aliases '(("terminatitle" . "terminator --title")
+                                    ("terminaconfig" . "terminator -F")))))))
+   (default-value '())
+   (description "Runs terminator")))
+
+;;; terminator.scm ends here
+
+#+end_src
+** Pipewire
+
+*** Wireplumber
+
+**** TODO define scripts/shims
+**** TODO do wireplumber configs supercede pipewire configs?
+
+*** pipewire-pulse
+
+On guix, started by shepherd
+
+*** Misc
+
++ how to access =pw-top= and things like that
++ enabling/loading modular configs?
+  + audio effects
++ responding to changes/availability in audio graph?
+  + HDMI outputs?
+
+* Old
+
+
+** Bash
+
+Lack of idempotence in bash scripts is a real problem. e.g. scripts that depend
+on a logging function =colors.sh= where functions are not simply defined but
+which run must have those variables defined.
+
+The structure of interdependencies in bash scripts (whether =bin= or =.local/profile.d=
+
+#+begin_src scheme
+(service home-bash-service-type
+                 (home-bash-configuration
+                  (aliases '(
+
+                             ))
+                  (bashrc (list (local-file "ellipsis/home2/.bashrc" "bashrc")))
+                  (bash-profile (list (local-file
+                                       "ellipsis/home2/.bash_profile"
+                                       "bash_profile")))
+                  (bash-logout (list (local-file
+                                      "ellipsis/home2/.bash_logout"
+                                      "bash_logout")))))
+
+#+end_src
+
+*** Bin Scripts
+
+**** Kitnil
+
+#+begin_src scheme
+
+(define home-bin-service
+  (simple-service 'bin-config
+                  home-files-service-type
+                  (append
+                   `((".local/bin/xmenu.sh" ,xmenu.sh))
+                   (map (lambda (program)
+                          `(,(string-append ".local/bin/" program)
+                            ,(local-file (string-append %project-directory "/dot_local/bin/executable_" program)
+                                         #:recursive? #t)))
+                        '("alerta-close"
+                          "ansible-update-ssh-known-hosts"
+                          "backup"
+                          "bash-notify"
+                          "block-ip"
+                          "blog"
+                          "brctl-start"
+                          "brightness"
+                          "cerb"
+                          "checkssl.sh"
+                          "chroot-games.sh"
+                          "clone-gitlab.intr.scm"
+                          "color-converter"
+                          ;; ...
+                          "fdsa")))))
+#+end_src
+
+*** Sourced Scripts
+
+**** Kitnil
+
+#+begin_src scheme
+
+(define home-bash-service
+  (simple-service 'bash-config
+                  home-files-service-type
+                  (append (list `(".bashrc" ,(local-file (string-append %project-directory "/dot_bashrc")))
+                                `(".bash_profile" ,(local-file (string-append %project-directory "/dot_bash_profile")))
+                                `(".bash_completion" ,(local-file (string-append %project-directory "/dot_bash_completion")))
+                                `(".bash_guix" ,(local-file (string-append %project-directory "/dot_bash_guix")))
+                                `(".bash_vterm" ,(local-file (string-append %project-directory "/dot_bash_vterm")))
+                                `(".local/share/bash-completion/completions/lexicon" ,(local-file (string-append %project-directory "/dot_local/share/bash-completion/completions/lexicon")))
+                                `(".local/share/bash-completion/completions/herd" ,(local-file (string-append %project-directory "/dot_local/share/bash-completion/completions/herd")))
+                                `(".local/share/bash-completion/completions/mail" ,(local-file (string-append %project-directory "/dot_local/share/bash-completion/completions/mail")))
+                                `(".local/share/bash-completion/completions/connect" ,(local-file (string-append %project-directory "/dot_local/share/bash-completion/completions/connect"))))
+                          (map (lambda (file-name)
+                                 `(,(string-append ".bash.d/" file-name) ,(local-file (string-append %project-directory "/dot_bash.d/" file-name))))
+                               '("bash.scm"
+                                 "mjru.bash")))))
+
+#+end_src
+
+
+*** Direnv Scripts
+**** Kitnil
+
+#+begin_src scheme
+
+(define home-direnv-service
+  (simple-service 'direnv-config
+                  home-files-service-type
+                  (list `(".direnvrc" ,(local-file (string-append %project-directory "/dot_direnvrc"))))))
+
+#+end_src
+
+** Guix Environment
+
+Potential fix for FCITX input method
+
+#+begin_src shell
+export FCITX_ADDON_DIRS=$GUIX_EXTRA/fcitx5/fcitx5/lib:$FCITX_ADDON_DIRS
+#export FCITX_CONFIG_HOME=
+#export FCITX_DATA_DIRS=
+#export XDG_DATA_DIRS=$GUIX_EXTRA/fcitx5/fcitx5/share:$XDG_DATA_DIRS
+#+end_src
+
+
+** Wayland Environment
+
+
+See [[https://github.com/swaywm/sway/wiki/Running-programs-natively-under-wayland][Running programs natively under wayland]]
+
+It may be best to set some of these variables in their app launchers
+
+*** GTK
+
+Enables experimental firefox support for wayland
+
+#+begin_src sh
+MOZ_ENABLE_WAYLAND=1
+#+end_src
+
+*** QT
+
+#+begin_src sh
+# for QT: These are not used if XDG_SESSION_TYPE=wayland
+XDG_SESSION_TYPE=wayland
+
+QT_QPA_PLATFORM=wayland-egl
+QT_WAYLAND_FORCE_DPI=physical
+QT_WAYLAND_DISABLE_WINDOWDECORATION=1
+
+#export QT_QPA_PLATFORMTHEME="qt5ct"
+#+end_src
+
+*** Elementary/EFL
+
+(WTF is this?)
+
+#+begin_src sh
+ECORE_EVAS_ENGINE=wayland_egl
+ELM_ENGINE=wayland_egl
+
+# elementary
+#export ELM_DISPLAY=wl
+#export ELM_ACCEL=gl
+#+end_src
+
+*** SDL (games and shit)
+
+#+begin_src sh
+# To make SDL2 use wayland instead of xwayland (SDL3 defaults to wayland)
+SDL_VIDEODRIVER=wayland
+
+# unset above and add below to steam tweaks
+# SDL_DYNAMIC_API=/usr/lib/libSDL2-2.0.so
+#+end_src
+
+*** Flatpak apps
+
+On a per run, per-app or user/system basis
+
+#+begin_src sh
+flatpak [--user] run --socket=wayland your-app
+flatpak [--user] override --socket=wayland [your-app]
+#+end_src
+
+* Desktop
+
+** Wayland
+
++ image viewer :: feh
++ video player :: mpv
++ terminal :: alacritty
++ dunst :: notifications
+  - [[https://github.com/emersion/mako][mako]] (sway/river)
+  - swaync
