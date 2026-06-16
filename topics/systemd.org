@@ -31,6 +31,168 @@
 
 ** =systemd-networkd=
 
+*** OpenVPN
+
+**** Setup
+
+Adding client to =/etc/openvpn/client/fdsa.conf= creates a templated target. So
+start as systemd service: =openvpn-client@fdsa.service=
+
++ [[https://wiki.archlinux.org/title/OpenVPN#Run_as_unprivileged_user][Running as unpriviledge user has problems]] (this is kinda why you want it on a
+  network device) Instead of =nobody/nobody=,
+  - with network-manager, these could be =nm-openvpn/nm-openvpn=.
+  - with systemd these could be =openvpn/openvpn= ... i think?
+
+***** TOTP
+
+Still asks for TOTP... no idea how to get systemd to let me enter this....
+
+***** Certificates
+
+=systemd-networkd= doesn't easily expose a way to enter passwords for
+certificates.
+
+#+begin_quote
+Forward password requests to Plymouth skipped.......
+#+end_quote
+
+Which i fully anticipated
+
+#+begin_src shell
+p12_in=bundle.enc.p12
+pem_in=bundle.dec.pem
+p12_out=bundle.dec.p12
+
+openssl pkcs12 -in "$p12_in" -nodes -out "$pem_in"
+openssl pkcs12 -export -in "$pem_in" -out "$p12_out"
+
+# or ....... nope (gotta write to "$pem_in")
+passin=fd:<(gpg -d foob.gpg) # fd expects a number
+passin=fd:<(gpg -d foob.gpg) # not a file, technically
+
+# openssl pkcs12 -export -in "$pem_in" \
+#         <(openssl pkcs12 -in "$p12_in" -nodes -passin $passin -out "$pem_in")
+#         -out "$p12_out"
+
+passin=stdin # can pipe
+openssl pkcs12 -export -in "$pem_in" \
+        <(gpg -d foob.gpg | openssl pkcs12 -in "$p12_in" -nodes -passin $passin) \
+        -out "$p12_out"
+
+# .... pkcs12 
+#+end_src
+
+Which i started to grok halfway through... that is the point of pkcs12
+
+***** Update DNS
+
+See [[https://wiki.archlinux.org/title/OpenVPN#Route_configuration_fails_with_systemd-networkd][9: DNS from archwiki]]
+
+***** Fix routes
+
+[[https://wiki.archlinux.org/title/OpenVPN#Route_configuration_fails_with_systemd-networkd][12.4: Route Config Fails with systemd-networkd]]
+
+#+begin_src conf
+# /etc/systemd/network/90-tun-ignore.network
+[Match] # tun1: tuns of fun
+Name=tun*
+
+[Link]
+Unmanaged=true
+#+end_src
+
+To control the network interface name, 
+
+#+begin_src conf
+# /etc/openvpn/client/fdsa.conf
+dev tun-fdsa
+dev-type tun
+
+# /etc/systemd/network/90-tun-ignore.network
+[Match] # tun1: tuns of fun
+Name=tun-fdsa
+#+end_src
+
+***** Arch Package
+
+OpenVPN expects you to magically "know" about linux "packaging" ... lol
+
+#+begin_src shell
+pacman -Fl | cut -f2- -d' ' | tree --fromfile .
+#+end_src
+
+Alot of the solutions expect me to run up/down scripts ... which aren't in here.
+I'm not touching the AUR right now.
+
++ you're also expected to write a shitton of =/etc= files -- which is my personal
+  favorite. don't forget to chown/chmod! (or write packages ... the archwiki
+  NEVER tells you that. in fact, basically ZERO linux documentation guides you
+  into writing packages)
++ oh and sort out your miscellaneous half-backed up files later. NO GIT (they're
+  scattered throughout =/etc= with half-complete versions, since you didn't fully
+  know how to complete the task)
+
+*** Vortix
+**** Overview
+
++ manages wireguard/openvpn tunnels
+  - supervises network status, & imposes policy under changing conditions (e.g.
+    manages fw rules)
+  - quickly kills leaks (supposedly)
++ works with =NetworkManager= and =systemd-networkd=
++ babies you with =sudo= management, so you don't accidentally create bad things
+  - what's the worst that could happen in your country really?
++ emits machine-readable =NDJSON= logs for the "AI agents"
+  - these are also unbelievably useful. if you can parse these under controlled
+    conditions, you can fuzz the configuration and re-parameterize the shell
+    commands. that's all "deterministic, mannn" (besides the state machines
+    reacting to network input)
+  - i guess the system configuration there is problematic. still useful for
+    scripting though.
+
+**** Data
+
++ [[https://github.com/Harry-kp/vortix#directory-structure][Directory Structure]]
+
+logs to =XDG_CONFIG_HOME=
+
+#+begin_src shell
+strace -e all -o $d/vortix.strace vortix -v
+grep -E '(statx|mkdir|openat|readlink)' $d/vortix.strace
+#+end_src
+
+***** Auth
+
++ see [[https://github.com/Harry-kp/vortix/blob/d4492bf0f9912a9ddb1a3a4c09663c2b51f7c0b8/SECURITY.md][SECURITY.md]]
+
++ Stores authentication in plain text
+  - protected against "Casual disk-snooping. Profile configs and
+    =auth/<profile>.auth= files are mode 0600." by file permissions ......
++ Also doesn't import certificates properly
+
+
+**** Setup
+
++ Arch: requires =pacman -S wireguard-tools openvpn iptables=
+
+***** Systemd
+
+Includes a =vortix-daemon.service=, but doesn't install it on arch.
+
++ daemon relies on SO_PEERCRED (see [[https://man7.org/linux/man-pages/man7/socket.7.html][socket(7)]] and [[https://man7.org/linux/man-pages/man7/unix.7.html][unix(7)]])
+
+***** AI Slop
+
+[[https://github.com/Harry-kp/vortix#q-how-do-i-know-what-dns-resolver-my-system-uses][Q: How do I know what DNS resolver my system uses?]]
+
+#+begin_src shell
+# Systemd (most modern Linux distros) 
+resolvectl status 2>/dev/null && echo "Only checks that you're using resolved"
+# NetworkManager
+nmcli dev show 2>/dev/null | grep DNS && echo "Only checks that NetworkManager is aware of DNS"
+# Fallback check
+cat /etc/resolv.conf | head -3 && echo "Only checks resolv.conf comments (and that resolv.conf exists, basically)"
+#+end_src
 *** Ugh...
 
 I'd love to have systemd-networkd bc it offers declarative configuration of
@@ -42,13 +204,13 @@ I'd love to have systemd-networkd bc it offers declarative configuration of
 ... but i cannot for the life of me figure out how tf to make this work on a
 laptop.
 
-*** Examples of Problems
+**** Examples of Problems
 
 + juggling network connections
 
-*** Gemini had some suggestions
+**** Gemini had some suggestions
 
-**** Systemd templates
+***** Systemd templates
 
 #+begin_quote
 Systemd Templates: Use =@= units (e.g., =vpn@home.service=). It’s the "C-way" to do
@@ -60,9 +222,6 @@ really work with systemd units beyond simple use-cases, unless chaining
 configuration ... and systemd unit configuration is difficult-to-manage
 spaghetti code. AFAIK, you would _not_ get a singular consistent view of the
 merged unit files.
-
-
-
 ** Examples
 *** NixOS
 
@@ -204,6 +363,202 @@ systemd-analyze --user dot \
 #+RESULTS:
 [[file:img/nix/systemd-analyze-user-targets.svg]]
 
+
+**** Quickies
+
+This is otherwise very hairy
+
+#+begin_src shell :results output file :file img/nix/systemd-analyze-system-targets.png
+systemd-analyze dot '*' \
+    | grep -iE '(digraph|{|}|network|resolv)' \
+    | dot -Grankdir=LR -Tpng
+# getting lucky: digraph { }
+#+end_src
+
+#+RESULTS:
+[[file:img/nix/systemd-analyze-system-targets.png]]
+
+***** Guix Comparison
+
+
+#+name: guix-desktop-services
+#+begin_src shell :var system="kharis" inDir=(expand-file-name ".dotfiles" (getenv "HOME"))
+cd $inDir
+guix system -L ellipsis/ -L dc/ shepherd-graph \
+    "dc/dc/system/$system.scm" | dot -Tpng
+#+end_src
+
+An X11-based system's services
+
+#+call: guix-desktop-services(system="kharis-x11") :results output file :file "img/nix/guix-desktop-x11.png"
+
+#+RESULTS:
+[[file:img/nix/guix-desktop-x11.png]]
+
+An Wayland-based system's services
+
+#+call: guix-desktop-services(system="kharis") :results output file :file "img/nix/guix-desktop-wayland.png"
+
+#+RESULTS:
+[[file:img/nix/guix-desktop-wayland.png]]
+
+****** Diffable
+
+#+begin_quote
+The package graphs are not usually diffable (they're not flat and involve
+tracking package identity with misc IDs)
+#+end_quote
+
+for basic comparison, at least for simple cases, these can sort because they're
+flat graphs -- i.e. only one edge definition per line, with deterministically
+computed node id's
+
+#+begin_src shell :results output code :wrap example diff :var system="kharis" :dir (expand-file-name ".dotfiles" (getenv "HOME"))
+sys1="dc/dc/system/$system-x11.scm"
+sys2="dc/dc/system/$system.scm"
+
+# produce the .dot graph files
+diff <(guix system -L ellipsis/ -L dc/ shepherd-graph "$sys1" | sort) \
+    <(guix system -L ellipsis/ -L dc/ shepherd-graph "$sys2" | sort)
+echo ''
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+12a13,26
+>   "cgroups2-fs-owner" -> "cgroups2-limits" [color = blue];
+>   "cgroups2-fs-owner" -> "dbus-system" [color = blue];
+>   "cgroups2-fs-owner" [label = "cgroups2-fs-owner", shape = box, fontname = sans];
+>   "cgroups2-fs-owner" -> "NetworkManager networking" [color = blue];
+>   "cgroups2-fs-owner" -> "seatd elogind" [color = blue];
+>   "cgroups2-fs-owner" -> "udev" [color = blue];
+>   "cgroups2-fs-owner" -> "user-processes" [color = blue];
+>   "cgroups2-limits" -> "dbus-system" [color = darkseagreen];
+>   "cgroups2-limits" [label = "cgroups2-limits", shape = box, fontname = sans];
+>   "cgroups2-limits" -> "NetworkManager networking" [color = darkseagreen];
+>   "cgroups2-limits" -> "rootless-podman-shared-root-fs" [color = darkseagreen];
+>   "cgroups2-limits" -> "seatd elogind" [color = darkseagreen];
+>   "cgroups2-limits" -> "udev" [color = darkseagreen];
+>   "cgroups2-limits" -> "user-processes" [color = darkseagreen];
+37a52
+>   "dockerd" -> "seatd elogind" [color = darkgoldenrod];
+41a57,59
+>   "elogind" -> "dbus-system" [color = darkviolet];
+>   "elogind" [label = "elogind", shape = box, fontname = sans];
+>   "elogind" -> "user-processes" [color = darkviolet];
+62a81,92
+>   "file-system-/run/greetd/pam_mount" [label = "file-system-/run/greetd/pam_mount", shape = box, fontname = sans];
+>   "file-system-/run/greetd/pam_mount" -> "root-file-system" [color = red];
+>   "file-system-/run/greetd/pam_mount" -> "udev" [color = red];
+>   "file-system-/run/greetd/runfiles" [label = "file-system-/run/greetd/runfiles", shape = box, fontname = sans];
+>   "file-system-/run/greetd/runfiles" -> "root-file-system" [color = peachpuff4];
+>   "file-system-/run/greetd/runfiles" -> "udev" [color = peachpuff4];
+>   "file-system-/run/systemd" [label = "file-system-/run/systemd", shape = box, fontname = sans];
+>   "file-system-/run/systemd" -> "root-file-system" [color = darkseagreen];
+>   "file-system-/run/systemd" -> "udev" [color = darkseagreen];
+>   "file-system-/run/user" [label = "file-system-/run/user", shape = box, fontname = sans];
+>   "file-system-/run/user" -> "root-file-system" [color = magenta];
+>   "file-system-/run/user" -> "udev" [color = magenta];
+69a100,103
+>   "file-systems" -> "file-system-/run/greetd/pam_mount" [color = darkviolet];
+>   "file-systems" -> "file-system-/run/greetd/runfiles" [color = darkviolet];
+>   "file-systems" -> "file-system-/run/systemd" [color = darkviolet];
+>   "file-systems" -> "file-system-/run/user" [color = darkviolet];
+70a105
+>   "file-systems" -> "file-system-/sys/fs/cgroup/elogind" [color = darkviolet];
+73d107
+<   "file-systems" -> "file-system-/var/lib/gdm" [color = darkviolet];
+78a113,120
+>   "file-system-/sys/fs/cgroup/elogind" [label = "file-system-/sys/fs/cgroup/elogind", shape = box, fontname = sans];
+>   "file-system-/sys/fs/cgroup/elogind" -> "root-file-system" [color = dimgrey];
+>   "file-system-/sys/fs/cgroup/elogind" -> "udev" [color = dimgrey];
+>   "file-system-/sys/fs/cgroup" [label = "file-system-/sys/fs/cgroup", shape = box, fontname = sans];
+>   "file-system-/sys/fs/cgroup" -> "root-file-system" [color = dimgrey];
+>   "file-system-/sys/fs/cgroup" -> "root-file-system" [color = dimgrey];
+>   "file-system-/sys/fs/cgroup" -> "udev" [color = dimgrey];
+>   "file-system-/sys/fs/cgroup" -> "udev" [color = dimgrey];
+85,87d126
+<   "file-system-/var/lib/gdm" [label = "file-system-/var/lib/gdm", shape = box, fontname = sans];
+<   "file-system-/var/lib/gdm" -> "root-file-system" [color = darkgoldenrod];
+<   "file-system-/var/lib/gdm" -> "udev" [color = darkgoldenrod];
+116a156
+>   "pam" -> "seatd elogind" [color = blue];
+123a164,167
+>   "rootless-podman-shared-root-fs" [label = "rootless-podman-shared-root-fs", shape = box, fontname = sans];
+>   "rootless-podman-shared-root-fs" -> "user-processes" [color = darkviolet];
+>   "seatd elogind" [label = "seatd elogind", shape = box, fontname = sans];
+>   "seatd elogind" -> "user-processes" [color = cyan3];
+135,139d178
+<   "term-console" -> "host-name" [color = magenta];
+<   "term-console" [label = "term-console", shape = box, fontname = sans];
+<   "term-console" -> "system-log syslogd" [color = magenta];
+<   "term-console" -> "udev" [color = magenta];
+<   "term-console" -> "user-processes" [color = magenta];
+141a181
+>   "term-tty1" -> "pam" [color = magenta];
+146a187
+>   "term-tty2" -> "pam" [color = dimgrey];
+151a193
+>   "term-tty3" -> "pam" [color = darkgoldenrod];
+156a199
+>   "term-tty4" -> "pam" [color = darkseagreen];
+161a205
+>   "term-tty5" -> "pam" [color = red];
+166a211
+>   "term-tty6" -> "pam" [color = peachpuff4];
+169a215,227
+>   "term-tty7" -> "host-name" [color = blue];
+>   "term-tty7" [label = "term-tty7", shape = box, fontname = sans];
+>   "term-tty7" -> "pam" [color = blue];
+>   "term-tty7" -> "seatd elogind" [color = blue];
+>   "term-tty7" -> "udev" [color = blue];
+>   "term-tty7" -> "user-processes" [color = blue];
+>   "term-tty7" -> "virtual-terminal" [color = blue];
+>   "term-tty8" -> "host-name" [color = darkseagreen];
+>   "term-tty8" [label = "term-tty8", shape = box, fontname = sans];
+>   "term-tty8" -> "pam" [color = darkseagreen];
+>   "term-tty8" -> "udev" [color = darkseagreen];
+>   "term-tty8" -> "user-processes" [color = darkseagreen];
+>   "term-tty8" -> "virtual-terminal" [color = darkseagreen];
+208,215c266,267
+<   "xorg-server" -> "dbus-system" [color = red];
+<   "xorg-server" -> "host-name" [color = red];
+<   "xorg-server" [label = "xorg-server", shape = box, fontname = sans];
+<   "xorg-server" -> "pam" [color = red];
+<   "xorg-server" -> "udev" [color = red];
+<   "xorg-server" -> "user-processes" [color = red];
+<   "zerotier-one" [label = "zerotier-one", shape = box, fontname = sans];
+<   "zerotier-one" -> "NetworkManager networking" [color = red];
+---
+>   "x11-socket-directory" -> "file-systems" [color = peachpuff4];
+>   "x11-socket-directory" [label = "x11-socket-directory", shape = box, fontname = sans];
+
+#+end_example
+
+in-place script
+
+#+begin_example shell :var system="kharis" :dir (expand-file-name ".dotfiles" (getenv "HOME"))
+export t=$(mktemp -d) 
+export system_x11=kharis-x11
+export system_wayland=kharis-x11
+
+# produce the .dot graph files
+guix system -L ellipsis/ -L dc/ shepherd-graph \
+    "dc/dc/system/$system_x11.scm" > "$t/$system_x11.dot"
+guix system -L ellipsis/ -L dc/ shepherd-graph \
+    "dc/dc/system/$system_wayland.scm" > "$t/$system_wayland.dot"
+
+# produce the images 
+guix system -L ellipsis/ -L dc/ shepherd-graph \
+    "dc/dc/system/$system_x11.scm" | dot -Tpng > "$t/$system_x11.png"
+guix system -L ellipsis/ -L dc/ shepherd-graph \
+    "dc/dc/system/$system_wayland.scm" | dot -Tpng > "$t/$system_wayland.png"
+
+# for basic comparison (at least for simple cases), these can sort because they're flat graphs 
+# (i.e. only one edge definition per line, with deterministically computed node id's)
+diff <(cat $t/$system_x11.dot | sort) \
+    <(cat $t/$system_wayland.dot | sort) > $t/kharis.diff.txt
+#+end_example
 
 *** List Subcommands
 
