@@ -1,0 +1,535 @@
+:PROPERTIES:
+:ID:       7e01f0d1-58f4-4ba0-846e-e858c741a465
+:END:
+#+TITLE: vyos: Setup VRRP, Conntrackd, OSPF for HA Failover
+#+CATEGORY: slips
+#+TAGS:
+
+
+* Goals
+
+1. conntrack-sync across =eth3.4000= so that failover doesn't disrupt TCP/UDP
+   session state
+2. VRRP failover on will always allow traffic to route out of the appropriate
+   NAT ip address on =eth0=
+3. A partial VRRP failover affecting =HADEV= will still allow traffic on =HALAN=
+   to route out whichever router is active.
+4. The gateway failover should be relatively independent of failover of internal
+   networks.
+5. OSPF will provide a "cross-core" =area 0= to redirect traffic when WAN fails
+   over.
+
+** Caveats
+
+Keep in mind that i'm assembling this after getting feedback from Gemini, so
+things are a bit scattered.
+
++ The router configs and diffs are run through a fairly simple =sed= script for
+  now to change ip's and VLANs. There could be some typos. Some of the diffs may
+  be backwards, though I tried to be consistent about this.
++ This is so I could feel slightly better about sending them off to LLM and
+  screenshotting them to "show of" like an idiot -- "show of" is in quotes
+  because these configs are like embarrassing bad, compared to where I feel like
+  I could be (extrapolating from what "lack of experience" has taught me)
+
+Even though there's extra effort to cleanse/lint the configs, it's much simpler
+when I can grep my notes in one place.
+
++ I need to do much of that anyways when querying LLM. I might as well have a
+  structured approach to this so it's repeatable/efficient.
++ It should not feel cumbersome to do that with network configuration.
+  Especially if the goal is SDN: _software-defined networking_.
++ The name of the game is, quite /intensivly/: parameterize your configs and
+  stage/transactionalize their application.
++ Using the HTTP API and =jq= would make this easier... it turns out that
+  regardless of how you structure the "where clauses" and "string/config
+  replacements" in your queries commands that it's basically the same
+  kolmologorov complexity to use =sed= or =jq=... until you need transactionality &
+  dependency management. i.e. you're listing the same set of replacements/logic
+  for simple operations, just in a different language.
+
+It's presented in reverse order because the diffs are small and fairly
+self-explanatory. For similar reason, "problems" are summarized at the top.
+
+** Problems
+
+*** =conntrack-sync=
+
+There's a problem with =conntrack-sync=. See later below. After 5 or 6 rounds,
+gemini seems to think that I should disable VRRP preemption:
+
+#+begin_quote
+By default, VyOS VRRP uses preemption. When r2 recovers its WAN, it instantly
+tries to claw back mastership. Combined with your preempt-delay 200, r1 and r2
+spend over 3 minutes passing ambiguous state changes back and forth. conntrackd
+sees this flickering and triggers its built-in safety mechanism: a scheduled
+table flush to prevent routing loops.
+
+Change your configuration to No Preempt. This means if r2 fails and r1 takes
+over, r1 remains the master permanently until r2 fails or you manually reboot
+it. This prevents the flip-flop that kills the NAT table.
+#+end_quote
+
+I'm not 100% sure about that.
+
+I think there's also some issue with NAT generally. =conntrackd= never finishes
+draining all the NAT connections. The ones that are left look strange... (SMH i
+didn't want to have issues here bc that sucks.)
+
+**** Gemini Convo :crypt:urlllm:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0ARAAivk4GB0m0VVGK2x/EyF7oRvdVURoE+ajWOXG2Qccged9
+edOvvgnZQKg3O9+qvwyV7uVYmrnHb8n+hBLsbZQRSyQitAMlGy3/P02LRXoYUwP0
+dethNgW9CvMkZR1rmTEcShWUIUumHBsDRsDLGrBfNn/aFnqRQJEwZkeFI5Jv23rf
+CoALXZ+VAy8l/muTMLKFW0TyCBp3WuNmCSIn+r/vCUPO24/ZANojYVtJT46hfUoC
+9qhjqeTZUfFC369HiqWA7QQGt+fmGWNAVkZLDlo+zlyoZimfwlJAZxSrImbrBVzv
+7qqFTVtjO2vXQsbCMVozN7+4Bqt83V8EtPTyNmkgFsrzNh0AUfavAyBLHwf5MDVI
+SAcNrQF8Xd+BjAhikYczdUURhrW/6zmmRNge+YwzQGPrbhMcF9qAtcrwFKKIY1wB
+RZp9zviUXvpxRpiJf0IJ6cWnLftk2BIrtYAJJXviFudrC7egSU8sdBqafOLtlvs4
+dJ7FJmStyh2cM5rLoMSbVlrZrOl6Cu5UVoOMq0HSmla+Qpa65QwRmIz3FV7yxzLh
+c4gRkIrzlpS1Q6YEh4l0dIwxYxX8ydgbPqjp/CSk/B7p/DFVyGeImh5RM1B/pc9u
+M1oXbK+60JK0cdj1+VLgOsk2ipR0oNWRWqJ/QQe2+yiaA0AotX4QZsx57aQayGfS
+agHd8JpEwuwzmYFSA1oyM7R+zBiMS1mA2s7imVzrv0tjU1Uzg0B6YOvApL0kMiq1
+dH4G8xAdowBz6Z++WjayMuCJMGaZe0wGF69RK8A6u7zsbUk6s6whDOcCY7m4GRfS
+dlIw/GWPofri/18=
+=PUlo
+-----END PGP MESSAGE-----
+
+
+*** Design Options
+
+These are a bit confusing and each one comes with caveats, I'm sure
+
+**** Recursive routing using scopes
+
+This would to route outbound traffic across another =eth3.4020= interface
+
+This is simpler, but I need OSPF later anyways. It could provide a backup method
+in case I'm migrating/redesigning a routing protocol deployment later...
+
+**** A dynamic routing protocol
+
+This facilitates redistributing default routes for outbound traffic. OSPF needs
+an =area 0=. I'll need OSPF if subnets are created/destroyed (but I need a VM Host
+that can run FRR that is um easily configured)
+
+I also eventually want to bridge the network to cloud. I hope I haven't bet on
+the wrong "solution" here, as I think that migrating =area 0= later is a huge
+problem (you can only have one)
+
+**** Policy based routing
+
+This is seen alot with BGP... which I don't think I'll have unless it's "IBGP".
+Running an AS seems like a _*massive*_ PITA.
+
+With FRR, PBR also works with other
+* Setup
+
+** Added config
+
+*** Setup =VRRP= on =HANAT=. Setup =conntrack-sync=
+
+This sets up another VRRP group and =sync-group= to track
+
+I had configured pairs of IP addresses. This removed half of them.
+
+#+begin_example diff
+11d10
+< set firewall group address-group nat-oxelio-dev address '172.24.24.15'
+13d11
+< set firewall group address-group nat-oxelio-devzt address '172.24.24.17'
+15d12
+< set firewall group address-group nat-oxelio-farm address '172.24.24.23'
+17d13
+< set firewall group address-group nat-oxelio-lab address '172.24.24.35'
+19d14
+< set firewall group address-group nat-oxelio-lan address '172.24.24.11'
+21d15
+< set firewall group address-group nat-oxelio-svc address '172.24.24.31'
+#+end_example
+
+This permits ping
+
+#+begin_example diff
+129a124,129
+> set firewall ipv4 forward filter rule 150 action 'accept'
+> set firewall ipv4 forward filter rule 150 icmp type-name 'echo-request'
+> set firewall ipv4 forward filter rule 150 inbound-interface group '!WAN'
+> set firewall ipv4 forward filter rule 150 protocol 'icmp'
+> set firewall ipv4 forward filter rule 150 source group network-group '10dot'
+> set firewall ipv4 forward filter rule 150 state 'new'
+174a175,180
+> set firewall ipv4 input filter rule 150 action 'accept'
+> set firewall ipv4 input filter rule 150 icmp type-name 'echo-request'
+> set firewall ipv4 input filter rule 150 inbound-interface group '!WAN'
+> set firewall ipv4 input filter rule 150 protocol 'icmp'
+> set firewall ipv4 input filter rule 150 source group network-group '10dot'
+> set firewall ipv4 input filter rule 150 state 'new'
+#+end_example
+
+This removes the IP addresses from interface assignment and sets up the =VRRP=
+sync group.
+
+#+begin_example diff
+351,354c357,369
+< set interfaces ethernet eth0 address '172.24.24.12/24'
+< set interfaces ethernet eth0 address '172.24.24.16/24'
+< set interfaces ethernet eth0 address '172.24.24.18/24'
+< set interfaces ethernet eth0 address '172.24.24.24/24'
+---
+> set high-availability vrrp group HANAT address 172.24.24.12/24 interface 'eth0'
+> set high-availability vrrp group HANAT address 172.24.24.16/24 interface 'eth0'
+> set high-availability vrrp group HANAT address 172.24.24.24/24 interface 'eth0'
+> set high-availability vrrp group HANAT address 172.24.24.32/24 interface 'eth0'
+> set high-availability vrrp group HANAT address 172.24.24.36/24 interface 'eth0'
+> set high-availability vrrp group HANAT hello-source-address '172.23.240.12'
+> set high-availability vrrp group HANAT interface 'eth3.4000'
+> set high-availability vrrp group HANAT peer-address '172.23.240.11'
+> set high-availability vrrp group HANAT preempt-delay '200'
+> set high-availability vrrp group HANAT priority '200'
+> set high-availability vrrp group HANAT track interface 'eth0'
+> set high-availability vrrp group HANAT vrid '240'
+> set high-availability vrrp sync-group HANAT member 'HANAT'
+356,357d370
+< set interfaces ethernet eth0 address '172.24.24.32/24'
+< set interfaces ethernet eth0 address '172.24.24.36/24'
+#+end_example
+
+This sets up VLANs for heartbeat networks.
+
+#+begin_example diff
+388a402,403
+> set interfaces ethernet eth3 vif 4010 address '172.16.241.12/24'
+> set interfaces ethernet eth3 vif 4010 description 'VRRP: Conntrack Sync'
+393a409,412
+> set interfaces ethernet eth4 vif 4020 address '172.16.242.12/24'
+> set interfaces ethernet eth4 vif 4020 description 'OSPF'
+> set interfaces ethernet eth4 vif 4030 address '172.16.243.12/24'
+> set interfaces ethernet eth4 vif 4030 description 'OSPF: Cross Core'
+420a440,446
+> set service conntrack-sync accept-protocol 'icmp'
+> set service conntrack-sync accept-protocol 'icmp6'
+> set service conntrack-sync accept-protocol 'tcp'
+> set service conntrack-sync accept-protocol 'udp'
+> set service conntrack-sync failover-mechanism vrrp sync-group 'HANAT'
+> set service conntrack-sync interface eth3.4010 peer '172.16.241.11'
+> set service conntrack-sync listen-address '172.16.241.12'
+#+end_example
+
+This ensures DHCP hands out the virtual IP address
+
+#+begin_example diff
+422,423c448,449
+< set service dhcp-server shared-network-name DEV subnet 172.16.180.0/24 option default-router '172.16.180.12'
+< set service dhcp-server shared-network-name DEV subnet 172.16.180.0/24 option name-server '172.16.180.12'
+---
+> set service dhcp-server shared-network-name DEV subnet 172.16.180.0/24 option default-router '172.16.180.1'
+> set service dhcp-server shared-network-name DEV subnet 172.16.180.0/24 option name-server '172.16.180.1'
+#+end_example
+
+*** Setup OSPF
+
+This sets up explicit firewall rules
+
++ I had forgotten to restrict the address range on =input= interface rules
++ The traffic for =VRRP=, =OSPF= and =conntrackd= are explicitly multicast by default.
+  This would simplify the rules by eliminating the need to specify a destination
+  address. I may convert the configuration to use multicast instead.
++ Getting the firewall rules wrong (forgetting multicast) will cause OSPF
+  neighbor(s) to disappear from =show ip ospf neighbors=. This could be a very big
+  problem in production. =restart ospf= gives you a warning in vyos.
+  - OSPF is stateful and a "process" is distributed across the network
+  - disrupting the states can result in failure modes that are dependent on the
+    sequence in which OSPF service coming up & going down. i.e. it may be
+    difficult to replicate these problems. better OSPF configuration would avoid
+    that, but you're getting called in for a problem that already exists.
+
+#+begin_example diff
+16a17,18
+> set firewall group address-group ospfv2-multicast address '224.0.0.5'
+> set firewall group address-group ospfv2-multicast address '224.0.0.6'
+62a65
+> set firewall group interface-group ospfv2-process interface 'eth4.4030'
+63a67
+> set firewall group interface-group sync-conntrack interface 'eth3.4010'
+85a90
+> set firewall group network-group ospfv2-process network '172.23.243.0/24'
+113a119
+> set firewall group network-group sync-conntrack network '172.23.241.0/24'
+180a187,195
+> set firewall ipv4 input filter rule 340 action 'jump'
+> set firewall ipv4 input filter rule 340 destination group network-group 'sync-conntrack'
+> set firewall ipv4 input filter rule 340 inbound-interface group 'sync-conntrack'
+> set firewall ipv4 input filter rule 340 jump-target 'CONNTRACK-SYNC'
+> set firewall ipv4 input filter rule 340 source group network-group 'sync-conntrack'
+> set firewall ipv4 input filter rule 350 action 'jump'
+> set firewall ipv4 input filter rule 350 inbound-interface group 'ospfv2-process'
+> set firewall ipv4 input filter rule 350 jump-target 'OSPFV2-TRAFFIC'
+> set firewall ipv4 input filter rule 350 source group network-group 'ospfv2-process'
+207a223,230
+> set firewall ipv4 name CONNTRACK-SYNC rule 10 action 'accept'
+> set firewall ipv4 name CONNTRACK-SYNC rule 10 description 'Accept: conntrackd sync'
+> set firewall ipv4 name CONNTRACK-SYNC rule 10 destination port '3780'
+> set firewall ipv4 name CONNTRACK-SYNC rule 10 protocol 'udp'
+> set firewall ipv4 name OSPFV2-TRAFFIC rule 10 action 'accept'
+> set firewall ipv4 name OSPFV2-TRAFFIC rule 10 description 'Accept: OSPFv2'
+> set firewall ipv4 name OSPFV2-TRAFFIC rule 10 destination group address-group 'ospfv2-multicast'
+> set firewall ipv4 name OSPFV2-TRAFFIC rule 10 protocol 'ospf'
+#+end_example
+
+This sets up OSPF
+
++ definitely need =bdf= on this interface. that transmits dummy packets to help
+  OSFP react to topology changes faster.
+  - apparently too much CPU/IO strain for virtual environments. thanks CBT
+    Nuggets guy
++ =hello-multiplier= increases the rate of transmission for =bfd=
++ I need passive OSPF by default. Either way, you're specifying it half the
+  time. one of those two halves is much larger, but =passive= is just one word.
++ rfc1583 :: helps avoid routing loops. I'm not sure i need it, but i would like
+  to avoid those.
++ graceful-restart :: this is another one i wasn't sure i needed, but i think
+  you almost always want. I'm not sure when you don't.
+
+#+begin_example diff
+428a452,466
+> set protocols ospf area 0 authentication 'plaintext-password'
+> set protocols ospf area 0 network '172.24.24.0/24'
+> set protocols ospf area 0 network '172.23.243.0/24'
+> set protocols ospf default-information originate metric '10'
+> set protocols ospf default-information originate metric-type '2'
+> set protocols ospf graceful-restart
+> set protocols ospf interface eth0 passive
+> set protocols ospf interface eth4.4030 authentication plaintext-password '12345678'
+> set protocols ospf interface eth4.4030 bfd
+> set protocols ospf interface eth4.4030 hello-multiplier '5'
+> set protocols ospf interface eth4.4030 passive disable
+> set protocols ospf interface eth4.4030 priority '200'
+> set protocols ospf parameters rfc1583-compatibility
+> set protocols ospf parameters router-id '172.23.243.12'
+> set protocols ospf passive-interface 'default'
+
+#+end_example
+
+While configuring OSPF, I can keep the static default routes at lower metric:
+the state of the route propagation can be observed, but it won't affect routing.
+Once the routes seem correct, then cut over.
+  
++ many ospf details must match across the OSPF network process.
+  - =hello-interval= must match across an area
+  - =hello-multiplier= renders =hello-interval= moot (gets set to =0=)
++ Can't use =ospf interface $ifx area 0= and =ospf area 0= at the same time on vyos
+
+* Problems
+
+** =conntrack-sync=
+
+*** failover
+
+The sync works. I needed to address =input= firewall rules to get =conntrackd=
+traffic.
+
+
+
+**** =r1= never comes up
+
+On r2 the service state is accurate
+
+#+begin_example shell
+show conntrack-sync  status
+
+# sync-interface        : eth3.4010
+# failover-mechanism    : vrrp [sync-group HANAT]
+# last state transition : MASTER at Thu Jun 25 02:46:31 PM EDT 2026
+
+# ExpectationSync       : disabled
+#+end_example
+
+On r1, it never changes.
+
+#+begin_example shell
+show conntrack-sync status
+
+# sync-interface        : eth3.4010
+# failover-mechanism    : vrrp [sync-group HANAT]
+# last state transition : no transition yet!
+# ExpectationSync       : disabled
+#+end_example
+
+
+* Starting Config
+
+Starting with a config *like* this:
+
+#+begin_src terraform
+system {
+    host-name r2
+}
+
+firewall {
+    global-options {
+        all-ping enable
+        state-policy {
+            established {
+                action accept
+            }
+            invalid {
+                action drop
+            }
+            related {
+                action accept
+            }
+        }
+    }
+}
+
+protocols {
+    static {
+        route 0.0.0.0/0 {
+            next-hop 172.24.24.1 {
+                interface eth0
+            }
+        }
+        route 172.16.45.0/24 {
+            description "To LAN: VLAN 120"
+            interface eth1.45 {
+                distance 20
+            }
+        }
+        route 172.16.180.0/24 {
+            description "To DEV: VLAN 180"
+            interface eth2.180 {
+                distance 20
+            }
+        }
+        route 172.16.250.0/24 {
+            description "To SVC: VLAN 250"
+            interface eth2.250 {
+                distance 20
+            }
+        }
+    }
+}
+
+high-availability {
+    vrrp {
+        group HADEV {
+            address 172.16.180.1/24 {
+                interface eth2.180
+            }
+            address 172.16.250.1/24 {
+                interface eth2.250
+            }
+            hello-source-address 172.23.240.12
+            interface eth3.4000
+            peer-address 172.23.240.11
+            preempt-delay 200
+            priority 200
+            track {
+                interface eth2.240
+                interface eth2.250
+                interface eth2.180
+            }
+            vrid 16
+        }
+        group HALAN {
+            address 172.16.45.1/24 {
+                interface eth1.45
+            }
+            hello-source-address 172.23.240.12
+            interface eth3.4000
+            peer-address 172.23.240.11
+            preempt-delay 200
+            priority 200
+            track {
+                interface eth1.45
+            }
+            vrid 12
+        }
+    }
+}
+nat {
+    source {
+        rule 11200 {
+            outbound-interface {
+                name eth0
+            }
+            source {
+                group {
+                    network-group oxelio-lan
+                }
+            }
+            translation {
+                address 172.24.24.12
+            }
+        }
+        rule 11600 {
+            outbound-interface {
+                name eth0
+            }
+            source {
+                group {
+                    network-group oxelio-dev
+                }
+            }
+            translation {
+                address 172.24.24.16
+            }
+        }
+        rule 13200 {
+            outbound-interface {
+                name eth0
+            }
+            source {
+                group {
+                    network-group oxelio-svc
+                }
+            }
+            translation {
+                address 172.24.24.32
+            }
+        }
+    }
+}
+
+interfaces {
+    ethernet eth0 {
+        address 172.24.24.12/24
+        address 172.24.24.16/24
+        address 172.24.24.32/24
+        address 172.24.24.252/24
+        description "WAN Interface"
+        hw-id 64:00:6a:92:56:51
+        offload {
+            gro
+            gso
+            sg
+            tso
+        }
+    }
+    ethernet eth1 {
+        description "LAN Interface"
+        vif 45 {
+            address 172.16.45.12/24
+        }
+    }
+    ethernet eth2 {
+        description "DEV,SVC Interface"
+        vif 180 {
+            address 172.16.180.12/24
+        }
+        vif 250 {
+            address 172.16.250.12/24
+        }
+    }
+}
+#+end_src
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
