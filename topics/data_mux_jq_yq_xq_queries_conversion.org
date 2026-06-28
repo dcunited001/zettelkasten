@@ -649,6 +649,71 @@ the above header args are for reference but would set defaults
 #+end_src
 #+end_example
 
+**** Edit Pathplanner with =jq=
+
+
+#+begin_quote
+This can definitely mess up pathplanner, so use its builders java instead.
+
+This is hacky and kinda pointless. Moved out of the wpilib notes bc this could
+result in undefined behavior, even if reviewing diffs in git...
+#+end_quote
+
++ Doing this all in one go makes the =jq= queries problematic. Better to test the
+  queries outside of the minibuffer. It's easier to modify in steps.
++ If copying =*.path= files, then ensure there's a good naming system for folders
+  and references like the =.linkedName=. Otherwise, there could be undefined
+  results...
++ Staging the modified files in git between steps is a good way to check that
+  nothing unexpected happened -- or to be able to discard changes and rollback.
+  That's only possible if there's some initial state stored in Git already.
+
+Ensure pathplanner is closed.
+
++ Move cursor to =[= after ="waypoints": [=
++ hit =C-<space>= then =C-M-f= to move forward by s-expression
++ hit =C-u M-|= and enter one of the commands below
+
+The =jq= output replaces the value of =.waypoints=.
+
+Run to set specific anchors
+
+#+begin_src shell
+jq --argjson xx '1.0' \
+  --argjson yy '1.0' '
+map(. += {
+  anchor: {
+    x: $xx,
+    y: $yy }
+})'
+#+end_src
+
+Then modify =.waypoints[].anchor= to the =.x= and =.y= you want to start with.
+
+Then run this on the value of =.waypoints= to update the control points to be
+relative to =.waypoints[].anchor=.
+
+#+begin_src shell
+jq --argjson dx '0.0' \
+   --argjson dy '0.1' '
+map(. += {
+  prevControl: (if .prevControl == null
+    then null
+    else {
+      x: .anchor.x - $dx,
+      y: .anchor.y - $dy
+    } end),
+  nextControl: (if .nextControl == null
+    then null
+    else {
+      x: .anchor.x + $dx,
+      y: .anchor.y + $dy
+    } end)
+})'
+#+end_src
+
+The paths need to connect. Editing the JSON is a bit easier there.
+
 ** Examples
 
 

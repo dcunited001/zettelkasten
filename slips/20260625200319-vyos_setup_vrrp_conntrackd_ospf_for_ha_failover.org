@@ -63,6 +63,41 @@ Checking explicit configuration for services usually requires:
 + cat /usr/libexec/vyos/system/keepalived-fifo.py :: once discovering the
   =keepalived= configuration that vyos assembles.
 
+*** VRRP
+
++ [[https://forum.vyos.io/t/vrrp-transition-scripts-not-running-vyos-commands/5692/2][VRRP transition scripts not running]] seeing messages about =security_scripts not
+  enabled=. These seem to have stopped.
+
+On the other hand, the =VRRP= logs show the routers cannot talk to the peers.
+
+#+begin_quote
+Jun 25 07:48:43 Keepalived_vrrp[79055]: Sync group HANAT has only 1 virtual router(s) - this probably isn't what you want
+#+end_quote
+
+**** Nat Issues
+
+[[https://manual.mikrotik.com/docs/high-availability-solutions/vrrp#writable-settings][MicroTIK: VRRP =group-authority= Configuration]] mentions
+
+#+begin_quote
+For example, VRRP instances run on LAN and WAN networks with NAT between them.
+If one VRRP instance is Master and the other is Backup on the same device, the
+entire network malfunctions due to NAT failure. Grouping LAN and WAN VRRP
+interfaces ensures that both are either VRRP Master or Backup. _In a VRRP group,
+VRRP advertisements are sent only by the group authority._ *In a typical WAN+LAN
+setup, you should use the LAN network as the group authority to keep VRRP
+control traffic in the internal network.*
+#+end_quote
+
+The configuration is slightly different. =group-authority= options:
+
+| none           | The VRRP interface is not grouped and operates independently, with its own VRRP state machine.             |
+| self           | The VRRP interface acts as the group authority. It controls the state machines...                          |
+|                | of other grouped VRRP interfaces and is responsible for sending and receiving VRRP advertisements.         |
+| vrrp-interface | The VRRP interface is a group member. Its state machine follows the state of the specified VRRP interface. |
+
+In vyos, these abstractions mirror =group= and =sync-group= somewhat (i think).
+Adding =no-preempt= may fix this after all
+
 *** =conntrack-sync=
 
 There's a problem with =conntrack-sync=. See later below. After 5 or 6 rounds,
@@ -109,8 +144,6 @@ dH4G8xAdowBz6Z++WjayMuCJMGaZe0wGF69RK8A6u7zsbUk6s6whDOcCY7m4GRfS
 dlIw/GWPofri/18=
 =PUlo
 -----END PGP MESSAGE-----
-
-
 *** Design Options
 
 These are a bit confusing and each one comes with caveats, I'm sure
