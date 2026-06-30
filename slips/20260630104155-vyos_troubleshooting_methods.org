@@ -1,0 +1,135 @@
+:PROPERTIES:
+:ID:       2baa95b7-471f-4234-aeff-7891f1f505d1
+:END:
+#+TITLE: VyOS: Troubleshooting methods
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Config
+
+** Screen
+
++ Vyos version: Screen version 4.09.00 (GNU) 30-Jan-22
++ NixOS version: Screen version 5.0.1 (build on 2025-05-15 15:05:07)
+
+This is copied from my dotfiles. The color status bar works on the vyos server,
+which is nice. I've been afraid to customize much of the =.profile= and =.bashrc= or
+whatever so far.
+
+*** =.screenrc=
+
+#+begin_src screen
+startup_message off
+term screen-256color
+scrollback 16000
+screen 1 # index windows starting at 1
+
+# remove window/proc number from name in windowlist (C-a ")
+windowlist string "%4n %h%=%f" # default "%4n %t%=%f" 
+
+bind c screen 1
+bind ^c screen 1
+bind 0 select 10
+
+# mousetrack on     # for current window
+# defmousetrack on  # for new windows
+
+altscreen on # fix: text editor's don't properly reset the window
+
+### Status Bar
+hardstatus off
+hardstatus alwayslastline
+hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %m-%d %{W} %c %{g}]'
+#+end_src
+
++ =C-a : mousetrack on/off= is a feature to enable/disable as needed.
+  - enabling it enables click to move in vim, but breaks less scrolling
+  - using =C-a ESC= to enter copy/scroll mode is a PITA, but it does help navigate
+    output history on a serial connection (otherwise Cisco configs and command
+    output just flies into the void)
+  - =mousetrack= also breaks scrolling in =C-a ESC=, which is probably why i had
+    disabled it.
++ scrolling =less= output in screen windows even without these...
+  - =mousetrack on= will allow you to click different windows... but breaks
+    scrolling less output
+  - =termcapinfo xterm*|rxvt*|kterm*|Eterm* ti@:te@= when available: use
+    x-scrolling mechanism. (this breaks scrolling by just umm... scrolling the
+    whole screen session)
++ attrcolor b ".I" :: enable bold colors (not required, run [[https://github.com/dcunited001/ellipsis/blob/master/bin/colortest#L1][colortest]])
+
+* UX
+
+** =monitor command= gives you =watch= or =watchexec= with =diff=
+
+For some commands (e.g. lsof) this is tough to set up with =diff=, depending on:
+
++ how the command accepts input (cli args vs. pipe)
++ on how much piping is required
+
+On vyos this is provided out of the box for operational commands and it even
+helps handle some of the output processing for you.
+
++ =monitor command "$cmd"= replay command every two seconds
++ =monitor command diff "$cmd"= replay command every two seconds, highlight diffs
++ ="$cmd= can include pipes
+
+This is extremely useful for specific troubleshooting scenarios (see screen/tmux
+notes)
+
+** Task-specific terminal profiles
+
+When debugging specific scenarios, you may want to =ssh-in-screen= or
+=screen-in-ssh= & likewise for tmux. Usually you'd just do the former, since it
+avoids persistent connection state and misc security issues.
+
++ Screen is included in the debian build for the Vyos ISO
++ but I don't think that =tmux= is
++ usually terminal integration requires =ssh-in-screen=
+
+#+begin_quote
+i had to build it into the ISO, but you could install it afterwards. In either
+case, upgrading vyos will resquash a new image to unpack as the root FS on boot
+... so readding those packages may be necessary which could break other scripts
+(like using =opensc= or =age=)
+#+end_quote
+
+Having task-specific profiles, especially when they're distributed to your
+user's home directories will greatly accelerate troubleshooting.
+
++ You can run many simultaneous pings in most windows
++ You can watch routes getting added/removed
++ You can monitor logs as you pull the plug
+
+*** Restoring terminal state
+
+you can use:
+
++ C-a : layout dump thisscreen.rc :: to dump the current screen config
+  - then customize the commands invoked by each window process
+  - this requires macro-ing through each window to invoke the primary commands
++ tmux list-windows -F "#{window_index}: #{window_name} -> #{window_layout}" ::
+  to dump the =tmux= layout
+  - for tmux, same thing as above: ensure the default commands are invoked.
+
+* Context
+
+** Service configs
+
+Checking explicit configuration for services usually requires:
+
++ pgrep -fa conntrackd :: to see the runtime invocation
++ sudo /usr/sbin/conntrackd -C /run/conntrackd/conntrackd.conf -s link :: to get
+  a reference to the actual configuration
++ sudo cat /run/conntrackd/conntrackd.conf :: to check for service lifecycle
+  scripts
++ cat /usr/libexec/vyos/system/keepalived-fifo.py :: once discovering the
+  =keepalived= configuration that vyos assembles.
+
+This is extremely useful across various linux/bsd-based firewalls (not really a
+problem, per se)
+

@@ -5,6 +5,10 @@
 #+CATEGORY: slips
 #+TAGS:
 
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
 
 * Goals
 
@@ -53,20 +57,28 @@ self-explanatory. For similar reason, "problems" are summarized at the top.
 
 ** Problems
 
-Checking explicit configuration for services usually requires:
+*** OSPF
 
-+ pgrep -fa conntrackd :: to see the runtime invocation
-+ sudo /usr/sbin/conntrackd -C /run/conntrackd/conntrackd.conf -s link :: to get
-  a reference to the actual configuration
-+ sudo cat /run/conntrackd/conntrackd.conf :: to check for service lifecycle
-  scripts
-+ cat /usr/libexec/vyos/system/keepalived-fifo.py :: once discovering the
-  =keepalived= configuration that vyos assembles.
+~cat /proc/net/fib_trie~ is a useful sanity check on the routes
+
++ I had disabled the default =0.0.0.0= route on one one router, I think in
+  anticipation of a different approach or in the middle of a transition. This
+  tripped me up, but wasn't sufficient.
+
+**** BFD
+
+Getting this wrong or using with the wrong OSPF area-type may be a tricky source
+of problems. Definitely required for the bridge network.
+
+There are two ways to configure =bfd=:
+
+- through =ospf= configuration commands (this is much easier for me)
+- and with the more specific =set protocols bfd ...=
 
 *** VRRP
 
 + [[https://forum.vyos.io/t/vrrp-transition-scripts-not-running-vyos-commands/5692/2][VRRP transition scripts not running]] seeing messages about =security_scripts not
-  enabled=. These seem to have stopped.
+  enabled=. These seem to have stopped (unrelated)
 
 On the other hand, the =VRRP= logs show the routers cannot talk to the peers.
 
@@ -74,7 +86,19 @@ On the other hand, the =VRRP= logs show the routers cannot talk to the peers.
 Jun 25 07:48:43 Keepalived_vrrp[79055]: Sync group HANAT has only 1 virtual router(s) - this probably isn't what you want
 #+end_quote
 
+NOTE: after a reboot, =show vrrp status= reports sane cluster state. The above
+message seems to be something like a warning ... but it may also appear during
+failover.
+
 **** Nat Issues
+
+
+#+begin_quote
+Jun 29 07:04:46 vy1 kernel: ll header: 00000000: ff ff ff ff ff ff 64 00 6a 92 56 51 08 06
+Jun 29 07:04:46 vy1 kernel: IPv4: martian source 172.24.24.16 from 10.4.0.16, on dev eth0
+#+end_quote
+
+***** Potentially a bad config
 
 [[https://manual.mikrotik.com/docs/high-availability-solutions/vrrp#writable-settings][MicroTIK: VRRP =group-authority= Configuration]] mentions
 
@@ -96,8 +120,7 @@ The configuration is slightly different. =group-authority= options:
 | vrrp-interface | The VRRP interface is a group member. Its state machine follows the state of the specified VRRP interface. |
 
 In vyos, these abstractions mirror =group= and =sync-group= somewhat (i think).
-Adding =no-preempt= may fix this after all
-
+Adding =no-preempt= may fix this after all.
 *** =conntrack-sync=
 
 There's a problem with =conntrack-sync=. See later below. After 5 or 6 rounds,
@@ -362,7 +385,7 @@ This sets up OSPF
 While configuring OSPF, I can keep the static default routes at lower metric:
 the state of the route propagation can be observed, but it won't affect routing.
 Once the routes seem correct, then cut over.
-  
+
 + many ospf details must match across the OSPF network process.
   - =hello-interval= must match across an area
   - =hello-multiplier= renders =hello-interval= moot (gets set to =0=)
@@ -572,7 +595,3 @@ interfaces {
     }
 }
 #+end_src
-
-* Roam
-+ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
-+ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
