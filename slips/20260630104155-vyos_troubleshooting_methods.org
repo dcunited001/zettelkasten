@@ -10,7 +10,137 @@
 + [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
 + [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
 
+* Context
+
+** Service configs
+
+Checking explicit configuration for services usually requires:
+
++ pgrep -fa conntrackd :: to see the runtime invocation
++ sudo /usr/sbin/conntrackd -C /run/conntrackd/conntrackd.conf -s link :: to get
+  a reference to the actual configuration
++ sudo cat /run/conntrackd/conntrackd.conf :: to check for service lifecycle
+  scripts
++ cat /usr/libexec/vyos/system/keepalived-fifo.py :: once discovering the
+  =keepalived= configuration that vyos assembles.
+
+This is extremely useful across various linux/bsd-based firewalls (not really a
+problem, per se)
+
+** UX
+
+*** =monitor command= gives you =watch= or =watchexec= with =diff=
+
+For some commands (e.g. lsof) this is tough to set up with =diff=, depending on:
+
++ how the command accepts input (cli args vs. pipe)
++ on how much piping is required
+
+On vyos this is provided out of the box for operational commands and it even
+helps handle some of the output processing for you.
+
++ =monitor command "$cmd"= replay command every two seconds
++ =monitor command diff "$cmd"= replay command every two seconds, highlight diffs
++ ="$cmd= can include pipes
+
+This is extremely useful for specific troubleshooting scenarios (see screen/tmux
+notes)
+
+*** Task-specific terminal profiles
+
+When debugging specific scenarios, you may want to =ssh-in-screen= or
+=screen-in-ssh= & likewise for tmux. Usually you'd just do the former, since it
+avoids persistent connection state and misc security issues.
+
++ Screen is included in the debian build for the Vyos ISO
++ but I don't think that =tmux= is
++ usually terminal integration requires =ssh-in-screen=
+
+#+begin_quote
+i had to build it into the ISO, but you could install it afterwards. In either
+case, upgrading vyos will resquash a new image to unpack as the root FS on boot
+... so readding those packages may be necessary which could break other scripts
+(like using =opensc= or =age=)
+#+end_quote
+
+Having task-specific profiles, especially when they're distributed to your
+user's home directories will greatly accelerate troubleshooting.
+
++ You can run many simultaneous pings in most windows
++ You can watch routes getting added/removed
++ You can monitor logs as you pull the plug
+
+**** Restoring terminal state
+
+you can use:
+
++ C-a : layout dump thisscreen.rc :: to dump the current screen config
+  - then customize the commands invoked by each window process
+  - this requires macro-ing through each window to invoke the primary commands
++ tmux list-windows -F "#{window_index}: #{window_name} -> #{window_layout}" ::
+  to dump the =tmux= layout
+  - for tmux, same thing as above: ensure the default commands are invoked.
+
 * Config
+
+** Options
+
+... dammit
+
+| ssh-in-screen | screen-in-ssh |
+
+Operatonal commands
+
+|      | ~ssh $host 'vbash -s' >>EOF~ | ~/home/opcommandsuser/scripts~ | manually type commands      |   |
+| pros | remote                     | less typing                  | flexible, no per-user setup |   |
+| cons | very weird ~bash~ options    | more user setup              | slow                        |   |
+|      | must type into in ~screen~   | can't ~$@~ your scripts        |                             |   |
+
+Instead of opcmds, can use HTTP API
+
+|      | ssh tunnel + ~fetch/jq~            | caddy/mtls + ~fetch/jq~      | x509 + ~fetch/jq~        |   |
+|------+----------------------------------+----------------------------+------------------------+---|
+| pros | flexible                         | flexible, easier to extend | secure                 |   |
+|      |                                  |                            | minimal per-user setup |   |
+| cons | security, only some command data | only some command data     | giant PITA             |   |
+|      | still requires per-user setup    | less per-user setup        |                        |   |
+
+*** =vbash= argument handling
+
+#+begin_example shell
+#!/bin/vbash
+
+vycmd=$1
+shift 1
+args=("$@")
+
+source /opt/vyatta/etc/functions/script-template
+run $vycmd "${args[@]}"
+exit
+#+end_example
+
+Then call it with =bin/opsimple monitor command diff 'show ip route'=
+
+I was needing to do this:
+
+#+begin_src shell
+# ...
+# args=("$@")
+
+declare -a vyargs=()
+
+for arg in "${args[@]}"; do
+  vyargs+=("\"$arg\"")
+done
+
+source /opt/vyatta/etc/functions/script-template
+# echo ${#vyargs[@]}
+# echo $vycmd "${vyargs[@]}"
+
+# ...
+#+end_src
+
+But somewhere along the way the quotes were getting fucked up
 
 ** Screen
 
@@ -47,6 +177,10 @@ hardstatus alwayslastline
 hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{B} %m-%d %{W} %c %{g}]'
 #+end_src
 
+See config notes below
+
+**** Config Notes
+
 + =C-a : mousetrack on/off= is a feature to enable/disable as needed.
   - enabling it enables click to move in vim, but breaks less scrolling
   - using =C-a ESC= to enter copy/scroll mode is a PITA, but it does help navigate
@@ -62,74 +196,47 @@ hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u
     whole screen session)
 + attrcolor b ".I" :: enable bold colors (not required, run [[https://github.com/dcunited001/ellipsis/blob/master/bin/colortest#L1][colortest]])
 
-* UX
+**** OSPF layout
 
-** =monitor command= gives you =watch= or =watchexec= with =diff=
+SMFH =screen= does not seem to have a way to "select" a window/region.
 
-For some commands (e.g. lsof) this is tough to set up with =diff=, depending on:
++ =layout select $n= :: choose a layout
++ select =$n= :: choose =screen n= for current region
 
-+ how the command accepts input (cli args vs. pipe)
-+ on how much piping is required
+#+begin_src screen
+source "$HOME/.screenrc"
+setenv screenbin "$HOME/.screen/bin"
+setenv  ospf_bridge "eth32.1234"
 
-On vyos this is provided out of the box for operational commands and it even
-helps handle some of the output processing for you.
+# init the screens. can't seem to roll these over with \
+screen -t 'ping DNS' 2 "$screenbin/opsimple" ping 8.8.8.8
+screen -t 'ip route' 3 "$screenbin/opsimple" monitor command diff 'show ip route'
+screen -t 'ip ospf neighbor' 4 "$screenbin/opsimple" monitor command diff 'show ip ospf neighbor'
+screen -t 'traffic:ospf' 5 "$screenbin/opsimple" monitor traffic interface "$ospf_bridge"
+screen -t 'bfd peers' 6 "$screenbin/opsimple" monitor command diff 'show bfd peers brief'
 
-+ =monitor command "$cmd"= replay command every two seconds
-+ =monitor command diff "$cmd"= replay command every two seconds, highlight diffs
-+ ="$cmd= can include pipes
+# init the regions
+split
+split
+split
+split
+split
 
-This is extremely useful for specific troubleshooting scenarios (see screen/tmux
-notes)
+# assign the screens to the regions
+select 1
+focus
+select 2
+focus
+select 3
+focus
+select 4
+focus
+select 5
+focus
+select 6
+focus top
+#+end_src
 
-** Task-specific terminal profiles
+This gives a profile like below
 
-When debugging specific scenarios, you may want to =ssh-in-screen= or
-=screen-in-ssh= & likewise for tmux. Usually you'd just do the former, since it
-avoids persistent connection state and misc security issues.
-
-+ Screen is included in the debian build for the Vyos ISO
-+ but I don't think that =tmux= is
-+ usually terminal integration requires =ssh-in-screen=
-
-#+begin_quote
-i had to build it into the ISO, but you could install it afterwards. In either
-case, upgrading vyos will resquash a new image to unpack as the root FS on boot
-... so readding those packages may be necessary which could break other scripts
-(like using =opensc= or =age=)
-#+end_quote
-
-Having task-specific profiles, especially when they're distributed to your
-user's home directories will greatly accelerate troubleshooting.
-
-+ You can run many simultaneous pings in most windows
-+ You can watch routes getting added/removed
-+ You can monitor logs as you pull the plug
-
-*** Restoring terminal state
-
-you can use:
-
-+ C-a : layout dump thisscreen.rc :: to dump the current screen config
-  - then customize the commands invoked by each window process
-  - this requires macro-ing through each window to invoke the primary commands
-+ tmux list-windows -F "#{window_index}: #{window_name} -> #{window_layout}" ::
-  to dump the =tmux= layout
-  - for tmux, same thing as above: ensure the default commands are invoked.
-
-* Context
-
-** Service configs
-
-Checking explicit configuration for services usually requires:
-
-+ pgrep -fa conntrackd :: to see the runtime invocation
-+ sudo /usr/sbin/conntrackd -C /run/conntrackd/conntrackd.conf -s link :: to get
-  a reference to the actual configuration
-+ sudo cat /run/conntrackd/conntrackd.conf :: to check for service lifecycle
-  scripts
-+ cat /usr/libexec/vyos/system/keepalived-fifo.py :: once discovering the
-  =keepalived= configuration that vyos assembles.
-
-This is extremely useful across various linux/bsd-based firewalls (not really a
-problem, per se)
-
+[[file:img/devops/vyos/ospf-screenprofile.png]]
