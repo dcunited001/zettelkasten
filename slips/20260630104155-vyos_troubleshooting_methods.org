@@ -12,7 +12,42 @@
 
 * Context
 
-** Service configs
+** Services
+*** Names
+
+Piping to the =match= command is slightly different than grep, technically. Feels
+like a cisco thing. It is less verbose... but it's a bit hard for me to
+anticipate what to grep on while watching logs. it still accepts a regexp
+though, so i can select service names.
+
+This lists service names in the most recent boot's log. =journalctl= is also
+available.
+
+#+begin_src shell
+# rev rev desu
+show log grep -E '\[[0-9]+\]:' \
+    | sed -E 's/\[.*//g' \
+    | rev | cut -f1 -d' ' | rev \
+    | sort | uniq
+#+end_src
+
+I'm seeing these:
+
+| acpid           | DhcpLFC            | rsyslogd                   | (udev-worker)        | xstate_offset |
+| atopacctd       | frrinit.sh         | sshd                       | vmtouch              | zebra         |
+| auditd          | haveged            | staticd                    | vyos-commitd         |               |
+| augenrules      | IOAPIC             | systemctl                  | vyos-config          |               |
+| chronyd         | kea-dhcp4          | (systemd)                  | vyos-configd         |               |
+| commit          | Keepalived         | systemd                    | vyos-domain-resolver |               |
+| conntrackd      | keepalived-fifo.py | systemd-gpt-auto-generator | vyos-hostsd          |               |
+| conntrack-tools | Keepalived_vrrp    | systemd-journald           | vyos-netlinkd        |               |
+| cron            | live-config        | systemd-logind             | vyos_net_name        |               |
+| CRON            | pdns-recursor      | systemd-modules-load       | vyos-router          |               |
+| dbus-daemon     | podman             | systemd-udevd              | watchfrr             |               |
+
+So now... it's much easier, though this doesn't get everything.
+
+*** Configs
 
 Checking explicit configuration for services usually requires:
 
@@ -151,6 +186,35 @@ This is copied from my dotfiles. The color status bar works on the vyos server,
 which is nice. I've been afraid to customize much of the =.profile= and =.bashrc= or
 whatever so far.
 
+*** =.bashrc=
+
+To shorten some of the compound commands later, it's possible to add aliases to
+the =.bashrc= only for screen. It looks like =match= doesn't have color though.
+
+#+begin_src shell
+# Just add a block below this one
+case "$TERM" in
+    # it's xterm-256color afaik, but it's better for this to be disabled
+    xterm-color) color_prompt=yes;;
+    screen*) color_prompt=yes;; # i added this
+esac
+
+if [[ "$TERM" =~ "screen" ]]; then
+    # muh aliases
+    alias dir='dir --color=auto'
+    alias vdir='vdir --color=auto'
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+#+end_src
+
+Those aliases are commented out, except for =ls --color=auto=. I'd like it that
+way mostly, on the off-chance that encoding screws with terminal automation
+(total PITA for me if I can't use tools like =TRAMP=... I'd have to install emacs
+on the router lol). If it's =screen= though, i'm probably going to want color in
+the =grep=.
+
 *** =.screenrc=
 
 #+begin_src screen
@@ -240,3 +304,5 @@ focus top
 This gives a profile like below
 
 [[file:img/devops/vyos/ospf-screenprofile.png]]
+
+**** Failover Profile

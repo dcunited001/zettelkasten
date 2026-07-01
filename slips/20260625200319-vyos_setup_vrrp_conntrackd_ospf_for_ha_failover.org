@@ -1,7 +1,7 @@
 :PROPERTIES:
 :ID:       7e01f0d1-58f4-4ba0-846e-e858c741a465
 :END:
-#+TITLE: vyos: Setup VRRP, Conntrackd, OSPF for HA Failover
+#+TITLE: VyOS: Setup VRRP, Conntrackd, OSPF for HA Failover
 #+CATEGORY: slips
 #+TAGS:
 
@@ -57,6 +57,111 @@ self-explanatory. For similar reason, "problems" are summarized at the top.
 
 ** Problems
 
+*** DNS
+
+#+begin_quote
+I didn't use the =sysctl= thing, so the configuration to resolve this is below. I
+know how "quick fixes" tend to become sticky for 10x longer than you (I)
+initially expect. That's why I _do not_ try to take shortcuts...
+
+... this ends up being worse (without feedback from people, things remain
+unimplemented for longer). Hey -- if i had an IT staff, I would have no qualms
+making it someone else's problem. But I don't.
+#+end_quote
+
+The logs were reporting a failure to bind for backup router, since the VIP
+doesn't exist when it's not bound.
+
+#+begin_src shell
+set system systctl parameter net.ipv4.ip_nonlocal_bind value 1
+#+end_src
+
+There are security concerns here. I had bound my DNS to each local subnet, since
+during =Day 0.01= i didn't want routing configuration to cause DNS to fail: i
+didn't want routing as a dependency for reachable subnets to have DNS.
+
+It looks like VRRP on a router requires a hard decision on decoupling services
+from VIP's ... unless there are fairly strong controls on firewalls or the
+device is contained within several security boundaries. That's why there's a
+=sysctl=. It's usually a hint.
+
+**** Security issues include:
+
++ A router processes/forwards a lot of traffic & routes, but if it's aware of a
+  specific public address bound to a local interface, that will short-circuit
+  the traffic to a services. There doesn't necessarily need to be a local
+  interface for the kernel to attach that traffic stream.
+  - if your firewalls enforce "Strict vs. Loose" uRPF Reverse Path Forwarding,
+    which seems like a pain to enforce, then this creates simplifies MitM
+    attacks or bidirectional traffic streams for a surreptition service bound to
+    a non-local port
++ Application logic/validation: apparently some apps' underlying logic makes
+  assumptions about about the routability of network paths & about
++ Firewall zone bypass: an application in the middle that's bound to multiple
+  interfaces can poke holes in your assumptions about firewall zones.
+  - This would almost certainly require sufficient knowledge about network
+    internals, depending on how obvious your route/switch logic is (it's
+    probably not)
+  - It also implies that you're already compromised and, while remaining hidden,
+    the attacker is either trying to move laterally or they want to exfiltrate
+    data by mixing it in to high-volume or less secured channels.
+
+On the other hand ... i think i'll just fix my DNS.
+
+**** Gemini Convo :crypt:urlllm:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ//S25SgKRiTRf/+IT7iG8Pwj48Jp0wEqy04EDKvt4tDPnN
+OzwKC1no9wGveew4f5RRC8OYGFbeET3LJMLgC8ScYFZdsKNnwEbY1yi2DcF/xc7P
+ifKdW96tWnXudBVO22NHPoHIJnUnEv3hJb8ewf75K5moLC16YSBlfKv/qyLBz618
+wsMeJ3I8h9jPGijAQFabivuEPImjTxzcg59MOTJphntzdpH5xcBVoOZz/naTbObV
+LC+fjv6S/4nJrYN+gVl+YYUSlh9/rf/Z8Bn0g/6WDJ4XoLBShGQnef6o6DFM6OK7
+Ql/X5WekFnbkHVSF8/X3k1eKO6A7fZBt7ANNWwfRzxn5cdZqgywmk/N0gr6CdqMK
+rQOFW7UZMV9Gc/VPzKM+sc8fZCpbv95L9mvzszsSbDmMRnpLTIZ94XFa0Ut8QSp7
+11M/AqfmY4zBpJsakvtQUzNqN6L6xh3dNv1tzoTZ5AyuxiEw29YONb1eQp1xXpDa
+YaKC7ZIk4xrYbHNbWavaXFOSyvzRkz0G6x/ANhaKT/82hoZxGnL7Wl/1f4zszkyH
+2rhlkCS/FZm7JKnAPZh8/f50HmwSXBnT3CqF4V8j2jL9Ifio8tdQ1jYvp+QjnWH/
+kPToOQRyWa9cSXqR5eyKjClpKGrlcwFeXwsRi152niPuK+IAYLcas1+3kdkj4xDS
+owF9LuqzdDSyhIF9qkg3rn6G8XodTEUTEN8hr4NJItHjrxgiPlqP7ApVhHQ8EcUE
+LZi4WzEMp30TY3iumSuuqBu0+5cmpLuNoHxPuoKEJECWcscKpNoliq5izSzR0v1I
+8BXpi9WOyxBsNnqJKjOFyw2G1I9TRMVmSxR9BcxkF5sI7m9AqXPPC+Eoe+4EhMs+
+J5dbGIx3ow0uv/cFn4whrNCYtXo=
+=sh64
+-----END PGP MESSAGE-----
+
+**** Boxes
+
+#+begin_quote
+The network is a _wall_: a logical obstruction creating a series of doors that
+restrict entry according to some logic. you may also consider it a kind of
+containerization (a box). One of the main distringuishing factors for the
+"network box" over VMs/Containers: there is no single point of failure for
+compromise, for network segments that aren't hyper-connected.
+
++ Qubes as a hyperviser may be an execption. 
++ An attacker may escape a containers/VM. At that point, they have a lot of work
+  to do in an environment that may be unstable (pods come; pods go)
++ Root or X509 compromise on one network segment really does not facillitate
+  jumping to other computering devices (they're _physically_ separate and distinct
+  trusted execution environments)
+
+That said... networked devices are intended to be ummm networked. Once they are
+hyper-connected, you no longer have the same quality of isolation, so there's a
+big difference in network isolation for servers and deep internal networks vs.
+routers or highly connected servers.
+
+Regardless, 99% of networks are flat _because containerization is hard_. It
+doesn't matter what type of "box" it is: network, VM, container, SoA. Accounting
+for all that data & the idiosyncracies of that "box type" takes a lot of work.
+Thus, almost every segment connected to the internet is over-exposed. The
+tooling to do anything else is something the education system cautions you
+against: "too secure for your own good."
+#+end_quote
+
 *** OSPF
 
 ~cat /proc/net/fib_trie~ is a useful sanity check on the routes
@@ -74,7 +179,6 @@ There are two ways to configure =bfd=:
 
 - through =ospf= configuration commands (this is much easier for me)
 - and with the more specific =set protocols bfd ...=
-
 *** VRRP
 
 + [[https://forum.vyos.io/t/vrrp-transition-scripts-not-running-vyos-commands/5692/2][VRRP transition scripts not running]] seeing messages about =security_scripts not
@@ -194,9 +298,124 @@ This is seen alot with BGP... which I don't think I'll have unless it's "IBGP".
 Running an AS seems like a _*massive*_ PITA.
 
 With FRR, PBR also works with other
+
 * Setup
 
 ** Added config
+
+*** Setup =dns=
+
+I could either use:
+
++ vlan :: more traffic could hit the switch. each router only has 5 ethernet
+  ports and they're full.
+  - with one switch, tough to balance layer2 isolation with balanced bandwidth.
+  - OSPF, VRRP, conntrackd and BFD don't use much bandwidth, but they're all
+    critical services, some of which are dependent on latency/jitter
+  - if the failover flaps on a bandwidth spike -- let's say i'm "streaming" --
+    then shit will definitely hit the fan. failover causes conntrack to sync,
+    which could drop another domino. It won't because it's on a different =trunk=
+    (and doesn't require a ton of bandwidth)
+  - if failover happens rapidly twice, then you enter the "weird zone". VRRP and
+    conntrack don't exactly use PAXOS/RAFT. That the kernel even makes
+    =conntrackd= possible was suprising... I guess I'm dumb. Anyways. The kernel
+    needs things to happen _fast_. It moves fast. Thus, =conntrackd= is not on the
+    same =trunk= as the =OSPF= bridge.
++ vrf :: eventually i'll use VRFs, but i don't have =bind-to-all= turned on
+  because i want service isolation.
+  - these are advanced configs that would give a noob a hard time (y VyOS no
+    working?!), so the docs don't cover this much
+  - I don't have time to learn that now and DNS is critical for SoA.
+  - For VRF without =bind-to-all= you need =route-map= and PBR ... which is overkill
+    for static routes. They won't propagate naturally with OSPF, which would be
+    isolated without =bind-to-all=, along with other services.
++ dummy :: this sounds much better. it needs a separate network for each DNS.
+  - this just requires a static route on each router.
+
+I may revisit the addressing here since:
+
++ =172.24.7.7/24= and =172.24.8.8/24= are taking too much address space
++ and =172.24.8.11/32= and =172.24.8.12/32= is easier to remember
++ the whole point is that the network shouldn't be routed.
+  - though =/32= can be used for [[https://www.keycdn.com/support/anycast][anycast]] [[https://dnsfilter.com/glossary/anycast][routing]], which seems very stateful.
+    routes need to be distributed that make assumptions about the "inbound-ness"
+    of traffic reaching the whatever routes to the anycast address... along with
+    the assumption that stateful routes distributed to those forwarding nodes
+    will be correctly configured to pick an efficient route.
+
+I guess I'll use =/32= then. I was worried about "you don't know what you don't
+know."
+
+**** Diffs
+
+Configs
+
+#+begin_example diff
+392a393,394
+> set interfaces dummy dum1 address '172.24.8.12/32'
+> set interfaces dummy dum1 description 'DNS interface'
+477a480
+> set protocols static route 172.24.8.11/32 interface eth4.4030 distance '20'
+487c490,491
+< set service dhcp-server shared-network-name DEV subnet 172.16.180.0/24 option name-server '172.16.180.1'
+---
+> set service dhcp-server shared-network-name DEV subnet 172.16.180.0/24 option name-server '172.24.8.11'
+> set service dhcp-server shared-network-name DEV subnet 172.16.180.0/24 option name-server '172.24.8.12'
+497c501,502
+< set service dhcp-server shared-network-name FARM subnet 172.16.240.0/24 option name-server '172.16.240.1'
+---
+> set service dhcp-server shared-network-name FARM subnet 172.16.240.0/24 option name-server '172.24.8.11'
+> set service dhcp-server shared-network-name FARM subnet 172.16.240.0/24 option name-server '172.24.8.12'
+503c508,509
+< set service dhcp-server shared-network-name LAB subnet 172.20.100.0/24 option name-server '172.20.100.1'
+---
+> set service dhcp-server shared-network-name LAB subnet 172.20.100.0/24 option name-server '172.24.8.11'
+> set service dhcp-server shared-network-name LAB subnet 172.20.100.0/24 option name-server '172.24.8.12'
+509c515,516
+< set service dhcp-server shared-network-name LAN subnet 172.16.45.0/24 option name-server '172.16.45.1'
+---
+> set service dhcp-server shared-network-name LAN subnet 172.16.45.0/24 option name-server '172.24.8.11'
+> set service dhcp-server shared-network-name LAN subnet 172.16.45.0/24 option name-server '172.24.8.12'
+515c522,523
+< set service dhcp-server shared-network-name SVC subnet 172.16.250.0/24 option name-server '172.16.250.1'
+---
+> set service dhcp-server shared-network-name SVC subnet 172.16.250.0/24 option name-server '172.24.8.11'
+> set service dhcp-server shared-network-name SVC subnet 172.16.250.0/24 option name-server '172.24.8.12'
+521a530,531
+> set service dns forwarding authoritative-domain o.xel.io records a dns.r1.route address '172.24.8.11'
+> set service dns forwarding authoritative-domain o.xel.io records a dns.r2.route address '172.24.8.12'
+537,540c547
+< set service dns forwarding listen-address '172.16.180.1'
+< set service dns forwarding listen-address '172.16.240.1'
+< set service dns forwarding listen-address '172.16.250.1'
+< set service dns forwarding listen-address '172.20.100.1'
+---
+> set service dns forwarding listen-address '172.24.8.12'
+544a552
+> set service dns forwarding source-address '172.24.8.12'
+#+end_example
+
+And the interdiff for a sanity check on typo's
+
+#+begin_example diff
+diff <(diff configs/vy1.dns.{pre,post}.sh) <(diff configs/vy2.dns.{pre,post}.sh)
+2c2
+< > set interfaces dummy dum1 address '172.24.8.11/32'
+---
+> > set interfaces dummy dum1 address '172.24.8.12/32'
+5c5
+< > set protocols static route 172.24.8.12/32 interface eth4.4030 distance '20'
+---
+> > set protocols static route 172.24.8.11/32 interface eth4.4030 distance '20'
+40c40
+< > set service dns forwarding listen-address '172.24.8.11'
+---
+> > set service dns forwarding listen-address '172.24.8.12'
+42c42
+< > set service dns forwarding source-address '172.24.8.11'
+---
+> > set service dns forwarding source-address '172.24.8.12'
+#+end_example
 
 *** Setup =VRRP= on =HANAT=. Setup =conntrack-sync=
 
