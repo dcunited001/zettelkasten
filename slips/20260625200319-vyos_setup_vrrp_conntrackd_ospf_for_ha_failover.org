@@ -393,6 +393,11 @@ Configs
 > set service dns forwarding listen-address '172.24.8.12'
 544a552
 > set service dns forwarding source-address '172.24.8.12'
+591c599,600
+< set system name-server '172.16.180.1'
+---
+> set system name-server '172.24.8.11'
+> set system name-server '172.24.8.12'
 #+end_example
 
 And the interdiff for a sanity check on typo's
@@ -417,6 +422,146 @@ diff <(diff configs/vy1.dns.{pre,post}.sh) <(diff configs/vy2.dns.{pre,post}.sh)
 > > set service dns forwarding source-address '172.24.8.12'
 #+end_example
 
+**** Test
+
+To test, =monitor traffic= where =filter "$pcap"= uses pcap syntax. under the hood,
+it's =tcpdump=. You can't =tcpdump= on the =dum1= traffic because it doesn't "hit the
+wire". so watching the traffic with filters on other interfaces is necessary
+
+#+begin_src shell
+# source -> DEV (r2) -> dum1 (r2)
+monitor traffic interface eth2.160 filter 'dst host 172.24.8.12'
+# source -> DEV (r2) -> OSPF Bridge (r1) -> dum1 (r1)
+monitor traffic interface eth4.4030 filter 'dst host 172.24.8.11'
+#+end_src
+
+This shows:
+
+#+begin_src dot :results output file :file img/devops/vyos/tcpdump.dns.png :cmdline -Tpng -Kdot
+// :cmdline -Tpng -Ksfdp
+digraph G {
+    rankdir=LR
+#+end_src
+
+desktop is pinging r1's DNS
+
+#+begin_src dot :results output file :file img/devops/vyos/tcpdump.dns.png :cmdline -Tpng -Kdot
+    // 23:51:33.520901 IP 172.16.180.64 > 172.24.8.11: ICMP echo request, id 29112, seq 5, length 64
+    desktop -> r2 [label="r1\ndns", color=royalblue]
+    r2 -> bridge -> r1 -> r1_dum1 [color=royalblue]
+#+end_src
+
+system1 is trying DNS lookups... for firewall rules (why i don't trust these)
+
+#+begin_src dot :results output file :file img/devops/vyos/tcpdump.dns.png :cmdline -Tpng -Kdot
+    // 23:51:35.480257 IP 172.23.243.12.59608 > 172.24.8.11.domain: 50772+ AAAA? mirror.stream.centos.org. (42)
+    system1 -> bridge -> r1 -> r1_dum1 [color=orange]
+#+end_src
+
+system2 doesn't know ARP won't/can't return results for that subnet
+
+#+begin_src dot :results output file :file img/devops/vyos/tcpdump.dns.png :cmdline -Tpng -Kdot
+    // 23:51:33.492651 ARP, Request who-has 172.24.8.11 tell 172.23.243.12, length 46
+    system2 -> fib_trie_2 [label="route\nincorrect?",color=red]
+    fib_trie_2 -> r2 [label="arp",color=red]
+    r2 -> bridge [color=red]
+#+end_src
+
+laptop definitely has a browser open
+
+#+begin_src dot :results output file :file img/devops/vyos/tcpdump.dns.png :cmdline -Tpng -Kdot
+     // 23:51:44.038408 IP 172.16.180.80.48493 > 172.24.8.11.domain: 33492+ [1au] AAAA? www.google.com. (43)
+     // 23:51:44.038408 IP 172.16.180.80.50496 > 172.24.8.11.domain: 809+ [1au] A? www.google.com. (43)
+     // 23:51:44.039147 IP 172.16.180.80.48493 > 172.24.8.11.domain: 33492+ AAAA? www.google.com. (32)
+     // 23:51:44.039147 IP 172.16.180.80.50496 > 172.24.8.11.domain: 809+ A? www.google.com. (32)
+     laptop -> r2 [label="r2\ndns",color=darkgreen]
+     r2 -> r2_dum1 [color=darkgreen]
+#+end_src
+
++system2's DHCP wants to know whether DNS is reachable+
+
+system2 was still forwarding DNS back to it's old address. since no DNS server was
+bound to that address, ICMP straightens it out.
+
+#+begin_src dot :results output file :file img/devops/vyos/tcpdump.dns.png :cmdline -Tpng -Kdot
+    // 23:51:46.042354 IP 172.16.180.1 > 172.24.8.11: ICMP 172.16.180.1 udp port domain unreachable, length 78
+    // 23:51:46.042355 IP 172.16.180.1 > 172.24.8.11: ICMP 172.16.180.1 udp port domain unreachable, length 78
+    // 23:51:46.042355 IP 172.16.180.1 > 172.24.8.11: ICMP 172.16.180.1 udp port domain unreachable, length 82
+    // 23:51:46.042355 IP 172.16.180.1 > 172.24.8.11: ICMP 172.16.180.1 udp port domain unreachable, length 82
+    system2 -> r2 [label="system\ncan\nreach?",color=purple]
+    r2 -> bridge -> r1 -> r1_dum1 [color=purple]
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/vyos/tcpdump.dns.png]]
+
+
+And here, with =src host 172.24.8.12= on the bridge interface, it's pretty
+obvious: I didn't reconfigure my firewall groups, which i had started looking
+into, but it seemed like it was half working...
+
+#+begin_example
+00:28:04.404581 IP 172.24.8.12.domain > 172.16.180.80.59856: 18347 1/0/0 A 192.178.155.95 (92)
+00:28:05.406031 IP 172.24.8.12.domain > 172.16.180.80.41101: 47987 ServFail 0/0/0 (32)
+00:28:06.407523 IP 172.24.8.12.domain > 172.16.180.80.41050: 44649 ServFail 0/0/0 (76)
+00:28:09.087800 IP 172.24.8.12.domain > 172.16.180.80.51785: 29993 1/0/0 A 172.253.63.95 (65)
+00:28:10.279820 IP 172.24.8.12.domain > 172.16.180.64.56587: 64771 2/0/0 A 104.18.11.59, A 104.18.10.59 (69)
+00:28:10.780654 IP 172.24.8.12.domain > 172.16.180.80.52396: 63085 ServFail 0/0/0 (49)
+00:28:33.068150 IP 172.24.8.12.domain > 172.16.180.64.45770: 36924 ServFail 0/0/0 (33)
+00:28:33.068180 IP 172.24.8.12.domain > 172.16.180.64.52461: 58216 ServFail 0/0/0 (33)
+#+end_example
+
+**** Fix DNS
+
+System2 was still forwarding DNS back to it's old address. Removing this line
+fixed that =set service dns forwarding name-server 172.16.180.1=, but there were
+still a few other details that needed adjusting
+
+#+begin_example diff
+12a13,14
+> set firewall group address-group nat-oxelio-dns address '172.24.8.11'
+> set firewall group address-group nat-oxelio-dns address '172.24.8.12'
+61a64
+> set firewall group interface-group DNS interface 'dum1'
+107a111,112
+> set firewall group network-group oxelio-dns network '172.24.8.11/32'
+> set firewall group network-group oxelio-dns network '172.24.8.12/32'
+150c155
+< set firewall ipv4 forward filter rule 400 source group network-group 'ipv4-private'
+---
+> set firewall ipv4 forward filter rule 400 source group network-group 'oxelio'
+156c161
+< set firewall ipv4 forward filter rule 410 source group network-group 'ipv4-private'
+---
+> set firewall ipv4 forward filter rule 410 source group network-group 'oxelio'
+201c206
+< set firewall ipv4 input filter rule 400 source group network-group '10dot'
+---
+> set firewall ipv4 input filter rule 400 source group network-group 'oxelio'
+207c212
+< set firewall ipv4 input filter rule 410 source group network-group '10dot'
+---
+> set firewall ipv4 input filter rule 410 source group network-group 'oxelio'
+384a390
+> set high-availability vrrp group HANAT address 172.24.24.8/24 interface 'eth0'
+438a445,447
+> set nat source rule 10800 outbound-interface name 'eth0'
+> set nat source rule 10800 source group network-group 'oxelio-dns'
+> set nat source rule 10800 translation address '172.24.24.8'
+480c489,490
+< set protocols static route 172.24.8.12/32 interface eth4.4030 distance '20'
+---
+> set protocols static route 172.24.8.12/32 next-hop 172.23.243.12 distance '20'
+> set protocols static route 172.24.8.12/32 next-hop 172.23.243.12 interface 'eth4.4030'
+548d557
+< set service dns forwarding name-server 172.16.180.1
+#+end_example
+
+On failover, there are still:
+
++ martians for about 45s (unrecognized NAT connections, until conntrack-sync is complete)
++ packets being dropped traversing the bridge... 
 *** Setup =VRRP= on =HANAT=. Setup =conntrack-sync=
 
 This sets up another VRRP group and =sync-group= to track
