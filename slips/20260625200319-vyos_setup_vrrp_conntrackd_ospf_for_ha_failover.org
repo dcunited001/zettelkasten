@@ -317,7 +317,7 @@ different traffic on 3875.
 BFD still won't peer. The =bfdd= daemon is aware of the other endpoint: run =show
 bfd peers brief=.
 
-=set protocols ospf interface eth1.630 bfd=
+=set protocols ospf interface eth1.230 bfd=
 
 +I'm not sure whether OSPF requires configuration beyond this+ it does. =bfd= peers
 must be configured separately (i wonder what it does to =nftables=)
@@ -329,7 +329,7 @@ must be configured separately (i wonder what it does to =nftables=)
 + interval transmit :: =ms= between transmission
 
 #+begin_src shell
-set protocols bfd peer 172.24.23.12 source interface eth1.630
+set protocols bfd peer 172.24.23.12 source interface eth1.230
 set protocols bfd peer 172.24.23.12 interval multiplier '5'
 set protocols bfd peer 172.24.23.12 interval receive '50'
 set protocols bfd peer 172.24.23.12 interval transmit '50'
@@ -887,8 +887,77 @@ the moment):
 + check that it works by dropping a static route and forcing over the OSPF bridge
 + drop the other VLAN network
 
+#+begin_quote
+nevermind, just moving it over. idc
+#+end_quote
+
 BFD is also not peering, so i need to fix that. OSPF seems to know when the
 route is up though.
+
+*** Updates
+
+Configuration
+
+#+begin_example diff
+62a63
+> set firewall group interface-group bfd-interface interface 'eth1.230'
+68c69
+< set firewall group interface-group ospfv2-process interface 'eth4.4030'
+---
+> set firewall group interface-group ospfv2-process interface 'eth1.230'
+93c94
+< set firewall group network-group ospfv2-process network '172.23.243.0/24'
+---
+> set firewall group network-group ospfv2-process network '172.24.23.0/24'
+129a131,132
+> set firewall group port-group bfd_u port '3784'
+> set firewall group port-group bfd_u port '3785'
+200a204,206
+> set firewall ipv4 input filter rule 360 action 'jump'
+> set firewall ipv4 input filter rule 360 inbound-interface group 'bfd-interface'
+> set firewall ipv4 input filter rule 360 jump-target 'BFD-PEERING'
+227a234,238
+> set firewall ipv4 name BFD-PEERING rule 10 action 'accept'
+> set firewall ipv4 name BFD-PEERING rule 10 destination group port-group 'bfd_u'
+> set firewall ipv4 name BFD-PEERING rule 10 inbound-interface group 'bfd-interface'
+> set firewall ipv4 name BFD-PEERING rule 10 protocol 'udp'
+> set firewall ipv4 name BFD-PEERING rule 10 source address '172.24.23.11'
+414a426,427
+> set interfaces ethernet eth1 vif 230 address '172.24.23.12/24'
+> set interfaces ethernet eth1 vif 230 description 'OSPF: Cross Core'
+442,443d454
+< set interfaces ethernet eth4 vif 4030 address '172.23.243.12/24'
+< set interfaces ethernet eth4 vif 4030 description 'OSPF: Cross Core'
+462a474,477
+> set protocols bfd peer 172.24.23.11 interval multiplier '5'
+> set protocols bfd peer 172.24.23.11 interval receive '50'
+> set protocols bfd peer 172.24.23.11 interval transmit '50'
+> set protocols bfd peer 172.24.23.11 source interface 'eth1.230'
+465c480
+< set protocols ospf area 0 network '172.23.243.0/24'
+---
+> set protocols ospf area 0 network '172.24.23.0/24'
+470,474c485,489
+< set protocols ospf interface eth4.4030 bfd
+< set protocols ospf interface eth4.4030 hello-multiplier '5'
+< set protocols ospf interface eth4.4030 passive disable
+< set protocols ospf interface eth4.4030 priority '200'
+---
+> set protocols ospf interface eth1.230 bfd
+> set protocols ospf interface eth1.230 hello-multiplier '5'
+> set protocols ospf interface eth1.230 passive disable
+> set protocols ospf interface eth1.230 priority '200'
+476c491
+< set protocols ospf parameters router-id '172.23.243.12'
+---
+> set protocols ospf parameters router-id '172.24.23.12'
+489,490c504,505
+< set protocols static route 172.24.8.11/32 next-hop 172.23.243.11 distance '20'
+< set protocols static route 172.24.8.11/32 next-hop 172.23.243.11 interface 'eth4.4030'
+---
+> set protocols static route 172.24.8.11/32 next-hop 172.24.23.12 distance '25'
+> set protocols static route 172.24.8.11/32 next-hop 172.24.23.12 interface 'eth1.230'
+#+end_example
 
 *** Route Summarization...
 
@@ -965,13 +1034,6 @@ structure them to retain transactionality while applying updates to one device
 then the other. The redundancy isn't really for failover, it's for sequencing
 configuration updates while the network is small, lacking enough router devices
 to route around disconnections.
-
-*** Updates
-
-
-
-
-
 
 * Problems
 
