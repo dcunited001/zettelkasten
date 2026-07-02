@@ -959,10 +959,47 @@ Configuration
 > set protocols static route 172.24.8.11/32 next-hop 172.24.23.12 interface 'eth1.230'
 #+end_example
 
+This fixed the BFD peering: I had assumed that no =default-action= would =return=.
+
+#+begin_example diff
+143a144,147
+> set firewall ipv4 forward filter rule 160 action 'accept'
+> set firewall ipv4 forward filter rule 160 description 'Allow valid ICMP Destination Unreachable'
+> set firewall ipv4 forward filter rule 160 icmp type-name 'destination-unreachable'
+> set firewall ipv4 forward filter rule 160 state 'related'
+233a238
+> set firewall ipv4 name BFD-PEERING default-action 'return'
+238a244
+> set firewall ipv4 name CONNTRACK-SYNC default-action 'return'
+242a249
+> set firewall ipv4 name OSPFV2-TRAFFIC default-action 'return'
+504,505c511,512
+< set protocols static route 172.24.8.11/32 next-hop 172.24.23.12 distance '25'
+< set protocols static route 172.24.8.11/32 next-hop 172.24.23.12 interface 'eth1.230'
+---
+> set protocols static route 172.24.8.11/32 next-hop 172.24.23.11 distance '25'
+> set protocols static route 172.24.8.11/32 next-hop 172.24.23.11 interface 'eth1.230'
+571d577
+< set service dns forwarding listen-address '172.16.45.1'
+575d580
+< set service dns forwarding source-address '172.16.180.1'
+#+end_example
+
+I also needed to fix a route while ensuring that DNS responds with _only_ the =dum1=
+address.
+
 *** Assymetric Black Hole
 
-This still didn't fix it. Since my desktops are locally connected to both
-firewalls, this causes the return traffic to take an assymmetric route.
+This still didn't fix the routing. Since my desktops are locally connected to
+both firewalls, this causes the return traffic to take an assymmetric route.
+
+Monitoring with:
+
+#+begin_src shell
+monitor traffic interface any filter "host 172.16.180.101 and port 22"
+monitor traffic interface eth1.230 filter "host 172.16.180.101 and port 22"
+monitor traffic interface eth1.180 filter "host 172.16.180.101 and port 22"
+#+end_src
 
 **** Gemini :crypt:urlllm:
 :PROPERTIES:
