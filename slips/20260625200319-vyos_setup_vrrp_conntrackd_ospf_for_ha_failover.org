@@ -150,7 +150,7 @@ containerization (a box). One of the main distringuishing factors for the
 "network box" over VMs/Containers: there is no single point of failure for
 compromise, for network segments that aren't hyper-connected.
 
-+ Qubes as a hyperviser may be an execption. 
++ Qubes as a hyperviser may be an execption.
 + An attacker may escape a containers/VM. At that point, they have a lot of work
   to do in an environment that may be unstable (pods come; pods go)
 + Root or X509 compromise on one network segment really does not facillitate
@@ -187,6 +187,7 @@ There are two ways to configure =bfd=:
 
 - through =ospf= configuration commands (this is much easier for me)
 - and with the more specific =set protocols bfd ...=
+
 *** VRRP
 
 + [[https://forum.vyos.io/t/vrrp-transition-scripts-not-running-vyos-commands/5692/2][VRRP transition scripts not running]] seeing messages about =security_scripts not
@@ -280,6 +281,7 @@ dH4G8xAdowBz6Z++WjayMuCJMGaZe0wGF69RK8A6u7zsbUk6s6whDOcCY7m4GRfS
 dlIw/GWPofri/18=
 =PUlo
 -----END PGP MESSAGE-----
+
 *** Design Options
 
 These are a bit confusing and each one comes with caveats, I'm sure
@@ -346,7 +348,7 @@ traffic, there's a vlan encapsulation problem or misconfiguration.
 
 + VLAN hardware offloading can hide the vlan tag in =tcpdump -XXe -i $ifx=
 + This protocol can have interop problems: [[https://forum.vyos.io/t/vyos-wont-establish-bfd-connection-to-bird/13375/10][VyOS won't establish BFD connection
-  to bird]]. 
+  to bird]].
 + Other issues: [[https://forum.vyos.io/t/ospf-w-bfd-issues-interop-with-mikrotik/10764][OSPF w/ BFD issues interop with mikrotik?]]
 
 
@@ -830,7 +832,7 @@ still a few other details that needed adjusting
 On failover, there are still:
 
 + martians for about 45s (unrecognized NAT connections, until conntrack-sync is complete)
-+ packets being dropped traversing the bridge... 
++ packets being dropped traversing the bridge...
 
 *** Connection Tracking for ICMP
 
@@ -961,6 +963,9 @@ Configuration
 
 This fixed the BFD peering: I had assumed that no =default-action= would =return=.
 
+I also needed to fix a route while ensuring that DNS responds with _only_ the =dum1=
+address.
+
 #+begin_example diff
 143a144,147
 > set firewall ipv4 forward filter rule 160 action 'accept'
@@ -985,8 +990,231 @@ This fixed the BFD peering: I had assumed that no =default-action= would =return
 < set service dns forwarding source-address '172.16.180.1'
 #+end_example
 
-I also needed to fix a route while ensuring that DNS responds with _only_ the =dum1=
-address.
+I then needed to raise the metric of the default route above the OSPF threshold.
+
++ i had anticipated the issue, but couldn't get OSPF to reliably show
+  information that "added up", since it behaves differently on such a small
+  network.
++ i may adjust the AD, metrics and OSPF tunables, since 120 seems high for a
+  static route.
+
+I had also missed the note on =rfc1583-compatibility= that says "This command
+should NOT be set normally."
+
+#+begin_example diff
+479d487
+< set protocols ospf area 0 network '172.24.24.0/24'
+480a489
+> set protocols ospf auto-cost reference-bandwidth '100000'
+490d498
+< set protocols ospf parameters rfc1583-compatibility
+492a501
+> set protocols static route 0.0.0.0/0 next-hop 172.24.24.1 distance '120'
+#+end_example
+
+Then on the secondary router, increase the metric to break the OSPF tie with an
+intentional result.
+
+#+begin_src shell
+set protocols ospf default-information originate metric '30' # > '10'
+#+end_src
+
+This fixes NAT selection by ensuring outbound traffic goes through the active
+router, but doesn't fix issues related to the bridge domain for internal
+networks
+
+At this point, I'm having RPF problems with extra SSH interfaces I had set up...
+specifically to avoid disconnection on triggering failover of =HADEV=.
+
++ I think there is a stateful problem with OSPF ... or something is
+  short-circuiting the traffic directly to the =DEV= lan from =r1=. however this
+  doesn't happen for DNS.
++ IDFK. The RPF shit is super annoying and I can't ever tell whether =monitor
+  traffic= properly reports dropped traffic. this could mean it's being dropped
+  on another router ... or it could be RPF.
+  - it's RPF ... i had never started new sessions to the new IP.
+  - ... nevermind it's fucking NOT RPF. that's disabled...
+
+Gemini thinks it's an TCP-MSS issue? ... idk. a subsequent response indicates
+that it could be. I need to =ping-sweep= or =tcpdump= to be sure:
+
++ ping -M do -s 1472 172.24.8.11 :: if => (1472 + 28)= frame size succeeds, then
+  it's not MTU.
+  - it's not MTU, it's connection tracking... (again)
++ sudo tcpdump -ni 'any host 172.24.8.11 and port 53' -vvv :: from r1
+  - I see =SYN=, =SYN-ACK=, but no =ACK=. (it's connection tracking, not MTU)
++ sudo nstat -az | grep -E "Filter|Drop|Invalid" :: shows TCP counters
+  - nothing on anything, except =TcpExtTCPDeferAcceptDrop 10 0.0= on the wrong
+    router.
+
+This became easier to test by forcing udp/tcp selection for dig queries:
+
+| r1 | udp | dig @172.24.8.11 +udp uncached.com | success |
+|    | tcp | dig @172.24.8.11 +udp uncached.com | fails   |
+| r2 | udp | dig @172.24.8.12 +tdp uncached.com | success |
+|    | tcp | dig @172.24.8.12 +udp uncached.com | success |
+
+DNS queries to R1 from =eth2.180= will take their default gateway =client -> r2 ->
+bridge -> r1= but on return short-circuit like =r1 dns -> r1 -> client=, which
+interferes with TCP session tracking.
+
+#+begin_quote
+My intuition was correct -- "need two routers, two firewalls, two switches."
+Except that, additionally, failover WAN really should have two WANs. Later I
+guess I can simulate the extra complexity of multi-WAN by tunneling through
+GCP/AWS/etc ... except i can't afford ingress/egress.
+
+I'm sure there's some pattern I'm missing. I've mentioned some patterns
+elsewhere (VRF Sandwich, etc)
+#+end_quote
+
+***** After upgrading/rebooting both nodes
+
++ laptop is talking to =172.16.180.12 @ r2=
+  - desktop is some talking to =172.16.180.11 @ r2= ... causing the DNS/SSH issues
+  - somehow arp is cached, despite the change back to r2 as VRRP master
+
+**** Gemini :crypt:urlllm:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ//clmXPkLjfrt5RO6veZhVoP8QQ6HWEAJAVwpL4KEHk7BX
+oop47lIM8i7ifo4fwcPnzq5430f7UtUJMq2UjeXerpNfk7muoAiGSn9sxCNgdHFO
+AQqYH2s5/nlmO5GlMlKUWbR006f1LbkP0Ir4L035VDZK/1KLiTyf8hEk3aOWdLQz
+vYGnoOGce3xW8rF7+9+3K97jQYvN8+KKAc1LTeuICMv6dfGmN0wDTBMXaxXZbCmT
+kX3h/CC05kFX6GiaO77OzJgfMQSvFdaCk1bHISyaG3GDhUCFTm6w6DNwiEAAxomN
+w+VTdikelQ6VEB/vVBD8nBV99yJGHng6czdzY8RrkeGKZRIDNroL61kpqIx+wO8V
+tjUq8dHdY6rpFfvPW/wOGbJCw7XajorOj8+J85zGD2bPZqUpIYXQRXxLvHuvPxEm
+Rd8pwO+C6hfpUA6qQxw3zeYXUBVVg1K/6ZRM/4pm7K2rMuoHJRywFaRKQ0XsrUf7
+ubFLb37mc/aLEFU9XgG5ZFlF6nEXbUKO7Nyw1MJRKPmhwOSMnnhJlhveB75AYVPm
+G42qBDVq3kZSvMENUZmKiohlOfbuaAlZqOTTa4dy645++4QCsWAm/imee0sKCHS/
+GFTCwwCBGvEVJbTEg0r5Z1Wz7n2HK/2sMz1JqThdfbpc6YoSae5sFiMW9md6UnTS
+wBoB+wE0A6x8jOn18Ut9GUPbq+MUqopjK/3kLIj7Enuk12Edx2VvIXb36PbCjYAH
+X+R3acDc+V+qJNLFqkC/JlmKZs70vFld/lZqEwXpB2TouzuFoznNfku0PELQY64j
+kUGKMSSNOSAkawkq91YGDF3VBTeZ/ou8SEYEVvE6eGPFl1ETvRV/OXyEOt+bGZMI
+KODWQy8LZmwYFgGN2tY8NPlEQf1MwNlaVvhsCkam8zHYc56NuCBax6FfzGSEMk0E
+7mwJ4p9dY2fCZ3U45hjXKQLF7oR7cOO1OElUEg==
+=sFVI
+-----END PGP MESSAGE-----
+
+
+*** Directly connected to WAN on =eth0=
+
++ Any traffic crossing the OSPF bridge
++ Then hitting DNS at =dum1= at =172.24.23.11= on =r1=
++ Will short-circuit out of the =HANAT= interface that's directly connected.
+
+Since =HANAT= defaults to =r2= as master, the stateful connections can't be tracked
+if they don't route out an =r2= interface.
+
++ A configuration is needed..........
+
+There's also [[https://docs.vyos.io/en/1.5/configuration/nat/nat44.html#load-balance][NAT44 load-balance]], but I think it won't work here:
+
+1) i'm splitting NAT connections by IP. I kinda wanted to see what would happen
+   and later, I'd like to extract more information about what addresses are
+   talking to which internal networks.
+2) I'm unsure of whether =nat source ... load-balance backend= keyword would work
+   if failover occurs.
+   - =vrrp= is the only option for =set service conntrack-sync failover-mechanism=
+   - I think _maybe_ this is intended for Multi-WAN and that ... idk
+
+**** OSPF Fixes
+
+
++ Needed to fix the designated router. I had copied/pasted and it wasn't showing
+  up in diffs (same line).
++ Also at some point (when i directly asked), google suggested removing the
+  default route interface from the OSPF area.
+  - i.e. removing this =set protocols ospf area 0 network '172.24.24.0/24'=, since
+    OSPF should redistributed default routes whether it's specifically aware or
+    not.
+  - i also removed then readded =set protocols ospf interface eth0 passive=.
+
+
+**** =conntrackd= details
+
+#+begin_quote
+After looking into it: =nat source ... load-balance backend= is probably
+independent of =conntrackd=. (VRRP failover is the only option, but it's required)
+#+end_quote
+
+A different abstraction takes into account the need to distribute =conntrackd=
+syncing across NAT addresses on different devices:
+
++ active-standby :: it is what it sounds like
++ active-active :: must ensure asymmetric routing cannot occur
+  - both devices constantly sync connection info
+
+#+begin_quote
+This seems like it would benefit from a VRF that's distributed across devices
+with tunnels (or PBR). Since:
+
++ the routing domain is technically distinct
++ and the VRF's interfaces are logically distributed across devices
+
+Then the traffic path would appear to be symmetric. This requires some
+assumptions about whether each of the potential next hop's provide symmetric
+reachability (i think it needs to lead to eventually-stubby-areas). In other
+words, these two layers look like kinda like a Hasse lattice w.r.t to the layers
+immediately above/below.
+
+VXLAN or some other abstraction may be more appropriate. I'm kinda just making
+this shit up...
+
+(NOTE: this is essentially a variant of the VRF Sandwich pattern: [[https://www.cisco.com/c/en/us/solutions/collateral/data-center-virtualization/application-centric-infrastructure/white-paper-c11-739971.pdf][Cisco ACI: PBR
+Topologies]])
+#+end_quote
+
+In either case, =conntrackd= syncs across both devices according to the available
+tunables.
+
+Connection tracking is identified according to a L3/L4 tuple:
+
+| L3 protocol | SRC Addr | DEST Addr | L4 Protocol | L4 Key |
+
+**** Gemini :crypt:urlllm:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ//U2pcopM2TiJ83TB1LB1HxDzPHcTELvdCbKFn3vLxmkv3
+qylApChEPsj0FMkcXIX/mbe6q4b/DKeui91oCVFdfAljy8G5+6AVS3UgM8uGiivP
+/7g6NWbE5TUh084Y4lHCK10ZZuNev5LvmEXn/t2Vkm355mXMQuC7wbqw6+yNYZAe
+v/T00m8VL6pGAXXy2menwlHvsetHOkqNwilro4kRjaqKcRLWUzcoDZaYVQfZbHwr
+4FapbxFz5uFZqZUgUagShLIAZnQ6SljE94UtjCjvUe6bqdXVNk069+cw451HGu70
+PAmKYp4sOYSW7lBr6YIQeh9aLXww6Zdc99bEeH737Jc+cP3M/TYAZYXISDSMjeXA
+mTyW/MUKy0dTjfepcTskfrTjHE4GYee+iBhbbYKLLVyf/FoV5o8JbEHgadiU16Fp
+umPdRi37W/JIIYUI8aMGLnvQOVoxtGgbfmdHngBiMyRNaO83cMtplmO1f0gC1DnU
+q9NIhXVxnSQ6CV4ijls0qg6FMCuKG75k016fgduxRBeBsZ05eH0XPUZ1swLINZyQ
+H3mqE0I+g+s/TkeHBoyYrBEwpKCy+1o8uUnP9b2z9is3SrhnNpzyMQfWraJsMcqL
+80BTJ72nJba8jLgWRs9yQIdBsXub9XC1dftMNb9O9DQ0Wv1Z56h6JDOiMVaREYTS
+wBABshSYwwQQlGRTuZHeRrTw8CsyjbKw567JBeL8Nij3+zWEH5C3cKL17U9KuWjp
+EvCXk2nsmag82N/hIVdXK8/rgVXmDKJt+p73GN0+SmWnl9OOG0Q7qJkm882Gmoum
+1aKJW3GSI34S62GVOtWAA7iLXPxPtcCPEWfzBJjC3qyyluf66VxhNI3LLlhQBOZv
++L9aTzQYljWZE9GauZYfgrpUootlyuFCLzpjRjxFSOAxd529NsQqdBZa6UbyusUr
+sZSmu3vFpV5zflZMAuOH9llS
+=iiov
+-----END PGP MESSAGE-----
+
+*** External Cache
+
++ [[https://forum.vyos.io/t/question-regarding-conntrack-sync/12052/2][Question regarding conntrack-sync]]: =disable-external-cache= is necessary for
+  =active/active=.
+  - gemini says ""
+
+However, trying =disable-external-cache= broke routing/failover in some new way.
+The simplest solution for me now is to avoid relying on NAT'd IP addresses on
+the failover router (avoiding it almost entirely) by setting OSPF cost metrics.
+
+In the future some load balancing may help, but it's possible this just makes
+some assumptions about routing in the neighbor paths.
 
 *** Assymetric Black Hole
 
@@ -1026,8 +1254,6 @@ VEaV+qw/myR3Rrp6cxPqOgLnxHvwgptnBg==
 =cPgF
 -----END PGP MESSAGE-----
 
-
-
 *** Route Summarization...
 
 i'm assuming that a =10.x.x.x/18= is safe to forward, while retaining restrictions
@@ -1061,11 +1287,11 @@ This isn't usually done because:
 + You can't necessarily replicate the logic from =IPv4= into =IPv6= ULA without
   causing =v4= semantics to preempt possibilities that =v6= gives you. In other
   words, you don't want =v4= abstractions to determine the logic of =v6= systems.
-  - e.g. multicast, dhcp relay, 
+  - e.g. multicast, dhcp relay,
 
 I'm still pretty sure it's dumb to not think about address space. The default
 bit boundaries I see for IPv6 ULA utilization have me SMH.
-    
+
 *** Traffic flow concerns:
 
 + Right now the traffic is bridged over a vlan that shares the =eth4= interface
