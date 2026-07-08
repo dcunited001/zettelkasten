@@ -702,7 +702,18 @@ service.... don't do that.
 
 **** Serial: =screen=
 
-These settings via =C-a : !!stty= are working on CentOS (but not from VyOS)
+These settings via =C-a : !!stty= are working on CentOS
+
+#+begin_quote
+these weren't working on vyos because the system owned the same console port
+=ttyS0=. I needed to run
+
++ =delete system console ttyS0= then =set system console ttyS0 speed 115200=
++ then reboot. while testing, i guess I had run =chown root:dialout /dev/ttyS0=
+
+The BIOS was set to use =S0= for serial, so i guess the system was mixing these
+together. Lots of garbage output. I thought I had disabled the serial port
+#+end_quote
 
 | speed   | 115200 | if configured, otherwise 9600 |
 | line    |      0 |                               |
@@ -716,7 +727,36 @@ These settings via =C-a : !!stty= are working on CentOS (but not from VyOS)
 | -icanon |        |                               |
 | -echo   |        |                               |
 
+To connect on vyos, ensure =S0= matches the serial port set in BIOS
 
+#+begin_src shell
+set service console-server device ttyS0 speed 115200
+set service console-server device ttyS0 data-bits 8
+set service console-server device ttyS0 stop-bits 1
+set service console-server device ttyS0 parity none
+set service console-server device ttyS0 description 'muh-sw1'
+set service console-server device ttyS0 alias 'muh-sw2'
+
+set service console-server device ttyS0 ssh port 2222
+#+end_src
+
+SSH can also be set up to connect over serial. That's a PITA though, since i
+think it invovles setting up the cisco switch's SSH to connect over the serial
+transport...... nevermind. it does wrap access inside =minicom= or whatever.
+
++ It's a separate SSH server with a separate port
++ It wasn't clear that it used the same auth keys (it does)
+
+This works, but since you need to send =RET= to see the first prompt, it requires
+a tiny bit of extra control handling in order for something driving the SSH
+connection to see the prompt. Extremely convenient though.
+
++ There's no way to regulate access by user, so you're relying on the underlying
+  device authorization. It may be possible to manage group membership manually,
+  but it looks like all users get set in the =dialout= group.
++ I will probably enable/disable as needed.... Or just unplug it. Though the
+  VyOS system serial should also be disabled, now that its set to be separate,
+  then I won't need to reboot.
 
 ***** Enable Linux Serial for User
 

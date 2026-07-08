@@ -1,0 +1,180 @@
+:PROPERTIES:
+:ID:       7019b466-ac24-4b96-b491-4c0d0d822b68
+:END:
+#+TITLE: Guix: Development Features And Tricks (in the manual)
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:c610536e-71d8-45ad-b320-91696ee56d49][Guix: authenticate local checkout when using google repo]]
++ [[id:81a26cc3-22f3-4332-96c2-c71407d5149d][DC Guix: ts-hyprlang]]
+
+* Resources
+
+* Quality of Life
+
+Mostly walking through some of the info in the manual
+
+** =guix deploy=
+
+#+begin_src shell
+# on build coordinator machine (where `guix deploy` gets run)
+guix archive --generate-key
+
+# on the configured machine
+guix archive --authorize < coordinator-public-key.txt
+#+end_src
+
+
++ Works with =ssh -J user@jumphost deploy@guixhost= according to a user on IRC.
++ Requires a =machine= record with an =environment-type=:
+  + managed-host-environment-type :: SSH accessible, already Guix
+  + [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/hetzner.scm#L863-L870][hetzner-environment-type]] :: german cloud. [[https://guix.gnu.org/manual/devel/en/guix.html#index-hetzner_002dconfiguration][guix docs]]
+  + [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/digital-ocean.scm#L428-L435][digital-ocean-environment-type]] :: converts digital ocean node to Guix
+    - [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/digital-ocean.scm#L206-L297][guix-infect]] is an interesting script and it handles [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/digital-ocean.scm#L388][reboot over ssh]]
+
+** Running =guix publish=
+
+My hope here is that I won't be downloading the =texlive-scheme-full= twice... but
+the =$GUIX_ENVIRONMENT/manifest= shows that it's parameterized by the channelspec
+or something. So no matter what, it downloads and won't =guix copy= properly
+
+*** Setup
+
+On NixOS, this will probably require customizing their =guix= service a bit. For
+me, I wrote a =guix2.nix= service that allows the root's guix to serve packages.
+
+it seems that by the time you're configuring =--cache= options, you should
+probably just run a straight-up build farm.
+
+#+begin_example shell
+myport=12345
+myhost=myhost.local
+/gnu/store/f75z9sgss74ndiy1jnr02fippk1fjwkj-guile-wrapper/bin/guile \
+  --no-auto-compile /var/guix/profiles/per-user/root/current-guix/bin/guix \
+  publish --user=guix-publish --port=$myport \
+  --listen=$myhost --advertise
+#+end_example
+
+*** Testing
+
+Check =avahi= service availability/discoverability with:
+
+#+begin_src shell
+avahi-browse --all -=resolve --terminate
+#+end_src
+
+Check that substitutes are available using =guix weather=
+
+#+begin_src shell
+port=12345; host=myhost.local
+pkg=texlive-scheme-full
+guix weather --coverage=2 --substitute-urls="http://$host:$port" $pkg
+# can also supply `-m $manifest`, but that can't include package definitions not
+# known to that guix (i.e. can't include -L $loadpath packages)
+#+end_src
+
+The node that discovers your NARs must have been configured to trust them using
+=guix archive --authorize > muhkey.pub=
+
+** Working with VMs
+
+From the guix manual: [[https://guix.gnu.org/manual/devel/en/guix.html#index-virtual-machine][guix system vm]] builds a VM and returns a script to run it
+
+#+begin_src shell
+# i.e. running `guix system vm my-config.sc` outputs "/gnu/store/...-run-vm.sh"
+/gnu/store/...-run-vm.sh -m 1024 -smp 2 -nic user,model=virtio-net-pci
+
+# so these steps can be reduced to:
+$(guix system vm my-config.scm) -m 1024 -smp 2 -nic user,model=virtio-net-pci
+#+end_src
+
++ VMs launched in this way will share their =/gnu/store= with the host's FS: this
+  used to require a bit more config/options AFAIK. Now it's the default.
++ A =guix system container= will also share the store, but must be run as root to
+  support multiple users.
+
+=...-run-vm.sh= options (see link above for more info)
+
+| --full-boot        | forces a complete boot sequence, starting with the bootloader |
+| --image-size=$size | specify the size of the image.                                |
+| --no-graphic       | spawn a headless VM that will use the invoking tty for IO.    |
+
+Useful =guix system= options:
+
+|    | --persistent         | copy VM image to =TMPDIR= (otherwise its Root FS is not(?) writeable) |
+| -d | --derivation         | just show the derivation path (don't build)                         |
+| -s | --system=$system     | build for =system= instead of host system                             |
+|    | --save-provenance    | ensure provenance is bundled inside of image                        |
+| -r | --root=$gcroot       | create a GC root to prevent deletion                                |
+|    | --on-error=$strategy | either =backtrace= or =debug= (to guile repl) otherwise =nothing-special= |
+
+*** Example
+
+Change =$guixcheckout/gnu/system/examples/vm-image.tmpl= like this. 
+
+#+begin_example diff
+-                 ;;(service openssh-service-type)
++                 (service openssh-service-type
++                          (openssh-configuration
++                            (permit-root-login #t)
+...
+-     (guix-service-type config =>
+-                                        (guix-configuration
+-                                         (inherit config)
+-                                         (guix (current-guix))))))))
++                     ;; (guix-service-type config =>
++                     ;;                    (guix-configuration
++                     ;;                     (inherit config)
++                     ;;                     (guix (current-guix))))
++                     )
+#+end_example
+
+If you're just testing, commenting =guix-service-type= will prevent updating
+package definitions in the =/gnu/store= on the host. If you're not testing, then
+you'll end up doing =guix pull= at some point when installing on the VM Guest.
+
+Then build it
+
+#+begin_src shell
+guixcheckout=/foobar/baz
+guix system vm "$guixcheckout/gnu/system/examples/vm-image.tmpl"
+#+end_src
+
+This outputs =/gnu/store/...-run-vm.sh= which wraps qemu and looks like:
+
+#+begin_src shell
+#!/gnu/store/vhk...-bash-5.2.37/bin/sh
+exec /gnu/store/xar...-qemu-10.2.1/bin/qemu-system-x86_64 \
+    -kernel /gnu/store/6zm...-linux-libre-7.0.14/bzImage \
+    -initrd /gnu/store/9l6...-system/initrd \
+    -append "root=/dev/vda1 \
+gnu.system=/gnu/store/9l6...-system \
+gnu.load=/gnu/store/9l6...-system/boot \
+modprobe.blacklist=usbmouse,usbkbd quiet" \
+    -object rng-random,filename=/dev/urandom,id=guix-vm-rng \
+    -device virtio-rng-pci,rng=guix-vm-rng \
+    -virtfs local,path=/gnu/store,security_model=none,mount_tag=TAGjoptajej2oynju6yvboauz7pl6uj \
+    -drive file=/gnu/store/hd6...-disk-image,format=raw,if=virtio,cache=writeback,werror=report,readonly=on \
+    -m 512 "$@"
+#+end_src
+
+Call it with:
+
+#+begin_src shell
+/gnu/store/...-run-vm.sh  -m 1024 \
+    -nic user,model=virtio-net-pci,hostfwd=tcp::10022-:22
+#+end_src
+
+This should not have XFCE dependencies (i checked) and it even disables the
+mouse. Nevertheless, it will autologin to XFCE where you can't click anything. I
+guess this =vm-image.tmpl= has drifted and it doesn't quite filter out all the GUI
+deps/services. Connect with:
+
+#+begin_src shell
+ssh -o UserKnownHostsFile=/dev/null \
+    -o StrictHostKeyChecking=no \
+    -p 10022 root@localhost
+#+end_src
+
