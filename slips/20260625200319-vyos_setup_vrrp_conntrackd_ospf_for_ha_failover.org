@@ -1254,7 +1254,47 @@ VEaV+qw/myR3Rrp6cxPqOgLnxHvwgptnBg==
 =cPgF
 -----END PGP MESSAGE-----
 
-*** Route Summarization...
+** Fix NAT again
+
+The source IP of traffic is chosen according to the interface attached to the
+selected route? I think?
+
+#+begin_example diff
+13,14c13
+< set firewall group address-group nat-oxelio-dns address '172.24.8.11'
+< set firewall group address-group nat-oxelio-dns address '172.24.8.12'
+---
+> set firewall group address-group nat-oxelio-dns address '172.24.24.8'
+100a100
+> set firewall group network-group oxelio-bridge network '172.24.23.0/24'
+417a418
+> set high-availability vrrp group HANAT address 172.24.24.63/24 interface 'eth0'
+489a491,493
+> set nat source rule 16300 outbound-interface name 'eth0'
+> set nat source rule 16300 source group network-group 'oxelio-bridge'
+> set nat source rule 16300 translation address '172.24.24.63'
+#+end_example
+
+This isn't perfect, but can now pull containers from both routers... woops.
+
++ Related [[https://forum.vyos.io/t/set-source-interface-for-dns-queries/8750/3][Set source interface for DNS queries - #3]] uses PBR and [[https://docs.vyos.io/en/rolling/configuration/policy/local-route.html][local-route]] to
+  control routing of internal traffic.
+  - a user suggests adding =127.0.0.1= as the system's DNS so it flows through the
+    same system. I hadn't tried that, but I did run into a service
+    initialization issue where, if system DNS is unavailable, =powerdns= refuses
+    to start because it can't download a set of =TXT= records containing
+    information about "the bad guys"
+  - [[https://docs.vyos.io/en/rolling/configuration/policy/examples.html#local-route][PBR Examples: Local Route]] shows =local-route= conf for the router's traffic
++ Another way: configure a proxy for traffic. This still doesn't control the
+  originating interface, which again, gets selected based on the route selection
+  (i think).
++ Confining services within a =VRF= is one way to implicitly bound route tables.
+  - this is the =telos= as far as i can tell (the rationale behind the design)
+
+
+* Design Notes
+
+** Route Summarization...
 
 i'm assuming that a =10.x.x.x/18= is safe to forward, while retaining restrictions
 on routing for other ranges of that 8bit CIDR block.
@@ -1292,7 +1332,7 @@ This isn't usually done because:
 I'm still pretty sure it's dumb to not think about address space. The default
 bit boundaries I see for IPv6 ULA utilization have me SMH.
 
-*** Traffic flow concerns:
+** Traffic flow concerns:
 
 + Right now the traffic is bridged over a vlan that shares the =eth4= interface
   with administrative traffic. I don't want that, so i'll reuse =eth1= which was
