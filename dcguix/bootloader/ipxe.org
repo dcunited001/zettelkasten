@@ -1,0 +1,353 @@
+:PROPERTIES:
+:ID:       c7f61432-ac64-4ae6-98b9-123599cf7490
+:END:
+#+title: Guix Bootloader: iPXE
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:77df4a7f-ce6a-4b0a-a4cf-453d9da625c5][Build]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
++ [[id:35cdd063-b646-4141-83ea-fcac8b337875][Orange Pi]]
++ [[id:40dcb082-52a4-436c-b13a-975d3bd27cef][Orange Pi: Firmware, u-boot, rkdevtool and SPI Flash]]
+
+#+begin_quote
+keep in mind that i'm ONLY doing this because i'm so fucking poor that i can
+NEVER afford to use the cloud. I make $3,000/year and no idiot sheep in america
+will hire me. I swear people in this country are fucking retarded.
+#+end_quote
+
+* Docs
+
+** Guix
++ [[https://codeberg.org/guix/guix.git/src/commit/8336ee644ba48b2c269ac38d138bf2dcbdf9927e/gnu/packages/bootloaders.scm#L1][(gnu packages bootloaders)]]
+
+* Notes
+
++ Builds two scripts for booting in cloud
+  - ./src/config/cloud/aws.ipxe
+  - ./src/config/cloud/gce.ipxe
+
+** Issues
+
+I think =%build-inputs= only works with =trivial-build-system
+
+#+begin_example scheme
+#~(modify-phases #$phases
+            (add-before 'build 'add-ipxe-boot-script
+              (lambda* (#:key outputs #:allow-other-keys)
+                (let ((src (assoc-ref %build-inputs "source")))
+                  (copy-file
+                   #~(plain-file "boot.pxe" "#!ipxe
+dhcp
+chain --autofree http://muh.netboot.homelab")
+                   (string-append src "/boot.pxe"))))))
+#+end_example
+
+** G-Expr
+
+#+begin_example scheme
+(define ipxe-testfile (plain-file "boot.ipxe" "#!ipxe
+dhcp
+chain --autofree http://muh.netboot.homelab"))
+
+#~(begin (copy-file #$ipxe-testfile "src/boot.ipxe"))
+#+end_example
+
+With arei, =C-c RET RET= after plain =G-Exp= will expand the macro:
+
+#+begin_example scheme
+(let ((references
+       ((@@ (guix gexp) list)
+        (let ((thing ipxe-testfile) (output "out") (native? #f))
+          ((@@ (srfi srfi-9) make-struct/simple)
+           (@@ (guix gexp) <gexp-input>)
+           thing
+           output
+           native?))))
+      (modules '())
+      (extensions '())
+      (proc (lambda (t-9c194ef7e5b55aa-ab4)
+              ((@@ (guix gexp) cons)
+               'begin
+               ((@@ (guix gexp) cons)
+                ((@@ (guix gexp) cons)
+                 'copy-file
+                 ((@@ (guix gexp) cons)
+                  t-9c194ef7e5b55aa-ab4
+                  ((@@ (guix gexp) cons) "src/boot.ipxe" '())))
+                '()))))
+      (location '((line . 0) (column . 0))))
+  ((@@ (srfi srfi-9) make-struct/simple)
+   (@@ (guix gexp) <gexp>)
+   references
+   modules
+   extensions
+   proc
+   location))
+#+end_example
+* Modules
+
+** =(dc packages bootloaders)=
+
+#+begin_src scheme
+(define-module (dc packages bootloaders)
+  #:use-module (dc)
+  #:use-module ((guix licenses) #:prefix license:)
+  #:use-module (guix gexp)
+  #:use-module (guix utils)
+  #:use-module (guix download)
+  #:use-module (guix git-download)
+  #:use-module (guix build gnu-build-system)
+  #:use-module (guix packages)
+
+  #:use-module (gnu)
+  #:use-module (gnu packages)
+  #:use-module (gnu packages base)
+  #:use-module (gnu packages bootloaders)
+
+  #:use-module (guix gexp)
+  #:use-module (srfi srfi-1)
+  #:export (ipxe-test))
+
+;;; Commentary:
+;;;
+;;; This module provides packages for bootloaders.
+;;;
+;;;
+;;; Code:
+
+;;; Packages
+
+(define ipxe-testfile (plain-file "boot.ipxe" "#!ipxe
+dhcp
+chain http://netboot.via.o.xel.io"))
+
+(define ipxe-testscript "#!ipxe
+dhcp
+chain http://netboot.via.o.xel.io")
+#+end_src
+
+*** Plain Package with test script
+
+#+begin_src scheme
+(define ipxe-test
+  (package
+    (inherit ipxe)
+    (name "ipxe-test")
+    (version "1.21.1-4.969ce2c-test-0")
+    (source (origin
+              (inherit (package-source ipxe))
+              (snippet
+               #~(begin (copy-file #$ipxe-testfile "src/boot.ipxe")))))
+    (arguments
+     (substitute-keyword-arguments (package-arguments ipxe)
+       ((#:modules modules)
+        `((ice-9 match) ,@modules))
+       ((#:make-flags flags)
+        #~(append '("EMBED=boot.ipxe") #$flags))))))
+#+end_src
+
+*** Second Attempt (with tls)
+
+Need a procedure to supply a list of ca.crt to trust. This should support
+deploying the private keys elsewhere. In any case, good luck screwing with the
+=/gnu/store= in the middle.
+
+#+begin_src scheme
+(define (ipxe-bundle
+         #:key
+         (variant "variant")
+         certificate
+         (embed "boot.ipxe"))
+  (package
+    (arguments
+     (let ((ipxe-script "foobar"))
+       (substitute-keyword-arguments (package-arguments ipxe)
+         ((#:phases #$phases)
+          #~(modify-phases #$phases
+              (add-before ')))
+         ((#:modules modules)
+          `((ice-9 match) ,@modules))
+         ((#:make-flags flags)
+          #~(append #$flags '("EMBED=boot.ipxe" "TRUST=ca.crt"))))))))
+
+(let ((ca-crt (local-file dcroot))))
+(ipxe-bundle #:variant "homelab")
+(copy-file ipxe-boot-script ".")
+(let ((ipxe-boot-script "#!ipxe
+dhcp
+chain http://netboot.via.o.xel.io")
+        (ipxe-boot-script-file
+         (plain-file "boot.pxe" ipxe-boot-script))))
+#+end_src
+
+* Netboot
+
+I'm assuming that I'll temporarily deploy:
+
++ the =http-server= directory tree using some HTTP server like
+  =mynetboot.host.homelab:8080=
++ and the =tftp-server= directory tree somewhere else, like vyos
+
+#+RESULTS:
+#+begin_verse
+/data/vm/netboot
+└── assets
+    ├── http-server
+    │   └── talos
+    │       └── 1.13.4
+    │           ├── amd64
+    │           │   ├── initramfs-amd64.xz
+    │           │   └── vmlinuz-amd64
+    │           └── arm64
+    │               ├── initramfs-arm64.xz
+    │               └── vmlinuz-arm64
+    └── tftp-server
+        ├── guix
+        │   └── deploy123
+        │       └── guix-deploy123.ipxe (binary)
+        └── netboot
+            ├── aarch64
+            │   ├── netboot.xyz-arm64.efi
+            │   ├── netboot.xyz-arm64-snp.efi
+            │   └── netboot.xyz-arm64-snponly.efi
+            └── x64_64
+                ├── ipxe-arch.efi
+                ├── netboot.xyz.efi
+                ├── netboot.xyz.kpxe
+                ├── netboot.xyz-snp.efi
+                └── netboot.xyz-snponly.efi
+#+end_verse
+
+** Configure Router
+
+#+begin_src shell
+set service tftp-server directory /config/tftp-server
+set service tftp-server listen-address 172.16.250.l0l
+set service dhcp-server shared-network-name SVC subnet 172.16.250.0/24 option bootfile-name 20260716-netboot/x86_64-efi/ipxe.efi
+set service dhcp-server shared-network-name SVC subnet 172.16.250.0/24 option bootfile-server 172.16.250.1
+#+end_src
+
++ vyos could instead run the netboot container directly on the router, which is
+  more convenient, but i don't want to be locked into convenience.
+  - That's not where i want that service to live. i plan on using iPXE as a tool
+    to avoid ~@!$$# @! #$@! %@#%!~ USB drives. i want more finalized images
+    installed onto the disks on the servers.
+  - running it as a container is one option i could migrate to, but it shouldn't
+    be difficult to migrate away from.
++ vyos only allows a single TFTP server +per VRF+, so for more strict traffic
+  flow, you need to deploy it on a VRF or point the DHCP options at some DNS
+  record somewhere.
+  - it only allows one TFTP server, but it can be exposed to VRF contexts. If
+    you're using =bind-to-all= ... then it's already "bound-to-all" lol (i'm not)
++ the iPXE file is small, so it's a major risk for MITM... and you're pretty
+  much booting rooted.
+
+The firewall rules need to be adjusted to allow inbound traffic. If the traffic
+doesn't cross subnet boundaries (which is ideal for now IMO), then it doesn't
+need forwarding rules.
+
+#+begin_src shell
+set firewall ipv4 input filter rule 6900 inbound-interface name eth2.320
+set firewall ipv4 input filter rule 6900 destination port 69
+set firewall ipv4 input filter rule 6900 protocol udp
+set firewall ipv4 input filter rule 6900 destination address 172.16.250.12
+set firewall ipv4 input filter rule 6900 source address 172.16.250.0/24
+#+end_src
+
+
+*** TFTP
+
+The router will hand a custom iPXE image with this script baked in, which will
+chainload to the =netboot.xyz.efi= iPXE image served from =/assets/tftp-server= to
+the booting server.
+
+#+begin_src shell
+#!ipxe
+dhcp
+chain --autofree http://muh.netboot.homelab:8080/tftp-server/netboot/x64_64/netboot.xyz.efi
+#+end_src
+
+Then build the package with
+
+#+begin_src shell
+gx=$(guix build -L ~/.dotfiles/guix/dc ipxe-test)
+# deploy with scp -r $gx/lib/ipxe/x86-64-efi or...
+dd of=/dev/whichfuckingusb if=$gx/lib/ipxe/ipxe.iso status=progress
+# this didn't make anything bootable
+#+end_src
+
+For me, TFTP succeeds, but i think i'm having a bootloop issue:
+
+#+begin_quote
+06:57:27.813273 IP 172.16.250.129.1330 > 172.16.250.12.36715: UDP, length 4
+06:57:27.813290 IP 172.16.250.12.36715 > 172.16.250.129.1330: UDP, length 1444
+06:57:27.813386 IP 172.16.250.129.1330 > 172.16.250.12.36715: UDP, length 4
+
+### end of TFTP transfer
+
+06:57:27.846384 ARP, Request who-has 172.16.250.12 tell 172.16.250.129, length 46
+06:57:27.846405 ARP, Reply 172.16.250.12 is-at 98:b7:85:20:cb:65 (oui Unknown), length 28
+
+### iPXE client requests autoexec.ipxe (bc it fucked up)
+
+06:57:27.846519 IP 172.16.250.129.8710 > 172.16.250.12.tftp: TFTP, length 43, RRQ "autoexec.ipxe" octet blksize 1432 tsize 0
+06:57:27.847047 IP 172.16.250.12.39925 > 172.16.250.129.8710: UDP, length 19
+06:57:29.051432 STP 802.1d, Config, Flags [Topology change], bridge-id 8140.00:26:51:6a:0f:80.8004, length 42
+06:57:31.049543 STP 802.1d, Config, Flags [Topology change], bridge-id 8140.00:26:51:6a:0f:80.8004, length 42
+
+### HTTP host now confused (needs arp to clarify address)
+
+06:57:32.924095 ARP, Request who-has 172.16.250.129 tell 172.16.250.12, length 28
+06:57:33.054837 STP 802.1d, Config, Flags [Topology change], bridge-id 8140.00:26:51:6a:0f:80.8004, length 42
+06:57:33.948078 ARP, Request who-has 172.16.250.129 tell 172.16.250.12, length 28
+06:57:34.972092 ARP, Request who-has 172.16.250.129 tell 172.16.250.12, length 28
+#+end_quote
+
+*** Management Interface and VLANs
+
+If there's an management interface (a NIC configured as a trunk port on a
+switch), then you can build an iPXE that serves an iPXE that fetches a final
+image that contains finalized DHCP/interface configuration.
+
++ without iDrac, then to avoid BIOS hell, you should:
+  - get DHCP from the trunk's native access vlan
+  - serve an iPXE that runs =vcreate --tag 123 net0= then an =autoboot net0-123=
+  - that interface should then get DHCP with the real device-specific payload
++ The finalized interace configuration should look like:
+  - =net0: vlan1= with the intermediate =vlan123= removed.
+  - =net1= native vlan
+  - =net2= native vlan
+
+It's amazing how absent these tricks are from the internet. I've thought about
+this for awhile, but never found confirmation of it. With IPv6 and multicast
+IPs, there are more options. Usually you can do most of this from within =iDrac=
+or whatever.
+
+I'd imagine that most cloud providers do quite a bit with custom DHCP
+implementations and middleware. (e.g. pixiecore)
+
+** Test
+
+Run netboot for =http=
+
+#+name: obnetboot
+#+begin_src emacs-lisp :results value silent
+(or (bound-and-true-p ob@netboot) (setq ob@netboot (read-string "netboot root: ")))
+#+end_src
+
+
+#+begin_src shell :var nb=obnetboot
+podman run -d \
+  --name=netbootxyz-test \
+  -e MENU_VERSION=2.0.76 \
+  -e NGINX_PORT=80 \
+  -e WEB_APP_PORT=3000 \
+  -p 3000:3000 \
+  -p 8080:80 \
+  -v $nb/config:/config \
+  -v $nb/assets:/assets \
+  ghcr.io/netbootxyz/netbootxyz
+
+  # -p 69:69/udp \
+#+end_src
