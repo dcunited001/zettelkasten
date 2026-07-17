@@ -85,6 +85,7 @@ With arei, =C-c RET RET= after plain =G-Exp= will expand the macro:
    proc
    location))
 #+end_example
+
 * Modules
 
 ** =(dc packages bootloaders)=
@@ -338,16 +339,93 @@ Run netboot for =http=
 
 
 #+begin_src shell :var nb=obnetboot
+ip=172.16.250.64
 podman run -d \
-  --name=netbootxyz-test \
-  -e MENU_VERSION=2.0.76 \
-  -e NGINX_PORT=80 \
-  -e WEB_APP_PORT=3000 \
-  -p 3000:3000 \
-  -p 8080:80 \
-  -v $nb/config:/config \
-  -v $nb/assets:/assets \
-  ghcr.io/netbootxyz/netbootxyz
+    --name=netbootxyz-test \
+    -e MENU_VERSION=2.0.76 \
+    -e NGINX_PORT=80 \
+    -e WEB_APP_PORT=3000 \
+    -p $ip:3000:3000 \
+    -p $ip:8080:80 \
+    -p $ip:69:69/udp \
+    -v $nb/config:/config \
+    -v $nb/assets:/assets \
+    ghcr.io/netbootxyz/netbootxyz
 
-  # -p 69:69/udp \
+# -p 69:69/udp \
 #+end_src
+
+I was missing firewall rules on the endpoint. these rejections didn't show up in
+=tcpdump= output on the firewall because the router host doesn't handle local
+traffic on the subnet.
+
+#+begin_src shell :var nb=obnetboot
+net=172.16.250.0/24
+iptables -I nixos-fw 4 -s $net -j ACCEPT -p udp --dport 8080
+iptables -I nixos-fw 4 -s $net -j ACCEPT -p tcp --dport 8080
+iptables -I nixos-fw 4 -s $net -j ACCEPT -p udp --dport 3000
+iptables -I nixos-fw 4 -s $net -j ACCEPT -p tcp --dport 3000
+iptables -I nixos-fw 4 -s $net -j ACCEPT -p udp --dport 69
+#+end_src
+
+*** Test direct TFTP
+
+To determine whether it's my PXE image or something else....
+
++ restart the container with port 69 bound to the host
+
+#+begin_src shell
+set service dhcp-server shared-network-name SVC subnet 172.16.250.0/24 option bootfile-name netboot.xyz.efi
+set service dhcp-server shared-network-name SVC subnet 172.16.250.0/24 option bootfile-server 172.16.250.64
+#+end_src
+
+test =tftp= using =tftp -v muh.netboot.homelab=. commands are
+
+| connect | quit | mode | put | get | trace | verbose | binary | ascii | rexmt | timeout |
+
+for indoor plumbing and shell history: =rlwrap tftp -v muh.netboot.homelab=
+
+#+begin_src shell
+rlwrap tftp -v muh.netboot.homelab
+#
+# trace (will absolutely require =killall tftp=)
+#+end_src
+
+Podman apparently starts some bullshit =dnsmasq= which luckily shows up in
+tftp-boot saying basically =can't do jack shit= other than clarifying that it can
+in fact see my fucking file system.
+
+#+begin_quote
+netbootxyz-test[2329407]: dnsmasq-tftp[18]: file /config/menus/endpoints.yml not found for 172.16.250.64
+netbootxyz-test[2329407]: dnsmasq-tftp[18]: failed sending /config/menus/sigs/4mlinux.ipxe.sig to 172.16.250.64
+#+end_quote
+
+I have never in my life had a TFTP CLI tool in linux successfully retrieve a
+file from a running TFTP server. it is seriously the most excruciating bullshit
+to test. I have been able to use netboot to boot VMs, but that's it.
+
+**** Fix file permissions
+
+I'm also getting [[https://github.com/netbootxyz/docker-netbootxyz/issues/97][this misleading =autoexec.ipxe= error]], as if TFTP itself wasn't
+opaque enough.
+
+#+begin_quote
+dnsmasq-tftp[56]: sent /config/menus/boot.cfg to 172.16.250.129
+dnsmasq-tftp[56]: sent /config/menus/menu.ipxe to 172.16.250.129
+dnsmasq-tftp[56]: file /config/menus/MAC-112233445566.ipxe not found for 172.16.250.12
+dnsmasq-tftp[56]: file /config/menus/local-vars.ipxe not found for 172.16.250.129
+dnsmasq-tftp[56]: file /config/menus/autoexec.ipxe not found for 172.16.250.129
+dnsmasq-tftp[56]: sent /config/menus/netboot.xyz.efi to 172.16.250.129
+dnsmasq-tftp[56]: sent /config/menus/netboot.xyz.efi to 172.16.250.129
+#+end_quote
+
+from earlier testing using =rlwrap tftp -v $host=
+
+#+begin_quote
+dnsmasq-tftp[56]: error 8 User aborted the transfer received from 172.16.250.129
+dnsmasq-tftp[56]: failed sending /config/menus/sigs/4mlinux.ipxe.sig to 172.16.250.64
+dnsmasq-tftp[56]: failed sending /config/menus/sigs/4mlinux.ipxe.sig to 172.16.250.64
+#+end_quote
+
+"Fixing file ownership" with =mkdir ../netboot3 && cd netboot3= then =mkdir -p
+{assets,config}= seems to have fixed the broken transfers.
