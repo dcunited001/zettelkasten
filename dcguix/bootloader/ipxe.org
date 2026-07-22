@@ -43,6 +43,54 @@ chain --autofree http://muh.netboot.homelab")
                    (string-append src "/boot.pxe"))))))
 #+end_example
 
+*** iPXE Failure Is Opaque
+
+Make a debuggable package. Guix FTW. Just inherit the package and append a =DEBUG=
+make flag.
+
+#+begin_src scheme
+(define ipxe-test-debug
+  (package
+    (inherit ipxe-test)
+    (name "ipxe-test-debug")
+    (version "1.21.1-4.969ce2c-test-debug-0")
+    (arguments
+     (substitute-keyword-arguments (package-arguments ipxe-test)
+       ((#:modules modules)
+        `((ice-9 match) ,@modules))
+       ((#:make-flags flags)
+        #~(append '("DEBUG=intel,tftp,dhcp") #$flags))))))
+#+end_src
+
+*** iPXE Failure Is Still Opaque
+
+Redefine the boot menu
+
+#+begin_src scheme
+(define ipxe-testfile (plain-file "boot.ipxe" "#!ipxe
+:menu
+menu Please choose a boot option
+item shell Start iPXE shell
+item netboot Netboot
+item exit Exit iPXE and proceed
+
+:shell
+echo Entering iPXE command line...
+shell
+goto menu
+
+:netboot
+dhcp
+chain --autofree http://muh.netboot.homelab
+
+:exit
+exit"))
+#+end_src
+
+I got the debug output to work, but when =autoexec.ipxe= exists, whether it's
+binary or not, it just fails. i suspect a syntax issue in the script, but
+there's not a great way to validate this.
+
 ** G-Expr
 
 #+begin_example scheme
@@ -121,11 +169,11 @@ With arei, =C-c RET RET= after plain =G-Exp= will expand the macro:
 
 (define ipxe-testfile (plain-file "boot.ipxe" "#!ipxe
 dhcp
-chain http://netboot.via.o.xel.io"))
+chain --autofree http://muh.netboot.homelab"))
 
 (define ipxe-testscript "#!ipxe
 dhcp
-chain http://netboot.via.o.xel.io")
+chain --autofree http://muh.netboot.homelab")
 #+end_src
 
 *** Plain Package with test script
@@ -177,7 +225,7 @@ deploying the private keys elsewhere. In any case, good luck screwing with the
 (copy-file ipxe-boot-script ".")
 (let ((ipxe-boot-script "#!ipxe
 dhcp
-chain http://netboot.via.o.xel.io")
+chain http://muh.netboot.homelab")
         (ipxe-boot-script-file
          (plain-file "boot.pxe" ipxe-boot-script))))
 #+end_src
@@ -220,6 +268,22 @@ I'm assuming that I'll temporarily deploy:
                 └── netboot.xyz-snponly.efi
 #+end_verse
 
+** Final config
+
+#+begin_src shell
+set service tftp-server directory '/config/tftp-server'
+set service tftp-server listen-address '172.16.250.l0l'
+set service dhcp-server shared-network-name SVC subnet '172.16.250.0/24' option bootfile-name '20260716-netboot/ipxe/x86_64-efi/ipxe.efi'
+set service dhcp-server shared-network-name SVC subnet '172.16.250.0/24' option bootfile-server '172.16.250.1'
+
+set firewall ipv4 input filter rule 6900 action 'accept'
+set firewall ipv4 input filter rule 6900 destination address '172.16.250.1'
+set firewall ipv4 input filter rule 6900 destination port '69'
+set firewall ipv4 input filter rule 6900 inbound-interface name 'eth2.250'
+set firewall ipv4 input filter rule 6900 protocol 'udp'
+set firewall ipv4 input filter rule 6900 source address '172.16.250.0/24'
+#+end_src
+
 ** Configure Router
 
 #+begin_src shell
@@ -252,7 +316,7 @@ need forwarding rules.
 set firewall ipv4 input filter rule 6900 inbound-interface name eth2.320
 set firewall ipv4 input filter rule 6900 destination port 69
 set firewall ipv4 input filter rule 6900 protocol udp
-set firewall ipv4 input filter rule 6900 destination address 172.16.250.12
+set firewall ipv4 input filter rule 6900 destination address 172.16.250.1
 set firewall ipv4 input filter rule 6900 source address 172.16.250.0/24
 #+end_src
 
@@ -327,7 +391,6 @@ or whatever.
 
 I'd imagine that most cloud providers do quite a bit with custom DHCP
 implementations and middleware. (e.g. pixiecore)
-
 ** Test
 
 Run netboot for =http=
