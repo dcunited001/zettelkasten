@@ -108,13 +108,80 @@ cd /usr/src/app/memberportal
 | sms.enable                 | enableReportIssue        | enableWebcamps                   |
 | enableStatsPage            | enableLastSeenPage       | enableRecentSwipesPage           |
 
+* Environment
+
+** mise/uv
+
+.python-version (matches dockerfile)
+
+#+begin_src text
+3.12
+#+end_src
+
+#+begin_src toml
+min_version = "2026.3.17"
+
+[env]
+# Use the project name derived from the current directory
+PROJECT_NAME = "{{ config_root | basename }}"
+
+# Automatic virtualenv activation
+_.python.venv = { path = ".venv", create = true }
+
+[tools]
+python = "{{ get_env(name='PYTHON_VERSION', default='3.11') }}"
+ruff = "latest"
+
+[tasks.install]
+description = "Install dependencies"
+alias = "i"
+run = "uv pip install -r requirements.txt"
+
+[tasks.run]
+description = "Run the application"
+run = "python app.py"
+
+[tasks.test]
+description = "Run tests"
+run = "pytest tests/"
+
+[tasks.lint]
+description = "Lint the code"
+run = "ruff src/"
+
+[tasks.info]
+description = "Print project information"
+run = '''
+echo "Project: $PROJECT_NAME"
+echo "Virtual Environment: $VIRTUAL_ENV"
+'''
+#+end_src
+
+These are needed for the dev environment.
+
+#+begin_example env
+MM_ENV=Development
+MM_LOG_LOCATION=errors.log
+MM_DB_LOCATION=errors.log
+#+end_example
+
+
+#+begin_src shell
+mise trust
+mise install
+
+# pip install -r requirements
+
+# 
+# python3 manage.py migrate
+# python3 manage.py loaddata 
+#+end_src
+
 * Emacs
 
 ** doom emacs defaults
 
 ** django-language-server
-
-
 * Schema
 :PROPERTIES:
 :header-args+: :var pguser="membermatters" pgpass="membermatters" pgdb="membermatters"
