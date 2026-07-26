@@ -38,6 +38,81 @@ guix graph --type=reverse-package $hyprpkgs \
 ** Rules
 ** Binds
 
+** Converting to lua
+
+*** Omarchy module structure
+
+
+
++ The top-level =o= metatable (?) contains some functions that wrap =hl=, so there
+  aren't many direct references to the latter.
+
+**** User config
+
+The [[https://github.com/basecamp/omarchy/blob/quattro/default/hypr/bootstrap.lua#L3][default/hypr/bootstrap.lua]] does some special setup to give the user a "hypr"
+module namespace, i think
+
+#+begin_src shell
+OMARCHY_PATH=~/.local/share/omarchy
+cd $OMARCHY_PATH && grep -re '^ *require("' config/hypr
+#+end_src
+
+Entry point: =~/.config/hypr/hyprland.lua=
+
+| config/hypr/hyprland.lua | default/hypr/bootstrap.lua      |
+| config/hypr/hyprland.lua | require("default.hypr.omarchy") |
+| config/hypr/hyprland.lua | require("hypr.monitors")        |
+| config/hypr/hyprland.lua | require("hypr.input")           |
+| config/hypr/hyprland.lua | require("hypr.bindings")        |
+| config/hypr/hyprland.lua | require("hypr.looknfeel")       |
+| config/hypr/hyprland.lua | require("hypr.autostart")       |
+| config/hypr/hyprland.lua | require("default.hypr.toggles") |
+**** Omarchy
+
+#+begin_src shell
+OMARCHY_PATH=~/.local/share/omarchy
+cd $OMARCHY_PATH && grep -re '^ *require("default' default
+#+end_src
+
+In logical order of inclusion
+
+| default/hypr/omarchy.lua | require("default.hypr.helpers")            |
+| default/hypr/omarchy.lua | require("default.hypr.autostart")          |
+| default/hypr/omarchy.lua | require("default.hypr.bindings.media")     |
+| default/hypr/omarchy.lua | require("default.hypr.bindings.clipboard") |
+| default/hypr/omarchy.lua | require("default.hypr.bindings.tiling")    |
+| default/hypr/omarchy.lua | require("default.hypr.bindings.utilities") |
+| default/hypr/omarchy.lua | require("default.hypr.envs")               |
+| default/hypr/envs.lua    | require("default.hypr.nvidia")             |
+| default/hypr/omarchy.lua | require("default.hypr.looknfeel")          |
+| default/hypr/omarchy.lua | require("default.hypr.input")              |
+| default/hypr/omarchy.lua | require("default.hypr.windows")            |
+| default/hypr/windows.lua | require("default.hypr.apps")               |
+
+=default.hypr.apps=, includes the entire path:
+
+#+begin_src lua
+require_all.files(paths.omarchy_path .. "/default/hypr/apps", "default.hypr.apps")
+#+end_src
+
+There are a few exceptions. Modules like =default.hypr.{tiling,bindings,apps}=
+call =require_all=. I'm not quite sure what loads =tiling= and =bindings=, but the
+=require= for =default.hypr.apps= is obvious.
+
+=require_all= is not native to =lua=. it's a helper in =default.hypr.require_all= that
+gets "locally" required where needed.
+
++ I think =default.hypr.bootstrap= and =require_all= affect how hyprland's lua state
+  is managed (e.g. when you =git pull= during an =omarchy update=)
+
+*** Watchexec
+
+#+begin_src shell
+debounce=1
+cmd='hyprland --verify-config -c $HOME/.dotfiles/.config/hypr/kratos.hyprland.lua'
+
+watchexec -d $debounce --workdir . --filter '*.lua' "$cmd"
+#+end_src
 ** Instance Socket
 
 A better way to get the instance socket (than =ls= or something)
