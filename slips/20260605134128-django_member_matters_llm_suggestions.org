@@ -1,0 +1,418 @@
+:PROPERTIES:
+:ID:       9475c34f-415d-4cda-8eaf-43d80ff88803
+:END:
+#+TITLE: Django: Member Matters LLM Suggestions
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:158a3cd8-c08b-4c25-a76d-48bfbe579c6d][Agenticalisterisis: Agents, LLM, AI]]
+
+* Notes
+
+This worked fairly well.
+
+I kinda want LLM to just supervise my interaction with a repository though.
+
++ If it could just watch the git index for small changes to my worktree/index,
+  then batch a plain patch to the LLM, so that it could pop up as ... an
+  annoying Mr Paperclip
++ if i could spawn shells/tmux that send unexpanded shell history with some
+  minimal environment details
+  - ... maybe that's what =ghostty= or the other llm terminal is though.
+  - this would be a nice feature to turn on & turn off.
++ if i could do the same with emacs, sending data with granularity between
+  =command-log-mode= & what's collected via keyboard macro record functionality.
+  - it's difficult to do that in a meaningful way, since it's detached from
+    context. it's also difficult to perceive context/intent from a screen
+    recording, even if enriched with =command-log-mode=
+
+ultimately, i'd just like to "reverse tree-sitter", enumerate a set of
+containing grammar structures specified by "tree sitter query", then assemble a
+"trie" that counts instances of that query (with symbol locations retained), t
+
+Then extract snippets from the trie (more of a radix tree)... which is assembled
+from a "poset" of grammar structures. each TSQ grammar hit goes in all the
+"buckets" from most specific to most general.
+
+Some interesting expressions for a language could be found by analyzing the
+divergence (in measure) or variance in divergence... in order of general to
+specific... but everything's like uncountably impossible. I'm more interested in
+the higher-order grammars.
+
+Also, lines of code mask a ton of complexity -- compare clojure to java, where
+you need to open 25 files to understand anything for sure
+
+* Q1
+
+#+begin_src markdown
+I'm working on a Django app with a Vue.js frontend. Given this `Dockerfile`,
+`docker-compose.yml` and partial file tree below, I need specific advice about
+webapp development workflow with Django.
+
+# Member Matters
+
+MemberMatters is an open source app maintained by multiple makerspaces across
+the world.
+
+## Example Features
+
+Here are some types of features we're adding next.
+
+....... (TBD)
+
+## Questions
+
+### What recommendations do you have for adding simple tests?
+
+Some team members are new to hacking on MemberMatters, but most have some python
+experience. We plan to use some LLM, but need to ensure that existing
+functionality is retained. Thus, initially in the python codebase, we need
+lightweight TDD and BDD, even if it's not pushed upstream.
+
+The ideal test framework would be simple to run from a development environment.
+Examples of suggestions I'm looking for:
+
+- Building test fixtures into a small sqlite database where teardown hooks reset
+the database state.
+- Simple `restclient` scripts to test API calls & hooks in a development
+environment.
+- Advice on selecting Django workflows & environment configuration that create a
+"happy medium" for developers both new and experienced.
+
+# Project Structure
+## Services
+
+#+end_src
+
+
+#+begin_src dockerfile
+# Specify our base image
+FROM python:3.12-bullseye
+LABEL maintainer="Jaimyn Mayer (github@jaimyn.dev)"
+LABEL description="Base Dockerfile for the MemberMatters software."
+
+VOLUME /usr/src/data/
+VOLUME /usr/src/logs/
+
+RUN mkdir -p /usr/src/app/frontend && mkdir /usr/src/logs && mkdir /usr/src/data
+
+RUN apt-get update -y && apt-get install -y nginx curl daphne
+
+# Install Node
+ENV NODE_VERSION=22.2.0
+SHELL ["/bin/bash", "--login", "-c"]
+
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.3/install.sh | bash
+RUN nvm install ${NODE_VERSION}
+RUN npm config delete prefix
+RUN nvm use --delete-prefix v${NODE_VERSION} --silent
+
+# Install node deps
+WORKDIR /usr/src/app/frontend/
+COPY src-frontend/package* /usr/src/app/frontend/
+RUN npm ci
+
+ADD src-frontend /usr/src/app/frontend
+ADD package.json /usr/src/app/package.json
+
+# Install python deps
+WORKDIR /usr/src/app/memberportal/
+RUN python -m pip install --upgrade pip
+ADD memberportal/requirements.txt /usr/src/app/memberportal/requirements.txt
+RUN pip3 install --no-cache-dir pillow
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+# Build our frontend
+WORKDIR /usr/src/app/frontend/
+RUN npm run build
+
+# Remove our .npmrc
+RUN rm -rf .npmrc
+
+# collect static files from Django and add the backend source code
+ADD memberportal /usr/src/app/memberportal
+WORKDIR /usr/src/app/memberportal/
+RUN python3 manage.py collectstatic --noinput
+
+# Copy over the nginx config and requirement files
+ADD docker/nginx.conf /etc/nginx/nginx.conf
+ADD docker /usr/src/app/docker
+
+# Expose the port and run the app
+EXPOSE 8000
+CMD ["sh", "/usr/src/app/docker/container_start.sh"]
+#+end_src
+
+
+#+begin_src markdown
+
+### docker.compose.yaml
+#+end_src
+
+#+begin_src yaml
+version: "3"
+services:
+mm-postgres:
+image: postgres:15.3-alpine
+restart: always
+environment:
+- POSTGRES_USER=membermatters
+- POSTGRES_PASSWORD=membermatters
+- POSTGRES_DB=membermatters
+ports:
+- "5432:5432"
+    volumes:
+      - mm-postgres-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U membermatters"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  # MemberMatters Redis
+  mm-redis:
+    image: redis
+    restart: always
+    depends_on:
+      - mm-postgres
+  # MemberMatters
+  mm-webapp:
+    image: membermatters/membermatters
+    restart: always
+    environment:
+      MM_ENV: "Production"
+      MM_SECRET_KEY: "CHANGE_ME"
+      MM_USE_POSTGRES: True
+      MM_REDIS_HOST: "redis://mm-redis:6379/0"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mm-postgres
+      - mm-redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+  # MemberMatters Celery Worker
+  mm-celery-worker:
+    image: membermatters/membermatters
+    restart: always
+    environment:
+      MM_ENV: "Production"
+      MM_USE_POSTGRES: True
+      MM_RUN_MODE: "celery_worker"
+      MM_REDIS_HOST: "redis://mm-redis:6379/0"
+    depends_on:
+      - mm-webapp
+      - mm-redis
+  # MemberMatters Celery Beat
+  mm-celery-beat:
+    image: membermatters/membermatters
+    restart: always
+    environment:
+      MM_ENV: "Production"
+      MM_USE_POSTGRES: True
+      MM_RUN_MODE: "celery_beat"
+      MM_REDIS_HOST: "redis://mm-redis:6379/0"
+    depends_on:
+      - mm-webapp
+      - mm-celery-worker
+      - mm-redis
+  mm-celery-prom-exporter:
+    image: danihodovic/celery-exporter
+    restart: always
+    environment:
+      CE_BROKER_URL: "redis://mm-redis:6379/0"
+    depends_on:
+      - mm-celery-worker
+      - mm-redis
+volumes:
+  mm-postgres-volume:
+    driver: local
+
+#+end_src
+
+
+
+#+begin_src markdown
+## File Structure
+
+The file tree indicates the Django app's python module structure and some key
+files in the Vue.js frontend. This Vue.js is bundled into Android and iPhone
+apps as a thin web view, so please don't recommend much that would require
+additional javascript dependencies.
+#+end_src
+
+#+begin_src shell
+q='(package.json|requirements.txt|__init__\.py|manage\.py|models\.py|index\..*|App\.vue|MainLayout\.vue|.*config\.js)'
+cat <(find {./memberportal,./src-frontend} -maxdepth 4 -type d) \
+    <(fd $q {./memberportal,./src-frontend}) \
+    | grep -v i18n | tree --fromfile .
+#+end_src
+
+#+begin_verse
+.
+├── memberportal
+│   ├── access
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── api_access
+│   │   └── __init__.py
+│   ├── api_admin_tools
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── api_billing
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── api_general
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── api_meeting
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── api_member_bucks
+│   │   └── __init__.py
+│   ├── api_member_tools
+│   │   └── __init__.py
+│   ├── api_metrics
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── api_spacedirectory
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── fixtures
+│   ├── group
+│   │   ├── __init__.py
+│   │   └── migrations
+│   │       └── __init__.py
+│   ├── manage.py
+│   ├── memberbucks
+│   │   ├── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   └── models.py
+│   ├── membermatters
+│   │   └── __init__.py
+│   ├── profile
+│   │   ├── fixtures
+│   │   ├── __init__.py
+│   │   ├── management
+│   │   │   ├── commands
+│   │   │   │   └── __init__.py
+│   │   │   └── __init__.py
+│   │   ├── migrations
+│   │   │   └── __init__.py
+│   │   ├── models.py
+│   │   ├── templates
+│   │   └── templatetags
+│   │       └── __init__.py
+│   ├── requirements.txt
+│   └── services
+└── src-frontend
+    ├── index.html
+    ├── package.json
+    ├── public
+    │   └── icons
+    ├── quasar.config.js
+    ├── src
+    │   ├── App.vue
+    │   ├── assets
+    │   │   └── img
+    │   │       ├── logo
+    │   │       └── menu-bg
+    │   ├── boot
+    │   ├── components
+    │   │   ├── Account
+    │   │   ├── AdminTools
+    │   │   ├── Billing
+    │   │   └── stickers
+    │   ├── css
+    │   ├── icons
+    │   │   └── index.ts
+    │   ├── layouts
+    │   │   └── MainLayout.vue
+    │   ├── mixins
+    │   ├── pages
+    │   │   └── AdminTools
+    │   ├── router
+    │   │   └── index.ts
+    │   ├── store
+    │   │   ├── index.js
+    │   │   └── modules
+    │   │       └── config.js
+    │   └── types
+    │       └── api
+    ├── src-capacitor
+    │   ├── android
+    │   │   ├── app
+    │   │   │   └── src
+    │   │   │       └── main
+    │   │   │           └── assets
+    │   │   │               └── capacitor.config.json
+    │   │   └── capacitor-cordova-android-plugins
+    │   │       └── src
+    │   ├── capacitor.config.json
+    │   ├── ios
+    │   │   └── App
+    │   │       ├── App
+    │   │       │   └── capacitor.config.json
+    │   │       ├── App.xcodeproj
+    │   │       └── App.xcworkspace
+    │   └── package.json
+    ├── src-electron
+    │   └── icons
+    ├── src-pwa
+    └── tsconfig.json
+#+end_verse
+
+#+begin_src markdown
+# Summary
+
+For clarity, I've repeated the goals below:
+
+Some team members are new to hacking on MemberMatters, but most have some python
+experience. We plan to use some LLM, but need to ensure that existing
+functionality is retained. Thus, initially in the python codebase, we need
+lightweight TDD and BDD, even if it's not pushed upstream.
+
+I'm working on a Django app with a Vue.js frontend. Given this `Dockerfile`,
+`docker-compose.yml` and partial file tree below, I need specific advice about
+webapp development workflow with Django.
+
+# Member Matters
+
+MemberMatters is an open source app maintained by multiple makerspaces across the world.
+
+## Example Features
+
+Here are some types of features we're adding next.
+
+....... (TBD)
+
+## Test environment
+
+The ideal test framework would be simple to run from a development environment.
+Examples of suggestions I'm looking for:
+
+- Building test fixtures into a small sqlite database where teardown hooks reset
+  the database state.
+- Simple `restclient` scripts to test API calls & hooks in a development environment.
+- Advice on selecting Django workflows & environment configuration that create a
+  "happy medium" for developers both new and experienced.
+#+end_src
+

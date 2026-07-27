@@ -1,0 +1,298 @@
+:PROPERTIES:
+:ID:       40154b91-c834-4bc4-abeb-44f5e18992c2
+:END:
+#+TITLE: NixOS: The TLDR for New Users
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+* Docs
+
+* The NixOS TLDR (so far)
+
+This is lacking...
+
+#+begin_quote
+2026/7: a TODO list was supposed to follow
+#+end_quote
+
+** How You Want To Learn..
+
+This depends on where you want to go. Nixos is simple, but it gets complex,
+mostly bc flakes and overlays.
+
+There are different ways to use nix/nixos/nixpkgs/flakes/etc. These aren't
+clearly delineated _and they are very different._
+
++ reproducible standard builds :: nixpkgs for packagers. flakes for developers )
++ nixos systems :: these have specific kinds of flakes.
++ flakes for devops :: great for: small on-prem homelabs that need agility,
+  "simple" secrets management
+  - complex: configuration management involving ip-addresses... get to DNS as
+    fast as you can & use something else for a firewall (defining simple
+    iptables/nftables rules for services & their ports is easy)
+  - see notes on mixing abstractions
++ flakes for beginners :: flake-utils
++ flakes for formatting :: you really care about where your cursor goes
++ flakes for your home-manager :: though these usually just get merged in
++ flakes for styling things :: i.e. getting lost in aesthetics because you need
+  to post unix porn on instagram (or wherever idk). no it's legit ... it's just
+  you can't post screen shots that convey your workflow. /That/ is parameterized
+  by time and thus requires time to /experience/ (& irrelevant without context)
++ problem-specific flakes :: flakes to solve specific problems
++ flakes for flakes :: with a genuinely established value
+  - flake parts...
++ flakes for design-system specific abstractions :: these are ... well very
+  fucking complicated.
+  - e.g. [[https://github.com/nix-community/haumea][nix-community/haumea]] or [[https://github.com/divnix/hive][divnix/hive]] or [[https://github.com/snowfallorg/lib][snowfallorg/lib]] or
+    [[https://github.com/clan-lol/clan-core][clan-lol/clan-core]]
+
+See footnote on Nix/Guix comparison[fn:2]
+
+** On Nix, Nixos & Its Ecosystem
+
+- each `.nix` file is literally a function.
+- **flakes** are basically **dependency injection** ... but with some
+  kind of weird recursive mapAttrs magick to allow references/attrs to
+  just be what you need them to be.
+- `nix-ld` solve a lot of linking problems, but you may not want to
+  overuse it (idk really)
+
+*** home-manager is overrated (i haven't tried it though)
+
+- you can use `#! /usr/bin/env xyz-cmd` for scripting in hyprland
+- systemd services you write aren't necessarily enabled for your user(s), if you
+  even have a multi-user system
+- nixos/nixpkgs will likely support user-specific systemd services soon (idk)
+
+*** for docs:
+
+- the nixos wiki is useful, but fairly out of date (it's actually
+  still very helpful, you just need to cross-check)
+- options search is more useful (it links to the nixpkgs sources)
+- keep a local copy of the nixos/nixpkgs repo and ripgrep across
+  that. maybe not the best first-thing to do, but the options for
+  services hide a lot of details
+  - or use google's =repo= or =git-repo-manager= ... which is _not_
+    related to repo.
+- there's nix-community/manix, but you have to re-index it. easy, but
+  i can't quite get it to give me great results for some searches.
+- there are Dash docsets you can generate as well. these are more
+  useful.
+
+*** Some tips
+
+- there are plenty of examples, but be careful cargo culting.
+- flakes are purpose-built or hard to refactor. it's hard to tell the
+  latter from the former (without experience).
+- you want to avoid too many flakes/dependencies
+- prefer overrides over overlays
+- don't try to mix **services** from nixos-unstable with nixos-25.05,
+  unless you really have to (packages are fine, probably)
+
+** Some early challenges:
+
+*** wtf is a flake?
+
+It's a meta-schema for dependency injection (see above?)
+
+That's probably not technically correct, but that's what it is. Every nix file
+is a function. =flake-compat= is how you give those =.nix= functions a standard
+interface, so their inputs can be supplied with =flakes= or =channels=.
+
+Probably avoid channels. This is sad, but it is what it is. They are far more
+appropriate than flakes for large ops... but you're not going to find much help
+there.
+
+*** This is just like Guix right?
+
+Nope.
+
+*** Overeager modularity
+
+Of =mkEnableOption= & modules... or of =home-manager=, with its many modules. The
+term "Gordian Knot" comes to mind, as does the image of a wall of modular
+synths.
+
+For =nixos=, you'd be better off starting small on code reuse, since you may need
+to regenerate a system at any time. If you don't have a bit of automation, then
+you'll go to rebuild your dotfiles/system annnnnd it won't -- e.g. automation
+like GH Actions or at least =--dry-run= builds in CI or VMs, where it's +easy+ very
+difficult to integration-test a desktop system using d-bus or with
+state-dependent contexts.
+
+**** The corollary: Lack of modularity
+
+These are hard to balance if you're a user who toggles
+between multiple systems. Your copy-pasta is cheap to fix (albeit frustrating to
+encounter). Your tangled mess of interdependencies? Nahhh.
+
++ avoid defining modules if you can: specifying the attrs is cheap ... but
+  potentially confusing to revisit latter if you copy-pasted (i learned this
+  with Guix, where refactor time can be longer)
++ for the nixos & guix-system use-cases: writing nix/guile is basically
+  configuration management, so a lot of your "clean code" ideas go right out the
+  window. you just need to make pragmatic choices
+
+*** Why Does My Build Take So Long?
+
+TL;DR: don't customize package inputs if you don't need to: it's expensive. When
+you do, step back and think about what it's going to affect.
+
+In Guix, you need to traverse the package graph to replace inputs. There is some
+functionality to help accelerate this, but it's /slightly harder/ to overlay for
+lower level services.
+
++ you used overlays too early
++ your nixos system (or home-manager config) specifies the same input _name_ using
+  multiple versions of its _derivation outputs_ in multiple places
++ you wrote too many of the wrong strings in too many places (these may
+  correspond to single derivations). this is usually a =+1= problem, not an =n+1=
+  problem
++ your flake specifies a development input for a large set of packages (like
+  hyprland), but some override/overlay requires rebuilds (instead of fetch from
+  cachix)
+  - later: you have cachix problems
++ you don't pay attention to your derivations
+  - you should be at least capable of diffing your derivations
+  - =nom= helps a lot with just getting a general feel for wtf the nix daemon is
+    actually doing
+
+*** You want a =service= from =nixos-unstable=...
+
+But it's not in =nixos-$version= yet
+
++ you upgraded to =nixos-unstable= to simplify things, but the definitions for
+  services changed. usually this means you get a build failure.
+
+*** You Need To Write An Override
+
++ you need to write an overlay
++ you used the wrong overlay pattern (refer to overlays/default.nix
+  from [[https://github.com/EmergentMind/nix-config][EmergentMind/nix-config]])
+
+*** You Need To Start Pinning Flakes
+
+I haven't got there yet
+
+** Footgun: Mixing Abstractions (everything is a box)
+:PROPERTIES:
+:ID:       911ef900-5860-44f7-9298-c9f798d22dfc
+:END:
+
+Everything is a *box* with:
+
+| inputs | outputs | boxes inside | boxes outside |
+
+You don't want your boxes to overlap.
+
+Be aware to avoid mixing abstractions. It's not so bad when you intend to do it,
+but as a nixos/guix noob, the problem is you're more familiar with older ways of
+thinking... so you mix those things in and *bam* you suddenly realize (after 6-12
+months) that:
+
++ "you didn't need =podman= at all, this would be easier with nixos containers"
++ "you didn't realize =guix shell= was basically a container."
++ "you really wanted a network service to handle this because it doesn't need to
+  reboot."
++ "you used bash scripts instead of d-bus services" -- the "boxes" here being
+  (1) the design-style that your Tiling WM pushes you towards as opposed to (2)
+  the d-bus services style of information passing
+  - bash scripts are like the conduits over which data is passed
+  - d-bus services are like the endpoints from/to which data can be passed
+  - a bit loose-fitting for the metaphor to hold... it demostrates how these
+    pieces overlap (or don't) and also conveys how the different types are not
+    entirely compatible
+
+*** Try mixing metalworking and woodworking sometime...
+
+it's complexity overload: each craft is "easy" on its own, but mix them together
+and you create entirely new concerns.
+
++ It's easily 3-8x as many material concerns and twice the numbers of tools.
++ i've at least thought of it... mostly bc i'm poor
+
+*** Network structures like route/switch/firewall/DNS
+
+These are "boxes" too just like containers, with inputs/outputs. These pieces
+alone seem to lack endpoints, but it's really just a different set of pieces:
+these boxes are made of fundamentally different overlapping lego bricks.[fn:1]
+
+*** VMs have different concerns:
+
++ You wouldn't want to use a container like it's a VM.
++ If it's a VM, you have block storage problems; containers have volume
+  persistence & distribution problems
++ If there are many VMs, you usually can't run more than 5-10 on a machine
+  without overload.
+
+* Footnotes
+[fn:2] Guix avoids a lot of these issues, though Nix & Guix are really two different
+    things entirely.
+
+    + Guix has channels. Almost every channel I've seen has a common interface.
+      There are pros/cons, but the code quality is high... definitely not a problem
+      with Nix.
+      - A Guix channel operator _must_ be capable of managing/governing their channel,
+        which means signing a _linear_ series of commits. It's difficult to fix and
+        99.9% reproducible (so long as channels remain online)
+      - the main pro: channels have a common interface: packages, services, systems,
+        sometimes build systems & rarely have anything other than that.
+    + Guix package metadata is compiled ahead of time
+      - Package graphs & service graphs don't require external tools
+      - There isn't much evaluation if you're dealing with metadata
+      - Docs can be generated in complete form
+      - There are other tools which are all part of the standard CLI, which is well
+        designed. These are difficult to research & evaluate in Nix (without some
+        guidance or a local user community).
+    + Guix Home basically combines =hjem= and =home-manager= out of the box. It comes
+      with many of the same user pitfalls though
+
+    There are tradeoffs to this AoT approach though:
+
+    + Nix is a bit easier to get started with.
+      - Design issues for personal projects are less costly to refactor bc the
+        iteration loop is /usually/ faster
+      - It's just easier to write things in =nix=, whereas =guile= requires more
+        design/thought up-front bc you need guix records, which is simple, but still
+        ...
+    + =guix pull= has longer channel update times and all the channels need to
+      complete building. So choose your upstreams wisely (though you can
+      "effecively" operate with multiple =$HOME/.config/guix/current= per user)
+    + Also, scheme is a meta-language designed to write DSLs... big footguns
+      - Designing DSLs has a slow iteration loop and requires a high degree of
+        skill: it's at least second-order, as you're writing a program that writes
+        programs and must there fore consider the space of all +programs+
+        expressions dependent on your +program+ language.
+      - Scheme tooling needs a bit of work (vim? idk what to tell you)
+
+    I could go on... Dialectical reasoning is exhausting. It's a bit ridiculous.
+    Anyways.
+
+[fn:1] Think of the *number line from 1 to 100* and imagine:
+
+    + *the sequences of length 12*
+    + whose totally-ordered members (their sorted from least to greatest)
+    + are all a prime number distant from the next highest number (i.e. they
+      alternate odd/even)
+
+    There aren't infinite solutions for a finite range (from 1 to 100). Each number
+    contributes some intrisic "ness" to the set and fits into a whole.
+
+    Now imagine: these numbers can overlap by some power of two (i.e. $n_{i+1} -
+    n_{i} = m$ where m is either prime or $2^n$ distant from a prime). There's many
+    many more solutions, but these numbers still don't fit many holes bc...
+
+    + the sequence is dependent on its relation to primes
+    + the members alternate odd/even and $2^n$ is always even
+
+    So now imagine instead of the number line, you have these large n-dimensional
+    shapes with similar constraints, where they can overlap a bit. If you pick the
+    wrong types of legos... you can't ... ah fuck idk. Anyways, you want your pieces
+    to be compatible. Usually the same type of pieces -- the generic "boxes" here in
+    technology -- are compatible with themselves and become exponentially more
+    complicated.
+
+    You picked nixos. So these pieces are cheap... ish.

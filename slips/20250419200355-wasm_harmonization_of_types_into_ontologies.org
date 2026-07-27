@@ -1,0 +1,175 @@
+:PROPERTIES:
+:ID:       1ca0acda-7e09-4155-8269-4c2fab395526
+:END:
+#+TITLE: WASM: Harmonization of Types into Ontologies
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:5cdf4cef-5ffe-4853-a9f0-dcb3e99360ca][Philosophy]] ... I guess?
+
+#+begin_quote
+2026/7: here are some more bad notes that I hadn't committed yet, but that I'm
+tired of seeing in =magit=
+#+end_quote
+
+* Notes
+
+Because WASM looks hard.
+
+Apparently, everything is fundamentally a "register machine" or a Von-Neuman
+Machine.
+
+** SICP
+
++ TODO: (finish)
+
+I was reading SICP and hit the section on =amb= .... and i was like WTF. That's a
+wierd way to approach those problems. But it's describing some methods that are
+more necessary for core mechanics of computation (generally), which would be
+more useful for lower-level things like branch-prediction. It doesn't really
+make sense now (I think?) but in the two decades before SICP was written, it
+seems that CPUs couldn't even track symbols (there's a certain level of overhead
+required)
+
+* Levels of Abstraction
+
+#+begin_quote
+I mean VM in the sense of "Virtual [Von-Neumann] Machine."
+#+end_quote
+
+There are strata (or layers) to the organization of software/hardware. For the
+most part, there is a clear "above" and "below" to the layers.
+
+For a particular implementation (e.g. your CPU, Kernel, Javascript V8 runtime,
+JS programs), each layer
+
+though different parts of an implementation may but =wasm= seems to
+
+
+** Register Machines
+
+Machine code and assembly.
+
+** C/C++ and High-Level Languages
+
+These languages translate programs into a logical organization of information
+that can be transformed into non-deterministic sequences of instructions.
+
+*** Kernel
+
+The kernel is just a special program that coordinates the execution of other
+programs. Linux expects the ELF format in binaries, but for programs (or the
+user), it's almost a kind of "contract".
+
++ i provide this assembled code and these hints to dynamically linked libraries.
++ if my code is internally consistent, then i should be able to expect specific
+  input/output behavior.
++ thus initialize my heap and stack as such. when i need resources, i'll use
+  system calls to do so.
+
+The kernel:
+
++ receives the program, validates some parts of the ELF (or ABI)
++ it begins to create an instance of it's process abstraction (or whatever
+  another kernel may use)
++ it allocates
++ coordinates with the CPU to send machine instructions as work is scheduled.
+  these instructions are /calculated from/ the program's assembly code & state.
+
+Every process can be understood as an in/finite stream of data, similar to the
+turing tape. It's instructions define procedures that modify its state. See
+[[https://en.wikipedia.org/wiki/Process_calculus][Process Calculi]]: the ideas of monoids but further-developed to provide structure
+& coordination of computation (really idk though)
+
+The CPU:
+
++ Receives small subsequences of data, stores intermediate results.
++ Writes to a hardware bus (whose topology/addresses it must internalize) to
+  interact with the external world.
+
+If the CPU runs a subroutine that modifies a memory address, the program
+includes the syscall and the kernel translates it to an ASM implementation (1)
+compatible with the CPU (2) that satisfies the contract expected by the calling
+program. The kernel tracks the "coordinates" mapping real to virtual memory, so
+that programs track the "identity" that memory elements (through symbol
+resolution).
+
+some regions of the program's virtual memory may be interpreted (from the
+outside) as having special meaning (this is the heap; this is the stack; these
+subroutines are here)... but everything is just one's and zeros. the
+process/program extends beyond the memory image (which would usually identify
+it; but this is a bit panpsychist)
+
+*** Anyways
+
+The point is that, once you reify abstractions/conventions into instructions
+sent to the processor, there's a lot of complexity hidden from you.
+
+** Higher VMs
+
+Languages like Javascript, Ruby, Python that use a degree of compilation, but
+create a "virtual machine" within a C/C++ program.
+
+I'm not really sure where to place Java, as I don't know enough about the JVM,
+but I get the feeling that it's at sufficiently "lower level" than javascript to
+be considered more like C++
+
+* WASM
+
+The need for sharing types/interfaces between programs will result in a lot of
+problems for large programs. This seems obvious at first.
+
+The pitch (to alot of us) is that we finally can break free of javascript and
+use that little kitsch language out in the country while we herd sheep....
+
+** Questions
+
+*** So how do you combine different scripting languages together?
+
++ If =wit= is used to provide binding points to help different tools built as
+  libraries, how does something else know how to link it all together?
++ Isn't this one giant web of FFI?
++ doesn't that just mean that all the code will devolve into javascript forever?
+
+*** How does a C++ program run WASM code?
+
+e.g. if I want to write a KWin plugin in WASM (I don't, but say I do), then the
+QMLJS/KWin that wraps =mywasm= needs to know about the =mywasm= internal
+representations. =mywasm= would interact with signals (data) it receives via KWin.
+
+So this is like FFI, but ideally, the =mywasm= program is primary.
+
+*** How do you publish a dynamically linked library?
+
++ How are libraries selected by runtimes? (e.g. like rpath and LD_LIBRARY path)
++ How can programs enforce policy about libraries that they think they're being
+  linked to? ... What kind of platform introspection can a WASM program do
+  before it's already linked to =libswapped-by-naughty-root.so=
+  - this is obviously a problem anywhere, but platforms were mostly bottom-up
+    whereas wasm kinda tunnels itself between layers.
+
+It's runs ASM-like code without strong guarantees about structure of data, but
+at different layers (in the browser, natively with a thin interpreter).
+
+
+
+idk.
+
+
+
+** Interfaces
+
++ [[https://github.com/WebAssembly/WASI/blob/main/Proposals.md][WASI: WebAssembly System Interface]]
++ [[https://component-model.bytecodealliance.org/design/wit.html][WIT: Wasm Interface Type]]
++ [[https://github.com/WebAssembly/wabt][WABT: WebAssembly Binary Toolkit]]
+
+** Types
+
+Given that there's no real ABI, then
+
+** Runtimes
+
+**
+
+
+WASM don't natively do strings, remember? --

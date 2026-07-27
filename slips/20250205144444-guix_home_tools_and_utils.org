@@ -1,0 +1,274 @@
+:PROPERTIES:
+:ID:       3c16a14b-ab89-4216-8f81-4874b7071715
+:END:
+#+TITLE: Guix Home: Tools and Utils
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
+
+#+begin_quote
+2026/7: keep in mind this shit's probably wrong. i'm talking to you claude
+#+end_quote
+
+* Resources
+
+* Basics
+
+You'll be defining your =home-configuration= module for your system
+as a proper module inside a scheme module which exports a symbol for its home
+configuration. This could be the same module that also exports your
+configuration (or applies transformations to it).
+
+Regarding too much abstraction for straight-forward stuff, YAGNI.
+
+collecting & grouping variables/aliases was part of a transition towards
+converting these into services. I would revisit the codebase from time to time,
+but i had left just a list of env-vars with some org-files/comments hinting at
+what the overall intention was ....
+
+* Topics
+
+** Services
+
+*** Config
+
+**** Config: =*.ini=
+
+RDE provides serialization
+
+#+begin_src scheme
+(use-module (rde serializers ini))
+
+(display
+ (serialize-ini-config
+  (ini-merge
+   '((section1 ((k1 . v1)))
+     (section2 ((k4 . v4))))
+   '((section1 ((k2 . v2)
+                (k3 . v3)))
+     (section3 ((k5 . v5)))))))
+#+end_src
+
+#+results:
+#+begin_example scheme
+([section1]
+ k1  =  v1
+ k2  =  v2
+ k3  =  v3
+
+ [section2]
+ k4  =  v4
+
+ [section3]
+ k5  =  v5)
+#+end_example
+
+** Examples
+
+*** COMMENT Setting Default Browser
+
+From [[https://git.sr.ht/~abcdw/rde/tree/master/item/src/rde/features/web-browsers.scm][RDE's web-browser feature]]
+
+#+begin_example scheme
+
+(define* (feature-ungoogled-chromium
+          #:key
+          (ungoogled-chromium ungoogled-chromium/wayland)
+          (default-browser? #f)
+          (default-startup-flags '("--user-data-dir=$XDG_DATA_HOME/chromium"))
+          (desktop-startup-flags '("")))
+  "Configure the Chromium browser."
+
+;;; ......
+
+  (define (get-home-services config)
+    "Return home services related to Ungoogled Chromium."
+(append
+ (if default-browser?
+     (list
+     ;; Environment Variables
+      (simple-service 'set-chromium-as-default-browser home-environment-variables-service-type
+       `(("BROWSER" . ,chromium-binary)))
+
+       ;; XDG Mime-Types
+      (simple-service 'chromium-xdg-defaults home-xdg-mime-applications-service-type
+       (home-xdg-mime-applications-configuration
+        (default
+          '((x-scheme-handler/http . chromium.desktop)
+            (x-scheme-handler/https . chromium.desktop)
+            (x-scheme-handler/about . chromium.desktop)
+            (text/html . chromium.desktop))))))
+     '())
+
+     ;; Emacs configuration
+ (if (get-value 'emacs config #f)
+     (list
+      (rde-elisp-configuration-service f-name config
+       `((with-eval-after-load 'browse-url
+           (setq browse-url-chromium-arguments ',desktop-startup-flags))
+         ,@(if (get-value 'emacs-embark config #f)
+               `((with-eval-after-load 'embark
+                   (define-key embark-url-map "c" 'browse-url-chromium)))
+               '()))))
+     '())
+
+ (list
+  ;; Chromium Packages
+  (simple-service 'add-chromium-packages home-profile-service-type
+                  (list rde-ungoogled-chromium ublock-origin/chromium))
+
+  ;; XDG Desktop Entries/Actions
+  (simple-service 'add-chromium-xdg-desktop-entry home-xdg-mime-applications-service-type
+   (home-xdg-mime-applications-configuration
+    (desktop-entries
+     (list
+
+     ;; XDG Desktop Entry
+      (xdg-desktop-entry
+       (file "chromium")
+       (name "Chromium")
+       (type 'application)
+       (config
+        `((exec . ,#~(string-join
+                      (list
+                       #$chromium-binary
+                       #$@desktop-startup-flags "%U")))
+          (terminal . #f)
+          (comment . "Access the Internet")))))))))))
+
+  (feature
+   (name f-name)
+   (values `((,f-name . ,ungoogled-chromium)
+             ,@(if default-browser?
+                   `((default-browser . ,chromium-binary))
+                   '())))
+   (home-services-getter get-home-services)))
+#+end_example
+
+** Patterns
+
+*** Exporting functionality
+
+A =define-abc xyz= symbol exported from a scheme module should be something you
+expect to support, which means you extrapolated it's possible usage. if it's not
+public, there should be some simple transformation which retrives the value that
+an API consumer wants, but if so, then that's their problem. Since they
+consciously decided to do that, then they will be more likely to anticipate that
+breaking. Exported content for Guix Home should have conventions that are
+predictable ... but i don't expect anyone to use my code.
+
+*** Learn these patterns
+
+most stuff with Guix requires a certain amount of effort & specificity no matter
+where it's done (whether you get a service from a channel, use RDE, or reference
+external scripts loaded by bash, etc)
+
+choosing how much to rely on external functionality is important. you can't
+easily control when it changes. since the desktop stuff is more specific, then
+guix home doesn't specify as much reusable functionality as guix itself does.
+
+RDE can save tons of time. even if not used for it's =feature= abstraction, it's
+an invaluable resource for library functionality, serialization and stuff you
+don't really want to write yourself. however, using it in full means adopting
+its conventions.
+
+**** Service Patterns
+
+TLDR, learn specific pattners for services in Guix Home. Disambiguate/dilineate
+these by the need for extensibility:
+
++ apply the =simple-service= declaration where you need a single extension. these
+  aren't too useful as they correspond to nodes in your service/extension graph
+  that only modify one service's configuration. where you can use
+  =simple-service= can be quick... so maybe make it a snippet.
++ you need a =service-type= declaration if you want to extend multiple services at
+  the same time.
++ where a singleton service suffices (a single global service delivering a
+  single bash profile, for example), then it's pretty simple. otherwise, you may
+  need other patterns. These are extended by =fold(compose)=
++ where are shepherd services needed (daemons)
+
+**** Configuration/Serialization
+
+Basically: MVC or MVVM or MV....
+
+You want some of the more critical logic at the Model level, but too much
+specificity makes it hard to reuse. The consumer should definitely be able to
+specify their own serialization
+
+Most applications/services have the ability do specify this within the config.
+
+**** Bind
+
+And actually, these patterns are just basically from the parts of them "naming
+problem" that you encounter when using the "bind" pattern everywhere -- how do
+you bundle information so that it's available by name/formula to you or API
+consumers.
+
+... so learning to methodically thing about this in the terms that Scheme
+teaches it is /probably/ a good idea. shuffling the data that represents binding &
+value-retrieval/value-formula is always more expensive that opening a =(let
+((...)) ...)= block in lisp, especially where it involves file
+destructuring/demerging/renaming. combinatorics is not kind and the
+combinatorics here require excellent short-term memory & cognitive load. the
+correct solutions are simple.
+
+Every configuration object is mergeable before serialization, so use records &
+configuration objects to manage this. If you need to transform this for
+different systems, users, services or languages, do not use an
+"inheritance"-based model, use a procedure-based model
+
+#+begin_quote
+i.e. before reifying or building the final concrete values of something, expect
+or allow the possibility of something outside transforming that object's values.
+
+so, by exporting a symbol for your =(operating-system ...)= object, then your CLI
+invocation can specify a script (by file or by string) to traverse it's record
+properties and modify them. this may require some extra steps in a procedure to
+ensure that noth*ng too unexpected happen.
+
+As for secrets, you should force an interface that expects out-of-band
+decryption (SOPS, where no secrets transformation handled by scheme, AFTER build
+is complete.)
+#+end_quote
+
+*** Anti-Patterns
+**** Environment variable munging
+
+some of your guix home services (shepherd or not) will need their own
+environment, but otherwise, your login =.profile= should set this.
+
++ when supporting languages on both Guix System and a Foreign distribution, I
+  had to manage my langauge search paths/vars manually for each one (I had
+  varibles for =JULIA=, for =MATLAB=, for =PYENV=). Some of this would be
+  unfortunately required, but for the most part, this should be driven by
+  =direnv= and the proper language package manager (or nix/guix profile,
+  perferably)
+
+**** Aliases
+
+aliases: these are personal and no one cares. i use them to remember useful
+blocks of functionality. i'd rather just lump them all together. the best way to
+do this at first is to source them all at once by expecting them to be linked at
+a specific path or by bundling them into via =mixed-text-file= or however.
+
++ only for some things like =gpg= or =scdaemon= scripts would it make sense to
+  pack them into the service as an extension.
++ they're also a potential source of security issues.
++ if you're using literate programming, then it makes sense to have an org
+  table with columns: alias type or definition (noweb ref), alias name, alias
+  valid. from here, write a babel block that filters one type of alias, then
+  produces the list values. call that block to build a noweb ref, then insert
+  the noweb-ref into a scheme file.
+
+*** Services
+
+To modify the environment variables (via injection into =.profile=), you're going
+to want to bundle services together. In some cases, you may want to split out
+env variables from the service definition (wrapping in a bindable monoid, e.g.
+one that maybe can work with gexp) ... but for most of the straight-forward
+stuff, YAGNI.
+
+There are some main constructs for this:

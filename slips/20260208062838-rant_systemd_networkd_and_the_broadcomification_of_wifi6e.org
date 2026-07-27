@@ -1,0 +1,226 @@
+:PROPERTIES:
+:ID:       4d82770d-1ebf-4d54-8e8c-d7e209d2ac0c
+:END:
+#+TITLE: Rant: systemd-networkd and the broadcomification of wifi6e
+#+CATEGORY: slips
+#+TAGS:
+
+#+begin_quote
+venting to compensate for skills issues? idk
+
+2026/7: yeh, probably
+#+end_quote
+
+Systemd's lack of declarative specification of most properties used for a
+connection profile means that changing connections (esp outside of =networkd=
+tools) is
+
++ stateful with partial updates to interface properties
++ and thus not "associative": order matters.
+
+So bring an interface down, change an ip address (esp with =ip addr=), change
+routes, etc. Only after disconnecting everything would the next profile add a
+default route. 
+
+Skills issues I guess... since idky =networkctl reload= doesn't update what's in
+=/etc/systemd/networkd= ... and as I'm writing this, i see =networkctl reconfigure
+$ifx=...
+
+* Connection Profiles
+
+I cannot easily change/tune my network connection for a connection to be
+recreated later. If i "just need to change my IP address" once that's fine, but
+if i need to _know_ that:
+
++ i'm connected to WiFi with some specific IP for DNS
++ while toggling through different subnets with ethernet, ensuring that i either
+  do or do not have a specific default gateway...
+
+This is not fun with =systemd-networkd=
+
+For example, configuring SONF (Some Opensource Netgear Firmware) for LAN ports
+to have a specific set of IP addresses ends up requiring like 5-7 reboots. After
+each interface update IIRC.
+
++ once after changing the subnet of the WAN port -> =192.168.2.0/24=
++ change ether IP to test -- keep in mind, the order of interface flapping
+  matters for =systemd-networkd=... somewhat of a skills issue, but not really
++ once after migrating two LAN ports from =192.168.1.0/24 -> 172.20.X.0/24= 
++ change ether IP to test again
++ once again after migrating the other two (I actually did this later)
++ once again after setting the "default bridge to the LAN i want to use" (you
+  can't delete =br0= bc it protects you from yourself)
++ change IP's to test again
++ once again after bridging the wifi to the correct new network (you can't build
+  "SONF" bc the subversion repository is 20+ GB ... okay that's probably not
+  true for FT)
++ And maybe one more time after i stupidly set wifi to use the DHCP... somewhere
+  in the UI which i could never find again.
+
+#+begin_quote
+if you look at the contributions to these projects, you'll find < 10 people
+doing 80% of the work at any one time
+#+end_quote
+
+As for DHCP:
+
++ The first active network connection with DHCP will add a default route
+  (sometimes).
++ For some reason the router would register a DHCP lease, but both windows/linux
+  laptops were NOT accepting that lease.
++ so it's in the =dnsmasq= process as an active lease, requiring deletion (wifi or
+  wan reconnection)
++ The computers could never talk to the network unless connected to receive a
+  DHCP IP via the Wifi's pool.
+
+etc,etc,etc...
+
+And I /knew/ that was a possibility. Nevermind that this is all in the pursuit of
+something else, which may have custom/wierd networking components (likely to
+fail for weird reasons).
+
+While the web admin UI is pretty good, part of it's design motivation is to have
+ONE form element for ONE configuration endpoint ... it's protecting you from
+yourself. Beyond confusion, that protects you from weird corner cases like:
+
++ submitting a form on a second tab =T2=
++ that modifies another =T1= tab's previous form submission
++ where =T2= contains some subset of values in =T1=
++ which would otherwise be disabled by frontend form validation
++ and which cannot be sufficiently checked by backend validation, since the
+  whole thing is a wrapper around =nvram set= that supports many hardware
+  profiles.
+
+Forcing "one form-field to one nvram config value" (loosely) is more important
+for other reasons: the configuration is not described/organized in terms of
+standards ... so it's just confusing if configurable values described by short
+prose show up in too many places.
+
++ Click wrong & reboot (or just be confused ... i hope you're running nmap)
++ configuration updates are never transactional
++ you're safely protected from viewing =dnsmasq= configuration/options
+
+In effect, beginners don't necessarily learn actual networking concepts (the
+lack of confirmation of actual configuration state & structure means everything
+is blurry)... and users with some experience can't tell whether the software
+will or won't handle certain corner cases.
+
+the webadmin would actually be extremely valuable, if the UI:
+
++ showed you the commands that "submit" would trigger
++ or at least let you diff the NVRAM
+
+But the wide range of hardware support needs means that's ... not practical. The
+20+ GB repo means... you should probably keep your beer firmly in your hand.
+
+Anyways, so I'm hesitating to click on this... and YEP. DHCP on ethernet never
+functioned again. Once the =nvram= reaches an invalid configuration state (or ...
+just an incorrect configuration state), there's not much you can do.
+
+So if you see a web admin on a router, 99% of the time, you will NOT see DHCP
+with multiple pools (this is maybe also a =dnsmasq= limitation, but even for DHCP
+providers where it is not, it's often missing).
+
+#+begin_quote
+And in the meantime, Windows laptops now require like 7 clicks to even see an IP
+address in any GUI that microsoft built since 2005. That is the must ridiculous
+thing i could ever conceive. 3+ clicks to even get a menu item to give you
+access to anything other than WiFi.
+
+There are faster paths to the info in GUI, but I'm used to seeing the network
+icon there, so yeh... The main ethernet status page in your settings looks like
+it lists serial numbers, MAC addresses, etc, etc. No IP address. Literally 2-3KB
+of hex and numbers. No ip. There is NETworkManager (which is punny and a great
+app), but I didn't quite have it on that machine.
+#+end_quote
+
+Some of that could be done from the wifi, but i'm bridging the wifi to the LAN
+... while migrating the ports to a new bridge ... while migrating the subnet.
+And the =NVRAM= updates are _NOT ASSOCIATIVE_ -- *i have looked at the "SONF" source
+and I've seen and diffed the =nvram get= output. I know.
+
+... ugh just frustrated bc the real villain here is BROADCOM. Not this flavor of
+"SONF" firmware. I feel bad bc those projects could really use a bit of support.
+
+* WiFi
+
+#+begin_quote
+Why TF do they not have a *USDA ORGANIC* labelling system to clearly distinguish
+$80 wifi cards at best buy which will not choke on a Linux computer?! Seriously?
+I took like 30 minutes walking half an aisle of Wifi 6e cards, just to find that
+NONE OF THEM ARE SUPPORTED ON LINUX. _N O N E_
+#+end_quote
+
+And the M.2 Wifi 6e card I got? No way to reliably mount it so I have the
+antennae on some modified 3d printed parts ... just dangling out of a small dell
+I have... it's =Intel AX210=! Supports Linux... Also, has =WiFi 6e=. 
+
+One little problem: the drivers are nerfed, requiring me to create a patched
+version of =hostapd=. Just to run an access point. You could run it on +Windows 10+
+Windows 11 ... and do almost nothing with virtual networking. This would all
+make a little sense... IF i could have a second ethernet port on the dell. And I
+do have one... but the wifi card is in the M.2 slot...
+
+If I could use the card I bought on the operating system that does fancy
+networking stuff -- like Vyos which does [[https://vyos.dev/T6320][supports WiFi 6e]] -- then I could:
+
++ build an ISO specific to the wifi-chipset
++ and run it on any computer that has that chipset, plus ethernet port(s)
++ or just split the antennae out into subnets, per 2.4Ghz, 5Ghz and 6Ghz and
+  forget about ethernet ports
+
+Whether the =M.2= card actually had WiFi 6e was not easy to figure out from the
+Amazon pages, actually. I could only truly confirm once I had:
+
++ loaded a NixOS iso (or other distro, but install may be req. 4 some firmwares)
++ checked the NixOS =facter.json=
++ confirmed hypothetical wifi channels, checking them against the 6Ghz spectrum
+
+No amazon AI response gave me confidence. No labelling. No over-simplified
+marketing would clarify, whether from TrustedWifiCo or ABZingTRfiny Inc.
+Nothing. ZERO clarification that didn't seem like cut/paste spam
+
+I put extra effort into confirming after nearly ordering a part that did NOT
+have =wifi 6e= which was deceptively summarized on amazon ... which wasn't the
+only one I came across.
+
++ Intel: FIGURE OUT WHAT THE FUCK TO DO ABOUT THE STUPID FUCKING WIFI
+  RESTRICTIONS IN LINUX
++ Microsoft: PUT THE FUCKING WIFI 6E DRIVERS IN WINDOWS 10. I couldn't even
+  check if an antenna was potentially broadcasting without rebuilding a Nixos
+  ISO from three months ago.
+
+If this was a networking product also found in servers, consumers would never
+find WiFi 6e to be as difficult/confusing to use *or* buy -- typically the latter
+is a massive mistake. However, WiFi 6e is a product for hipsters in brooklyn
+living in apartments with 100+ 2.4Ghz channels broadcasting simultaneously. So
+if an amazon vendor rips them off, who cares? if the technical details are
+described on the fucking amazon page? who cares?
+
+Anyways, here be more dragons:
+
++ Intel turned basically this AP feature off for Linux: they expect 99% of Linux
+  users to _NEVER_ actually run Wifi 6e APs using these drivers.
++ Kernel deverlopers also would _not_ feel the need to test those use cases, as
+  99% of users would _never_ encounter this feature or submit bug reports about it
++ The sysadmin setup (& upkeep) to get the =hostapd= patch to work makes
+  =ndiswrapper= look like tying your shoes ... which it basically was anyways.
+  Anyways, this that even if intel/kernel issues don't create very strange bugs
+  or if it's fun to patch your hostapd-patch every 8 weeks... unless you used
+  something efficient/declarative like nixos/guix/??? to configure this, then
+  it's still brittle.
++ For VyOS, it's possible to layer in =.deb= packages on top of the install...
+  these can be listed or included in the files that build the ISO. But, hostapd
+  is a dependency for other packages, so i'm guessing I'd end up with a borked
+  =apt-cache= or whatever. Depending on the changes in package deps, you may not
+  be able to build from the docker image.
++ VyOS uses FRR/etc, ocaml and python. The latter is problem if =hostapd= has
+  python dependencies, scripts, whatever. another potential source of headaches.
+  you need to keep track of =hostapd-patch= versions -- see [[https://patchwork.ozlabs.org/][patchwork.ozlabs.org]]
+
+Anyways. Hipsters. In Brooklyn Condos. They need internet fast, but there's too
+much eclectic coffeeshop wifi on that block of Chelsea (or whatever). Nevermind
+that plugging the computer in never fails. "Wifi Stonks: Number Go Up. Buy Now"
+
+Makes sense in other usecases, but barriers to consumer adoption are just weird.
+It's not like most consumers would notice

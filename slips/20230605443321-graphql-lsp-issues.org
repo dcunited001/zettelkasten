@@ -1,0 +1,214 @@
+#+TITLE:     GraphQL LSP
+#+AUTHOR:    David Conner
+#+EMAIL:     aionfork@gmail.com
+#+DESCRIPTION: notes
+
+#+begin_quote
+like the other contemporaneous graphql notes... this again, has been made much
+easier. i haven't been in contact with many web developers for a very very long
+time, so this stuff which should be easy was much more difficult for me than it
+should've been... for dumb reasons.
+#+end_quote
+
+Note: I couldn't get this to work. the graphql-lsp command fails silently and
+its strace indicates it's looking for =vscode-langserver= content within
+
+#+begin_src shell :eval no
+statx(AT_FDCWD, "/home/notme/.npm-global/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/lib/common/node_modules", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+statx(AT_FDCWD, "/home/notme/.npm-global/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/lib/node_modules", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+statx(AT_FDCWD, "/home/notme/.npm-global/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/node_modules", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+statx(AT_FDCWD, "/home/notme/.npm-global/lib/node_modules/graphql-language-service-cli/node_modules/vscode-languageserver/lib/common/server", AT_STATX_SYNC_AS_STAT, STATX_ALL, 0x7ffd6216c230) = -1 ENOENT (No such file or directory)
+#+end_src
+
+
+* Usage
+
+#+begin_src shell :tangle gqllsp.sh :tangle-mode (identity #o555) :mkdirp yes
+lvol=$(pwd)/gql/schema/
+#lvol=$(pwd)/gql/
+cvol=/opt/gql/schema
+#cvol=/opt/gql
+gql_config=.
+gql_schema=./schema.sdl
+gql_image=dc/graphql-lsp
+gql_cntr=dc-graphql-lsp
+docker run -it --rm --mount type=bind,src=$lvol,dst=$cvol --name $gql_cntr $gql_image
+#+end_src
+
+#+begin_src shell
+# docker run -itv $lvol:$cvol --name $gql_cntr $gql_image
+# graphql-lsp server --schemaPath=$gql_schema --configDir=$gql_config
+graphql-lsp server --schemaPath=schema.sdl --configDir=.
+
+#+end_src
+
+A single homelab server can simply store updated schema versions and have its
+podman service configured with multiple containers -- to be stopped/started as
+needed. This really needs to be local. In fact, running on a docker/podman may
+be preferable, but then it's not configurable across the entire network and the
+clients need images, config and a bit of scripting to map the config to a
+running LSP server. On the network, it's just a DNS name.
+
+Then in VSCode, lsp-mode or eglot, just direct the client to the running LSP
+server over the network.
+
+Other options considered:
+
++ a =guix shell -c= container
++ a =guix home container= profile
++ something analogous in Nix
+
+** Volumes
+
+The =/opt/gql/schema= volume should contain some project config files as well as any
+necessary graphql schemas, configs and supporting extensions. This can be in the
+volume root or in subdirectories. The docker image will need to specify these
+when it runs.
+
+Fetch the github schema. Run =(require 'graphql-examples)= or navigate to source
+for examples of interacting with Github from =graphql.el=.
+
+#+name: github-schema
+#+begin_src emacs-lisp :results value file silent :exports code :file "schema/github/schema.sdl"
+(ghub-graphql
+ (graphql-query ((__schema (types name kind description (fields (name)))))))
+#+end_src
+
+** Config
+
+Copy to =./schema/github/graphql.config.yml=
+
+#+begin_src yaml :tangle gql/schema/graphql.config.yml.eg
+schema: ${gql_schema:./default-schema.json}
+#+end_src
+
+**  Note
+
+If you extend from this image, don't accidentally create an image that contains
+your secrets. this image doesn't contain any.  I plan on downloading the schema
+in some other manner and only using the image for LSP.
+
+* Dockerfile
+
+I'm not really sure where to put this, but i need it available in quite a few
+places. Defining these in org-mode probably don't work too good very often, but
+this is simple and has minimal interdependencies ... so it does.
+
+** Alpine
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+#FROM node:18-bullseye
+FROM node:18-alpine
+LABEL maintainer=dconner.pro@gmail.com
+#+end_src
+
+*** Bash
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+RUN apk update --no-cache &&\
+    apk upgrade --no-cache &&\
+    apk add --no-cache bash yarn
+#+end_src
+
+*** Node
+
+These versions aren't actually pinned by node:18-alpine
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+ENV NODE_VERSION=18.16.0
+ENV YARN_VERSION=1.22.19
+ENV NPM_VERSION=9.5.1
+#+end_src
+
+** GraphQL LSP
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+WORKDIR /opt/gql
+#+end_src
+
+Install dependencies as project
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+# RUN npm install -g graphql-language-service-cli vscode-languageserver
+RUN yarn global add graphql-language-service-cli
+#+end_src
+
+... does this project really require running as a node app?
+
+*** Dependencies
+
+The dependencies from =npm install= with no pins are something like this:
+
+peer deps
+
+| graphql (peer) | ^15.5.0 | ^16.0.0" |
+
+graphql-language-service-server
+
+| @babel/parser               | ^7.21.2 |
+| @babel/types                | ^7.21.2 |
+| @graphql-tools/load         |  ^7.5.3 |
+| @vue/compiler-sfc           | ^3.2.41 |
+| dotenv                      |   8.2.0 |
+| fast-glob                   |  ^3.2.7 |
+| glob                        |  ^7.2.0 |
+| graphql-config              |   4.3.0 |
+| graphql-language-service    |  ^5.1.6 |
+| mkdirp                      |  ^1.0.4 |
+| node-abort-controller       |  ^3.0.1 |
+| nullthrows                  |  ^1.0.0 |
+| vscode-jsonrpc              |  ^8.0.1 |
+| vscode-languageserver       |  ^8.0.1 |
+| vscode-languageserver-types | ^3.17.2 |
+| vscode-uri                  |  ^3.0.2 |
+
+graphql-language-service
+
+| "vscode-languageserver-types | ^3.17.1 |   |
+| "nullthrows                  |  ^1.0.0 |   |
+
+graphql-language-service-cli
+
+| graphql-language-service        |   ^5.1.6 |   |
+| graphql-language-service-server | ^2.11.1" |   |
+
+** Application
+
+*** Interface
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+EXPOSE 8080
+#+end_src
+
+*** Config
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+ENV REACT_APP_DISABLE_LIVE_RELOAD=true
+#+end_src
+
+*** Volumes
+
+Graphql schemas should go in subdirectories in the volume.
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+VOLUME /opt/gql/schema
+#+end_src
+
+*** Runtime
+
+For now, no entrypoint, this may change later, but I may use the full =graphiql=
+
+#+begin_src dockerfile :tangle Dockerfile.graphql-lsp
+CMD ["/bin/bash"]
+
+# /bin/sh doesn't have ${FDSA-fdsa} ...
+# ENTRYPOINT /bin/bash -c graphql-lsp server --schemaPath="${GQL_SCHEMA-github/schema.sdl}" --configDir="${GQL_CONFIG-github}"
+#+end_src
+
+graphql-lsp (graphql-language-server-cli)
+
++ [-c | --configDir] :: {configDir}
++ [-t | --text] :: {textBuffer}
++ [-f | --file] :: {filePath}
++ [-s | --schema] :: {schemaPath}
++ [-m | --method]  :: IPC method

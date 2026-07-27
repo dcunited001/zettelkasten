@@ -208,6 +208,79 @@ then forge sql updates one mark by keying on the UUID in =id=
 #+end_src
 
 
+* GraphQL
+
++ forge-get-{parent,repository,topic,issue,pullreq} :: read from sqlite
+  + declared in =forge-core.el=. their =cl-defmethod='s chain down to =forge-repo.el=
+
+** ghub-query
+
+#+begin_example emacs-lisp
+(ghub--graphql-prepare-query
+ forge--github-repository-query
+ `(repository discussions (discussion . 20)))
+ 
+;; '(query
+;;   [($owner String!) ($name String!)]
+;;   (repository
+;;    [(owner $owner) (name $name)]
+;;    (discussion
+;;     [(number 20)]
+;;     number id databaseId url
+;;     stateReason (answer id) (author login)
+;;     title createdAt updatedAt closedAt locked
+;;     (category id) body
+;;     (comments
+;;      [(first 50)]
+;;      (pageInfo endCursor hasNextPage)
+;;      (edges
+;;       (node id databaseId (author login) createdAt updatedAt body
+;;             (replies
+;;              [(first 50)]
+;;              (pageInfo endCursor hasNextPage)
+;;              (edges (node id databaseId (author login) createdAt updatedAt body))))))
+;;     (labels
+;;      [(first 50)]
+;;      (pageInfo endCursor hasNextPage)
+;;      (edges (node id))))))
+#+end_example
+
+
+** forge-query
+
+*** constants
+
+#+begin_example emacs-lisp
+(defconst forge--github-repository-query ...)
+#+end_example
+
+Used for:
+
++ =forge-pull-topic= and related methods.
++ in =forge--ghub-massage-notification= to enumerate
++ and in =forge-client.el= in =forge--set-field-callback=
+
+
+*** =forge-pull-topic=
+
+update topic by =id= with =number=. this the query polymorphically bundles
+subqueries each type -- issue, pullreq, discussion -- then =cond= matches on
+whichever type returned for that unique =number=
+
+#+begin_example emacs-lisp
+(cl-defmethod forge--pull-topic ((repo forge-github-repository) (number number) ... )
+#+end_example
+
+update specific topics/discussions
+
+#+begin_example emacs-lisp
+(cl-defmethod forge--pull-topic ((repo forge-github-repository) (topic forge-discussion)) ... )
+(cl-defmethod forge--pull-topic ((repo forge-github-repository) (topic forge-issue)) ... )
+(cl-defmethod forge--pull-topic ((repo forge-github-repository) (topic forge-pullreq))) ... )
+#+end_example
+
+these call to =forge-pull-topic-1=
+
 * Old Notes
 
 #+begin_quote
@@ -311,4 +384,3 @@ You can also edit your =pass= store with =pass.el=. It works fairly well for
 personal tokens, but is otherwise a bit restrictive. =pass= permits arbitrary
 metadata which should work with most things, but =auth-sources= doesn't use it to
 query (IIRC). It's simple to sync to other linux systems, but not to phone/etc.
-

@@ -1,0 +1,135 @@
+:PROPERTIES:
+:ID:       281db180-c9bd-4b77-938d-84a737369983
+:END:
+#+TITLE: Arch: Orca Installs Brltty User And Adds It To The Root Group
+#+Category: slips
+#+TAGS:
+
+* Roam
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:14e8fb0c-abda-4175-8fca-49f7b865b7b6][Serial]]
++ [[id:65aca91d-9285-412c-b2bd-bb81cea1a7ac][Windows]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+* Notes
+=core/orca= installs =core/brltty=, creates =brltty= user and adds to =root= group
+
+It's really nice to know that =brltty= needs =uucp= access ... _but has also
+been auto-added_ to the =root= group for my desktop. Nice one. This really
+shouldn't affect server installations.
+
+See [[https://forums.opensuse.org/t/why-was-brltty-added-to-root-group-after-updating/169350][Opensuse Forums: Why Was Brltty Added To Root Group After Updating]] for
+another case (similar timeframe)
+
+I first found that =core/krb5= installed =uuclient= and =uuserver=.
+
+#+begin_src shell :results output code :wrap example dired
+# #+begin_src shell :results output code :wrap example dired
+# ls -al -D # for dired
+sudo find /usr -maxdepth 3 -name '*bin' -type d \
+    -exec ls -al \{\} + | grep -E '(uu)'
+
+# (I tried =locate= and other methods, but... it didn't work)
+# sudo locate '*/bin/*' | xargs -n1 sudo ls -al | grep uucp
+# sudo find /usr -maxdepth 3 -name '*bin' -type d
+
+# nothing...
+# sudo find /bin /usr/bin /usr/sbin -group uucp
+#+end_src
+
+#+RESULTS:
+#+begin_example dired  -rwxr-xr-x 1 root root         986968 Feb  6 14:16 brltty
+  -rwxr-xr-x 1 root root          18472 Jul  6  2024 uuclient
+  -rwxr-xr-x 1 root root          14376 Jul  6  2024 uuserver
+#+end_example
+
+Which package owns these binaries? =core/krb5= And which packages are dependent on
+kerberos authentication?
+
+#+begin_src shell
+pacman -Fq which uuclient
+pactree --reverse -d 1 krb5
+#+end_src
+
+#+begin_example
+krb5
+├─audit
+├─bind
+├─cifs-utils
+├─cockpit
+├─curl
+├─freerdp
+├─gssproxy
+├─lib32-krb5
+├─libnfs
+├─libsoup
+├─libsoup3
+├─libtirpc
+├─mongosh
+├─neon
+├─nfs-utils
+├─nfsidmap
+├─openconnect
+├─openssh
+├─postgresql-libs
+├─qt6-base
+├─serf
+└─wireshark-cli
+#+end_example
+
+/You aren't using =krb5=, are you?/ You should be, maybe, but I'll bet 99.9% of
+desktop installations with =curl= or =wireshark= or [[https://www.postgresql.org/docs/current/gssapi-auth.html][postgres]] are _NOT_ using kerberos.
+
+#+begin_quote
+correction: I guess a lot of libraries _do_ use this authentication in a
+legitimate way, since =kerberos= is associated with protocols that utilize
+signature validation for SSO.
+#+end_quote
+
+I forgot that I had encountered kerberos when reading into [[https://www.postgresql.org/docs/current/gssapi-auth.html][Postgres GSSAPI]] and
+LDAP (the former more than the latter). It's one of the better [[https://www.postgresql.org/docs/current/client-authentication.html][pg_hba.conf]]
+options, though idk anything about kerberos.
+
+Regardless, the usage of kerberos itself isn't the core issue at hand: instead,
+a package arbitrarily created the =brltty= user which is associated with the =ROOT=
+group.
+
+Looking up the =uucp= group led me to the =brltty= user, looking for assoc. binaries
+led me to these.
+
+#+begin_src shell :results output code :wrap example dired
+sudo find /usr -maxdepth 3 -name '*bin' -type d \
+    -exec ls -al \{\} + | grep -E '(brl)'
+#+end_src
+
+#+begin_example dired  -rwxr-xr-x 1 root root         986968 Feb  6 14:16 brltty
+  -rwxr-xr-x 1 root root         190904 Feb  6 14:16 brltty-atb
+  -rwxr-xr-x 1 root root         190840 Feb  6 14:16 brltty-cldr
+  -rwxr-xr-x 1 root root         190840 Feb  6 14:16 brltty-clip
+  -rw-r--r-- 1 root root           5196 Feb  6 14:16 brltty-config.sh
+  -rwxr-xr-x 1 root root         285272 Feb  6 14:16 brltty-ctb
+  -rwxr-xr-x 1 root root           1768 Feb  6 14:16 brltty-genkey
+  -rwxr-xr-x 1 root root         244368 Feb  6 14:16 brltty-hid
+  -rwxr-xr-x 1 root root         515192 Feb  6 14:16 brltty-ktb
+  -rwxr-xr-x 1 root root         211320 Feb  6 14:16 brltty-lscmds
+  -rwxr-xr-x 1 root root         190904 Feb  6 14:16 brltty-lsinc
+  -rwxr-xr-x 1 root root           5588 Feb  6 14:16 brltty-mkuser
+  -rwxr-xr-x 1 root root         240064 Feb  6 14:16 brltty-morse
+  -rw-r--r-- 1 root root          12973 Feb  6 14:16 brltty-prologue.bash
+  -rw-r--r-- 1 root root           1764 Feb  6 14:16 brltty-prologue.lua
+  -rw-r--r-- 1 root root          20457 Feb  6 14:16 brltty-prologue.sh
+  -rw-r--r-- 1 root root          16283 Feb  6 14:16 brltty-prologue.tcl
+  -rwxr-xr-x 1 root root           3860 Feb  6 14:16 brltty-setcaps
+  -rwxr-xr-x 1 root root           4067 Feb  6 14:16 brltty-term
+  -rwxr-xr-x 1 root root         244184 Feb  6 14:16 brltty-trtxt
+  -rwxr-xr-x 1 root root         277176 Feb  6 14:16 brltty-ttb
+  -rwxr-xr-x 1 root root           2031 Feb  6 14:16 brltty-ttysize
+  -rwxr-xr-x 1 root root         248320 Feb  6 14:16 brltty-tune
+  -rwxr-xr-x 1 root root         207224 Feb  6 14:16 xbrlapi
+#+end_example
+
+* Extra Credit
+
+Using [[https://github.com/zatrazz/rldd][zatrazz/rldd]] to check for dynamic libs actually linking =krb5=. The =rldd=
+does _not_ invoke =ldd= to parse ELF configs (see #19 which provides a link to [[https://github.com/zatrazz/rldd/issues/19][ldd
+arbitrary code execution]]).

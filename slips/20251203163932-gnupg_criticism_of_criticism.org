@@ -1,0 +1,117 @@
+:PROPERTIES:
+:ID:       138182b6-36f1-4ae9-8f69-e5f24e22e0b4
+:END:
+#+TITLE: GNUPG: Criticism of Criticism
+#+CATEGORY: slips
+#+TAGS:  
+* Roam
++ [[id:c2afa949-0d1c-4703-b69c-02ffa854d4f4][Cryptography]]
++ [[id:b987ce8b-c42f-4de2-83c4-350be3cf5de1][GNUPG]]
+
+* TODO finish ....
+
+#+begin_quote
+2026/7: ... no
+#+end_quote
+
+* Notes
+
+There's a lot of unfair criticism of GnuPG out there. People are quick to exert
+a formative influence on your opinion. Since it's such a complicated topic --
+and since the =gnupg= ecosystem is, fairly, a bit complex -- then it's easy to
+dissuay a beginner.
+
+Almost entirely F.U.D. GPG is just more difficult to learn, a consequence of:
+
++ applications/integrations
++ obstinant standards/protocols
+
+The former: an educational problem. e.g.
+
++ Where did you learn GPG? And when? College? Career?
++ Do you script with it? On a server?
++ Do you have "control master" problems? Like Github.
++ Do you provision trust for non/technical employees? And applications?
+
+Yeh. You probably don't know what you don't know. If you taught yourself how to
+use GPG on non-systemd distribution, then information about it is sparse.
+Application integration are dicey. =gpgconf= is a bit confusing. You need to
+understand socket-activation, etc. There are distinct issues when using it on a
+server vs. desktop vs. cloud or whatever.
+
+The latter (standards/protocols): good luck. The vendors are intentionally
+obscurant and most of their customers want it that way. Don't believe me? Try
+shopping for a classic smartcard. They're cheap.
+
+Given that you have minimal desktop experience where your package manager makes
+it "just work, kinda" trying to use it in devops is probably not going to go
+well. See below
+
+** GPG vs. AGE vs. X509
+
+TLDR: *AGE* is a minimalist identity mechanism that ties a keypair to some
+"nonce-identity." If there's some web or tree of trust, that's your
+responsibility to implement it.
+
+*GPG* provides identity and key-distribution mechanisms. It's approach is
+unapologetically decentralized.
+
+*X509* validates identity using tree-based mechanisms
+
+SOPS advises AGE over GPG not really for technical issues (you're going to
+encounter those anyways) but instead: management of "web of trust" details is
+forcing the wrong abstractions onto your problem domain. 
+
++ GPG identities are typically long-lived and moreso people-centric. The
+  services are stateful: you need to run a =gpg-agent=.
+  + Encrypting secrets to multiple recipients that are decrypted by the same
+    linux user is possible but req. containerizing =gpg-agent= (or avoiding it)
+  + Key management for identities assumes distribution. The top-level keys have
+    fingerprints, analogous to UUIDs. So do AGE identities. But you may
+    encounter tricky issues when running your own HKPS where for some reason the
+    same top-level =.pub= key must have different sets of subkeys associated to
+    it.
+  + Needing to ensure =.pub= key upload where multiple networked processes have
+    modified the keychain, etc. Combining this with expiration is tricky.
++ AGE identities are adhoc. Tasks like key-rotation are up to you to implement
+  outside of most =age= tooling.
+
+** GPG Security
+
+Do you think that Deb and RPM mirrors would defer adoption of HTTPS until the
+late 2010's (if at all) were there /really/ some issue with GnuPG?
+
++ Yes, OpenPGP is old. Yes.. it uses "packets" ... wtf does that even mean as a
+  criticism?
++ No, I do not know authoritatively whether the OpenPGP RFC details indicate
+  systemic flaws. I looked into it a bit recently... there are some things that
+  would jump out to people with familiarity with crypto primatives.
+
+In any case, the major points of failure for a web of trust or a crypto system's
+protocols? The implementations to some extent ... but the people are the
+critical flaw in any such system.
+
+
+
+** Who uses something like GPG?
+
+There are different users of such crypto systems:
+
+*** Non Technical
+
++ "I want to encrypt or sign my email" which is more likely "[My job] needs to
+  encrypt/sign email." So an S/MIME user.
++ Or, if there's personal liability, "I live in a country that doesn't respect
+  human rights and/or I'm a journalist."
+
+*** Technical
+
++ "I want to use =pass= for scripts. I want some guarantees of privacy and I'm
+  concerned about interoperability"
++ A sysadmin without large liability concerns: "My users need a degree of trust
+  in the open source services I'm providing (a PPA, etc). I need to know nothing
+  altered encrypted content or that secrets are reasonably secure at rest."
++ Sysadmin with liability concerns: "My company must prove handling of sensitive
+  data or distribution of updates, etc." 
++ Devops: "My company distributes software and has Software Supply Chain
+  concerns"

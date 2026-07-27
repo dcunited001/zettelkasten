@@ -1,0 +1,233 @@
+:PROPERTIES:
+:ID:       dc8e7c13-9982-43e2-9516-8f419471a4fe
+:END:
+#+TITLE: Onshape: First Impressions
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:acce275c-7a43-489e-84d6-1ac14c015ee4][Onshape]]
+  
+* App
+
+** Navigation & Selection
+
++ S-s :: hide/show all sketches in studio & find dims more quickly
+
+*** Query Variable: Named Selections
+
+[[https://www.youtube.com/watch?v=2aNM5dsUnyw][Query Variables! Superpowered parameteric ...]]
+
+This tool lets you create named queries to store later. These appear in the
+feature selection list. They're updated when parametric if variables change.
+Boolean operations can help narrow down query results which can be fed into
+operations (extrude, boolean, etc) as modified query selections.
+** Multi-Part, Multi-Studio
+
+** Parametric
+
+*** Variables
+
+
+
+*** Variable Studio
+
++ [[https://forum.onshape.com/discussion/20318/measured-variable-in-a-variable-studio][Can't include measured variables]]
+
+TLDR; it's a global namespace for a "document" (a project) which can be shared
+as a namespace into other documents. By default, it's automatically injected
+into all of the document's variable namespaces.
+
++ A variable studio could help collect dims across assembly parts/sketches
++ The variable studio can be inserted into other variable studios in other docs
+
+**** [[https://cad.onshape.com/glassworks/explorer/#/Variables][Variables in Onshape API]]
+
+Schemas are at the bottom (it's huge)
+
++ {did} :: documentId
++ {eid} :: elementId
++ {wid} :: workspaceId
++ {wv} :: workspaceVersion
++ {wvid} :: workspaceVersionId
+
+| GET  | /variables/d/{did}/{wv}/{wvid}/e/{eid}/variables                | Get the contents of all variable tables in an element.    |
+| GET  | /variables/d/{did}/{wv}/{wvid}/e/{eid}/variablestudioreferences | Get the Variable Studio references for an element.        |
+| GET  | /variables/d/{did}/{wv}/{wvid}/e/{eid}/variablestudioscope      | Get the scope of a Variable Studio.                       |
+| POST | /variables/d/{did}/w/{wid}/e/{eid}/variables                    | Assign variables to a Variable Studio                     |
+| POST | /variables/d/{did}/w/{wid}/e/{eid}/variablestudioreferences     | Set the Variable Studio references for an element.        |
+| POST | /variables/d/{did}/w/{wid}/e/{eid}/variablestudioscope          | Set the scope the Variable Studio.                        |
+| POST | /variables/d/{did}/w/{wid}/variablestudio                       | Create a new Variable Studio in a document and workspace. |
+
+
+
+** Derived
+
+*** Using with copied project
+
+If the part doesn't have mates, adding them before deriving the sketch (which
+almost doesn't make sense) allows you to import them into a PS either:
+
++ mapping sketch origin to PS origin
++ mapping the mate origin to PS origin (allows you to model a modular part as
+  it fits into the external project's space)
+
+Ultimately, it just seems easier to update the project copy expecting to either:
+
++ copy some PS (hopefully multi-part) to a new PS environment
++ or just make the changes to the PS directly
+
+The reason you'd derive the part is to create a PS environment that's derived
+from selections from multiple PS environments which are adding functionality in
+different "directions" or for entirely different applications.
+
+That doesn't exactly seem maintainable either: as the project becomes larger,
+you'll end up with inter-dependencies that deadlock -- shouldn't be so bad if
+you can't change the derived parts though, since that's a single set of
+constraints from each source. But if the parts are truly parametric and/or the
+derived parts are distributed across multiple sources, then you need to be
+concerned with version pinning.
+
+** Sketches
+
+
+
+*** General Guidelines
+[[https://forum.onshape.com/discussion/comment/104208/#Comment_104208][From this response in Onshape Forums]]:
+
++ Entities change from blue to black when constrained
++ A part studio's origin should make sense in the context of the design.
++ Default planes useful for mirroring/rotation/etc (things to keep in mind; i
+  just create a lot of planes and construction lines)
++ Assemblies should have a part mated to the origin (this is how reference
+  frames in physics, scene graphs, etc work)
+  - apparently also important for grouping parts in assemblies (i still don't
+    have anything in maslov's hierarchy of parts)
++ Ideally, all entities should be constrained
+
+#+begin_quote
+They should be /mostly/ constrained, but you can overconstrain, which may be
+difficult to unwind ... maybe not as difficult as mostly unconstrained
+parts/assemblies.
+
+Having taken apart enough VCRs (and understanding that half the springs in there
+are mechanical constraints), I suspect that quite a bit of design was driven by
+"medium is the message"
+
+i.e. the CAD software constraints resulted in actual mechanical constraints
+being added to massage the software warnings/errors or to make projects easier
+to work with. still, proper constraints (and magical prescient dimensional
+analysis) are key to both:
+
++ robust design
++  being "agile" with CAD.
+
+idk that I can actually do that dim analysis, especially with a mouse and
+without strongly typed functional langs. [[https://arxiv.org/pdf/math/9905023][Configuration spaces and braid groups
+like it's 1999]] (i haven't read this paper)
+#+end_quote
+
+* Test API
+
+| did            | Document ID          |                                                                           |
+| wv             | Workspace or Version | The type of identifier for w/v                                            |
+| wvid           | Workspace/Version ID |                                                                           |
+| eid            | Element              | Every Element has a Tab                                                   |
+| linkDocumentId | Shared Doc ID        | Query Parameter: specify the =did= through which the doc should be accessed |
+
+** Featurescript
+
+** Variables
+
+This API endpoint returns all variables in a variable studio for a tab in a
+document
+
+=GET /variables/d/{did}/{wv}/{wvid}/e/{eid}/variables= 
+
+Here =eid= is a tab in a document. Workspaces don't necessarily maintain id's
+across document versions, so you may need to extract that first.
+
+You can also extract:
+
++ =.../{eid}/variablestudioreferences= 
++ =.../{eid}/variablestudioscope= 
+
+** Document
+
+Basically, just store the base64 result inside a single file like
+
++ =$PASSWORD_STORE/cad.onshape.com/user@email.com^app_name.gpg=
++ the app id can be found, but the secret is only displayed once.
+
+#+begin_example shell
+# echo -n $onshape_app_id | wc -c      # 22 chars
+# echo -n $onshape_app_secret | wc -c  # 48 chars
+onshape_app_id=abcdefghi0123456789jkl
+onshape_app_secret=abcdefghijklmnopqrstuvwxzy0123456789abcdefghijkl
+# echo -n $onshape_app_id:$onshape_app_secret | wc -c  # 71 chars
+echo -n $onshape_app_id:$onshape_app_secret | base64
+# include no newlines in the decrypted gpg ascii
+#+end_example
+
+The usecase I have:
+
+- add some measurements with formulas to the top-level of a document's top assembly
+- assign the measurments some clever naming system, but simple. nothing else
+  depends on these measurements
+- enumerate (or just read) these top level measurements, extract the data
+- then generate some YAML or code with it. 
+
+with a "master sketch" you'll hit one of computer science's naming problems very
+quickly -- imagine designing an art easel that can be rendered to 5 different
+sizes. it's a simple example, but each component's motions, angles and
+dimensions end up needing to be named.
+
+#+name: onshapeDocUrl
+#+begin_src shell :results output silent :var onshapeDocId=(or (bound-and-true-p onshape-doc-id) (getenv "ONSHAPE_DOC_ID"))
+echo -n "https://cad.onshape.com/api/v10/documents/$onshapeDocId"
+#+end_src
+
+Try querying the v10 =/documents/$did= endpoint
+
+#+name: onshapeTestApi
+#+headers: :jq "[.name, .id, .href] | @csv" :results table :jq-args "--raw-output"
+#+begin_src restclient :var os-doc-url=onshapeDocUrl
+# :os-doc-url = https://cad.onshape.com/api/v10/documents/$onshapeDocId
+:os-url = :os-doc-url
+:os-app-token := (auth-source-pass-get 'secret "cad.onshape.com/dconner.pro@gmail.com^readonly")
+
+:headers = <<
+Accept: application/json;charset=UTF-8; qs=0.09
+Authorization: Basic :os-app-token
+Content-Type: application/json;charset=UTF-8; qs=0.09
+#
+
+GET :os-doc-url
+:headers
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "(.owner.login)")
+#+end_src
+
+#+RESULTS: onshapeTestApi
+| XRP Kit BETA CAD - Copy | 2aee03aaefedd5efda9762de | https://cad.onshape.com/api/v10/documents/2aee03aaefedd5efda9762de |
+
+This could be used to evaluate =featurescript=, but that process is probably not
+straightforward
+
++ Whether you're hitting a single REST endpoint to evaluate featurescript or
+  hitting many endpoints, your calling code kinda needs to "know" about the
+  details of a document or be capable of enumerating it -- one of these two
+  requires far less API requests and you only get 2,500
++ Code from python or whatever would need to iterate on many endpoints. This is
+  asynchronous code. It's actually best managed by some kind of event-system
+  with a concept of dependencies, not a single piece of code. that is, it has a
+  concept of tasks and dependencies, but tasks can wait if their dependencies
+  had errors.
++ If someone changes that clever naming system: everything breaks... LOL.
+  Nevermind that this problem is difficult enough just when designing from
+  formulas.
+
+
+

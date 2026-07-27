@@ -1,0 +1,158 @@
+:PROPERTIES:
+:ID:       1843d476-6196-4f7e-9a7d-e8e0b6628142
+:END:
+#+TITLE: Guix: Convert FHS Install To Rootless =guix-daemon=
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b82627bf-a0de-45c5-8ff4-229936549942][Guix]]
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
+
+#+begin_quote
+2026/7: please note there's a chance that everything in here is upside down and
+completely wrong. If I noted that somewhere, then it probably still hasn't been
+corrected...
+
+Just saying
+#+end_quote
+
+* Resources
+
++ [[https://codeberg.org/guix/guix/issues/1901][#1901 - `guix gc` fails: cannot read potential root]]
++ [[https://codeberg.org/guix/guix/issues/6023][#6023 - Unexpected collection of in-use profiles by unprivileged guix gc]]
+
+** Sources
++ [[https://codeberg.org/guix/guix/src/master/etc/guix-install.sh][./etc/guix-install.sh]]
++ [[https://codeberg.org/guix/guix/src/master/etc/gnu-store.mount.in#L1][gnu-store.mount.in]]
++ [[https://codeberg.org/guix/guix/src/master/etc/guix-daemon.service.in#L1][guix-daemon.service.in]]
++ [[https://codeberg.org/guix/guix/src/master/etc/guix-gc.service.in#L1][guix-gc.service.in]]
++ [[https://codeberg.org/guix/guix/src/master/etc/guix-publish.service.in#L1][guix-publish.service.in]]
+
+* Overview
+
+info in here won't be complete
+
+** On Omarchy
+
++ Fix permissions/ownership
++ Check systemd units/mount
+  - needed to add the pre/post exec, then reboot
++ Fix =/etc/subgid= and KVM membership
+
+**** Original Install
+
+The original install (~8 months ago) required a few attempts, so that
+complicated things.
+
+I had tried to install guix to =/var/gnu/{,store}= or something along with a BTRFS
+subvolume for what became =/gnu= with =/gnu/store= on top.
+
++ =/gnu/store= is the default for a =configure= input on nix, so this requires
+  rebuilding guix. not fun.
++ I reverted that, then reverted it on each system. The intent was to keep
+  everything portable & the same on every system ...
+  - the extra subvolume with custom mount point was intended to help isolate the
+    file changes in case I want to move to another system.
+
+Kinda dumb though. if you only add to =/gnu/store= (avoid =guix gc= while moving),
+it's portable as is (kinda). as long as external file/disk images, like
+bootloader config, will point to valid hierarchies in the =/gnu/store=, then you
+can boot multiple systems. but you need to carry the state with the store to
+each system (so then =/var/guix= needs to be in a separate file system ... but
+points to links on disk and can't be portable)
+
+Using network services could help with this. Or images of a =/gnu/store=
+containing a superset of store objects to bootstrap from.... but those are all
+"premature idealization."
+
+* Problems/Fixes
+
+** =guix copy= to/from FHS was broken
+
+|---------+---------+------------------+------------------------------------------------------------------|
+| From    | To      | Cause            | Symptom/Fix                                                      |
+|---------+---------+------------------+------------------------------------------------------------------|
+| NixOS   | Omarchy | glib encoding    | "unexpected build daemon error" ... =stoi=                         |
+|         |         |                  | ~sudo --login guix install glibc-locale~                           |
+| Omarchy | Nixos   | namespace access | ~guix copy~ silently fails ~guix~ not in ~$PATH~                       |
+|         |         |                  | after fixing some permissions issues, update ~root~'s guix profile |
+|---------+---------+------------------+------------------------------------------------------------------|
+
+Other issues moreso related to NixOS:
+
++ Couldn't authenticate host :: update your =/etc/guix/acl= with the pubkey
+  
+** =setgid= warnings
+
+These may occur during a build/update. I hadn't seen them much until after I'd
+recently updated with =guix pull= (around 2026/07/2)
+
+Guix needs to be in the KVM group and it's namespace needs =subgid= mappings. See
+[[https://codeberg.org/guix/guix/src/master/etc/guix-install.sh#L543-L552][./etc/guix-install.sh]]
+
+#+begin_src shell
+# KVMGROUP=,kvm # user had this group membership for me
+create_account guix-daemon guix-daemon		\
+	guix-daemon"$KVMGROUP"		\
+	"Unprivileged Guix Daemon User"
+
+if getent group kvm > /dev/null; then
+	# Allow 'newgidmap' to map the "kvm" group.
+	local kvmgid="$(getent group kvm | cut -f3 -d:)"
+	_msg_info "allowing kvm mapping (GID $kvmgid) for unprivileged guix-daemon"
+	echo "guix-daemon:$kvmgid:1" >> /etc/subgid
+fi
+#+end_src
+
+* Incorrect
+
+** =guix gc= issues:
+
+#+begin_quote
+the user's profile links should be owned by the user
+#+end_quote
+
++ prematurely deletes profiles
++ won't delete GC Roots
++ doesn't create some GC roots
+
+Likely permissions issues. IDK the full algorithm or signals/data that =guix gc=
+refers to. Errors like this...
+
+#+begin_quote
+cannot read potential root `/var/guix/gcroots/auto/idj3k6kjlqi7y8sc4c5xschqh8zkhfvb'
+#+end_quote
+
+... imply that =guix-daemon= either:
+
++ can't delete something: it errors, but doesn't stop. sometimes it won't delete
+  these GC roots.
++ can't read the symlink's target: warns about the visibility of the symlink's
+  target. here it will prematurely delete the GC root bc it's basically
+  invisible.
++ also wouldn't be able to create some GC roots
+  - I was missing some GC roots in =/var/guix/profiles/per-user/$USER/...=
+
+Since these GC roots are symlinks into =/gnu/store=, one does not simply =sudo
+chown -R=! lol
+
+#+begin_src shell
+# find them, then `chown -h` to avoid dereferencing the links
+find /var/guix -type d -uid "$(id -u)" -exec ls -al \{\} +
+sudo chown -h guix-daemon:guix-daemon ${files[@]}
+#+end_src
+
+*** Permissions warnings on =guix gc=
+
+See [[https://issues.guix.gnu.org/79321][A pile of problems with unprivileged Guix daemon and &apos;guix gc]]. Things
+like this happen because:
+
++ There's a mixture of root-owned or user-owned links/files in =/var/guix=
++ It can't read/modify some root-owned files and can't read the targets of
+  symlinks for the user
+
+The original bind-mount is set up in a way as to isolate the guix-daemon. There
+are notes in its service file.
+
+* 

@@ -1,0 +1,607 @@
+:PROPERTIES:
+:ID:       891bc43c-bb60-4ae2-ad80-ffd1086c0125
+:END:
+#+TITLE: Arch: WTF setuid
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:29d8222b-618f-454e-8a76-6fa38f8ff1f6][Blue Team]] (is asleep)
+
+* Notes
+
+What's the bar for any arbitrary program to be =SetUID= by default?
+
++Its syscalls and subroutines better be _provably constrained_ in a similar way
+that eBPF programs are provably terminating+ Which isn't really permitted, since
+you can run a syscall whose ID is sourced from a register.
+
+#+begin_quote
+2026/7: it's hard to know what i was trying to write there. it's not completely
+wrong if you ignore the words...
+#+end_quote
+
++ [[https://netspooky.medium.com/elf-binary-mangling-part-1-concepts-e00cb1352301][ELF Binary Mangling Part 1]] writes assembly with macros, compiles with =as=,
+  mangles by manually stripping out unnecessary bits.
++ [[https://stackoverflow.com/questions/77636704/are-there-always-used-and-kernel-specific-system-call-for-bsds-and-linux][s/o: Are there always-used and Kernel-specific system call for BSDs and Linux?]]
+  Some operating systems, like Linux, allow users to make direct syscalls from
+  their binary; however, others, like OpenBSD, do not, and the kernel will
+  murder your process if you try.
+  - Well that's a pretty clear distinguishing factor for OpenBSD. I do wish
+    people would come out and be like "it's because you can't =MOV $boom %eax="
+  - see [[https://harelang.org/blog/2023-12-01-porting-hare-to-openbsd/][Porting Hare To OpenBSD]], particularly the section /OpenBSD doesn’t like
+    direct system calls/.
+  - Now you just have to manage statically compiling almost everything, but with
+    a build system like =nix/guix/port= that's not too much of a problem. (and um
+    the builds aren't actually the problem: the software needs to be rewritten,
+    particularly the compilers and language feature utilization)
++ [[https://blog.packagecloud.io/the-definitive-guide-to-linux-system-calls/][The Definitive Guide to Linux System Calls]]
++ [[https://tanelpoder.com/posts/list-linux-system-call-arguments-with-syscallargs/][Syscallargs: List All Linux System Calls With Their Arguments]]
+
+** TLDR: I'm stupid
+
+What the hell? am i stupid or seeing things?
+
+#+begin_quote
+The =/usr/lib/**/chromium-sandbox= binaries are very small, so guarantees on
+syscalls can be somewhat provable, though that's one specific low-level
+dimension of analysis. If it's "so essential" for general user functionality,
+then it's probably not confined (human input is unpredictable and human software
+usage is dynamic/multivalent). Still, it's literally called a "sandbox" for a
+reason.
+
+And my gripe here is that I had no idea, but I guess you wouldn't if it relates
+to "important, potentially" kinda things. However, this /should/ show up on
+something like =rkhunter= or another profiler -- and my =ls= output dumps "angry
+red" for =setuid= -- so it's /not/ like you would only figure this out if you were
+specifically looking for it. I'm an idiot and it jumps out at me.
+#+end_quote
+
++ [[https://chromium.googlesource.com/chromium/src/+/main/docs/linux/suid_sandbox_development.md][Linux SUID Sandbox Development]]: add =--disable-setuid-sandbox= to every desktop
+  file or run =sudo chmod u-s /usr/lib/**/{chrome-,opera_}-sandbox= everytime the
+  file may update
+** Electron is fucking =SetUID=?
+
+Other people noticed:
+
++ [[https://github.com/electron-userland/electron-builder/issues/7545][electron-userland/electron-builder#7545]]
++ [[https://github.com/electron-userland/electron-builder/issues/8368][electron-userland/electron-builder#8368]]
+
+
+The opaque package management in Arch & other Linux distributions is
+infantalizing to the point where some users may be vegetables. (Again, I must
+stupid be stupid or something ... because _what the fuck?_)
+
+#+begin_src shell :results output code :wrap example dired
+sudo find /usr -perm -4000 -type f -printf '%p ' | \
+    xargs -n1 ls -ldbthD | \
+    grep -v DIRED
+#+end_src
+
+#+begin_example dired
+  -rwsr-xr-x 1 root root 47K Apr  8  2024 /usr/bin/crontab
+  -rwsr-xr-x 1 root root 43K Jul  6  2024 /usr/bin/ksu
+  -rwsr-xr-x 1 root root 35K Jul 12  2024 /usr/bin/fusermount
+  -rwsr-sr-x 1 root root 23K Sep  7  2024 /usr/bin/mount.ecryptfs_private
+  -rwsr-xr-x 1 root root 252K Nov 30  2024 /usr/bin/sudo
+  -rwsr-xr-x 1 root root 27K Jan 15 03:36 /usr/bin/pkexec
+  -rwsr-sr-x 1 root root 27K Feb  7 06:08 /usr/bin/unix_chkpwd
+  -rwsr-xr-x 1 root root 75K Mar 20 10:22 /usr/bin/chage
+  -rwsr-xr-x 1 root root 23K Mar 20 10:22 /usr/bin/expiry
+  -rwsr-xr-x 1 root root 67K Mar 20 10:22 /usr/bin/gpasswd
+  -rwsr-xr-x 1 root root 79K Mar 20 10:22 /usr/bin/passwd
+  -rwsr-xr-x 1 root root 36K Mar 20 10:22 /usr/bin/sg
+  -rwsr-sr-x 1 root root 51K Mar 21 04:02 /usr/bin/mount.cifs
+  -rwsr-xr-x 1 root root 27K Mar 29 10:22 /usr/bin/chfn
+  -rwsr-xr-x 1 root root 23K Mar 29 10:22 /usr/bin/chsh
+  -rwsr-xr-x 1 root root 43K Mar 29 10:22 /usr/bin/mount
+  -rwsr-xr-x 1 root root 19K Mar 29 10:22 /usr/bin/newgrp
+  -rwsr-xr-x 1 root root 55K Mar 29 10:22 /usr/bin/su
+  -rwsr-xr-x 1 root root 35K Mar 29 10:22 /usr/bin/umount
+  -rwsr-xr-x 1 root root 39K Mar 25 00:53 /usr/bin/fusermount3
+  -rws--x--x 1 root root 95K Apr 23 02:13 /usr/bin/mount.nfs
+#+end_example
+
+And =/usr/lib=
+
+#+begin_example dired
+  -rws--x--x 1 root root 323K Apr  9 12:09 /usr/lib/ssh/ssh-keysign
+  -rwsr-xr-x 1 root root 15K May 28 13:06 /usr/lib/chromium/chrome-sandbox
+  -rwsr-xr-x 1 root root 11K Sep 17  2024 /usr/lib/kf5/fileshareset
+  -rwsr-xr-x 1 root root 19K Jan 15 03:36 /usr/lib/polkit-1/polkit-agent-helper-1
+  -rwsr-xr-x 1 root root 671K May 22 22:18 /usr/lib/qemu/qemu-bridge-helper
+  -rwsr-xr-x 1 root root 269K Apr 23 14:09 /usr/lib/xscreensaver/xscreensaver-auth
+  -rwsr-xr-x 1 root root 15K May 15 07:42 /usr/lib/slack/chrome-sandbox
+  -rwsr-xr-x 1 root root 15K Apr 21  2023 /usr/lib/electron21/chrome-sandbox
+  -rwsr-xr-x 1 root root 15K Sep 17  2024 /usr/lib/electron19/chrome-sandbox
+  -rwsr-xr-x 1 root root 227K Jun  2 04:46 /usr/lib/opera/opera_sandbox
+  -rwsr-xr-x 1 root root 15K Apr 25 09:52 /usr/lib/electron31/chrome-sandbox
+  -rwsr-xr-x 1 root root 15K Apr 25 13:49 /usr/lib/electron32/chrome-sandbox
+  -rwsr-xr-x 1 root root 15K Apr 27 15:53 /usr/lib/electron33/chrome-sandbox
+  -rwsr-xr-x 1 root root 15K May 31 03:18 /usr/lib/electron34/chrome-sandbox
+  -r-sr-xr-x 1 root root 30K Feb 25 14:02 /usr/lib/Xorg.wrap
+  ---s--x--- 1 root dbus 141K Mar  1 20:56 /usr/lib/dbus-daemon-launch-helper
+  -rwsr-xr-x 1 root root 15K May 31 03:08 /usr/lib/electron35/chrome-sandbox
+  -rwsr-xr-x 1 root root 15K May 30 16:31 /usr/lib/electron36/chrome-sandbox
+#+end_example
+
+#+name: sandboxSetuid
+#+begin_src shell :results output verbatim
+# ls /usr/lib/**/{chrome-,opera_}sandbox  | \
+#    sed -E 's/\/usr\/lib\/(.*)\/.*$/\1/g' | \
+#    xargs -n1 pacman -Q # ... NO. BAD PACMAN. WHY YOU NO JSON
+
+ls /usr/lib/**/{chrome-,opera_}sandbox  \
+    | xargs -n1 pacman -Qo \
+    | rev | cut -d' ' -f2 | rev # | tr '\n' ' '
+#+end_src
+
+#+RESULTS: sandboxSetuid
+: chromium electron19-bin electron21 electron31 electron32 electron33 electron34 electron35 electron36 electron36 opera slack-desktop
+
+#+name: sandboxReverseDeps
+#+begin_src shell :results output verbatim :var pkgs=sandboxSetuid
+echo $pkgs | xargs -n1 pactree -r
+#+end_src
+
+#+RESULTS: sandboxReverseDeps
+#+begin_example
+chromium
+electron19-bin
+electron21
+electron31
+electron32
+electron33
+electron34
+└─podman-desktop
+electron35
+electron36
+├─electron
+└─element-desktop
+electron36
+├─electron
+└─element-desktop
+opera
+slack-desktop
+#+end_example
+
+NOTHING? ... Oh. shit.
+
+#+name: machineReadable
+#+begin_example awk
+BEGIN { i=0 }
+($0 ~/^Repository/) { i=0; }
+($0 ~/^Required By/) { i++; }
+($0 ~/^Optional For/) { i++; }
+($0 ~/^Conflicts With/) { i=0; }
+# ($0 ~/&)
+(i > 0) { print $0; }
+(i == 0) { next; }
+#+end_example
+
+Here's the reverse deps, sourcing metadata from =AUR=. Granted, we've lost the
+plot, given there's no lazy way to split out required/optional reverse deps.
+
+TLDR: these are all apps you're going to really want to install using =flatpak=.
+
+#+name: sandboxReverseDepsYay
+#+begin_src shell :results output verbatim :var pkgs=sandboxSetuid awkprog=machineReadable
+# pacman -Sii ... unparseable why? idk really, but dependency data is valuable
+echo $pkgs | xargs -n1 yay -Sii | awk "$awkprog" \
+    | grep -v None | sed -E 's/^.*: //g' | tr -s ' ' '\n' \
+    | sort | uniq
+#+end_src
+
+#+RESULTS: sandboxReverseDepsYay
+#+begin_example
+balena-etcher
+beaver-notes
+bitwarden
+captive-browser-git
+code
+cozy-desktop
+deltachat-desktop
+discord-canary-electron-bin
+drawio-desktop
+electron
+element-desktop
+ferdium-bin
+ferdium-nightly-bin
+freetube
+gitify-git
+goofcord-bin
+heroic-games-launcher-git
+ice-ssb
+jitsi-meet-desktop
+joplin-beta
+legcord
+mattermost-desktop
+mermaid-cli
+oblivion-desktop
+obsidian
+podman-desktop
+root
+root-cuda
+slack-electron
+thorium-reader
+thorium-reader-git
+tropy-bin
+vscodium-electron
+waveterm
+webcord
+webcord-git
+whalebird
+wire-desktop
+youtube-music-git
+zabbix-web-service
+zettlr
+#+end_example
+
+I guess there is a lazy way. It involves bash arrays ... but hear me out (j/k)
+
+#+begin_src shell :results output table :var pkgs=sandboxSetuid awkprog=machineReadable
+echo $pkgs | while read -d ' ' pkg; do
+    yay -Sii $pkg | awk "$awkprog" \
+        | grep -v None | sed -E 's/^.*: //g' | tr -s ' ' '\n' \
+        | sort | uniq | sed -E "s/^/$pkg /g"
+done
+#+end_src
+
+#+RESULTS:
+| chromium   | captive-browser-git         |
+| chromium   | ice-ssb                     |
+| chromium   | mermaid-cli                 |
+| chromium   | root                        |
+| chromium   | root-cuda                   |
+| chromium   | zabbix-web-service          |
+| electron31 | beaver-notes                |
+| electron31 | cozy-desktop                |
+| electron31 | heroic-games-launcher-git   |
+| electron34 | bitwarden                   |
+| electron34 | code                        |
+| electron34 | deltachat-desktop           |
+| electron34 | ferdium-bin                 |
+| electron34 | obsidian                    |
+| electron34 | podman-desktop              |
+| electron34 | thorium-reader              |
+| electron34 | tropy-bin                   |
+| electron34 | vscodium-electron           |
+| electron34 | waveterm                    |
+| electron34 | whalebird                   |
+| electron35 | discord-canary-electron-bin |
+| electron35 | drawio-desktop              |
+| electron35 | ferdium-nightly-bin         |
+| electron35 | freetube                    |
+| electron35 | jitsi-meet-desktop          |
+| electron35 | joplin-beta                 |
+| electron35 | mattermost-desktop          |
+| electron35 | wire-desktop                |
+| electron35 | zettlr                      |
+| electron36 | balena-etcher               |
+| electron36 | electron                    |
+| electron36 | element-desktop             |
+| electron36 | gitify-git                  |
+| electron36 | goofcord-bin                |
+| electron36 | legcord                     |
+| electron36 | oblivion-desktop            |
+| electron36 | slack-electron              |
+| electron36 | thorium-reader-git          |
+| electron36 | webcord                     |
+| electron36 | webcord-git                 |
+| electron36 | youtube-music-git           |
+| electron36 | balena-etcher               |
+| electron36 | electron                    |
+| electron36 | element-desktop             |
+| electron36 | gitify-git                  |
+| electron36 | goofcord-bin                |
+| electron36 | legcord                     |
+| electron36 | oblivion-desktop            |
+| electron36 | slack-electron              |
+| electron36 | thorium-reader-git          |
+| electron36 | webcord                     |
+| electron36 | webcord-git                 |
+| electron36 | youtube-music-git           |
+
+** Lack of =PCRE= support in =Ctrl-F= without extensions
+
+#+begin_src sh
+ldd /usr/bin/chromium
+#+end_src
+
+#+begin_example text
+        linux-vdso.so.1 (0x00007fbaf4045000)
+        /lib64/ld-linux-x86-64.so.2 => /usr/lib64/ld-linux-x86-64.so.2 (0x00007fbaf4047000)
+        libglib-2.0.so.0 => /usr/lib/libglib-2.0.so.0 (0x00007fbaf3e91000)
+        libc.so.6 => /usr/lib/libc.so.6 (0x00007fbaf3ca1000)
+        libpcre2-8.so.0 => /usr/lib/libpcre2-8.so.0 (0x00007fbaf3bf5000)    <--- you can NOT haz
+#+end_example
+
+Also, what is =/usr/lib/chromiuronium=?
+
+#+begin_src sh :results output verbatim
+hexdump -C /usr/bin/chromium | grep -E '^000022[0-9]+'
+#+end_src
+
+#+begin_example text
+00002200  69 6e 65 73 20 77 69 74  68 20 75 6e 62 61 6c 61  |ines with unbala|
+00002210  6e 63 65 64 20 71 75 6f  74 65 73 20 61 72 65 20  |nced quotes are |
+00002220  73 6b 69 70 70 65 64 20  61 73 20 77 65 6c 6c 2e  |skipped as well.|
+00002230  0a 0a 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
+00002240  2f 75 73 72 2f 6c 69 62  2f 63 68 72 6f 6d 69 75  |/usr/lib/chromiu|
+00002250  72 6f 6d 69 75 6d 2f 63  68 72 6f 6d 69 75 6d 00  |romium/chromium.|
+00002260  01 1b 03 3b 24 00 00 00  03 00 00 00 c0 ed ff ff  |...;$...........|
+00002270  84 00 00 00 a0 f1 ff ff  40 00 00 00 a0 f2 ff ff  |........@.......|
+00002280  58 00 00 00 00 00 00 00  14 00 00 00 00 00 00 00  |X...............|
+00002290  01 7a 52 00 01 78 10 01  1b 0c 07 08 90 01 00 00  |.zR..x..........|
+#+end_example
+
+Just wondering bc =!g chromiuronium= doesn't exist on the interwebs.
+
+#+begin_src shell
+strings /usr/bin/chromium | sort | uniq | tail -n5
+#+end_src
+
+#+RESULTS:
+| .text                           |
+| u3UH                            |
+| /usr/lib/chromium/chromium      |
+| /usr/lib/chromiuromium/chromium |
+| XDG_CONFIG_HOME                 |
+
+Mostly wondering bc electron made me look.
+
+
+** What the hell are =mount.cifs= and =CIFS=?
+
+It's the SMB protocol and opens using =smb://1.2.3.4/file/path=. Well anyways,
+this hangs for awhile, but it never opens. It just gets real spooked when you
+click it after awhile and I guess it crashes.
+
+#+begin_src shell
+dolphin 'smb://127.0.0.123/root/.ssh'
+
+# unless hideously secure, then I'd love to open SMB servers on my network.
+lsof -p $(pgrep -f dolphin | tr '\n' ',') | sort -k9
+
+# good thing I have granular control of package management. nope. no pink slime
+# over here in my packages.
+#+end_src
+
+** Controls on accessibility software
+
+See [[Id:281db180-c9bd-4b77-938d-84a737369983][Arch: Orca Installs Brltty User And Adds It To The Root Group]]
+
+There's a reason that accessibility access has always had prominent UI/UX with
+explicit & granular configuration in other operating systems (MacOS/Windows)
+
+*** Automatic installation of services/users/groups/setuid for =orca=
+
+I totally understand that we want accessibility to be transparent ... but IMO,
+it should not be sooo transparent as to provide tools that auto-root if a user
+runs a service (that runs some =/sbin/uucp*=). I also totally understand that we
+want accessibility inclusion to be simple (i.e. doesn't require post-setup or
+even pre-install configuration)
+
+However, A reasonable compromise: there should be a set of checkboxes in your
+Linux install configuration app (calamares, etc) which default to inclusion of
+=orca= and deps like =brltty=.
+
+Keep in mind, this is coming from the same culture that (rather insanely, for
+some distros) _demands_ that no telemetry ever be installed/enabled by default.
+
+It's reallllly hard to hold both of those things in your head at the same time:
+
++ Dramatically expand the surface area for exposure (ALL accessibility under ONE
+  package, by default)
++ Never receive any signals by default from users to software creators who could
+  (idk) detect security problems from logs or just get insight into behavior.
+
+I'm not saying that telemetry should be in-built and/or enabled by default ...
+just that you're telemetry is being delivered elsewhere because meta-packages
+pulled too many dependencies and turned everything on (or at least left it open)
+
+If you want to market user-experiences that are based on software freedom,
+flexibility, etc then you /and/ /your users/ should expect that this requires time,
+learning, awareness, discernment and automation ... even if it means UI/UX flows
+that prompt about accessibility. It just requires time/effort. And users who
+need accessibility should not be so isolated that they can't have someone else
+take a look from time to time (that's a short-sighted perspective, I know)
+
+*** In Mac OSX
+
+In 2011, I remember permitting Divvy to control window placement/movement.
+
+Most of the tech companies building OS software/services with end-user-facing
+desktop UI/UX differentiated accessibility features from OS internals, process
+isolation, device integration, etc far earlier than most other pieces to later
+add permissions models. This is plainly seen in the Window Manager
+configuration, where
+
+The need here is to provide specific configuration that initializes
+accessibility components to allow them to circumvent conceptual/contextual
+boundaries enforced for other user-level software. This also expands the surface
+area available to 3rd party apps for driving the accessibility automation (which
+has elevated permissions)
+
+So, in javascript =document.querySelector('body').innerText= ends up feeling quite
+a bit like Microsoft Recall, doesn't it? If an application can monitor events
+(UI, IPC, etc) and then extract data while driving automations to control UI/UX
+... I mean most of the malware in the early 2000s was delivered via Java or
+Flash running UI macros in the browser to coerce the client to accept. The main
+difference here is that your GPU and NIC don't run hot.
+
+It's fucking obvious and you're disengenious to claim "a11y altruism" without
+also attending to these issues. There are simple answers beyond simply "add the
+users/groups, add setuid, initialize services, etc". In the 1990's when you're
+computer spoke in robot voices it was called "back orifice."
+
+It's not a problem when it's configured to suit the needs of the user (which is
+how this works for Windows and Mac OSX ... otherwise you don't get free federal
+funding because you could not possibly meet the security requirements)
+
+Obviously, this is an over-the-top take on this, but some packages seem to have
+administered bad updates that became stale. I don't think that it's rare either.
+* Missing files on update
+
+#+begin_example text
+File "/usr/lib/llvm14/bin/c-index-test" from package "clang14" is missing dependency "libxml2.so.2"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libjsoncpp.so.25"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libicui18n.so.72"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libicuuc.so.72"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libavcodec.so.60"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libavformat.so.60"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libavutil.so.58"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libdav1d.so.6"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libre2.so.10"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libxml2.so.2"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libavif.so.15"
+File "/usr/lib/electron21/electron" from package "electron21" is missing dependency "libFLAC.so.12"
+File "/usr/bin/grub-mount" from package "grub-improved-luks2-git" is missing dependency "libfuse3.so.3"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSpango-0.13.11.0-GhDPXLMpb4vAbd99km0iuD-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSprocess-1.6.16.0-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSdirectory-1.3.6.2-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSunix-2.7.2.2-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHStime-1.11.1.1-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSfilepath-1.4.2.2-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSglib-0.13.10.0-FodPaf0J22cC284xs5vZLj-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHScairo-0.13.10.0-EJUlZG10lya39crLtwrymC-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSutf8-string-1.0.2-AQMRv3gsvE14uh4nlO1egX-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHStext-1.2.5.0-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSbinary-0.8.9.0-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHScontainers-0.6.5.1-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSmtl-2.2.2-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHStransformers-0.5.6.2-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSbytestring-0.11.4.0-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHStemplate-haskell-2.18.0.0-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSpretty-1.1.3.6-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSghc-boot-th-9.2.8-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSdeepseq-1.4.6.1-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSarray-0.5.4.0-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSbase-4.16.4.0-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSghc-bignum-1.2-ghc9.2.8.so"
+File "/usr/lib/libHSgtk3-0.15.8-KEvIeJwn6FsL94mW9szlOM-ghc9.2.8.so" from package "haskell-gtk3" is missing dependency "libHSghc-prim-0.8.0-ghc9.2.8.so"
+File "/usr/lib/qt/plugins/kf5/kfilemetadata/kfilemetadata_appimageextractor.so" from package "kfilemetadata5" is missing dependency "libappimage.so.1.0"
+File "/usr/lib/libkhotkeysprivate.so.5.27.10" from package "khotkeys" is missing dependency "libkworkspace5.so.5"
+File "/usr/lib/qt/plugins/kcm_hotkeys.so" from package "khotkeys" is missing dependency "libkworkspace5.so.5"
+File "/usr/lib/qt/plugins/kf5/kded/khotkeys.so" from package "khotkeys" is missing dependency "libkworkspace5.so.5"
+File "/usr/lib/qt/plugins/kwin/effects/plugins/kwin4_effect_slidingnotifications.so" from package "kwin-effects-sliding-notifications" is missing dependency "libkwineffects.so.14"
+File "/usr/lib/meshlab/plugins/libdecorate_background.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libdecorate_base.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libdecorate_raster_proj.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libdecorate_shadow.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_align.so" from package "meshlab-git" is missing dependency "libmeshlab-common-gui.so"
+File "/usr/lib/meshlab/plugins/libedit_align.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_manipulators.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_measure.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_mutualcorrs.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_paint.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_pickpoints.so" from package "meshlab-git" is missing dependency "libmeshlab-common-gui.so"
+File "/usr/lib/meshlab/plugins/libedit_pickpoints.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_point.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_quality.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_referencing.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_sample.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libedit_select.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_ao.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_camera.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_clean.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_color_projection.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_colorproc.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_create.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_createiso.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_cubization.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_developability.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_dirt.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_embree.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_fractal.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_func.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_geodesic.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_icp.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_img_patch_param.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_io_nxs.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_isoparametrization.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_layer.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_measure.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_mesh_alpha_wrap.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_mesh_booleans.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_meshing.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_mls.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_mutualglobal.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_mutualinfo.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_parametrization.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_plymc.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_qhull.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_quality.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_sample.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_sample_gpu.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_sampling.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_screened_poisson.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_sdfgpu.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_select.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_sketchfab.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_ssynth.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_texture.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_texture_defragmentation.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_trioptimize.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_unsharp.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libfilter_voronoi.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_3ds.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_base.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_bre.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_collada.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_ctm.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_e57.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_e57.so" from package "meshlab-git" is missing dependency "libxerces-c-3.2.so"
+File "/usr/lib/meshlab/plugins/libio_expe.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_gltf.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_json.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_pdb.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_tri.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_txt.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_u3d.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/libio_x3d.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/librender_gdp.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/meshlab/plugins/librender_radiance_scaling.so" from package "meshlab-git" is missing dependency "libmeshlab-common.so"
+File "/usr/lib/opencollada/libGeneratedSaxParser.so" from package "opencollada" is missing dependency "libxml2.so.2"
+File "/usr/lib/opencollada/libOpenCOLLADASaxFrameworkLoader.so" from package "opencollada" is missing dependency "libxml2.so.2"
+Package "python-setuptools-scm-git-archive" has files in directory "/usr/lib/python3.11" that are ignored by the current Python interpreter
+Package "python-steam-solstice" has files in directory "/usr/lib/python3.12" that are ignored by the current Python interpreter
+Package "python-tensorflow-estimator" has files in directory "/usr/lib/python3.12" that are ignored by the current Python interpreter
+Package "python-vdf-solstice" has files in directory "/usr/lib/python3.12" that are ignored by the current Python interpreter
+
+#+end_example
+ 
+
+* Anyways
+
+Probably nothing. It's on everyone's computer, right? Obviously, they clean up
+all these old crusty builds of electron builds I don't need no more.
+
+So if I wanted to use =socat= to rewire/exfiltrate traffic the discord flatpak
+sends through it's sockets, none of this would be a problem, right? Piece of
+cake. Just ask the sandbox nicely.
+
+Good thing that no one ever gave me "the talk" about cybersecurity ethics &
+vulnerability disclosure. It's probably just a waste of time to listen to me. I'm
+so worthless that I couldn't possibly understand anything I hypothesize, so if I
+think "they just want to keep me down cuz I'm too smart and my WebGPU random
+number generator is too edgy" i'm just full of shit. I did get sent to a mental
+institution the day after trying to work on that though.
+
+Not trying to be emo here. I'm just seriously like ummm... yeh... And it's not
+like I have a future in pretty much any field where information security is a
+personnel filter. Bc i wrote too many things in too many social media textboxes,
+made too many profiles public and version controlled my drafts/zettelkasten ...
+essentially profiling myself (see the list of =setuid= binaries that I've
+helpfully listed above)
+
+Anyways, whenever people get around to understanding how the curse of
+dimensionality combined with cybernetics implies that there are myriad ways to
+count hairs on human asses by bouncing wifi waves off of space trash ... then
+you'll realize: we're all naked.
+
+(i.e. everyone emits digital & analog signals with millions of dimensions that
+can be mined, so there are a hundred ways to reconstruct even the most absurd
+pieces of information)

@@ -1,0 +1,283 @@
+:PROPERTIES:
+:ID:       d9ca3abd-be6f-4ecf-8f08-a02f93c34922
+:END:
+#+TITLE: Org Babel: SQLite and Notes from Emacs SF
+#+CATEGORY: slips
+#+TAGS:  
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
++ [[id:73aee8fe-b894-4bda-a9b9-c1685d3249c2][SQL]]
+  
+* Later Notes
+
+Notes from an Emacs SF meetup
+
+** Formatting
+
+The =.tables= command won't get the formatting, as it's done by sqlite.
+
+#+name: forgeTest
+#+headers: :db (identity forge-database-file)
+#+headers: :csv :results raw :wrap src csv
+#+begin_src sqlite
+-- none of the formatting parameters seem to do anything (:list :html :line :csv)
+-- select ".tables"
+-- .tables
+select count(*),count(*) from issue
+
+-- #+header: :list
+-- #+header: :separator ,
+#+end_src
+
+#+RESULTS: forgeTest
+#+begin_src csv
+366,366
+#+end_src
+
+
+* Presentations
+
++ =noweb= terminology from lyric web programming?
+
+** Misc Links
+
++ [[https://github.com/cengique/emacs-genesis-mode][emacs-genesis-mode]]
++ [[https://ctan.org/pkg/pgf?lang=en][tikz manual]], tikz used to produce [[https://intuitiveexplanations.com/assets/CalculusIntuitiveExplanations.pdf][Calculus: Intuitive Explanations]]
+
+** Jeff Trull: Org exporters
+
+This was helpful, as I typically feel a bit overwhelmed when dipping into the
+=org-element= codebase. I usually don't have time to fully grok it.
+
+*** GFM
+
+org-gfm: useful for STL and mermaid exports (and other things that GH-flavored
+markdown supports)
+
++ In =ox-gfm.el=, see =org-export-define-derived-backend=
+  - The =ox-md.el= exporter inherits from =html=
+  - Transcoding blocks
++ Traverse org ast
++ =(pp-eval-expression '(org-element-parse-buffer))=
+  - derived-exporter vs derived-backend
+    
+*** Keynote exporter
+
+Exports to keynote via applescript. Interesting
+
+** Charles Choi: Running SQL on Org Tables
+
+See [[https://gist.github.com/kickingvegas/00312e090acb57ed5f2e9a8e13f0d696][cc/org-table-to-sqlite]]
+
+From an Emacs SF Meetup
+
+Goals:
++ Use only org-babel and work with databases (in-memory)
++ inspect columns and determine SQL types
++ Emit SQLite source block that (1) creates a table and (2) run it
+
+This was very simple and presented in terms of an org-babel LOB file
+
+* SQLite
+
+See [[https://github.com/emacs-mirror/emacs/blob/master/lisp/org/ob-sqlite.el][ob-sqlite.el]]
+
+Example block:
+
+#+NAME: eg_sql_table
+#+begin_src sqlite :db ":memory:" :var table_example=table_example :colnames yes
+drop table if exists table_example;
+create table table_example(id INT, n REAL, city TEXT);
+
+-- select '$table_example';
+   
+-- check quotes here (just to be paranoid)
+.import '$table_example' table_example
+
+-- ob-sqlite will fail if there's any whitespace precedes .commands
+
+-- Edit SQL Query Below
+select id, n, city from table_example;
+#+end_src
+
+
+** Org Tables
+
+Via dfeich/org-babel-examples
+
+#+NAME: my-filter2
+#+BEGIN_SRC sqlite :db table1.sqlite :var tbl=param val="USA" :colnames yes
+drop table if exists table1;
+create table table1 (col1 VARCHAR, col2 INTEGER, col3 VARCHAR, col4 VARCHAR, col5 INTEGER);
+-- fdsa
+.import '$tbl' table1
+select * from table1 where col3='$val' or col4='$val';
+#+END_SRC
+
+Via [[https://gist.github.com/kickingvegas/00312e090acb57ed5f2e9a8e13f0d696][cc/org-table-to-sqlite]] for the schema extraction. The babel evaluation will
+include the gist below. One should read the source when evaling code that
+potentially copies from the internet... especially considering subsequent
+evals. I think I just unintentionally used GH Copilot here.
+
+Using =(org-babel-lob-ingest "./lib-of-babel-test.org")= would be better. The
+org file should be accessed via lob as needed from a directory structure.
+
+#+name: cc/org-table-to-sqlite-content
+#+begin_src sh :results output raw
+hash=00312e090acb57ed5f2e9a8e13f0d696/raw/c6b022e8fff8bb755d3bac80051f4a62a70fdc5b
+file=cc-org-table-to-sql.org
+url=https://gist.githubusercontent.com/kickingvegas/$hash/$file
+
+curl -s $url |\
+    sed -e 's/^*/***/g'
+#+end_src
+
+#+RESULTS: cc/org-table-to-sqlite-content
+
+** cc/org-table-to-sqlite
+Org Babel code block to import an Org table into an in-memory SQLite DB to enable SQL queries on aforementioned table.
+
+*** Parameters
+- ~table~ : Org table object
+  The Org table object is referenced via the ~#+NAME~ value assigned to the table. The table must have a header row identifying each column. This name value must be a SQL-legal name.
+
+- ~table-name~ : string
+  Name of ~table~ in string form. It must be identical to the name of the ~table~ parameter above.
+
+*** Example
+#+NAME: table_example
+| id |    n | city          |
+|----+------+---------------|
+|  1 |    5 | Barcelona     |
+|  2 |    9 | New York      |
+|  3 | 10.0 | San Francisco |
+|  4 |    2 | Seoul         |
+|  5 |   10 | Berlin        |
+|  6 |    7 | Singapore     |
+#+CALL: cc/org-table-to-sqlite(table=table_example, table-name="table_example")
+
+*** Code Block
+
+#+NAME: cc/org-table-to-sqlite
+#+begin_src elisp :var table=table_example :var table-name="table_example" :var query=1 :colnames no :results raw
+  (defun cc/org-extract-table-header (table)
+    "Extract header row from the Org table TABLE.
+
+  This function presumes that TABLE has both header and data sections.
+  This method is intended to be called from an Org Babel Elisp code block."
+    (cl-first table))
+
+  (defun cc/org-extract-table-data (table)
+    "Extract data rows from the Org table TABLE.
+
+  This function presumes that TABLE has both header and data sections.
+  This method is intended to be called from an Org Babel Elisp code block."
+    (cdr table))
+
+  (defun cc/list-integerp (data)
+    "Predicate to test if all elements in the list DATA are of integer type."
+    (seq-reduce '(lambda (x y) (and x y)) (mapcar 'integerp data) t))
+
+  (defun cc/list-floatp-or-integerp (data)
+    "Predicate to test if all elements in the list DATA are of float or integer type."
+    (seq-reduce '(lambda (x y) (and x y)) (mapcar '(lambda (x) (or (floatp x) (integerp x))) data) t))
+
+  (defun cc/list-stringp (data)
+    "Predicate to test if all elements in the list DATA are of string type."
+    (seq-reduce '(lambda (x y) (or x y)) (mapcar 'stringp data) nil))
+
+  (defun cc/table-column-sqlite-type (data)
+    "Determine the SQL type of the elements in the list DATA."
+    (cond ((cc/list-integerp data) "INT")
+          ((cc/list-floatp-or-integerp data) "REAL")
+          ((cc/list-stringp data) "TEXT")
+          (t "TEXT")))
+
+  (defun cc/org-table-sqllite-table-create (table table-name query)
+    "Emit SQLite code block using TABLE with name TABLE-NAME with QUERY.
+
+  TABLE - Org table content
+  TABLE-NAME - Org table name
+  QUERY - if non-0, then emit a default SQL query for TABLE-NAME
+
+  The SQLite table configured to be stored in-memory. A SQL query line is provided
+  to be subsequently edited.
+
+  This method is intended to be called from an Org Babel Elisp code block.
+  Returns string of SQLite statements implementing above described behavior."
+    (let* ((header (cc/org-extract-table-header table))
+           (data (cc/org-extract-table-data table))
+           (rowsize (length data))
+           (colsize (length (cl-first data))))
+
+      (setq i 0)
+      (setq temp-list (list))
+
+      (while (< i colsize)
+        (setq column-data (mapcar '(lambda (x) (nth i x)) (cdr table)))
+        (setq temp-list (cons (cc/table-column-sqlite-type column-data) temp-list))
+        (setq i (1+ i)))
+
+      (setq formatted-arg-list (cl-mapcar (lambda (x y) (format "%s %s" x y )) header (reverse temp-list)))
+
+      (setq result-list (list))
+
+      (push (format "#+NAME: %s_sql" table-name) result-list)
+
+      (push (format "#+begin_src sqlite :db \":memory:\" :var %s=%s :colnames yes" table-name table-name)
+            result-list)
+
+      (push (format "drop table if exists %s;" table-name)
+            result-list)
+
+      (push (format "create table %s(%s);"
+                    table-name
+                    (mapconcat 'identity formatted-arg-list ", "))
+            result-list)
+
+      (push (format ".import $%s %s" table-name table-name)
+            result-list)
+
+      (when (not (= query 0))
+        (push "\n-- Edit SQL Query Below" result-list)
+        (push (format "select %s from %s;" (mapconcat 'identity header ", ") table-name)
+              result-list))
+
+      (push "#+end_src"
+            result-list)
+
+      (print (mapconcat 'identity (reverse result-list) "\n"))))
+
+  (cc/org-table-sqllite-table-create table table-name query)
+#+end_src
+
+#+RESULTS: cc/org-table-to-sqlite
+#+NAME: table_example_sql
+#+begin_src sqlite :db ":memory:" :var table_example=table_example :colnames yes
+drop table if exists table_example;
+create table table_example(id INT, n REAL, city TEXT);
+
+-- select '$table_example';
+   
+-- check quotes here (just to be paranoid)
+.import '$table_example' table_example
+
+-- ob-sqlite will fail if there's any whitespace precedes .commands
+
+-- Edit SQL Query Below
+select id, n, city from table_example;
+#+end_src
+
+#+RESULTS: table_example_sql
+| id |    n | city          |
+|----+------+---------------|
+|  1 |  5.0 | Barcelona     |
+|  2 |  9.0 | New York      |
+|  3 | 10.0 | San Francisco |
+|  4 |  2.0 | Seoul         |
+|  5 | 10.0 | Berlin        |
+|  6 |  7.0 | Singapore     |
+  
+
