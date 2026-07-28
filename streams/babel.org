@@ -1,0 +1,83 @@
+:PROPERTIES:
+:ID:       6d4481cd-7084-4f2e-8038-ff5d16b3804a
+:END:
+#+title: Babel: Stream Snippets
+#+category: streams
+#+tags: ideas
+
+* Roam
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
+
+* Generic
+
+
+* Youtube
+
+** Timed Text
+
+Can't be longer than 900ish lines
+
+#+name: timedtextjq
+#+begin_example jq
+.events
+  | map({
+    ms: .tStartMs,
+    utf8: ((.segs // empty) | map(.utf8) | join("")) }
+    | select(.utf8 != "\n")
+    | [(.ms/1000 | strftime("%H:%M:%S")), .utf8])
+  | map(@csv)
+  | join("\n")
+#+end_example
+ 
+~[.ms/1000, "\(.ms/1000/60 | floor):\(.ms/1000 | floor)", .utf8])~ ... ummm ~| nope~
+
+#+name: timedtext
+#+headers: :var yt-key="mfaqJfWaURw" :results value table
+#+begin_src restclient :jq (org-sbe "babeleg" (egblock timedtextjq)) :jq-args "-r"
+:yt-url-base = https://www.youtube.com
+:yt-timed-text = api/timedtext
+:yt-params = fdsa
+
+:headers = <<
+Accept: application/json
+User-Agent: Emacs
+#
+
+GET :yt-url-base/:yt-timed-text?v=:yt-key&:yt-params
+#+end_src
+
+
+
+
+
+* Issues
+
+** Can't pass example blocks to =:jq=
+
+Solution: use =org-sbe= macro
+
+#+name: babelegblock
+#+begin_example jq
+.events | length
+#+end_example
+
+#+name: babeleg
+#+begin_src emacs-lisp :var egblock=babelegblock
+egblock
+#+end_src
+
+#+RESULTS: babeleg
+: .events | length
+
+## #+call: babeleg(egblock=timedtextjq)
+
+#+call: babeleg(egblock=timedtextjq)
+
+#+RESULTS:
+: .events
+:   | map([.tStartMs/1000.00,
+:          ((.segs // empty) | map(.utf8) | join(""))
+:         ] | @tsv)
+:   | join("\n")
+: # todo: replace literal \n in text ... grep -F '\\?n' no worky

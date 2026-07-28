@@ -93,7 +93,7 @@ MulticastDNS=yes
 RouteMetric=600
 
 [IPv6AcceptRA]
-RouteMetric=600 
+RouteMetric=600
 #+end_src
 
 * Usage
@@ -457,6 +457,66 @@ Still not sure what omarchy is using for package installation.
 
 From here, I can do mostly everything remotely until I adjust to the environment
 (and configure hyprland, etc)
+
+***** Tramp
+
+I'm missing some notes, but i had to fix tramp by patching =~/.profile=, though
+there were a few more steps, I think.
+
+#+begin_src shell
+if [[ "$TERM" == "dumb" ]]; then
+    export TERMWASDUMB="dumb"
+else
+    export TERM=xterm-256-color
+fi
+#+end_src
+
+
+Then, in =~/.bashrc=:
+
+#+begin_src shell
+[[ ! "$PATH" =~ ".config/guix/current" ]] && export PATH="$HOME/.config/guix/current/bin:$PATH"
+export DAMIT=1
+
+[[ $- != *i* ]] && return
+shopt -s histappend
+
+export INSIDE_TRAMP="${INSIDE_EMACS/*tramp*/tramp}"
+for shrc in $HOME/.dotfiles/gh/f/bash/rc/aliases.sh; do
+  [[ -f "$shrc" ]] && source "$shrc";
+done
+
+# must also set TERMWASDUMB here to avoid relogin (i guess once)
+# and etc... (enviroment forks off from who knows what... i don't remember)
+if [[ "$TERM" == "dumb" ]]; then
+        export TERMWASDUMB="dumb"
+else
+    # starship prompt will get set in here
+        source ~/.local/share/omarchy/default/bash/rc
+        export TERM="xterm-256color"
+
+  # Automatically added by the Guix install script.
+  if [ -n "$GUIX_ENVIRONMENT" ]; then
+    if [[ $PS1 =~ (.*)"\\$" ]]; then
+      PS1="${BASH_REMATCH[1]} [env]\\\$ "
+    fi
+  fi
+fi
+
+# All the default Omarchy aliases and functions
+# (don't mess with these directly, just overwrite them here!)
+
+# Add your own exports, aliases, and functions here.
+#
+# Make an alias for invoking commands you use constantly
+# alias p='python'
+
+if [ -n "$TERMWASDUMB" ]; then
+        PS1="[\u@\h \w]$";
+fi
+#+end_src
+
+#+RESULTS:
 
 **** Setup config for SSH and GPG
 Mount old FS and copy over. Then restart
@@ -1303,4 +1363,3 @@ diff <(hyprctl binds -j | jq -r "$qs | $qf") \
 diff img/kconfig/nixzen.kconfig \
     img/kconfig/omarchy.kconfig
 #+end_src
-
