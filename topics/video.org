@@ -30,6 +30,99 @@ ffmpeg -y -i file.mp4 -i palette.png -filter_complex paletteuse -r 10 -s 480x320
 
 ** Topics
 
+*** Network Streams
+
+**** NDI (distroav)
+
+This is useful for network-local video monitors, esp if dealing with multiple
+OBS streaming sources... but not only for that, since the main streaming output
+can also send over mDNS to other monitor stations. This use case is _not_ useful
+if using wifi. In my case, the sender's default route is going out wifi...
+
++ install =distroav= plugin on both receiver & sender
+  - on the sender side, this will just "magically" play whatever's showing in
+    OBS, I guess.
++ ensure firewall ports are open on both receiver/sender
++ ensure mDNS is accessible on both receiver/sender
+
+***** Ports
+
+[[https://docs.ndi.video/all/getting-started/white-paper/ndi-related-network-ports][NDI Related Network Ports]]
+
+| port        | protocol       | summary                            | desc                                                            |
+|-------------+----------------+------------------------------------+-----------------------------------------------------------------|
+| 5353        | UDP            | mDNS                               |                                                                 |
+| 5959        | TCP            | NDI Discovery Server               | Optional: connect NDI between subnets (or without mDNS)         |
+| 5960        | TCP            | Source Discovery                   | Discover NDI sources by IP                                      |
+| 5960 and up | TCP            | TCP NDI Stream                     | NDI uses shared TCP/UDP per stream                              |
+| 5961 and up | UDP (Reliable) | UDP NDI Stream                     |                                                                 |
+| 6960 and up | TCP/UDP        | Multi-TCP or UDP Receiving         | at least one port will be used per connection (dep on features) |
+| 7960 and up | TCP/UDP        | Multi-TCP or UDP Unicast/Multicast | at least one port will be used per connection (dep on features) |
+
+**** SRT Stream from laptop
+
++ Stream to service over LAN
++ stream SRT source from laptop -> desktop on wifi.
+
+On desktop, ensure the port is open on wifi
+
+#+begin_src shell
+line=10
+port=54321
+
+# for now, just ignoring the source
+iptables -I nixos-fw $line -p udp --dport $port \
+    -m state --state NEW,ESTABLISHED \
+    -j ACCEPT
+#+end_src
+
+I believe the listener needs to initiate first
+
+#+begin_src shell
+laptop=172.16.17.123 # wifi
+desktop=172.16.17.231 # wifi
+port=54321
+
+# on laptop, IP is still $desktop, mode=listener allows for resume
+echo "srt://$desktop:$port?mode=listener&timeout=100000&transtype=live"
+
+# on desktop, mode=caller here allows for resume
+echo "srt://$desktop:$port?mode=caller&timeout=100000&transtype=live"
+#+end_src
+
+***** Troubleshoot firewall issues in =srt= stream 
+
+I was having firewall issues, so, to test:
+
+#+begin_src shell
+# on desktop
+socat UDP-LISTEN:$port,fork STDOUT
+
+# on laptop
+socat - UDP:$desktop:$port
+#+end_src
+
+Bytes will be transmitted when you hit newline
+
+***** Troubleshoot connection issues
+
+I was still seeing notifications on my laptop about "stream
+connected/disconnected"
+
+#+begin_src shell
+# from desktop
+nix shell 'nixpkgs#ffmeg'
+ffplay -i "srt://$desktop:$port?mode=listener&timeout=1000000&transtype=live"
+
+# from laptop, stream here
+echo "srt://$desktop:$port?mode=caller&timeout=100000&transtype=live"
+#+end_src
+
+This seemed to require initializing the =listener= on desktop first, then
+beginning the stream from laptop.
+
+Also, =ffplay= can confirm that OBS has bound the socket... (address already in
+use). =socat= also does this, but it's less clear.
 *** MQTT/0MQ
 
 **** MQTT
