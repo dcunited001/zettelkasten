@@ -1,0 +1,131 @@
+:PROPERTIES:
+:ID:       fdaa094a-3254-4de3-bc98-df279219762f
+:END:
+#+TITLE: Omarchy: Upgrade to Quattro
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:95146708-4046-4cdb-a5df-e15594f17733][Bootloader]]
++ [[id:04edaf13-987d-4337-a65b-3d661c3153d3][Omarchy: Upgrading To Quattro As A Nixos User]] (stream)
+
+* Plan
+
+The original installation was around omarchy =3.2.3=
+
+|        |         | distro | desk env | hypr                                |
+|--------+---------+--------+----------+-------------------------------------|
+| kharis | laptop  | arch   | omarchy  | custom lua on omarchy               |
+| kratos | desktop | nixos  | n/a      | custom lua compat with some omarchy |
+
+
+** Boot
+
+Need to check =quattro='s upgrade script:
+
++ what state does it expect to migrate from? migrate to?
++ does it preserve/handle older btrfs snapshots? does their configuration remain
+  manually bootable?
++ does it make any assumptions about or changes to btrfs subvolumes & snapshots?
+
+*** Snapshots
+
+*** Limine
+
+** Lua
+
++ Run omarchy's Lua on kharis enough to discover the dependencies
++ Plan to make some lightweight functionality compatible
+  - mainly just the =hypr= module namespace, which requires =bootstrap.lua=
+  - however, i may stick with a distinct module namespace to avoid most
+    crossover. i can't really guarantee that I can keep up with the rate of
+    change.
+
+** Migrations
+
+What's the content of migration scripts in quattro?
+
+* Prep
+
+Upgraded omarchy from =3.8.3 -> 3.8.4= and restarted to ensure the running
+software (linux, hyprland) matches the environment expected in 
+
+** Backup
+
+Just in case, i booted an image and copied the partitions
+
+#+begin_src shell
+devoma3=/dev/nvme0n1
+devbackup=/dev/sdb
+
+# check the partition table
+sfdisk -J $devoma3
+
+# copying the entire 1TB disk to a 2TB disk would take to long, so
+# copy the partition table
+sfdisk -d $devoma3 | sfdisk $devbackup
+
+# check the new partition table
+sfdisk -J $devbackup
+#+end_src
+
+Then copy the specific disks
+
+#+begin_src shell
+devoma3=/dev/nvme0n1
+devbackup=/dev/sdb
+
+# careful with these commands!
+echo dd if="$devoma3"p1 of="$devbackup"1 bs=1M status=progress
+echo dd if="$devoma3"p2 of="$devbackup"2 bs=1M status=progress
+#+end_src
+
+I'm getting about =6.5GB/min=, so this will take about 150 min ... which seems way
+too long, but whatever. It could be drivers or something. This is copying over
+USB3.
+
+*** Regenerate =UUID='s
+
++ this would likely make the drive unbootable until the UUIDs are restored, but
+  concurrently mountable with the backup source.
++ if doing so, you should backup the UUIDs from the source and =mount= read-only
+
+Doing that risks leaving your linux a bit confused, since the UUIDs are the same
+-- esp. if you try to boot from the backup while the source disk is still
+plugged in. Gemini says this would remove the partition UUIDs, forcing =sfdisk= to
+recreate them. It keeps the GPT label-id in tact...
+
+#+begin_src shell
+sudo sfdisk -d /dev/sda \
+    | grep -v ^label-id \
+    | sed -e 's/, *uuid=[0-9A-F-]*//I'
+    | sudo sfdisk /dev/sdb
+#+end_src
+
+
+
+* Changes
+
+See "Changes" in [[id:04edaf13-987d-4337-a65b-3d661c3153d3][Omarchy: Upgrading To Quattro As A Nixos User]] for environment diffs
+
+* Upgrade
+
+The upgrade went pretty well
+
+** Environemnt
+
+** Dots
++ cleaned backup files and configs from old applications
+
+*** Emacs
++ Fixed fonts (they were apparently broken for awhile ...)
+  - Doom emacs could respond to emacsclient with =doom/reload-font= to match
+    omarchy fonts.
+  - Getting themes to match would be difficult, especially for custom themes.
++ Set =doomedit= to load as editor
+  + via =~/.config/omarchy/extensions/omarchy-menu.jsonc=
+
+*** Hypr
+
+* Issues
