@@ -1,0 +1,409 @@
+:PROPERTIES:
+:ID:       56e2ed28-d9c4-40db-bd3e-20ad61889b29
+:END:
+#+TITLE: Agentic Desire: TurboQuant
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:cea7d11c-8357-4e4f-90b3-fa8210eff796][AI]]
++ [[id:4cdfd5a2-08db-4816-ab24-c044f2ff1dd9][Programming]]
+
+* Resources
+** Codebase indexing
++ [[https://aider.chat/docs/repomap.html][Aider]] seems a bit dated: last update 3 months ago... the mentioned models are
+  older.
+  - [[https://aider.chat/docs/config/aider_conf.html][.aider.conf.yaml]] configuration
++ [[https://github.com/scip-code/scip][scip-code/scip]] has more recent updates.
+  - Uses protobuf, which is nice (but maybe not for LLM)
+
+** Service Components
+
+| [[here][vLLM]] |                                | Abstracts away the hardware resources for distributed ML               |
+| [[https://awsdocs-neuron.readthedocs-hosted.com/en/latest/libraries/nxd-inference/index.html][NxD]]  | NeuronX Inference              | Manages operational state of hardware for distributed LLM Inference    |
+| [[https://docs.kernel.org/admin-guide/blockdev/nbd.html][NBD]]  | Network Block Device           | Kernel Block Device. Manages the state of allocated hardware resources |
+| [[https://docs.nats.io/concepts/what-is-nats][NATS]] |                                | Event bus that abstracts networking specifics. Also useful for IoT     |
+| etcd |                                | Manages consensus on distributed state in a cluster                    |
+| [[https://docs.nvidia.com/nim/large-language-models/latest/reference/architecture.html][NIM]]  | NVIDIA inference microservices | "Enterprise orchestration layer"                               |
+
+I swear there was an slimmed down =etcd= alternative (which was also used in
+=NATS=). Can't get it to show up though.
+* Notes
+
+This overcomplicates things, but (again) it's something I need to learn because
+I'm poor. Anyways.
+
+I didn't intend to "encounter a wild vLLM" here.
+
+
+#+begin_quote
+all in all, i learned a lot here. but probably sticking to a subject with a
+wider body of knowledge and well-established standard curricula would be a
+better idea.
+
+novelty is a very special kind of hell
+#+end_quote
+
+* SCIP
+
+** Protobuf
+
++ Alternative tools: [[https://github.com/tssp/protoc-gen-uml][tssp/protoc-gen-uml]]
+  - this is a scala tool that, in an alternate universe, would be much easier to
+    distribute as a package, but no one ever gave a fuck about visualizing
+    source code.
++ python-protobuf-uml-diagram isn't working because this fails.
+  - I changed the derivation to =(delete 'sanity-check)= ... so this is probably
+    what was wrong.
+  - apparently, this error means the python package expects =protobuf<=3.2.0= or
+    something, whereas i think SCIP has moved to =>5=... dammit
+  - it could be simpler than that.
+
+#+begin_quote
+  File "/tmp/tmp.VwbVfcenem/scip/spec/scip_pb2.py", line 9, in <module>
+    from google.protobuf import runtime_version as _runtime_version
+ImportError: cannot import name 'runtime_version' from 'google.protobuf' (/gnu/store/j974jwjlamx63l6gy0bf41l9wv8y7lr7-python-protobuf-3.20.3/lib/python3.12/site-packages/google/protobuf/__init__.py)
+#+end_quote
+
+* TurboQuant Notebook
+** Generating Prompt
+
+I'd like to learn about ML Ops and agentic workflows using =TurboQuant=.
+
+The following information describes my needs and intended use cases, but
+I'd like to learn about how =TurboQuant= fits into ML Ops generally.
+These are general guidelines, as I still don't know what I don't know.
+Therefore, prioritize generally useful knowledge and skills -- with an
+emphasis on the patterns for solving problems in real-world scenarios.
+
+*** General Knowledge
+
+- How can I use TurboQuant to make token usage more efficient?
+
+**** Workflows
+
+- Is it practical to manage=TurboQuant= indexes for local agentic
+  development?
+- If the agentic development involves tools like agents running in
+  remote environments, how can I manage the configuration for those
+  tools?
+
+I have large numbers of organized codebases that I locally synced using
+=git-repo=. I'd like to build indexes for sets of these codebases that
+can accelerate local LLM and agentic development. What sort of agentic
+tools will help to constrain the application structure styles and coding
+styles that agents produce?
+
+**** Environments and Service Requirements
+
+- How do I develop ETL pipelines to build KV caches which will be used
+  elsewhere?
+- Whether running locally or in a cloud environment, what services are
+  needed to facilitate agent interactions?
+- How does one configure these services so that deployments are
+  reproducible and can be torn down easily?
+- How do I update the TurboQuant KV cache so a smaller models can run
+  more efficiently on local hardware.
+
+*** Project Ideas
+
+Below are some specific goals and project ideas. These are merely
+intended to illustrate the potential usecases.
+
+- Use agents to produce Omarchy Quickshell plugins by using a
+  =TurboQuant= KV Cache built from about 500 plugin repositories
+- Analyze Guix channels to produce Guix services that wrap the
+  configuration of tools. For example, I need to produce a=step-cli=
+  service or a =swtpm= service.
+- Adapt derivations in Nix or Guix to inject make flags in order to
+  produce fuzzable derivation outputs.
+- Discover sets of math publications from arXiv in order to create
+  simulations & mathematic visualizations.
+- Generate code that transforms flame graphs into histograms that count
+  the number of times functions were called. The output from analyzing
+  code-paths should help accelerate intuition about which parts of the
+  code bases are "load-bearing".
+
+Again, the above information describes my needs and intended use cases,
+but I'd like to learn about how =TurboQuant= fits into ML Ops generally.
+These are general guidelines, as I still don't know what I don't know.
+Therefore, prioritize generally useful knowledge and skills -- with an
+emphasis on the patterns for solving problems in real-world scenarios.
+* Module 1
+
+** Token Optimization and Core Architecture
+
+*** ASTs from LLM interaction history
+
+Apparently, one can form an AST from an LLM conversation, though I guess this is
+a bit more obvious if you're looking at the data in the harness-agent
+interactions.
+
+#+begin_verse
+                  [ Root: Conversation ]
+                            │
+       ┌────────────────────┴────────────────────┐
+ [Node: User Query]                     [Node: Assistant Turn]
+       │                                         │
+ [Node: Parameters]            ┌─────────────────┴─────────────────┐
+                         [Node: Tool Call]                [Node: Reasoning/Thought]
+                               │                                   │
+                     [Node: JSON Output]                 [Node: Text Delta]
+#+end_verse
+
+*** Control Flow
+
+Tools to visualize?
+
+** KV Cache Lifecycle and ETL Pipelines
+
++ Managing KV Cache minimizes TTFT (time-to-first-token)
+  - I wasn't really planning on learning about vLLM bc I definitely can't run
+    that shit
+
+
+*** 1. The KV Cache Lifecycle Stages
+
+#+begin_src dot :results file :file img/turboquant/kvcache-lifecycle-stages.png
+digraph G {
+    rankdir=LR
+    init[label="initialization\n& allocation"]
+    evict[label="eviction\n& offloading"]
+    rehydr[label="rehydration"]
+
+    init -> evict -> rehydr
+    rehydr -> evict
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/turboquant/kvcache-lifecycle-stages.png]]
+
+#+begin_quote
+"When physical GPU memory reaches a critical threshold, the orchestrator
+triggers eviction policies. Inactive or low-priority agent states are either
+dropped completely or offloaded to host RAM...."
+#+end_quote
+
+Translation:
+
++ You have more than one GPU and each has a shitton of VRAM.
++ Your compute resources are pooled and the load is dynamic
++ Many users are running many workloads where input (load) can be modeled, but
+  can't be known in advance. Contexts are mixed onto compute resources as
+  needed.
+
+**** Cache Eviction
+
++ system maintains an "LRU index" of active agent sessions
+  - this means it's advantageous to keep your agents acting
+  - There's not much of a benefit to the user to pull them down (and pull their
+    KV Cache & context off the host)
+  - ... but the operator benefits in token throughput by keeping hot agents on
+    the boxes. This is demand-bound, but more cold agents means the same level
+    of demand is allocated to service realization (compute) across a wider
+    compute supply
+
+as with any cloud service (operating VMs), there are lots of clever ways to
+balance load across a fixed compute supply that result in higher ROI (wrt to
+server infrastructure). There's always some unutilized portion of a boxes
+capabilities, but ideally the boxes run hot. Load-balancing is hard (this is why
+it's called an *elastic* compute cloud)
+
+*** 2. ETL Pipeline Analogy
+
+| Extract   | System fetches system prompts, user history, and *vector database* retrieval tools.                             |
+| Transform | Tokenization occurs, followed by the =Prefill engine= transforming raw tokens into *KV tensors*.                  |
+| Load      | The resulting *KV tensors* are loaded directly into the allocated paged memory slots within the GPU cache pool. |
+
+*** Examples
+
+
+*** Quiz
+
+**** 5. What architectural challenge arises when rehydrating a compressed TurboQuant KV cache that was dumped from an architecture using GQA?
+
++ GQA: grouped-query attention :: idkwtf this is
+
+*B* because GQA maps multiple query heads to a single KV head group, the ETL
+rehydration pipeline must accurately reconstruct or align the broadcast
+dimensions back to the active execution graph.
+
+| A | Um no            | Floating-point exponent truncation          |
+| B | *Correct*          | Asymmetric key-to-value tensor broadcasting |
+| C | Probable smatter | Positional bias decay amplification         |
+| D | ... incorrect   | Matrix transposition coefficient mismatch   |
+
+*D* GQA does not inherently alter the linear transpositions of single tokens, but
+rather the broad structure of key/value sharing across attention heads.
+
+#+begin_quote
+I wasn't sure.
+
++ Floating point was right out. That just shouldn't happen
++ Similarly, "coefficient mismatch" shouldn't happen, but maybe if GQA involves
+  data that is computed dynamically, then this would present an architectural
+  challenge with latency
++ Instead, it's Asymmetric k2v tensor broadcasting that would present a weird
+  latency hurdle.
+#+end_quote
+
+* Module 2
+
+** Local Agentic Development and =git-repo= indexes
+
+The process described constructs an AST-based graph where:
+
+1. apparently specifying runtime environment details across many subprojects is a
+   non-issue
+   - the equivalent of specifying LSP environment for a set of 20-200 repos so
+     that each is syntactically/semantically evaluated as it should be
+2. it would be very beneficial to have each iteration of output graph database
+   artifacts be "differentiable"
+   - that is, you can identify the deltas between =code.index.1.db= and
+     =code.index.2.db= and this is itself a set of sub-graphs (sub-graphs are
+     problematic, since they're not actually connected)
+
+This approach actually ends up being a metric shit-ton of graph data, since
+LSP/semantic data:
+
+| is convoluted | is environment-specific (sometimes) | has query specification issues |
+
+*** Example 1
+
+The examples are assuming that there's a superproject repo with a =default.xml=
+manifest and that =repo sync= will be used.
+
++ The config files below should probably be bundled with the manifest or in some
+  sibling repository (if there were multiple )
++ if the config comes with the manifest, then you already have it (but there
+  could be some branching issues, since the =default.xml= repo can be branched)
++ if the config isn't included with the manifest, then this decouples the
+  workload specification from the workload itself (thus, it can be specified by
+  some other orchestration tool's data)
++ Depending on how frequently the repositories change (or on the nature of
+  branching in subprojects), then bundling it in =.repo= would definitely be
+  problematic
+
+*** Example 2: Configuring and Generating the TurboQuant Local Index
+
+Suggests including a =turboquant-index.yaml= that looks like below (the
+=default.xml= is very small)
+
+#+begin_example yaml
+workspace:
+  root: .
+  manifest: .repo/manifest.xml
+indexing:
+  include:
+    - "**/agents/**/*.py"
+    - "**/pipelines/**/*.py"
+  exclude:
+    - "**/tests/**"
+  engine: "hybrid-ast-vector"
+#+end_example
+
+*** Deep Dive
+
+Suggests four options for "actual real-world things" that do the indexing, other
+than [[https://github.com/github/semantic][github/semantic]], which has been retired.
+
+| Tool            | Indexing Mechanism              | Primary Strengths                                  | Agentic Use Case                               |
+|-----------------+---------------------------------+----------------------------------------------------+------------------------------------------------|
+| *Tree-sitter*     | Incremental CST / AST Parsing   | Universal language support, fast line/byte mapping | Extracting symbols & structural AST chunks     |
+| *SCIP*            | Static Graph Compilation        | Precise cross-repo/cross-file symbol resolution    | Resolving cross-repository import dependencies |
+| *Stack-Graphs*    | Incremental Scope Graphs        | Zero-config cross-file import binding              | Real-time code editing & symbol tracing        |
+| *Aider, Repo-Map* | AST + PageRank Graph Centrality | Token-efficient structural summaries               | Context window optimization for local LLMs     |
+
++ github.com/stack-graphs is *not* fast (i read the paper)
++ The best options here would be Aider or SCIP, but really _Aider_
+  
+*** Quiz
+
+**** 2 Environment Context Mapping between repositories
+
+(see above) Yeh that would be a PITA wouldn't it?
+
+#+begin_quote
+An engineer needs to define cross-repository import mapping rules for a
+TurboQuant autonomous developer agent. The agent constantly misinterprets deep
+imports from an adjacent high-frequency trading repository (`tq-hft-core`) while
+operating within the model deployment repository (`tq-ml-inference`). How must
+the `tq-index.json` path mapping configuration be declared to fix this
+resolution mismatch?
+#+end_quote
+
+The contents didn't really address this, but the correct answer is... magic
+URI's for magic things from magic genie agents that gave you things you
+hopefully knew the RFC for.
+
+#+begin_quote
+Defining explicit URI mapping blocks within the global index configurations
+allows the local agentic runtime to map relative imports back to absolute local
+filesystem workspaces.
+#+end_quote
+
+Good question, but the URI needs to be well defined. Otherwise, environment
+variables it is (shudders with "shell"-shock...)
+
+**** 3 It's making up a =.tqignore= file
+
+It seems to think we're working on turboquant to index turboquant sources... The
+questions aren't bad though. The answer is not how i would solve the problem.
+Also =.tqignore= doesn't exist.
+
+#+begin_quote
+A local developer agent encounters major execution latency because the
+`tq-indexer` is processing massive auto-generated model checkpoint matrices
+within a synchronized multi-repo workspace. Which file configuration name and
+semantic rule must be placed in the repository root to ensure the indexer skips
+these binary artifacts while keeping relevant source code files indexed?
+#+end_quote
+
+**** 4 Semantic Compression
+
+#+begin_quote
+During agent context provisioning inside a Git-Repo index setup, you realize
+that the local agent cannot retrieve relevant system functions across
+repositories because the maximum context window token threshold is regularly
+exceeded. What is the standard practice to reduce context overhead without
+shrinking the indexed workspace scale?
+#+end_quote
+
+Enabling semantic summary indexing chunks.
+
+#+begin_quote
+Summary indexing extracts structural headers, class skeletons, and interface
+signatures instead of ingesting large blocks of raw implementation code.
+#+end_quote
+
+Holy shit. idk if that works for code.
+
+**** 5 Git branching and indexing issues
+
+Again, interesting and conceptually valid questions ... but whoa there be
+hallucinations. I still scored =4/5= with hints.
+
+... =tq-agent sync --validate= does not exist in any sense LMAO
+
+#+begin_quote
+An operator runs =tq-agent sync --validate= and receives a telemetry mismatch
+conflict: `Error: IDX-409 Mapped tree HEAD mismatch`. This happens because local
+feature branches in an underlying submodule have drifted significantly from the
+central Git-Repo manifest state. What is the fastest corrective engineering
+workflow to resolve this error?
+#+end_quote
+
+| A |         | Executing a repository-wide local commit bypass. |
+| B | Correct | Executing a hard manifest sync reset.            |
+| C |         | Executing a complete system index deletion.      |
+| D |         | Executing a manual text file sweep.              |
+
+
+#+begin_quote
+Synchronizing the local workspace explicitly back to the remote manifest
+tracking state aligns the target checkout trees, resolving indexing pointer
+discrepancies.
+#+end_quote
+
+
