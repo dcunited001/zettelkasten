@@ -35,6 +35,296 @@ guix graph --type=reverse-package $hyprpkgs \
 
 #+RESULTS:
 [[file:img/hyprland-revdeps.svg]]
+
+** Pre-Lua Submaps
+
+*** Chunking submap definitions
+
+Can reopen submap definitions
+
+#+begin_src conf
+submap = testfoo
+bind = ,escape, submap, reset
+bind = super, code:10, exec, notify-send -a "Hypr" -i $ihypr 1 111111111
+bind = super, code:11, exec, notify-send -a "Hypr" -i $ihypr 2 222222222
+submap = reset
+
+submap = testfoo
+bind = super, code:12, exec, notify-send -a "Hypr" -i $ihypr 3 333333333
+bind = super, code:13, exec, notify-send -a "Hypr" -i $ihypr 4 444444444
+submap = reset
+
+bind = SUPER CTRL SHIFT, code:14, submap, testfoo
+#+end_src
+*** Vim-like window movement
+
+#+begin_src conf
+bind=SUPER ALT, space, submap, movewin
+
+# shouldn't this be modal?
+submap=movewin
+bind=, J, movewindow, u
+bind=, H, movewindow, l
+bind=, L, movewindow, r
+bind=, K, movewindow, d
+bind=, W, movewindow, u
+bind=, A, movewindow, l
+bind=, D, movewindow, r
+bind=, S, movewindow, d
+bind=SHIFT, J, movefocus, u
+bind=SHIFT, H, movefocus, l
+bind=SHIFT, L, movefocus, r
+bind=SHIFT, K, movefocus, d
+bind=SHIFT, W, movefocus, u
+bind=SHIFT, A, movefocus, l
+bind=SHIFT, D, movefocus, r
+bind=SHIFT, S, movefocus, d
+
+# escape, space, enter to exit
+bind=, escape, submap, reset
+bind=, space, submap, reset
+bind=, 36, submap, reset
+submap=reset
+#+end_src
+
+*** Weird named-window hack for jumping to chromium windows
+
+#+begin_src conf
+# ---------------------------------------------
+# namewin:
+# - name chrome windows suffixed with mnemonic & characteristic string: [A-Z]_._CHROME_._$
+# - then bind ISO_LEVEL_5+[A-Z] to focuswindow
+# - jump to specific chrome windows across desktops
+
+
+
+$namewinMod=SUPER CTRL ALT
+$namewinKey=W
+$namewinMatch=_._CHROME_._
+$namewinBrowserClass=chromium-browser
+
+# C-u M-! ...
+# for i in {65..90}; do
+#   h=$(printf '%x' "$i");
+#   c=$(printf '\x'"$h");
+#   # echo $namewin"$c"="$c"_._CHROME_._"$c"
+#   echo '$namewin'"$c"="$c"'$namewinMatch'
+# done
+
+$namewinA=A$namewinMatch
+$namewinB=B$namewinMatch
+# $namewinC=C$namewinMatch # Copy $namewinMatch
+$namewinD=D$namewinMatch
+$namewinE=E$namewinMatch
+# ...
+$namewinU=U$namewinMatch
+# $namewinV=V$namewinMatch # Paste
+$namewinW=W$namewinMatch
+$namewinX=X$namewinMatch
+$namewinY=Y$namewinMatch
+$namewinZ=Z$namewinMatch
+
+bind = SUPER CTRL ALT, W, submap, NAMEWIN
+
+
+
+submap=NAMEWIN
+bind = ,escape, submap, reset
+
+# - /\$namedwinMatch\b/ requires the break
+# - alphanumeric still enters text: prefix the _._CHROME_._
+
+# super-C/V: handle quickly copying/pasting an annoying string
+bind = SUPER,C, exec, echo "$namewinMatch" | wl-copy
+# hyprctl activewindow -j \
+# | jq -e '.class != "$namewinBrowserClass"' 1>/dev/null \
+# && echo '' | wl-copy
+bind = SUPER, V, exec, hyprctl activewindow -j | jq -e '.class != "$namewinBrowserClass"' 1>/dev/null && echo '' | wl-copy
+bind = SUPER, V, sendshortcut, CTRL, V, activewindow
+
+bind = SUPER, D, focuswindow, title:(.*)( $namewinD)
+# bind = SUPER,$namewinG, e, title:(.*)( $namewinD)
+
+submap=reset
+
+bind = MOD3, X, focuswindow, title:(.*)( $namewinX)
+bind = MOD3, D, focuswindow, title:(.*)( $namewinD)
+
+
+# window borders
+windowrule = bordercolor rgba(DD3333FF) / rgba(CC3377AA) 45deg rgba(3CC73A7A) / rgba(CC3377AA) 45deg, title:$namewinA
+windowrule = bordersize  10, title:$namewinA
+windowrule = bordercolor rgba(DD3333FF) / rgba(CC3377AA) 45deg rgba(CC3377AA) / rgba(3CC73A7A) 45deg, title:$namewinB
+windowrule = bordersize  10, title:$namewinB
+
+
+#---------------------------------------------
+# wl-paste doesn't work
+# bind = w,exec, hyprctl activewindow -j | jq -e '.class == "$namewinBrowserClass"' 1>/dev/null && echo $namewinMatch | wl-copy && wl-paste
+
+# bind = ,w,exec, hyprctl activewindow -j | jq -e '.class == "$namewinBrowserClass"' 1>/dev/null && (echo $namewinMatch | wl-copy && wl-paste)
+# bind = SUPER CTRL ALT, w,exec, notify-send -a "Hypr" -i $ihypr $namewinBrowserClass $(hyprctl activewindow -j | jq '.class == "$namewinBrowserClass"')
+
+#---------------------------------------------
+# suffixing the window title needs to be a bash script ... that's a bad idea. nvm
+
+# bind = $namewinMod, $namewinKey, sendshortcut,, f, 
+# bind = $namewinMod, $namewinKey, sendshortcut,, d, 
+# bind = $namewinMod, $namewinKey, sendshortcut,, s, 
+# bind = $namewinMod, $namewinKey, sendshortcut,, a, 
+#+end_src
+
+*** Submap to quickly relaunch failed processes
+
+Mostly commented out as I gravitated towards systemd
+
+#+begin_src conf
+# $waybarLaunch=waybar
+# exec-once = uwsm app -- $waybarLaunch
+
+# $elephantLaunch=elephant
+# exec-once = uwsm app -- $elephantLaunch
+
+# command never completes...
+# 114082 /bin/sh -c uwsm app -- walker --gapplication-service || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: walker --gapplication-service"
+# $walkerLaunch=walker --gapplication-service
+# exec-once = uwsm app -- $walkerLaunch
+
+# $makoLaunch=mako -c "$HOME/.config/mako/config"
+# exec-once = uwsm app -- $makoLaunch
+
+# TODO: maybe switch back to swaync
+# exec-once = uwsm app -- swaync -c "$HOME/.config/swaync/config.json"
+
+# the hypridle config must exist in HOME, XDG_CONFIG_HOME or /etc/hypr
+# exec-once = uwsm app -- hypridle -c "$HOME/.dotfiles/.config/hypr/$host/hypridle.conf"
+
+# ---------------------------------------------
+# REEXEC submap
+bind = SUPER ALT, F2, submap, REEXEC
+
+submap=REEXEC
+# bind = , B, exec, pkill -fx ".*$waybarLaunch" || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: pkill -fx \"$waybarLaunch\""
+# bind = ALT, B, exec, uwsm app -- $waybarLaunch || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: $waybarLaunch"
+# bind = , W, exec, pkill -fx ".*$walkerLaunch" || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: pkill -fx \"$walkerLaunch\""
+# bind = ALT, W, exec, uwsm app -- $walkerLaunch || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: $walkerLaunch"
+# bind = , E, exec, pkill -fx ".*$elephantLaunch(-wrapped)?" || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: pkill -fx \"$elephantLaunch(-wrapped)?\""
+# bind = ALT, E, exec, uwsm app -- $elephantLaunch || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: $elephantLaunch"
+# bind = , B, exec, pkill -fx ".*$swayncLaunch"
+# bind = ALT, B, exec, uwsm app -- $swayncLaunch
+# bind = , N, exec, notify-send -a "Hypr" -i $ihypr 'REEXEC' "Running: pkill -fx \"$makoLaunch\"" && pkill -fx ".*$makoLaunch" 
+# bind = ALT, N, exec, uwsm app -- $makoLaunch || notify-send -a "Hypr" -i $ihypr 'REEXEC' "Failed: $makoLaunch"
+
+# bind = ,catchall, submap, reset # catchall activates on mod mods
+bind = ,escape, submap, reset
+submap=reset
+#+end_src
+
+*** Submap to test walker features
+
+#+begin_src conf
+# ---------------------------------------------
+# WALKER submap
+
+# holy crap it really do not let no newlines through
+$walkerNotify=-1 5000 "rgb(CC00CC)"
+$walkerNotifyMsg="$(echo " "; echo " "; for i in '; providerlist' '> runner' '/ files' '. symbols' '! todo' '= calc' '@ websearch' ': clipboard' '$ windows' ', unicode'; do echo $i; done )"
+bind = MOD3, W, exec, hyprctl notify $walkerNotify 'TEST WALKER' $walkerNotifyMsg
+
+bind = MOD3, W, submap, WALKER
+
+submap=WALKER, reset
+bind =      , semicolon, exec, walker -m providerlist -p "Providerlist..."
+bind = SHIFT, period   , exec, walker -m runner       -p "Runner..."
+bind =      , slash    , exec, walker -m files        -p "Files..."
+bind =      , period   , exec, walker -m symbols      -p "Symbols..."
+bind = SHIFT, code:10  , exec, walker -m todo         -p "Todo..."
+bind = SHIFT, code:11  , exec, walker -m websearch    -p "Websearch..."
+bind = SHIFT, code:13  , exec, walker -m windows      -p "Windows..."
+bind =      , equal    , exec, walker -m calc         -p "Calc..."
+bind = SHIFT, semicolon, exec, walker -m clipboard    -p "Clipboard..."
+bind =      , comma    , exec, walker -m unicode      -p "Unicode..."
+
+bind =      , M        , exec, dwalker-man
+
+# bind = ,greater, exec, walker -m runner -p "Runner..."
+# bind = ,exclam, exec, walker -m todo -p "Todo..."
+# bind = ,at, exec, walker -m websearch -p "Websearch..."
+# bind = ,dollar, exec, walker -m windows -p "Windows..."
+# bind =  semicolon, exec, walker -m clipboard -p "Clipboard..."
+# bind = ,catchall, submap, reset
+
+bind = ,escape, submap, reset
+submap=reset
+#+end_src
+** Pre-Lua Keybinds
+
+From pre-lua hyprland
+
+*** keypad
+
+|------+--------+--------+--------+----+-----+----+-----+-----------+-----------+-------------+-------------|
+| --   | *$kpmul* | *$kpdiv* | *$kpsub* | *77* | *106* | *63* | *82*  | *Num_Lock*  | *KP_Divide* | *KP_Multiply* | *KP_Subtract* |
+| $kp7 | $kp8   | $kp9   | *$kpadd* | 79 |  80 | 81 | *82*  | KP_7      | KP_8      | KP_9        | *KP_Add*      |
+| $kp4 | $kp5   | $kp6   | --     | 83 |  84 | 85 | --  | KP_4      | KP_5      | KP_6        | --          |
+| $kp1 | $kp2   | $kp3   | *$kpent* | 87 |  88 | 89 | *104* | KP_1      | KP_2      | KP_3        | *KP_Enter*    |
+| $kp0 | --     | *$kpdec* | --     | *90* |  -- | *91* | --  | *KP_Insert* | --        | *KP_Delete*   | --          |
+|------+--------+--------+--------+----+-----+----+-----+-----------+-----------+-------------+-------------|
+... kp_insert?
+*** digits
+
+|-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+---------+---------|
+| $k1 | $k2 | $k3 | $k4 | $k5 | $k6 | $k7 | $k8 | $k9 | $k0 | $kminus | $kequal |
+|-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+---------+---------|
+|  10 |  11 |  12 |  13 |  14 |  15 |  16 |  17 |  18 |  19 |      20 |      21 |
+|-----+-----+-----+-----+-----+-----+-----+-----+-----+-----+---------+---------|
+*** Rebind menu
+
+#+begin_src  conf
+# Custom
+
+# Rebind Menu
+#
+# - requires key actually on keyboard (virtually).
+
+# - `sendshortcut` does not seem to work work with Mod3. hyprland probably
+#   filters a hardcoded set of modifiers
+
+# bindd = SUPER, TAB, Send Ctrl+Shift Menu Key, sendshortcut, , code:135, activewindow
+# bindd = SUPER, TAB, Send Ctrl+Shift Menu Key, sendshortcut, Alt, X, activewindow
+# bindd = SUPER CTRL SHIFT, TAB, Send Menu Key, sendshortcut, , code:135, activewindow
+# bindd = MOD3, TAB, Send Menu Key, sendshortcut, , Menu
+# bindd = MOD3, TAB, Send Menu Key, sendshortcut, Alt, X
+
+# bindd = MOD3 SHIFT, TAB, Send Shift Menu Key, sendshortcut, SHIFT, Menu
+# bindd = MOD3 ALT, TAB, Send Alt Menu Key, sendshortcut, ALT, Menu
+# bindd = MOD3 ALT SHIFT, TAB, Send Alt+Shift Menu Key, sendshortcut, ALT SHIFT, Menu
+# bindd = MOD3 CTRL, TAB, Send Ctrl Menu Key, sendshortcut, CTRL, Menu
+# bindd = MOD3 CTRL SHIFT, TAB, Send Ctrl+Shift Menu Key, sendshortcut, CTRL SHIFT, Menu
+
+# Custom
+
+# Rebind Menu
+#
+# - requires key actually on keyboard (virtually).
+
+# - `sendshortcut` does not seem to work work with Mod3. hyprland probably
+#   filters a hardcoded set of modifiers
+
+# bindd = SUPER, TAB, Send Ctrl+Shift Menu Key, sendshortcut, , code:135, activewindow
+# bindd = SUPER, TAB, Send Ctrl+Shift Menu Key, sendshortcut, Alt, X, activewindow
+# bindd = SUPER CTRL SHIFT, TAB, Send Menu Key, sendshortcut, , code:135, activewindow
+# bindd = MOD3, TAB, Send Menu Key, sendshortcut, , Menu
+# bindd = MOD3, TAB, Send Menu Key, sendshortcut, Alt, X
+
+# bindd = MOD3 SHIFT, TAB, Send Shift Menu Key, sendshortcut, SHIFT, Menu
+# bindd = MOD3 ALT, TAB, Send Alt Menu Key, sendshortcut, ALT, Menu
+# bindd = MOD3 ALT SHIFT, TAB, Send Alt+Shift Menu Key, sendshortcut, ALT SHIFT, Menu
+# bindd = MOD3 CTRL, TAB, Send Ctrl Menu Key, sendshortcut, CTRL, Menu
+# bindd = MOD3 CTRL SHIFT, TAB, Send Ctrl+Shift Menu Key, sendshortcut, CTRL SHIFT, Menu
+#+end_src
+
+
 ** Rules
 ** Binds
 

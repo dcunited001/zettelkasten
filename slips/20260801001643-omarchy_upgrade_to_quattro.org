@@ -114,7 +114,7 @@ See "Changes" in [[id:04edaf13-987d-4337-a65b-3d661c3153d3][Omarchy: Upgrading T
 
 The upgrade went pretty well
 
-** Environemnt
+** Environment
 
 ** Dots
 + cleaned backup files and configs from old applications
@@ -130,4 +130,146 @@ The upgrade went pretty well
 *** Hypr
 
 * Issues
+
+** SSH Path
+
+This gets set in PAM config [[https://github.com/basecamp/omarchy/blob/fa955bfa9d2c94339f452e4c56cb5bbfc5e1718e/install/config/ssh-command-path.sh#L9][here]]
+
+#+begin_src shell
+PATH DEFAULT=/usr/local/sbin:/usr/local/bin:/usr/bin:@{HOME}/.local/share/mise/shims:@{HOME}/.local/bin
+#+end_src
+
+Fixing this will allow =guix copy= to succeed
+
+** Quirks
+
+*** Default apps
+
+Using the =omarchy menu= to set a default editor (or any default, afaik) will
+initially require =mkdir -p ~/.local/state/omarchy/default=. Until then:
+
++ =echo doomedit > ~/.local/state/omarchy/defaults/editor= fails (sets the editor)
++ also checking that the editor exists fails (it fails for any command)
+
+This is likely because certain installation/setup scripts weren't run.
+
 * Topics
+
+** TUIs
+
+*** Using =alacritty=
+
+See [[https://github.com/dcunited001/ellipsis/blob/20a7cadf2c90c71be1497d35ffa77826c3a54ad7/.config/hypr/workspaces/tuitray.lua#L5][.config/hypr/workspaces/tuitray.lua#L14]]... i had [[https://github.com/dcunited001/ellipsis/commit/20a7cadf2c90c71be1497d35ffa77826c3a54ad7#diff-9ac351717f39c263f7a6404e999c8df59b98189f37a3a61c29bacde6ca3905a3][kinda forgotten]] that:
+
+- these were only window rules. the binds were configured with a shimmed version
+  of omarchy's =.conf= rules.
+- only =isd= was intended to launch with =MOD3 + Prior=
+
+#+begin_src lua
+local function tuitray_cmd(tui)
+    -- tui class and bin name should match
+    return "alacritty --class 'Alacritty:org.dc.tuitray' -T 'tuitray:" .. tui .. "' -e " .. tui
+end
+#+end_src
+
+soo... basically this entire file now goes away
+
+*** Using =omarchy-launch-or-focus-tui= which wraps =xdg-terminal-exec=
+
+#+begin_src lua
+o.bind(keybind, "Launch TUI: " .. k, )
+#+end_src
+
+**** With =alacritty= on NixOS
+
+Requires the =X-TerminalArg.*= properties on the desktop file:
+
+#+begin_src nix
+  hjem.users.dc.xdg.data = {
+    files = {
+      "applications/Alacritty.desktop" = {
+        text = ''
+          [Desktop Entry]
+          Type=Application
+          TryExec=alacritty
+          Exec=alacritty
+          Icon=Alacritty
+          Terminal=false
+          Categories=System;TerminalEmulator;
+
+          Name=Alacritty
+          GenericName=Terminal
+          Comment=A fast, cross-platform, OpenGL terminal emulator
+          StartupNotify=true
+          StartupWMClass=Alacritty
+          Actions=New;
+
+          [Desktop Action New]
+          Name=New Terminal
+          Exec=alacritty
+          X-TerminalArgExec=-e
+          X-TerminalArgAppId=--class=
+          X-TerminalArgTitle=--title=
+          X-TerminalArgDir=--working-directory=
+        '';
+        clobber = true;
+      };
+    };
+  };
+#+end_src
+
+So for alacritty
+
+#+begin_src shell
+pushd `nwix alacritty`
+cat "$(pwd)/share/applications/Alacritty.desktop" | wl-copy # and paste
+ssh myhost ~/.local/share/applications/Alacritty.desktop" | wl-copy # and paste/scrape
+#+end_src
+
+Ghostty is already done, but causes my =MOD3= keybinds to be double-processed :(
+
+#+begin_src shell
+pushd `nwix ghostty`
+cat "$(pwd)/share/applications/com.mitchellh.ghostty.desktop" | wl-copy # and paste
+ssh myhost ~/.local/share/applications/com.mitchellh.ghostty.desktop | wl-copy # and paste
+#+end_src
+
+** Flake
+
+#+begin_src nix
+{ ... }: # for example
+{
+  description = "nixos omarchy";
+
+  inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
+    hjem = {
+      url = "github:feel-co/hjem";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    omarchy = {
+      url = "github:basecamp/omarchy/tree/quattro/config";
+      flake = false;
+    };
+  };
+
+  outputs = {
+    nixpkgs,
+    hjem,
+    omarchy,
+    ...
+  }: let
+    system = "x86_64-linux";
+    pkgs-unstable = nixpkgs-unstable.legacyPackages.${system};
+
+  in {
+    nixosModules.default = {...}: {
+      _module.args.omarchy = omarchy;
+
+      imports = lists.flatten [
+        hjem.nixosModules.hjem
+      ];
+    };
+  };
+}
+#+end_src

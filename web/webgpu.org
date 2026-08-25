@@ -89,6 +89,45 @@ This (or some chrome flags) seems to have enabled the [[https://github.com/brend
 WebGPU inspector, where before it was not. I also set some environment variables
 in my NixOS system changes to ensure my RDNA arch Radeon 6700 will have compute
 features enabled in all processes started under my session.
+
+*** Flake
+
+#+begin_quote
+This should be split out into =~/Work= using =try= or something
+#+end_quote
+
+After running =nix flake update=, run:
+
+#+begin_src shell
+chrome=google-chrome-dev # or google-chrome{,-beta}
+
+# TODO: config cache for subs/keys
+# TODO: reexport the packages so this works (mostly caches on local system)
+NIXPKGS_ALLOW_UNFREE=1 nix run .#$chrome --impure
+#+end_src
+
+
+#+begin_src nix :tangle flake.nix
+{
+  description = "An isolated build of chrome";
+
+  # nixConfig.extra-substituters = [
+  #   "https://tweag-jupyter.cachix.org"
+  # ];
+  # nixConfig.extra-trusted-public-keys = [
+  #   "tweag-jupyter.cachix.org-1:UtNH4Zs6hVUFpFBTLaA4ejYavPo5EFFqgd7G7FxGW9g="
+  # ];
+
+  inputs.nixpkgs.url = "https://flakehub.com/f/DeterminateSystems/nixpkgs-weekly/0.1.906997";
+  inputs.browser-previews = {
+    url = "github:nix-community/browser-previews";
+    inputs.nixpkgs.follows = "nixpkgs";
+  };
+
+  outputs = {self,...}@inputs: { };
+}
+#+end_src
+
 ** Goals
 
 The goal here is to create isolated applets with pinned dependences that can
