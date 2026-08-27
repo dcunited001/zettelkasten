@@ -124,9 +124,11 @@ connected/disconnected"
 #+begin_src shell
 # from desktop
 nix shell 'nixpkgs#ffmeg'
+
+# ffplay *from* the desktop's stream URL
 ffplay -i "srt://$desktop:$port?mode=listener&timeout=1000000&transtype=live"
 
-# from laptop, stream here
+# set laptop stream target (to the desktop's SRT url)
 echo "srt://$desktop:$port?mode=caller&timeout=100000&transtype=live"
 #+end_src
 
@@ -135,6 +137,70 @@ beginning the stream from laptop.
 
 Also, =ffplay= can confirm that OBS has bound the socket... (address already in
 use). =socat= also does this, but it's less clear.
+
+*** =gpu-screen-viewer=
+
+**** Stream to =srt=
+Useful to troubleshoot XDG screen sharing problems, since it forces the
+=hyprland-share-picker= window to popup. If you're not using it, remove it, since
+it usually gets around the need for portal-based screen sharing.
+
+#+begin_src shell
+mic=default_input
+desktop=default_input
+fps=60
+
+# using "-w portal" will fail without "-restore-portal-session yes"
+sharesource=portal
+
+# output as srt stream
+fromhost=127.0.0.1
+tohost=127.0.0.1
+port=54321
+
+srt_container=mpegts # gpu-screen-recorder can't infer the container format
+srtmode_TO=listener
+srtmode_FROM=caller
+
+# listener (output) must be online before the caller (input) bc of how SRT
+# negotiates stream setup
+output="srt://${tohost}:$port?mode=${srtmode_FROM}&timeout=1000000&transtype=live"
+input="srt://${fromhost}:$port?mode=${srtmode_TO}&timeout=1000000&transtype=live"
+
+# To establish the SRT Listener waiting for SRT Callers
+gpu-screen-recorder -w "$sharesource" -restore-portal-session yes \
+    -f "$fps" -a "$mic" -a "$desktop" -o $output -c "$srt_container"
+
+# To view the SRT output (as an input)
+# - test with `ffplay -i $some_audio_or_video`
+# - audio plays video with a spectrogram
+nix shell nixpkgs#ffmpeg --command ffplay -i $input
+
+
+#+end_src
+
+Then wait for the share picker to pop up. For me, it's popping up off-screen
+
+#+begin_src shell
+hyprctl clients -j | jq '. | map(select((.title | match(".*share.*"))))'
+#+end_src
+
+To test the stream, use =vlc=, =obs=, =ffplay= or =socat=
+
+#+begin_src shell
+
+#+end_src
+
+=gpu-stream-recorder= also contains these useful options:
+
+
+| --list-capture-options   | $card_path |
+| --list-monitors          |            |
+| --list-audio-devices     |            |
+| --list-application-audio |            |
+| --list-v4l2-devices      |            |
+
+
 *** MQTT/0MQ
 
 **** MQTT
@@ -292,3 +358,63 @@ Getting something like this to work on a single workstation would require less
 networking/automation, but still it's likely that the configs/environment would
 be brittle.
 **** Ansible
+
+* Share Picker
+** Issues
+*** XPDH =xdg-desktop-portal-hyprland= initializes windows at non-rendered coordinates
+
+Started with =hyprland-share-picker --allow-token=, but requires some application
+context (or something)
+
+For me, it gets called twice. This happens in OBS bc there are two separate
+sources. But for other applications.
+
+Get the =.address= or =.stableId=, reference [[https://github.com/basecamp/omarchy/blob/43bfe9b9d82ba650b5b80eef79e94776790801c9/bin/omarchy-hyprland-window-pop#L1][bin/omarchy-hyprland-window-pop]]. that
+script is intended to manipulate the active window.
+
+#+begin_src shell
+# get the stableId
+hyprctl clients -j | jq '. | map(select(.class == "Alacritty" and .workspace.name != "special:docs"))'
+
+# this won't work on tiled windows
+hyprctl dispatch "hl.dsp.window.center({ window = \"stableId:180000b5\" })"
+
+# move the window to a specific workspace
+hyprctl dispatch "hl.dsp.window.move({ workspace = \"2\", window = \"stableId:180000b5\" })"
+#+end_src
+
+**** Using =dbus-monitor=
+
+#+begin_src shell
+# dbus-monitor "type='signal'\
+# ,sender='org.gnome.TypingMonitor'\
+# ,interface='org.gnome.TypingMonitor'"
+
+# the query syntax sucks
+dbus-monitor "type='signal',interface='org.freedesktop.*'"
+
+# instead, just capture as .pcap and open in `bustle` or `d-spy`
+dbus-monitor --pcap > $somefile
+#+end_src
+
+**** Troubleshoot sharepicker from =cli=
+
+Check for open sharepickers
+
+#+begin_src shell :results output code :wrap example jsonc
+HYPRLAND_INSTANCE_SIGNATURE=$(hyprstance)
+hyprctl clients -j \
+    | jq 'map(select(.title == "Select what to share"))
+| (map([.at,.size] | map(@csv)))'
+#+end_src
+
+#+RESULTS:
+#+begin_example jsonc
+[
+  [
+    "480,1100",
+    "960,800"
+  ]
+]
+#+end_example
+
