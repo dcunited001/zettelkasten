@@ -1,0 +1,253 @@
+:PROPERTIES:
+:ID:       abd73d69-8e9f-4872-a286-a3ed7fa5b148
+:END:
+#+TITLE: Clojure: Try A Websocket Client and Server
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:36a06198-0746-4533-be8b-0fe50a52967f][Clojure]]
++ [[id:1fd23f33-ec84-47e2-b326-dce568f1ae83][Web Design]]
+
+* Overview
+
+Kabel supports "symmetric websocket applications" ... which means code-sharing
+between client/server. It looks like it supports a JVM-based client in addition
+to cljs. However, I need to determine how flexible the application protocol
+could be, since i want to see if i can use clojure (jvm) to script the OBS
+websocket.
+
++ [[https://github.com/replikativ/kabel/tree/main/examples][pingpong.clj/s]] (older example; instead, follow the guide or run tests)
+
+* New Project Setup
+
+Newer apps should add this and other kabel deps.
+
+#+begin_example edn
+{:deps {org.replikativ/kabel {:mvn/version "LATEST"}}}
+#+end_example
+
+* Quick Setup
+
+If i get to it, I'm just going to work in the project and add a build target to
+the examples directory
+
+#+begin_src shell
+mise install clojure
+try clone https://github.com/replikativ/kabel
+
+cat > mise.toml <<EOF
+[tools]
+clojure = "1.12.5.1664"
+
+[deps.clojure]
+EOF
+
+clj -T:build compile-java
+npm install # eugh
+
+# try running the example
+clj -M:pingpong # class not found
+tree -P '*.class' --prune
+
+# these download a lot
+clj -M:format
+clj -X:auth:test # tests pass. that's nice
+clj -X:auth:test:jetty
+clj -X:auth:test:jetty:pmd
+#+end_src
+
+Frontend workflow
+
+#+begin_src shell
+# ClojureScript (Node.js)
+npx shadow-cljs compile node-test && node target/node-tests.js
+
+# ClojureScript (Browser)
+npx shadow-cljs watch test
+# Open http://localhost:8022
+
+# Integration tests (JVM server + Node.js client)
+./test-integration.sh
+#+end_src
+
+** Client/Server Example
+
+Attempting the client/server example
+
+*** Initial Connection Fails
+
+After the diff below, running code from =CIDER= works ... to at least make sense
+fo the response.
+
+#+begin_src log
+Response: #:kabel{:serialization :string, :payload {"d":{"obsStudioVersion":"32.1.2","obsWebSocketVersion":"5.7.3","rpcVersion":1},"op":0}}
+#+end_src
+
+Diff
+
+#+begin_example diff
+diff --git a/deps.edn b/deps.edn
+index 620877c..825a057 100644
+--- a/deps.edn
++++ b/deps.edn
+@@ -94,7 +94,7 @@
+:exec-fn cognitect.test-runner.api/test
+:exec-args {:dirs ["test"]}}
+:pingpong {:extra-paths ["examples"]
+-                      :main-opts ["-m" "kabel.examples.pingpong"]}
++                      :main-opts ["-m" "myclient"]}
+:build {:deps {io.github.clojure/tools.build {:mvn/version "0.10.5"}
+slipset/deps-deploy {:mvn/version "0.2.2"}}
+:ns-default build}
+diff --git a/examples/myclient.clj b/examples/myclient.clj
+new file mode 100644
+index 0000000..bed8a60
+--- /dev/null
++++ b/examples/myclient.clj
+@@ -0,0 +1,20 @@
++(ns myclient
++  (:require [kabel.peer :as peer]
++            [kabel.http-kit :as http-kit]
++            [superv.async :refer [<?? go-try go-loop-try <? >? S]]
++            [clojure.core.async :refer [chan]]))
++
++;; Client: send messages and receive responses
++(def client-id #uuid "c14c628b-b151-4967-ae0a-7c83e5622d0f")
++;; (def url "ws://localhost:43215")
++
++(def client
++  (peer/client-peer S client-id
++    (fn [[S peer [in out]]]
++      (go-try S
++        (>? S out {:msg "Hello, kabel!"})
++        (println "Response:" (<? S in)))
++      [S peer [(chan) (chan)]])
++    identity))
++
++(comment (<?? S (peer/connect S client url)))
+diff --git a/examples/myserver.clj b/examples/myserver.clj
+new file mode 100644
+index 0000000..41c0368
+--- /dev/null
++++ b/examples/myserver.clj
+@@ -0,0 +1,27 @@
++(ns myserver
++  (:require [kabel.peer :as peer]
++            [kabel.http-kit :as http-kit]
++            [superv.async :refer [<?? go-try go-loop-try <? >? S]]
++            [clojure.core.async :refer [chan]]))
++
++;; Server: echo messages back to client
++(def server-id #uuid "05a06e85-e7ca-4213-9fe5-04ae511e50a0")
++(def url "ws://localhost:8080")
++
++(defn echo-middleware [[S peer [in out]]]
++  (go-loop-try S [msg (<? S in)]
++    (when msg
++      (>? S out msg)
++      (recur (<? S in))))
++  [S peer [(chan) (chan)]])
++
++(def server
++  (peer/server-peer S
++    (http-kit/create-http-kit-handler! S url server-id)
++    server-id
++    echo-middleware
++    identity)) ;; or use transit/fressian middleware
++
++(comment
++ (<?? S (peer/start server)))
++
+#+end_example
+
+*** Binary Transport
+
+=Supervisor: #error= shows it's a binary transport
+
+#+begin_example edn
+{
+ :cause Connection closed!
+ :data {:reason #object[javax.websocket.CloseReason 0x20ca3b10 CloseReason[4002,Your session encoding is set to Json, but a binary message was received.]]}
+ :via
+ [{:type clojure.lang.ExceptionInfo
+   :message Connection closed!
+   :data {:reason #object[javax.websocket.CloseReason 0x20ca3b10 CloseReason[4002,Your session encoding is set to Json, but a binary message was received.]]}
+   :at [kabel.client$client_connect_BANG_$fn__24895$fn__25255 invoke client.clj 165]}]
+#+end_example
+
+* Analysis
+
+#+begin_quote
+... Yeh. it is EXACTLY what I thought, which would've previously taken 30x as
+much time to figure out -- 5-15 hours spread out of many half-days making $20
+counting tickets at a skating rink) -- since I don't have anyone to learn from
+by osmosis.
+#+end_quote
+
+** Via LLM :llmcontent:
+
+This error means that OBS Studio immediately disconnected you because
+your Clojure client and OBS are disagreeing on data formatting. [fn:1] [fn:2]
+
+Specifically, kabel configured the WebSocket session to expect
+human-readable text (JSON), but it received raw Binary bytes from the
+server (or vice-versa). [fn:2]
+
+*** Why this happens with kabel and OBS
+
+The [[https://github.com/replikativ/kabel][io.replikativ/kabel]] library is heavily optimized for the Clojure ecosystem.
+By default, it expects to talk over Transit or specialized binary data channels
+common in Clojure-to-Clojure applications. [3, 4, 5, 6]
+
+However, the obs-websocket v5 protocol uses data frames that must strictly match
+what was negotiated during connection. Because kabel abstracts away the
+underlying raw JSR-356 Java WebSocket session, it is accidentally forcing the
+connection into an incompatible message format, throwing CloseReason 4002. [2]
+
+*** How to Fix It
+
+To fix this, you must explicitly configure your Clojure client to send and
+receive WebSocket data strictly as UTF-8 Plain Text strings (which contain the
+serialized JSON). Since kabel is highly opinionated about its transport layers,
+it is much easier and standard practice to use gniazdo or Aleph for raw JSON-RPC
+integrations like OBS. [3, 7, 8]
+
+If you switch to [[https://github.com/stalefruits/gniazdo][gniazdo]], it routes text messages cleanly without wrapping them
+in custom serialization envelopes: [8]
+
+**** 1. Add Gniazdo & JSON to your deps.edn [8]
+
+#+begin_src clojure
+{:deps {stylefruits/gniazdo {:mvn/version "1.2.2"}
+        org.clojure/data.json {:mvn/version "2.5.0"}}}
+#+end_src
+
+*** 2. Connect via Text Frames
+
+Ensure you are explicitly invoking string-based messaging: [7]
+
+
+#+begin_src clojure
+(require '[gniazdo.core :as ws] '[clojure.data.json :as json]) 
+
+;; Connect 
+(def socket
+  (ws/connect "ws://localhost:4455" :on-receive (fn [msg] (println "Received text JSON:" msg)))) 
+
+;; Send as text payload 
+(ws/send-msg socket (json/write-str {:op 1 :d {:rpcVersion 5}}))
+#+end_src
+
+If you prefer to stick with kabel, could you share your current client-connect!
+setup code? I can help you check if its configuration options allow forcing a
+strict text/JSON wire format.
+
+[fn:1] [[https://oneuptime.com/blog/post/2026-01-24-websocket-connection-closed-abnormally/view][https://oneuptime.com]]
+[fn:2] [[https://github.com/obsproject/obs-websocket/blob/master/src/websocketserver/WebSocketServer.cpp][https://github.com]]
+[fn:3] [[https://github.com/replikativ/kabel][https://github.com]]
+[fn:4] [[https://cljdoc.org/d/io.replikativ/kabel/0.3.92][https://cljdoc.org]]
+[fn:5] [[https://www.reddit.com/r/Clojure/comments/1bzulqp/example_of_web_app_using_websockets/][https://www.reddit.com]]
+[fn:6] [[https://github.com/ring-clojure/ring-websocket-transit][https://github.com]]
+[fn:7] [[https://github.com/clj-commons/aleph][https://github.com]]
+[fn:8] [[https://github.com/stalefruits/gniazdo][https://github.com]]
