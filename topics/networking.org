@@ -89,6 +89,45 @@ move them out.
 
 *** Resources
 
+*** Topics
+
+**** Avahi mDNS
+
+***** Prevent binding to interface
+
+Edit =/etc/avahi/avahi-daemon.conf=
+
+#+begin_src conf
+[server]
+deny-interfaces=$ifx
+#+end_src
+
+***** Force =host.local= to IP
+
+#+begin_src sh
+cat >> /etc/avahi/hosts <<EOF
+host.local 123.45.67.8
+EOF
+
+# maybe restart, then check
+avahi-resolve --name host.local
+
+# this won't show up
+avahi-browse -atvr
+
+# double check
+ping host.local
+#+end_src
+
+This doesn't work bc it's too late:
+
+#+begin_src sh
+# packets attempted, kernel blocks, process confused
+iptables -s $ip -I OUTPUT 2 -p tcp --dport $port -j REJECT
+#+end_src
+
+TLDR: one cannot simply "split" traffic for services discovered by avahi
+
 ** Load Balancing
 
 *** Docs
