@@ -1,0 +1,101 @@
+:PROPERTIES:
+:ID:       ee5a503d-3445-481f-99ee-beb5d0d02849
+:END:
+#+TITLE: Hyprland: XKB Insert to MOD3 Issues
+#+CATEGORY: slips
+#+TAGS:
+
+
+* Roam
++ [[id:003953f8-acde-4c26-8c6b-d0aa3b27002b][XKB]]
++ [[id:f6af081c-2a1e-4423-9278-da6e0b276aef][Hyprland: XKB Common]]
++ [[id:bc406527-0255-4d70-b620-82495ac5c8fe][Hyprland]]
+
+
+* Resources
++ [[https://github.com/ghostty-org/ghostty/discussions/7385][ghostty-org/ghostty#7385]] Neo2 layer 4 broken since #7320
++ [[https://github.com/ghostty-org/ghostty/discussions/8909][ghostty-org/ghostty#8909]] xkb capslock as modifier key not respected for navigation key rebinds #8909
+
+* I've been charged with...
+
+#+begin_quote
+Attempting to resist being too poor to afford a QMK keyboard
+#+end_quote
+
+Nope!
+
+#+begin_src xkb
+// taken from actual XKB examples. still cargo culting XKB and no, AI does NOT help
+
+partial modifier_keys
+xkb_symbols "ins_replace" {
+    replace key <INS> {
+        
+        // type[Group1] = "ONE_LEVEL",
+        // symbols[Group1] = [ Insert ],
+        
+        type[Group1] = "TWO_LEVEL",
+        symbols[Group1] = [ ISO_Level5_Shift, ISO_Level5_Shift ],
+        actions[Group1] = [ SetMods(modifiers=LevelFive), SetMods(modifiers=LevelFive) ]
+        
+        // type[Group1] = "ONE_LEVEL",
+        // symbols[Group1] = [ ISO_Level5_Shift ],
+        // actions[Group1] = [ SetMods(modifiers=LevelFive) ]
+    };
+    modifier_map Mod3 { <INS> };
+};
+#+end_src
+
+Nope
+
+#+begin_src xkb
+partial modifier_keys
+xkb_symbols "ins_replace" {
+    key <INS> {
+        type[Group1] = "ONE_LEVEL",
+        symbols[Group1] = [ ISO_Level5_Shift ]
+    };
+    include "mylevel5(modifier_mapping)"
+};
+#+end_src
+
+Nope
+
+#+begin_src xkb
+partial alphanumeric_keys modifier_keys
+xkb_symbols "ins_replace" {
+    replace key <INS> {
+        type[Group1] = "TWO_LEVEL",
+        symbols[Group1] = [ VoidSymbol, VoidSymbol ],
+        actions[Group1] = [ SetMods(modifiers=LevelFive), SetMods(modifiers=LevelFive) ]
+    };
+    // something else go here? so MOD3 gods will return
+};
+#+end_src
+
+Nope
+
+#+begin_src xkb
+partial alphanumeric_keys modifier_keys
+xkb_symbols "ins_replace" {
+    replace key <INS> {
+        type[Group1] = "ONE_LEVEL",
+        symbols[Group1] = [ISO_Level5_Shift]
+    };
+    modifier_map Mod3 { <INS> };
+};
+#+end_src
+
+Nope
+
+#+begin_src xkb
+// Ensure a mapping to a real modifier for LevelFive.
+// partial modifier_keys
+xkb_symbols "modifier_mapping" {
+    replace key <MDSW> {
+        type[Group1] = "ONE_LEVEL",
+        symbols[Group1] = [ ISO_Level5_Shift ]
+    };
+    modifier_map Mod3 { <MDSW> };
+};
+#+end_src
