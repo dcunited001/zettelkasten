@@ -16,6 +16,116 @@
 + [[https://github.com/ghostty-org/ghostty/discussions/7385][ghostty-org/ghostty#7385]] Neo2 layer 4 broken since #7320
 + [[https://github.com/ghostty-org/ghostty/discussions/8909][ghostty-org/ghostty#8909]] xkb capslock as modifier key not respected for navigation key rebinds #8909
 
+* Fixed with =keyd=
+
++ =showkey= and =dumpkeys= in linux console helps to get hardware-specific scancodes
++ /usr/include/linux/input-event-codes.h :: linux input headers
+
+This keyd config
+
+#+begin_src conf
+[ids]
+\*
+
+[main]
+insert = f24
+#+end_src
+
+should be produced by nixos blob
+
+#+begin_src nix
+{
+  services.keyd.enable = true;
+  services.keyd.keyboards = {
+    default = {
+      ids = [ "*" ];
+      settings = {
+        main = {
+          insert = "f24";
+        };
+      };
+    };
+  };
+}
+#+end_src
+
+I'd rather not need =keyd=, but this is a pretty simple config. I've always
+avoided anything that touches input at that low of a level (and just tried to
+avoid complexity, generally)
+
+** XKB
+
+After loading this profile in Nix, the key remaps are working in the console,
+but hyperland doesn't recognize the =F22= key.
+
+After correcting =<F22> -> <FK22>=, hyprland now permits the key to be remapped.
+And _litrally every chromium-derived application_ is no longer pasting when i hit
+=Shift+Insert=
+
+#+begin_src xkb
+partial alphanumeric_keys modifier_keys
+xkb_symbols "f24_hyper" {
+  replace key <FK24> {
+    type[Group1] = "ONE_LEVEL",
+    symbols[Group1] = [ Hyper_L ]
+  };
+  modifier_map Mod3 { <FK24> };
+};
+#+end_src
+
++ I mapped =Insert -> F22=, then in XKB, I interpret =F22= as a =Hyper=
++ That didn't work, since XKB does some transparent mapping for =F22 -> XF86TouchpadOn= 
+
+#+begin_src xkb
+partial alphanumeric_keys modifier_keys
+xkb_symbols "f22_hyper" {
+    replace key <F22> {
+        type[Group1] = "ONE_LEVEL",
+        symbols[Group1] = [ Hyper_L ]
+    };
+    modifier_map Mod3 { <F22> };
+};
+#+end_src
+
+** Gemini :crypt:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ//Sh11Kucmjp0T3kG2+KKLNfWbrxa7bLnsvhABjyTiqFs0
+hpRBtCAgrvuMThYbLiUUA+hPxzKQQoLLtQz2haoaPamTGcfkZGSr9lELnRy4KBDL
+G7XE2HdvuLBfQEHS4lkYDwvAeErJbup3lJqjy+MPArh4NIXtdFqH6SSAnj4Y9lQ4
+NcixZZGJpSd0n49oRhbCAU2/uOuSzcb+6iXXFr+HM7WE2PuE0qW4NBud7Yx7zeKC
+YfHV4VO6GL9Ln3d6fZoZENbVVWcwVfTAgWVyj+momNtgjsBQ7PiXYPHWTusZo5IO
+iYP5R4Apv9tZaVf27Om0nb2vEY0A9NCwy5/pUnTBmBQRqwFYFRT5A+jmNxXF0d6y
+OENvNpBSW1rbm79RE90xuWzAOB3GRqRCHLfkIaxbtPPND7Ax19lf2vYwkaw0qyHn
+qSlpb6UAusrBiq1bPsfQL0KAvZolhSB0izYd22Hs6spEuIXox9GLQyr9t/eM0bbz
+EJhcl2Ez6NRdOXWPHzNUDUSm4WZduc6cQb5B8dDdwe6alSpv+Zgy3pPYk3pzSnW7
+XiRug1Xn1EGukT9McQaLxeeRM5aK0HKR0tOimQZdQmzQ/OYzILqdw21PQlWDcyZP
+WkyYioPStaBeEn5ZxugzwQ6+oYK00qfZLv+UCBIcFSQh9Nt02kGmSplRgMjJt+TS
+6QHBvNCkYyGmrjVu4N3nUcWrZBPnXuqAeHErTpZ/qe2DjYt3MGZBrJ/oo5j3Pv6J
+aS2hj8Y/FFF1Nqy/CGGOJG/VfGf9I8e1hm7JHGJk3OI9t2Zpb/rCDtjgsPBgS3Sg
+KCo0rsYWXDBFhiHhYTOM36dkwazGIr1VydkODRlaCb3mVi/mKbYIUDwcI3lm7+9t
+BowzOBPUzFc2/mmnL9QXPTwz1K7Ft714iQlEo2BkAApLOziBb8Y3kzm/ZOVZfbjx
+CHuI8ooR1C2zAAcVE0Xzb+hOxPhQ99NiGB8t8M6twAERtCW/4gytpCYJk5dz9N7g
+SBCzr9y53ABCoz0bA2pH+QKxE5x6cGynuciO6fQka3TEcht8Bk72ziQZ7kYrrF9q
+fGzWko8j546dN/a8UVHFaeE1WIlWJFXLGS4p+tYDjYkG4q/NZJLKJEV3VuKUDmz/
+NpYJ9R7RS5Mj4707egQwui7u+04xfvFwIfiygpejwhZvd15qZNm6I16XYAMmVPtU
+XbnO9z3C7kJRzhxCNXbBxmZcKEQu7QU9SeyEYx5ciNEfvT/gkApEIAp8hCzLebiG
+BpeCQaAhheguSgYcUV0Qoaxczpq0F9XNTzCjppEIY+GjRnW7saHekqd65WBFGJTg
+cvlGmDt2bYSt7HyF2S2d2raTHoKk2pJPLt9ZVQI+ZjPZwGO2LNXrDvP74ZS21f1H
+uHxIqW+UaojKKOUiadkm7hlG9XIZg9VBCzxSLWmu36HssIzISojkKio9jwtBGKQt
+0AdmQy1gg99Ci+j8CRdFXRzuz26KYvcU978E6n/kXrNSCkuPTF0DVNT0I3NBSBJv
+uUCMWQ4f8+9FdP4STTmWOTBUH2PushQNcTdvvEHlh+0e1crCWcdvklY+9bu+fKyn
+s1npb4BBOBeBUzpBjEFwMLINoFkkruRQOcLrLKSRcAnAEx+QU7uIfXbfsesntY2O
+wrBeXU4ZmA8WkfAkPmowB8FaH8haMkR5ssbxvRUufXOeCuROWtQuPYXqNrdizW9W
+3XmqMs+P8WrDXZAq0Lr9MZxjALlZlsZ28t1hSafgy3f96Yv31Ag=
+=VLg9
+-----END PGP MESSAGE-----
+
+
 * I've been charged with...
 
 #+begin_quote
