@@ -1,0 +1,251 @@
+:PROPERTIES:
+:ID:       f11115c8-d639-4813-bccf-f3630bfff379
+:END:
+#+TITLE: SOPS: Set up sops-nix
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:f38730e0-1f42-42e3-b173-e12535e55bcd][Smallstep: CA, Policy and Provisioner Configuration]] scripts mostly from here
+
+* TLDR
+
+This MF right here. e causa di cosa non potevi fare nulla. da quella cosa, non
+si può fare nulla. しかたがない
+
+[[https://nascecresceignora.it/top-6-ncr-i-boss-piu-difficili-di-final-fantasy/][Top 6 Ncr I Boss Piu Difficili Di Final Fantasy]] ... anyways idk why italian
+showed up, but there it is.
+
+[[file:img/FF7-Ruby-Weapon.jpg]]
+
+You basically have to cheat this to win. The super-boss from FF8 is probably
+more difficult, but it's at least winnable. This FF7 guy will just ruin your day
+at any point in the battle... by breaking the rules.
+
+* Resources
+
++ [[https://github.com/vst/opsops][vst/opsops]]
+
+** dotfiles.io
+
+Kinda like a cross-platform omarchy, chezmoi-managed
+
+Very interesting information. Obviously AI assisted.
+
+| Overview     | [[https://doc.dotfiles.io/OPENCODE/][OPENCODE]]    | [[https://doc.dotfiles.io/CONFIG_STRATEGY/][CONFIG_STRATEGY]]  |                        |
+| [[https://doc.dotfiles.io/security/][SECURITY]]     | [[https://doc.dotfiles.io/security/FUZZING/][FUZZING]]     | [[https://doc.dotfiles.io/security/KEY_ROTATION/][KEY_ROTATION]]     | [[https://doc.dotfiles.io/security/AI_ACT_COMPLIANCE/#transparency-obligations][AI_ACT_COMPLIANCE]] (EU) |
+| REFERENCE    | [[https://doc.dotfiles.io/reference/UTILS/][UTILS]]       | [[https://doc.dotfiles.io/reference/SUPPORT_MATRIX/][SUPPORT_MATRIX]]   |                        |
+| [[https://doc.dotfiles.io/architecture/ARCHITECTURE/][ARCHITECTURE]] | [[https://doc.dotfiles.io/architecture/REPO_LAYOUT][REPO_LAYOUT]] | [[https://doc.dotfiles.io/architecture/fleet-deployment/][Fleet Deployment]] | [[https://doc.dotfiles.io/architecture/AI_COST_OPTIMIZATION/][AI_COST_OPTIMIZATION]]   |
+
++ [[https://doc.dotfiles.io/reference/POWERSHELL_PARITY/][POWERSHELL_PARITY]] (feature matrix) 
+
+
+** The Answer
+
++ whatever TF [[https://github.com/cachix/secretspec][cachix/secretspec]] is doing with [[https://secretspec.dev/quick-start/#installation][secretspec.dev (docs)]]
+
+** Guides
+
++ [[https://blog.epheo.eu/articles/k8s-sops-secrets/index.html][k8s sops management]] (repo: [[https://github.com/epheo/k8s-sops-secrets-boilerplate][epheo/k8s-sops-secrets-boilerplate]])
++ [[https://github.com/wiktor-k/age-plugin-openpgp-card][wiktor-k/age-plugin-openpgp-card]]
+
+* Topics
+** Key rotation
+
+Ranting about things that don't exist just to find out that maybe they do now?
+
+*** In flux
+
+[[https://oneuptime.com/blog/post/2026-03-13-how-to-rotate-sops-age-keys-without-re-encrypting-all-files-in-flux/view][How to Rotate SOPS Age Keys Without Re-Encrypting All Files in Flux]]
+
+**** Strategy 1: Add New Key Before Removing Old Key
+
+This just has a "old/new" pattern
+
++ usage is probably limited to services fairly with fairly flat dependencies &
+  singular endpoints.
+
+**** Strategy 2: Gradual File-by-File Rotation
+
++ Service dependencies are probably still flat, but it's starting to account for
+  dependencies ... by making you handle it yourself.
+
+This would be alright if the sops-protected secrets are bootstrapping what's
+needed for your k8s cluster or k8s-deployed services to manage the rest.
+
+Although i guess I missed this trick
+
+#+begin_src shell
+cat old-key.agekey new-key.agekey > combined-keys.agekey
+kubectl create secret generic sops-age \
+  --namespace=flux-system \
+  --from-file=age.agekey=combined-keys.agekey \
+  --dry-run=client -o yaml | kubectl apply -f -
+#+end_src
+
+The keygroups thing seems like a bad pattern (one does not simply delete dummy keys)
+
+#+begin_example
+error loading config: Could not unmarshal config file: yaml: unknown anchor 'dc_kratos' referenced
+#+end_example
+
+
+**** Strategy 3: Directory-Based Rotation
+
+This doesn't really make sense ... (to get partitioned nicely) ontologies afford
+a limited number of primary categories to form trees (or graphs with tree-like
+motifs... idk). But here, you've wasted one of those divisions which should
+already be kinda obviously accounted for.
+
++ It works, but it doesn't really solve any problems.
++ it doesn't work for tunnels (unless you count services like envoy)
+
+**** Interdependent services
+
+If you need to distribute keys/secrets for service endpoints that don't function
+without each being updated according to the others' new states...
+
+Then you really just need rolling deployments (there's a discrete time
+dimension: $k_{n}\; for\; n \in N$).
+
++ These always needs a better "rotation strategy" anyways.
++ You need three keys: one active and two provisioned (one deployed and one in
+  waiting). This gives you the ability to fuck up at least once (and twice if
+  you're lucky)
+
+it's 1,000 times easier to do this when your infrastructure is
+immutable/disposable (distributed into small containers)
+
+**** The hard part
+
+... keeping the state of quasi-gitops source code consistent across:
+
++ multiple deployed services 
++ on multiple machines 
++ where the functionality is also specified in flakes in multiple repos
+
+** Misc
+*** Traversing symlink trees
+
+#+begin_src shell
+find -H . -type l -printf '%p -> %l\n' | tree --fromfile . --fflinks -J
+#+end_src
+
+*** Diffing Sops Files
+
+The k8s article recommends two python scripts
+
++ sops files shouldn't contain structural data... (or at least you shouldn't
+  default to just encrypting large json/yaml blobs)
+  - diff is difficult, ciphertext is opaque.
++ on the other hand, not using structural data at all litters your code with
+  arbitrary identifiers ...
+  - and so you have a massive need to settle on a "perfect schema"
+  - this is compounded by: ergonomic difficulties & cost of mistakes (acute/chronic)
+
+**** Just decrypt them?
+
+[[https://flagzeta.org/til/how-to-do-git-diffs-of-sops-encrypted-files/][how to git-diff SOPS encrypted files]] mentions this
+
+#+begin_src shell
+git config diff.sopsdiffer.textconv "sh -c 'sops -d --input-type yaml --output-type yaml \"\$0\" || true - '"
+# [diff "sopsdiffer"]
+# 	textconv = sh -c 'sops -d --input-type yaml --output-type yaml \"$0\" || true - '
+#+end_src
+
+other usage seems to point in similar directions, but i think there's more of an
+absence of these patterns
+
+#+begin_src shell
+git config diff.sops.textconv 'sops -d'
+#+end_src
+
+I would prefer keeping the process & tool tree very flat:
+
++ python is too much... maybe. but definitely if I don't check the code.
++ the potential of logs means anything with a package manager is right out.
+  - this includes editors.
+
+* Overview
+
+Env File
+
+** Runthrough
+:PROPERTIES:
+:header-args+: :dir (setq-local step-root "/tmp/roam-uRO7v9")
+:END:
+
+*** Babel Setup
+
+#+name: obsopsroot
+#+begin_src emacs-lisp :noweb-ref obsopsroot
+(or (bound-and-true-p ob@sops_set_up_sops_nix) (setq ob@sops_set_up_sops_nix (make-temp-file "roam-" t)))
+#+end_src
+
+#+RESULTS: obsopsroot
+: /tmp/roam-uRO7v9
+
+Run block with args =(org-sbe "obsopsroot" (egblock timedtextjq))=
+
+#+name: obsopsroot-testsbe
+#+headers: :results output verbatim 
+#+begin_src shell :var sopsroot=obsopsroot :dir (org-sbe "obsopsroot")
+echo pwd=$(pwd)
+echo sopsroot=$sopsroot
+#+end_src
+
+#+RESULTS: obsopsroot-testsbe
+: pwd=/tmp/roam-uRO7v9
+: sopsroot=/tmp/roam-uRO7v9
+
+*** =.env=
+
+Set the root dir
+
+#+header: :tangle (expand-file-name ".env" (org-sbe "obsopsroot"))
+#+begin_src shell :noweb yes
+ROOTDIR="<<obsopsroot()>>"
+#+end_src
+
+Misc properties
+
+#+header: :tangle (expand-file-name ".env" (org-sbe "obsopsroot"))
+#+begin_src shell :noweb yes
+STEPPATH=".step.ykbootstrap"
+yk5root="12345678"
+ykpivpin="123456"
+ykpivpuk="12345678"
+SOPS_EDITOR="vim"
+SOPS_AGE_KEY_FILE=".age/keys.txt"
+#+end_src
+
+*** =.sops.yaml=
+
+#+begin_src yaml :tangle (expand-file-name ".sops.yaml" (org-sbe "obsopsroot"))
+stores:
+  json:
+    indent: 2
+  json_binary:
+    indent: 2
+  yaml:
+    indent: 2
+
+keys:
+  hosts:
+    # age tpm key:
+    - &tpmtest
+  users:
+    # age1 key: x25519 via age-keygen
+    - &admin1 age1n49hgtpev0deasvk85lwr4s79e33wxlg0zyq7vlgc7jxn8rz649sk00ds8
+    # age2 key: x25519 via openssl & ssh-to-age
+    - &admin2 age10g7nyzg2llvav0hjyrt3g8yet2huhe4vq9c5jmsde9x4sn7j9vzsy6s2d9
+
+creation_rules:
+  - path_regex: \.step\.ykbootstrap/root\.yaml$
+    mac_only_encrypted: true
+    key_groups:
+      - age:
+          # - *admin0
+          - *admin1
+          - *admin2
+#+end_src
