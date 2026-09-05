@@ -1,0 +1,445 @@
+:PROPERTIES:
+:ID:       04edaf13-4321-4337-a65b-3d661c3153d3
+:END:
+#+title: Guix On NixOS: Building VMs And Trying To Start QEMU With A Serial Port
+#+CATEGORY: streams
+#+TAGS: recorded
+#+PROPERTY: header-args+ :dir 20260826123456-guix_on_nixos_building_vms
+
+* Roam
++ [[id:bc406527-0255-4d70-b620-82495ac5c8fe][Hyprland]]
++ [[id:fbf366f2-5c17-482b-ac7d-6dd130aa4d05][Arch]]
++ [[id:906f0085-c2ca-4037-a096-fc2a164fcf27][Arch: Omarchy Bin Scripts]]
++ [[id:fdaa094a-3254-4de3-bc98-df279219762f][Omarchy: Upgrade to Quattro]] (more notes here)
+
+* Overall idea
+
+ideally i could find some way to flash/boot ESP32-like devices over the network
+while ensuring that network connectivity transmits console/serial output for
+early boot to an agent.
+
+That would be a PoC for a type of workflow for complex devices: robot, smartcar,
+satellite, etc -- which many such serial ports. The outputs from hardware (i2c,
+SPI) could be multiplexed into a set of TCP sockets that expose those serial
+ports over the network. A network boot is triggered, and debug logs for those
+hardware components can be collected...
+
+But idk. obviously virtualizing the hardware would be more appropriate, but it
+can't really account for a lot of issues:
+
+- Low power modes with alternate drivers/software
+- Transitions between those modes
+- Maintanence modes running alternate hardware/software profiles. e.g. the UEFI
+  targets that windows cycles through when you first install or perform
+  maintanence tasks... but for more complicated devices)
+
+* Outline
+** Inbox
+Outline (didn't exactly follow this)
+
+** Learning
+
+... This happened after the stream (lol)
+
+** Scripting
+
+These are the scripts I was trying to run during the stream
+
+* Inbox
+
+** Guix
+*** TODO [#A] demo updating guix & emacs
+
+mention latex build
+
++ [ ] NDI source from laptop
+  - ensure guix-publish does not bind on wifi ... (this is wrong)
+  - one of these will fail: either NDI or guix publish...
++ [ ] desktop: update guix channels with =make pull=, explain
+  - add stuff to git, push. then pull from laptop.
+  - demo =make ares=, then bump =channels-dev.scm=
++ [ ] desktop: =guix copy --to=laptop= new channels
++ [ ] laptop: no change in =guix describe= generation count
+  - run update with =make up= (pulls to channels-lock.scm)
+  - diff =guix describe= again
++ [ ] desktop: =cd .doom.d && make .guix-profile=
+  - probably pulls LaTeX. if it does, wait...
++ [ ] desktop: =doom up=
++ [ ] laptop: =cd .doom.d && make .guix-profile=
+  - check =guix describe= first
+  - if it starts pulling, run =guix a
+
+*** TODO diffing state
+
++ needed to patch =/etc/security/pam_env.conf= so the user's =guix= runs
+  - instead of =guix= built from source =/usr/local/bin/guix=
+  - and so =guix copy= also modifies store as expected (some weird things can
+    happen otherwise)
+
+#+begin_src shell :dir "~/.dotfiles/.doom.d" :results output code :wrap example diff
+p=$(pwd)
+diff channels-lock.scm <(ssh kharis cat $p/channels-lock.scm)
+#+end_src
+
+Active channels
+
+#+begin_src shell :dir "~/.dotfiles/.doom.d" :results output code :wrap example diff
+diff <(ssh kharis guix describe --format=human) <(guix describe --format=human)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1,2c1,2
+< Generation 25	Aug 26 2026 15:26:39	(current)
+<   guix e42227e
+---
+> Generation 17	Jul 31 2026 03:21:54	(current)
+>   guix 18e73c7
+5c5
+<     commit: e42227e1c7e7055e27cecada52ec801a75e44909
+---
+>     commit: 18e73c792281e61c3813a99d662fbde108cf6ec8
+14c14
+<   nonguix c15e19c
+---
+>   nonguix 73baab3
+17,18c17,18
+<     commit: c15e19cdbdfdfddacdae865741809af4fa86a665
+<   rde 47fb718
+---
+>     commit: 73baab37361b3a81f326aa3fdec78840f5acc577
+>   rde 70a1881
+21c21
+<     commit: 47fb718f2b1a3f68a03c51a2740c1ada4052bd3c
+---
+>     commit: 70a1881f09c939792eb2ed932dded1f16291a59f
+#+end_example
+
+*** Channels update flow
+
+#+begin_src dot :results output file :file channels.png
+digraph G {
+    // channel spec to reference when moving pins forwards
+    CHANNELS_LATEST[label="CHANNELS_LATEST\nguix/channels-latest.scm"]
+
+    // guix reads this when it needs a channelspec (could be symlink, but messy)
+    CHANNELS_GUIX[label="CHANNELS_GUIX\n.config/guix/channels.scm"]
+
+    // pinned for guix: to keep guix channels in sync across machines
+    CHANNELS_LOCK[label="CHANNELS_LOCK\nguix/channels-lock.scm"]
+
+    // ares-profile: must source this as a scheme module
+    CHANNELS_DEV[label="CHANNELS_DEV\nguix/env/dc-configs/guix/channels.scm"]
+
+    // pinned for emacs (GUIXTM is unused to launch emacs for now)
+    CHANLOCK[label="CHANLOCK\n.doom.d/channels-lock.scm"]
+
+    CHANNELS_LATEST -> {CHANNELS_GUIX,CHANNELS_LOCK}
+    CHANNELS_LOCK -> {CHANNELS_DEV,CHANLOCK}
+}
+#+end_src
+
+#+RESULTS:
+[[file:20260802010203-omarchy_upgrade_to_quattro/channels.png]]
+
++ trying to move to file-based targets
+  - =$(CHANNELS_LOCK).lock $(CHANNELS_DEV).lock: $(CHANNELS_GUIX)=
+  - so some of the makefile code is in-between
++ file-based targets =.lock= record the timestamp of the last change while
+  allowing guix to manage the profile symlink (which doesn't really have a
+  timestamp for =make=)
++ a few issues like that. this isn't how you'd keep track of channels deployed
+  to servers.
+
+* Learning
+
+** =$qemuscript=
+
+Given the script in =$qemuscript=
+
+#+begin_src shell
+# this is the image to build
+adhoc=$HOME/.dotfiles/guix/adhoc
+chan=$HOME/.dotfiles/guix/dc
+vmspec=$adhoc/isos/usb-gpg-vm.scm
+#+end_src
+
+this builds it. if it suceeds, it outputs the path to a script to run
+
+#+begin_src shell
+qemuscript=$(guix system -L $chan vm "$vmspec")
+#+end_src
+
+Building the actual disk image is always the last step and usually one of the
+longest. If the image is minimal, everything else is fast.
+
+What's it do?
+
+#+begin_src shell
+cat $qemuscript # -append 'noquiet console=ttyS0'"
+#+end_src
+
+Launch directly to the terminal's =/dev/pty/n= with:
+
+#+begin_src shell
+# I got the main vm-image.tmpl working with serial output. 
+/bin/sh -c "$qemuscript -nographic -append 'noquiet console=ttyS0'"
+#+end_src
+
++ the =-append= arg adds some extra kernel cmdline flags, which need to agree with
+  what the =$vmspec= set in the guix system (they probably override, but idk)
++ multiple console kernel args will duplex the boot output AFAIK
++ the console arg also needs to agree with =agetty= and other CLI flags
+
+If you screwed up the boot, you'll hit a guile shell e.g.
+
++ booting from =/dev/sda= instead of the QEMU =/dev/vda=. This only needs to rebuild
+  the bootloader image, so it's fast.
++ or specifying a non-existant console.
+
+Note that =$qemuscript= will `exec` ... so you probably don't want to run it in
+the wrong context, since that will eat the controlling shell/term
+
++ exit with =C-a x=
++ reset the terminal using ~alias shitbin='echo -e "\033c"'~ which is short for
+  ~!@#$ that was binary~ and kinda fixes everything.
+
+#+begin_src shell
+# the usb-gpg-vm.scm image is also working, if i use no -append
+/bin/sh -c "$qemuscript -nographic" # -append 'noquiet console=ttyS0'"
+#+end_src
+
+So, officially, you can't specify the same value for =console= twice. Most kernel
+args will accept the last value (it does what makes sense: the earlier value
+allows for automated scripts to specify default values)
+
+* Scripting
+
+** Generate air-gapped GPG
+
+*** ISO
+
+#+begin_src shell
+make -C ~/.dotfiles/guix iso-gpg
+# guixexpr="(@ (dc system images usb-gpg-tools) usb-gpg-tools)"
+# guix system -L /home/dc/.dotfiles/guix/dc image \
+#  --image-type=iso9660 -e "$guixexpr"
+#+end_src
+
+*** VM
+
+**** example template
+
+#+begin_src shell
+guixcheckout=~/forge/guix/guix
+imagespec="$guixcheckout/gnu/system/examples/vm-image.tmpl"
+guix system vm "$imagespec"
+#+end_src
+
+#+begin_src shell :results output code :wrap src shell
+cat /gnu/store/kclbk89lz0md9rr74gy5vpc3xg81z54l-run-vm.sh | sed -e 's/ -/ \\\n   -/g'
+#+end_src
+
+#+RESULTS:
+#+begin_src shell
+#!/gnu/store/vhkg4avy9zf0kj70dcsmfpymnllkjq1y-bash-5.2.37/bin/sh
+exec /gnu/store/vwrwmcs3593ki79rxc4iyh3kpl5qyzza-qemu-10.2.1/bin/qemu-system-x86_64 \
+   -kernel /gnu/store/sj7dsxn3jkmrlmwn1bhdx6k4vgya4kpl-linux-libre-7.1.8/bzImage \
+   -initrd /gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/initrd \
+   -append "root=/dev/vda1 gnu.system=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system gnu.load=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/boot modprobe.blacklist=usbmouse,usbkbd noquiet" \
+   -object rng-random,filename=/dev/urandom,id=guix-vm-rng \
+   -device virtio-rng-pci,rng=guix-vm-rng \
+   -virtfs local,path=/gnu/store,security_model=none,mount_tag=TAGjoptajej2oynju6yvboauz7pl6uj \
+   -drive file=/gnu/store/k2j1ild5gisf6409m9g4z39rn2n1x2zz-disk-image,format=raw,if=virtio,cache=writeback,werror=report,readonly=on \
+   -m 512 "$@"
+#+end_src
+
+**** Connecting to a serial device
+
+From google... Should suppress the graphical interface
+
+| -nographic            | suppresses launch |
+| -chardev pty,id=char0 |                   |
+| -serial chardev:char0 |                   |
+
+To troubleshoot the serial parameters & baud rate... this is awesome bc you're
+otherwise bumbling around in the dark. the host device needs to control access
+to the =/dev/pty/X= though (doesn't work over the network AFAI)
+
+#+begin_src shell  :results output
+# /gnu/store/kclbk89lz0md9rr74gy5vpc3xg81z54l-run-vm.sh
+# /gnu/store/9v2a07hx0zbj6160ix5rjwrcdvx7mjb9-run-vm.sh
+#   -nographic -chardev pty,id=char0 -serial chardev:char0
+stty -F /dev/pts/9 -a
+#+end_src
+
+#+RESULTS:
+#+begin_example
+speed 38400 baud; rows 0; columns 0; line = 0;
+intr = ^C; quit = ^\; erase = ^?; kill = ^U; eof = ^D; eol = <undef>;
+eol2 = <undef>; swtch = <undef>; start = ^Q; stop = ^S; susp = ^Z; rprnt = ^R;
+werase = ^W; lnext = ^V; discard = ^O; min = 1; time = 0;
+-parenb -parodd -cmspar cs8 -hupcl -cstopb cread -clocal -crtscts
+-ignbrk -brkint -ignpar -parmrk -inpck -istrip -inlcr -igncr -icrnl -ixon -ixoff
+-iuclc -ixany -imaxbel -iutf8
+-opost -olcuc -ocrnl onlcr -onocr -onlret -ofill -ofdel nl0 cr0 tab0 bs0 vt0 ff0
+-isig -icanon -iexten -echo echoe echok -echonl -noflsh -xcase -tostop -echoprt
+echoctl echoke -flusho -extproc
+#+end_example
+
+**** Modify kernel cmdline options
+
+To modify the cmdline flags, add =-append console=ttyS0,115200n8= to =run-vm.sh=
+
+... which doesn't seem to work on this VM.
+
+**** Issues with =grub-efi-bootloader=
+
+must use =guix image= otherwise building a UEFI VM is non-trivial
+
++ the =guix vm= qemu launcher script needs to find host =ovmf= firmware.
++ =(firmware (list ovmf-x86-64))= isn't sufficient
+
+See: [[https://codeberg.org/guix/guix/src/commit/4de2d5f68f630e9a22ba206644449993da4cf45f/gnu/system/image.scm#L598-L603][gnu/system/image.scm]] And trace through references to =(uefi-firmware system)=
+in [[https://codeberg.org/guix/guix/src/commit/4de2d5f68f630e9a22ba206644449993da4cf45f/gnu/tests/install.scm#L213-L222][install.scm]]
+
+**** Building the GPG VM
+
+#+begin_src shell
+vmspec=~/.dotfiles/guix/adhoc/isos/usb-gpg-iso.scm
+guix system -L /home/dc/.dotfiles/guix/dc vm "$vmspec"
+#+end_src
+
+
+** Diffing generations
+
+*** Generations of the user's =~/.doom.d/.guix-profile=
+
+#+begin_src shell :dir "~/.dotfiles/.doom.d" :results output code :wrap example diff
+diff <(ssh kharis guix describe -p ~/.doom.d/.guix-profile --format=human) \
+    <(guix describe -p ~/.doom.d/.guix-profile --format=human)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1c1
+< Generation 1	Jul 05 2026 17:38:52	(current)
+---
+> Generation 29	Sep 02 2026 19:52:46	(current)
+#+end_example
+
+*** Generations of the user's =~/.config/guix/current=
+
+#+begin_src shell :dir "~/.dotfiles/.doom.d" :results output code :wrap example diff
+diff <(ssh kharis guix describe --format=human) <(guix describe --format=human)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1,2c1,2
+< Generation 17	Jul 31 2026 03:21:54	(current)
+<   guix 18e73c7
+---
+> Generation 25	Aug 26 2026 15:26:39	(current)
+>   guix e42227e
+5c5
+<     commit: 18e73c792281e61c3813a99d662fbde108cf6ec8
+---
+>     commit: e42227e1c7e7055e27cecada52ec801a75e44909
+14c14
+<   nonguix 73baab3
+---
+>   nonguix c15e19c
+17,18c17,18
+<     commit: 73baab37361b3a81f326aa3fdec78840f5acc577
+<   rde 70a1881
+---
+>     commit: c15e19cdbdfdfddacdae865741809af4fa86a665
+>   rde 47fb718
+21c21
+<     commit: 70a1881f09c939792eb2ed932dded1f16291a59f
+---
+>     commit: 47fb718f2b1a3f68a03c51a2740c1ada4052bd3c
+#+end_example
+
+**** null result
+
+#+begin_src shell :dir "~/.dotfiles/.doom.d" :results output code :wrap example diff
+# diff <(ssh kharis guix describe -p ~/.dotfiles/guix/.guix-profile-dev --format=human) \
+#     <(guix describe -p ~/.dotfiles/guix/.guix-profile-dev --format=human)
+guix describe -p ~/.dotfiles/guix/.guix-profile-dev --format=human
+#+end_src
+
+#+begin_src shell :dir "~/.dotfiles/.doom.d" :results output code :wrap example diff
+diff <(ssh kharis guix describe -p ~/.dotfiles/guix/.guix-profile-dev --format=human) \
+    <(guix describe -p ~/.dotfiles/guix/.guix-profile-dev --format=human)
+#+end_src
+* Chapters
+
+|---------+----------+--------------------------------------------------+---------------------------------------------------------------------------------------------------------------------|
+| clipped | original |                                                  |                                                                                                                     |
+|---------+----------+--------------------------------------------------+---------------------------------------------------------------------------------------------------------------------|
+|    3:00 |    25:00 | fixing org-refile and org-agenda                 |                                                                                                                     |
+|   10:00 |    25:00 | trying to diff guix describe                     | issues: their specified generations which don't include channels                                                    |
+|   20:00 |    35:00 | guix image generation                            |                                                                                                                     |
+|   25:00 |    40:00 | tramp demo (and =M-x revert-buffer=)               |                                                                                                                     |
+|   40:00 |    55:00 | "there is no known network"                      |                                                                                                                     |
+|   45:00 |  1:00:00 | btrfs subvolume setup                            |                                                                                                                     |
+|   50:00 |  1:05:00 | build images                                     |                                                                                                                     |
+|   55:00 |  1:10:00 | build a hyprland workspace for QEMU              |                                                                                                                     |
+| 1:05:00 |  1:20:00 | launch qemu, struggle with escape sequence       |                                                                                                                     |
+| 1:10:00 |  1:25:00 | guix source code, examples of qemu automation    |                                                                                                                     |
+| 1:20:00 |  1:35:00 | monitoring u-boot over SPI flash for bare-boots  | why bare metal sucks; poorly explaining custom u-boot builds with different drivers loaded at different boot phases |
+| 1:25:00 |  1:40:00 | build the GPG image as a VM and add a serial/TTY |                                                                                                                     |
+| 1:55:00 |  2:10:00 | guix-infect to hetzner/digital ocean             |                                                                                                                     |
+|---------+----------+--------------------------------------------------+---------------------------------------------------------------------------------------------------------------------|
+Afterwards, just kinda rambling, i guess
+
+
+** Actual
+
+|---------+-----------------------------------------------------------------------------------|
+| clipped | Chapter                                                                           |
+|---------+-----------------------------------------------------------------------------------|
+|    3:00 | Fixing `org-refile` for the current workflow                                      |
+|   12:00 | Using `guix describe` across ssh to diff profile generations                      |
+|   22:00 | Showing emacs configs containing OBS automation                                   |
+|   22:45 | Editing files over ssh via tramp & preventing overwrites with `M-x revert-buffer` |
+|   27:30 | Problems with Syncthing and Git repos                                             |
+|   29:30 | "There is no known network"                                                       |
+|   33:30 | BTRFS subvolume setup for Nix and Guix subvolumes                                 |
+|   42:00 | Preventing Guix garbage collection with profiles & `guix time-machine`            |
+|   44:30 | Building an image & QEMU launcher with `guix vm`                                  |
+|   48:30 | Building an iso with `guix system image`                                          |
+|   58:30 | Building a hyprland workspace for `QEMU`                                          |
+| 1:04:00 | Launching `QEMU` viewer in that workspace                                         |
+| 1:08:00 | Looking for examples of qemu automation                                           |
+| 1:12:00 | A virtual serial port helps prep for iPXE workflows on bare metal                 |
+| 1:18:00 | Examples of bootloader build logic in the Guix codebase                           |
+| 1:23:00 | Comparing "systems vs programmer" perspectives as "top-down" vs "bottom-up"       |
+| 1:30:00 | Launching an repl from an impure guix time-machine profile                |
+| 1:35:00 | Moving the GPG ISO to an adhoc guile script |
+
+fdsa
+
+|---------+-----------------------------------------------------------------------------------|
+| 1:20:00 |                                                                                   |
+| 1:25:00 |                                                                                   |
+| 1:55:00 |                                                                                   |
+|---------+-----------------------------------------------------------------------------------|
+*** Markdown
+
++ 3:00: Fixing `org-refile` for the current workflow
++ 12:00: Using `guix describe` across ssh to diff profile generations
++ 22:00: Showing emacs configs containing OBS automation
++ 22:45: Editing files over ssh via tramp & preventing overwrites with `M-x revert-buffer`
++ 27:30: Problems with Syncthing and Git repos
++ 29:30: "There is no known network"
++ 33:30: BTRFS subvolume setup for Nix and Guix subvolumes
++ 42:00: Preventing Guix garbage collection with profiles & `guix time-machine`
++ 44:30: Building an image & QEMU launcher with `guix vm`
++ 48:30: Building an iso with `guix system image`
++ 58:30: Building a hyprland workspace for `QEMU`
++ 1:04:00: Launching `QEMU` viewer in that workspace
++ 1:08:00: Looking for examples of qemu automation
++ 1:22:00: A virtual serial port helps prep for iPXE workflows on bare metal

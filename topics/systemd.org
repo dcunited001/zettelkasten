@@ -335,6 +335,136 @@ grep -ire 'wantedby\s*=.*\[.*"timers.target"' \
 + cache cleanup
 ** Learning
 
+*** Inherited environment
+
+**** Doom Emacs Env File: 05-doom-env.load.el
+:PROPERTIES:
+:ID:       39107d64-a26d-4790-aed4-bce4a88d0863
+:END:
+
+Need to determine whether =uwsm='s activation process gives my =doom= emacs server
+the correct environment. I think i had =doom sync -e= running, which dumps an
+=envfile=. I may have needed a quick fix or something.
+
+This could cause issues... (which i've know about for like 4 years ever since
+running =doom= on =guix=. i managed to figure this one out, just not the other
+lexical binding issues i had in my first doom config)
+
+***** Potential Issues
+
+First... if the recorded environment is incorrect, =doom= will shim what's in
+=05-doom-env.load.el= on top of what gets loaded by:
+
+- initial PAM/profile setup, then systemd/uwsm activation, then what's set in
+  ~Environment=~ for =doom.service=
+- the =doom.service= unit _runs_ a =guix shell -- emacs= command which further
+  modifies the environment
+- finally =doomemacs= loads =05-doom-env.load.el= which usually gets changed
+  during =doom upgrade= and =doom sync=
+
+#+begin_src systemd
+# ~/.config/guix/current/bin/guix just ensures the most recent `guix` will do the `-p $profile` evaluation.
+ExecStart=/bin/sh -c "/home/dc/.config/guix/current/bin/guix shell -p $DOOMDIR/$GPROFILE -- emacs --init-directory ...."
+ExecStop=/bin/sh -c "/home/dc/.config/guix/current/bin/guix shell -p $DOOMDIR/$GPROFILE -- emacsclient --socket ...."
+# this happens by symlink, instead of ????
+#+end_src
+
+Secondly...
+
+When running =doom= under a guix profile, =PATH= or other details. usually, i'll
+ensure these are referring to the symlink, unless i specifically want absolute
+=*_PATH= or =rpath= lookups
+  
+e.g. =~/.doom.d/.guix-profile/bin=
+
+this works well, with one potential issue: what's shimmed in by
+=~/.doom.d/.guix-profile/etc/profile= may change from time to time ... meaning
+that what =ldd= reports here isn't necessarily what's in running =emacs= process
+itself. usually, this means it follows =RPATH= and sometimes that can follow
+through differently
+
+#+begin_src shell
+newemacs=$(guix shell -p .guix-profile -- which emacs)
+ldd "$newemacs"
+#+end_src
+
+What really matters is which =$profile/bin/toolcommands= emacs spawns and whatnot.
+If those are referred to by their relative path -- thus, by symlink resolution,
+their newer =/{nix,gnu}/store= -- then the =#!/gnu/store/.../bin/shebangs= will also
+be newer for wrapper scripts. everything will be gradually moving forwards.
+
+BUT! ... if Emacs itself may want to load a specific =emacs-lisp= library that
+hasn't been loaded yet. These are all hard-coded as absolute path references
+deep in Guix emacs build output -- which also very conveniently compiles all the
+most basic =*.eln= files; a tradeoff.
+
+So, what definitely triggers a problem:
+
++ build emacs that has hardcoded a problem. start a long running session
++ update the guix emacs profile, propagate the update's file-system side effects
++ load an emacs library that assumes to know an =ABI= for some c-library -- ZMQ or
+  sqlite may do it.
+  + strangely, I thought that emacs was dynamically linked, but somehow this still
+    happens.
+  + emacs may lock up here. it depends. For me, it suddenly gets garbled and
+    locks up after a few days or so.
+  + it's not a slow/chronic buildup of dysfunction
+
+This sounds complicated, but i know the Guix builds of Emacs fairly well, it
+easily allows for a latex distribution to be included (etc, etc)
+
+And... this is actually far preferable having =nixos-rebuild= swap out content
+similarly. 
+
+***** Checking service/target dependencies
+
+#+begin_src shell
+systemctl show list-dependencies --user doom
+systemctl show list-dependencies --user --reverse doom
+
+systemctl show list-dependencies --user graphical-session.target
+systemctl show list-dependencies --user --reverse graphical-session.target
+
+systemctl list-dependencies --user '*hyprland*.service'
+#+end_src
+
+Checking environment overrides
+
+#+begin_src shell
+systemctl show --user doom --property=Environment | tr ' ' '\n'
+#+end_src
+
+Checking actual environment
+
++ get a process directly spawned by hyprland or emacs to write to a tmp file
+  - then filter/sort these and diff between different environments 
+
+***** Testing in hyprland/uwsm
+
+A pretty good test for whether hyprland/uwsm/emacs have all their environment
+activation/inheritance correctly is to try =hyprctl= commands using =M-!=
+
+#+begin_example shell
+hyprctl version # this will fail, if it can't talk to hyprland
+hyprctl dispatch 'hl.dsp.exec_cmd("notify-send fdsa")'
+#+end_example
+
+***** Doom Env File
+
+When doom updates/syncs, it may list this output
+
+#+begin_quote
+05-doom-env.load.el...
+05-doom.init.el...
+10-doom-cli-loaddefs.load.el...
+10-doom-loaddefs.init.el...
+20-user.init.el...
+30-doom-package-envs.init.el...
+60-doom-module-loaddefs.init.el...
+70-doom-package-loaddefs.init.el...
+80-doom-modules.init.el...
+#+end_quote
+
 *** =systemd-analyze dot=
 
 **** System Targets
@@ -563,7 +693,6 @@ guix system -L ellipsis/ -L dc/ shepherd-graph \
 diff <(cat $t/$system_x11.dot | sort) \
     <(cat $t/$system_wayland.dot | sort) > $t/kharis.diff.txt
 #+end_example
-
 *** List Subcommands
 
 See

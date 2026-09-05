@@ -1,0 +1,162 @@
+:PROPERTIES:
+:ID:       add0a8a6-3306-4c7d-a152-a2cb48db3ccc
+:END:
+#+TITLE: Windows vs POSIX: Comparing PATH and Shells
+#+CATEGORY: slips
+#+TAGS:
+
+* The four shells we'll use in windows:
+
+| Name           | Executable     | Purpose                                                | Example Usage                                             |
+|----------------+----------------+--------------------------------------------------------+-----------------------------------------------------------|
+| Command Prompt | cmd.exe        | Running Windows =.bat= scripts                           | ~ipconfig~ or ~route~ to check windows networking             |
+| Admin Prompt   | cmd.exe        | For installing malware and breaking computers          | Run =reg add= or =regedit=                                    |
+| Git Bash       |                | Mostly =POSIX=-compliant shell                           | Run =git= or =make= commands without =cygwin= or =WSL2=           |
+| Powershell     | powershell.exe | A more flexible shell whose commands wrap the =.NET= API | Run =.NET= commands and join output with SQL-like abilities |
+
+Their locations in windows:
+
+| Name           | Executable                                                  |
+|----------------+-------------------------------------------------------------|
+| Command Prompt | %windir%\system32\cmd.exe                                   |
+| Admin Prompt   | %windir%\system32\cmd.exe                                   |
+| Git Bash       | "C:\Program Files\Git\git-bash.exe"                         |
+| Powershell     | %SystemRoot%\system32\WindowsPowerShell\v1.0\powershell.exe |
+
+Finding these locations:
+
++ Right click on a program (e.g. in the Start Menu)
++ Click "Open File Location"
++ Identify the program or its shortcut
++ Right click and select "Properties"
+
+Example commands in Git Bash
+
+| ~echo $(dirname `which powershell`)~   | Where does the powershell executable live?                   |
+| ~ldd `which powershell`~               | What dynamically-linked =*.dll= files does ~powershell~ link to? |
+| ~ls -al $(dirname `which powershell`)~ | What else lives in the same directory as ~powershell~?         |
+
+So from the last command, we see that =Git Bash= can run =*.exe= files as though
+they were executables.
+
+** What are =$PATH= and =%PATH%=
+
+Run =echo $PATH | tr ':' '\n'=
+
+When a shell runs a program, it will search these locations until it finds a
+match. There other types of =.*PATH= variables used for similar purposes, but this
+is the one used almost exclusively in shells (& elsewhere) to find the program
+you want to run.
+
+Windows also has =%PATH%=! See example =whatispath.bat=
+
+#+begin_src bat :tangle whatispath.bat
+@echo off
+setlocal EnableDelayedExpansion
+
+(set LF=^
+)
+
+:: 3. Replace commas with the newline variable
+set "modifiedString=!PATH:;==%LF%%LF%! "
+
+:: 4. Display the result
+echo !modifiedString!
+
+endlocal
+pause
+#+end_src
+
+Now run =whatispath.bat=
+
+Mainly we may need to know _about_ =bat= scripting because we have a script to "fix"
+the "default route" that allows a windows computer to have access to the
+internet while connected to the RoboRIO (in the two-radio connection scenario)
+
+* What is a =shell=?
+
+A shell is a thin program -- literally a "shell" -- that contains enough
+functionality to wrap around a kernel to provide access to an operating system's
+functions.
+
+#+begin_quote
+The =shell= is the outermost layer of the ~OS~. =Shell='s incorporate a programming
+language to control processes and files, as well as to start and control other
+programs. The =shell= manages the interaction between you and the ~OS~ by prompting
+you for input, interpreting that input for the ~OS~, and the handling any
+resulting output from the operating system.
+
+=Shell='s provide a way for you to communicate with the ~OS~. This communication is
+carried out either interactively (input from the keyboard is acted upon
+immediately) or as a =shell= script. A =shell= script is a sequence of =shell= and ~OS~
+commands that is stored in a file.
+#+end_quote
+
+Many programs can act as a "shell". e.g.
+
++ =bash= which has syntax that's often considered obtuse
++ =python=, if you don't mind how verbose it is to do simple things
++ =busybox= for embedded computers, like a small router or =ARM= device
++ =plasma-shell 
+
+Typically, we call something a =shell= when it gives us the ability to script:
+
+1. Access to files, pipes, named pipes or processes
+2. Creation of processes and management of those processes
+3. Repeatable automations
+
+But, technically, a shell is a program that
+
+1) knows how to interface with its host OS...
+2) to execute enough system calls...
+3) to ask the computer to access files or run other programs.
+
+The reason I'm covering this:
+
++ The =RoboRIO= has a =bash=-like shell and a file system with paths that look like
+  =POSIX= paths
++ But the =RoboRIO= is an _ARM Device_ that runs _Windows_ built for an _ARM CPU_.
+
+To me, the =RoboRIO= operating system is interesting.
+
+For you, I'd like you to remember two things here:
+
+1) It's just important to remember the definition of a shell: having a clear
+   concept of what this is will be useful later on. It may not be important for
+   FRC
+2) As time goes on, it's easy to "mis-learn" these concepts. So please remember
+   a) the idea that the technical definitions of these terms are important and
+   b) you may need to revisit those definitions from time to time: to be more
+      creative, to relearn something you thought you already know, or to
+      clarify.
+
+* Questions
+
+** Does an OS require a shell? Why or why not?
+
+#+begin_quote
+No! Talos Linux and some cloud VM hosts have famously restricted access to
+shells, as once a hacker gets a "reverse shell", they can easily ask the
+computer to run programs.
+#+end_quote
+
+** Where do programs run without a shell?
+
+1) On embedded devices!
+   - This is a critical distinction to remember for embedded programming: they
+     usually do _not_ have an OS.
+   - Again, clear definitions are helpful to remember: the purpose of an
+     *operating system* is to provide unified access to files and kernel
+     functionality.
+   - Technically, I did not define "operating system" above
+   - One does _not_ simply get file access for free. On the RoboRIO, the host OS
+2) On your very own PC ... if you're not worried about the need for error
+   handling in raw device access.
+   - This can end badly, as the CPU can run assembler that asks devices to
+     perform _any_ function.
+   - Could cause the device to run outside of safe operating parameters
+   - Could even trigger undefined behavior (like Super Mario's Minus World...
+     but for hardware state)
+
+And a bit of trivia: while most NES hardware emulator will trigger the SMB Minus
+World, other old glitches in NES games may not.
