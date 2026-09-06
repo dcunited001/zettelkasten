@@ -64,6 +64,513 @@ Branching is simple enough, but a lot of the experimenation tried involves some
 =*-bin= package. So I just usually get stuck at tracing through the changes in
 deps required to build.
 
+* Guix channels
+
+*** Channel specs
+
+**** Comparing =(directory "choice")= with a channel's scheme modules
+:PROPERTIES:
+:header-args+: :dir "/data/ecto/guix/channels"
+:END:
+
+From repo checkouts for guix
+
+#+name: treepaste
+#+begin_src shell :results output code :wrap "src shell :results output :wrap verse"
+channelspecs=$(fd -H '.guix-channel' .)
+channelroots=($(grep -H directory ${channelspecs[@]} |\
+    sed -E 's/.guix-channel: +\(directory "(.*)".*$/\1/g'))
+
+# this outputs a babel block that outputs a verse block, but needs some manual
+# munging to avoid dynamic re-evaluation of commands to discover widths.
+
+i=0
+n=4
+for c in ${channelroots[@]}; do
+  last=$(($n - 1))
+  [[ $((i % n)) == 0 ]] && echo 'paste \'
+
+  # errors will screw up paste lines
+  [[ -d "$c" ]] && echo '  <('"tree --prune -P '*.scm' $c --noreport"') \'
+  [[ $((i % n)) == $last ]] || [[ $((i + 1)) == ${#channelroots[@]} ]]  \
+      && echo '| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"' \
+      && echo echo
+
+  # if ($((i % 3)) == $((3 - 1))); then
+  # if
+  i=$((i+1))
+done
+echo ''
+#+end_src
+
+#+RESULTS:
+#+begin_src shell :results output :wrap verse
+paste \
+  <(tree --prune -P '*.scm' ./baulig/packages --noreport) \
+  <(tree --prune -P '*.scm' ./gocix/modules --noreport) \
+  <(tree --prune -P '*.scm' ./guix-crypto/src --noreport) \
+  <(tree --prune -P '*.scm' ./guix-deployments/modules --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+paste \
+  <(tree --prune -P '*.scm' ./guix-systole/systole --noreport) \
+  <(tree --prune -P '*.scm' ./radix/modules --noreport) \
+  <(tree --prune -P '*.scm' ./rde/src --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+paste \
+  <(tree --prune -P '*.scm' ./rosenthal/modules --noreport) \
+  <(tree --prune -P '*.scm' ./saayix/modules --noreport) \
+  <(tree --prune -P '*.scm' ./sops-guix/modules --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+
+#+end_src
+
+#+RESULTS:
+#+begin_verse
+./baulig/packages                                  ./gocix/modules                                    ./guix-crypto/src                                  ./guix-deployments/modules                        
+└── baulig                                         └── oci                                            └── guix-crypto                                    └── fishinthecalculator                           
+    ├── build                                          ├── build                                          ├── packages                                       ├── ci.scm                                    
+    │   ├── bacula-build-system.scm                    │   └── utils.scm                                  │   ├── ethereum.scm                               ├── common                                    
+    │   ├── baculum-build-system.scm                   ├── self.scm                                       │   ├── monero.scm                                 │   ├── backup.scm                            
+    │   ├── config-utils.scm                           └── services                                       │   ├── swarm.scm                                  │   ├── channels.scm                          
+    │   ├── go-module-build-system.scm                     ├── bonfire.scm                                │   └── zcash.scm                                  │   ├── home                                  
+    │   ├── ksh-build-system.scm                           ├── conduit.scm                                ├── package-utils.scm                              │   │   ├── fishinthecalculator               
+    │   ├── secrets-service.scm                            ├── configuration.scm                          ├── script-utils.scm                               │   │   │   ├── const.scm                     
+    │   ├── secrets-utils.scm                              ├── forgejo.scm                                ├── services                                       │   │   │   ├── home-configuration.scm        
+    │   └── utils.scm                                      ├── grafana.scm                                │   ├── lighthouse.scm                             │   │   │   ├── packages.scm                  
+    ├── build-system                                       ├── lemmy.scm                                  │   ├── nethermind.scm                             │   │   │   └── services                      
+    │   ├── bacula.scm                                     ├── meilisearch.scm                            │   └── swarm.scm                                  │   │   │       ├── doom-emacs.scm            
+    │   ├── baculum.scm                                    ├── pict-rs.scm                                ├── service-utils.scm                              │   │   │       ├── shells.scm                
+    │   ├── go-module.scm                                  ├── prometheus.scm                             ├── swarm-utils.scm                                │   │   │       └── sway.scm                  
+    │   └── ksh.scm                                        ├── tandoor.scm                                └── utils.scm                                      │   │   └── services                          
+    ├── config                                             ├── traefik.scm                                                                                   │   │       └── unload.scm                    
+    │   ├── bacula.scm                                     └── vaultwarden.scm                                                                               │   ├── keys.scm                              
+    │   ├── common.scm                                                                                                                                       │   ├── locales.scm                           
+    │   ├── edoras                                                                                                                                           │   ├── scripts.scm                           
+    │   │   ├── bacula                                                                                                                                       │   ├── secrets.scm                           
+    │   │   │   ├── director.scm                                                                                                                             │   ├── self.scm                              
+    │   │   │   └── storage.scm                                                                                                                              │   ├── services                              
+    │   │   ├── bacula.scm                                                                                                                                   │   │   ├── base.scm                          
+    │   │   ├── baculum.scm                                                                                                                                  │   │   ├── desktop.scm                       
+    │   │   ├── grafana.scm                                                                                                                                  │   │   ├── firewall.scm                      
+    │   │   ├── loki.scm                                                                                                                                     │   │   ├── secrets.scm                       
+    │   │   ├── nginx.scm                                                                                                                                    │   │   ├── server.scm                        
+    │   │   ├── parameters.scm                                                                                                                               │   │   ├── substitute.scm                    
+    │   │   ├── postgresql.scm                                                                                                                               │   │   ├── timers.scm                        
+    │   │   ├── prometheus.scm                                                                                                                               │   │   ├── unattended-reboot.scm             
+    │   │   ├── promtail.scm                                                                                                                                 │   │   ├── unattended-upgrades.scm           
+    │   │   └── vpn.scm                                                                                                                                      │   │   └── unload.scm                        
+    │   ├── lothlorien                                                                                                                                       │   ├── system                                
+    │   │   ├── bacula                                                                                                                                       │   │   ├── desktop.scm                       
+    │   │   │   ├── console.scm                                                                                                                              │   │   ├── image.scm                         
+    │   │   │   ├── director.scm                                                                                                                             │   │   ├── input.scm                         
+    │   │   │   ├── external.scm                                                                                                                             │   │   └── install.scm                       
+    │   │   │   └── storage.scm                                                                                                                              │   └── users.scm                             
+    │   │   ├── bacula.scm                                                                                                                                   ├── frastanato                                
+    │   │   ├── baculum.scm                                                                                                                                  │   ├── machine                               
+    │   │   ├── nginx.scm                                                                                                                                    │   │   └── deploy.scm                        
+    │   │   ├── parameters.scm                                                                                                                               │   ├── secrets.scm                           
+    │   │   ├── postgresql.scm                                                                                                                               │   └── system                                
+    │   │   └── vpn.scm                                                                                                                                      │       ├── config.scm                        
+    │   ├── minas-tirith                                                                                                                                     │       └── image.scm                         
+    │   │   ├── bacula.scm                                                                                                                                   ├── prematurata                               
+    │   │   ├── nginx.scm                                                                                                                                    │   └── system                                
+    │   │   ├── parameters.scm                                                                                                                               │       ├── config.scm                        
+    │   │   ├── postgresql.scm                                                                                                                               │       ├── image.scm                         
+    │   │   └── vpn.scm                                                                                                                                      │       └── install.scm                       
+    │   ├── nftables.scm                                                                                                                                     ├── skibidi                                   
+    │   └── pelargir                                                                                                                                         │   └── system                                
+    │       ├── bacula.scm                                                                                                                                   │       └── config.scm                        
+    │       ├── nginx.scm                                                                                                                                    └── virtual-nellone                           
+    │       ├── parameters.scm                                                                                                                                   ├── machine                               
+    │       └── vpn.scm                                                                                                                                          │   └── deploy.scm                        
+    ├── multi-fetch.scm                                                                                                                                          ├── services                              
+    ├── packages                                                                                                                                                 │   └── nginx.scm                         
+    │   ├── bacula.scm                                                                                                                                           └── system                                
+    │   ├── baculum.scm                                                                                                                                              ├── config.scm                        
+    │   ├── gitlab-runner.scm                                                                                                                                        ├── install.scm                       
+    │   ├── grafana.scm                                                                                                                                              └── secrets.scm                       
+    │   ├── ksh93.scm                                                                                                                                                                                      
+    │   ├── loki.scm                                                                                                                                                                                       
+    │   ├── martin-org-publish.scm                                                                                                                                                                         
+    │   ├── prometheus.scm                                                                                                                                                                                 
+    │   └── vmm-clock.scm                                                                                                                                                                                  
+    ├── services                                                                                                                                                                                           
+    │   ├── account.scm                                                                                                                                                                                    
+    │   ├── activation.scm                                                                                                                                                                                 
+    │   ├── bacula                                                                                                                                                                                         
+    │   │   ├── client.scm                                                                                                                                                                                 
+    │   │   ├── common.scm                                                                                                                                                                                 
+    │   │   ├── console.scm                                                                                                                                                                                
+    │   │   ├── database.scm                                                                                                                                                                               
+    │   │   ├── director.scm                                                                                                                                                                               
+    │   │   ├── pki.scm                                                                                                                                                                                    
+    │   │   ├── storage.scm                                                                                                                                                                                
+    │   │   └── tls.scm                                                                                                                                                                                    
+    │   ├── baculum.scm                                                                                                                                                                                    
+    │   ├── chrony.scm                                                                                                                                                                                     
+    │   ├── config-serialization.scm                                                                                                                                                                       
+    │   ├── gitlab-runner.scm                                                                                                                                                                              
+    │   ├── grafana.scm                                                                                                                                                                                    
+    │   ├── loki.scm                                                                                                                                                                                       
+    │   ├── nginx.scm                                                                                                                                                                                      
+    │   ├── parameters.scm                                                                                                                                                                                 
+    │   ├── php-fpm.scm                                                                                                                                                                                    
+    │   ├── postgresql.scm                                                                                                                                                                                 
+    │   ├── prometheus.scm                                                                                                                                                                                 
+    │   ├── promtail.scm                                                                                                                                                                                   
+    │   ├── rsyslog.scm                                                                                                                                                                                    
+    │   ├── secrets.scm                                                                                                                                                                                    
+    │   ├── serialization                                                                                                                                                                                  
+    │   │   ├── bacula.scm                                                                                                                                                                                 
+    │   │   ├── dash-space.scm                                                                                                                                                                             
+    │   │   ├── key-value.scm                                                                                                                                                                              
+    │   │   ├── loki.scm                                                                                                                                                                                   
+    │   │   ├── nginx.scm                                                                                                                                                                                  
+    │   │   ├── no-serialization.scm                                                                                                                                                                       
+    │   │   ├── postgresql.scm                                                                                                                                                                             
+    │   │   ├── prometheus.scm                                                                                                                                                                             
+    │   │   ├── syntax-macros.scm                                                                                                                                                                          
+    │   │   ├── underscore-key-value.scm                                                                                                                                                                   
+    │   │   ├── underscore-single-quotes.scm                                                                                                                                                               
+    │   │   ├── underscore-space-semicolon.scm                                                                                                                                                             
+    │   │   └── yaml.scm                                                                                                                                                                                   
+    │   └── vpn.scm                                                                                                                                                                                        
+    └── utils                                                                                                                                                                                              
+        └── syntax-macros.scm                                                                                                                                                                              
+
+./guix-systole/systole                             ./radix/modules                                    ./rde/src                                                                                            
+└── systole                                        └── radix                                          ├── contrib                                                                                          
+    ├── licenses.scm                                   ├── combinators.scm                            │   ├── features                                                                                     
+    ├── packages                                       ├── home                                       │   │   ├── age.scm                                                                                  
+    │   ├── cisst.scm                                  │   ├── services                               │   │   ├── emacs-xyz.scm                                                                            
+    │   ├── claude-skills.scm                          │   │   ├── gnupg.scm                          │   │   ├── javascript.scm                                                                           
+    │   ├── ctk.scm                                    │   │   ├── repl.scm                           │   │   ├── json.scm                                                                                 
+    │   ├── grub-themes.scm                            │   │   ├── shells.scm                         │   │   ├── substitutes.scm                                                                          
+    │   ├── igsio.scm                                  │   │   ├── shepherd.scm                       │   │   └── wm.scm                                                                                   
+    │   ├── itk.scm                                    │   │   ├── xdg.scm                            │   ├── packages                                                                                     
+    │   ├── libarchive.scm                             │   │   └── zathura.scm                        │   │   ├── node.scm                                                                                 
+    │   ├── maths.scm                                  │   └── services.scm                           │   │   └── node-xyz.scm                                                                             
+    │   ├── openhaptics.scm                            ├── packages                                   │   └── services                                                                                     
+    │   ├── openigtlink.scm                            │   ├── admin.scm                              │       └── substitutes.scm                                                                          
+    │   ├── plustoolkit.scm                            │   ├── browser-extensions.scm                 ├── gnu                                                                                              
+    │   ├── pythonqt.scm                               │   ├── emacs-xyz.scm                          │   ├── home-services                                                                                
+    │   ├── python-xyz.scm                             │   ├── fish-xyz.scm                           │   │   ├── gnupg.scm                                                                                
+    │   ├── qrestapi.scm                               │   ├── freedesktop.scm                        │   │   ├── mail.scm                                                                                 
+    │   ├── ros2                                       │   ├── games.scm                              │   │   ├── password-utils.scm                                                                       
+    │   │   └── jazzy.scm                              │   ├── gnome-xyz.scm                          │   │   ├── shells.scm                                                                               
+    │   ├── ros2-helpers.scm                           │   ├── image-viewers.scm                      │   │   ├── ssh.scm                                                                                  
+    │   ├── ros2.scm                                   │   ├── kak-xyz.scm                            │   │   ├── state.scm                                                                                
+    │   ├── slicer-applications.scm                    │   ├── linux.scm                              │   │   ├── terminals.scm                                                                            
+    │   ├── slicer-igt.scm                             │   ├── mail.scm                               │   │   ├── version-control.scm                                                                      
+    │   ├── slicer-ros2.scm                            │   ├── music.scm                              │   │   ├── web-browsers.scm                                                                         
+    │   ├── slicer.scm                                 │   ├── package-management.scm                 │   │   ├── wm.scm                                                                                   
+    │   ├── slicer-sofa.scm                            │   ├── password-utils.scm                     │   │   └── xorg.scm                                                                                 
+    │   ├── sofa.scm                                   │   ├── pdf.scm                                │   └── home-services-utils.scm                                                                      
+    │   ├── teem.scm                                   │   ├── pulseaudio.scm                         └── rde                                                                                              
+    │   ├── vtk.scm                                    │   ├── rust-crates.scm                            ├── api                                                                                          
+    │   └── wallpapers.scm                             │   ├── seninha.scm                                │   └── store.scm                                                                                
+    ├── packages.scm                                   │   ├── shells.scm                                 ├── build.scm                                                                                    
+    ├── services                                       │   ├── text-editors.scm                           ├── exceptions.scm                                                                               
+    │   └── dicomd-service.scm                         │   ├── toys.scm                                   ├── features                                                                                     
+    └── transformations.scm                            │   ├── version-control.scm                        │   ├── agda.scm                                                                                 
+                                                       │   ├── video.scm                                  │   ├── android.scm                                                                              
+                                                       │   ├── web-browsers.scm                           │   ├── ast-grep.scm                                                                             
+                                                       │   ├── window-management.scm                      │   ├── base.scm                                                                                 
+                                                       │   ├── wm.scm                                     │   ├── bittorrent.scm                                                                           
+                                                       │   └── xdisorg.scm                                │   ├── bluetooth.scm                                                                            
+                                                       ├── packages.scm                                   │   ├── clojure.scm                                                                              
+                                                       ├── repl                                           │   ├── containers.scm                                                                           
+                                                       │   └── command.scm                                │   ├── databases.scm                                                                            
+                                                       ├── services                                       │   ├── difftastic.scm                                                                           
+                                                       │   ├── admin.scm                                  │   ├── docker.scm                                                                               
+                                                       │   ├── pm.scm                                     │   ├── documentation.scm                                                                        
+                                                       │   ├── repl.scm                                   │   ├── emacs-meow.scm                                                                           
+                                                       │   └── shepherd.scm                               │   ├── emacs.scm                                                                                
+                                                       ├── system                                         │   ├── emacs-xyz.scm                                                                            
+                                                       │   ├── monitoring.scm                             │   ├── finance.scm                                                                              
+                                                       │   ├── security.scm                               │   ├── fontutils.scm                                                                            
+                                                       │   └── setuid.scm                                 │   ├── ghostty.scm                                                                              
+                                                       └── utils.scm                                      │   ├── gnupg.scm                                                                                
+                                                                                                          │   ├── golang.scm                                                                               
+                                                                                                          │   ├── gtk.scm                                                                                  
+                                                                                                          │   ├── guile.scm                                                                                
+                                                                                                          │   ├── image-viewers.scm                                                                        
+                                                                                                          │   ├── irc.scm                                                                                  
+                                                                                                          │   ├── jujutsu.scm                                                                              
+                                                                                                          │   ├── keyboard.scm                                                                             
+                                                                                                          │   ├── libreoffice.scm                                                                          
+                                                                                                          │   ├── linux.scm                                                                                
+                                                                                                          │   ├── lisp.scm                                                                                 
+                                                                                                          │   ├── llm.scm                                                                                  
+                                                                                                          │   ├── mail                                                                                     
+                                                                                                          │   │   └── providers.scm                                                                        
+                                                                                                          │   ├── mail.scm                                                                                 
+                                                                                                          │   ├── markup.scm                                                                               
+                                                                                                          │   ├── matrix.scm                                                                               
+                                                                                                          │   ├── messaging.scm                                                                            
+                                                                                                          │   ├── networking.scm                                                                           
+                                                                                                          │   ├── niri.scm                                                                                 
+                                                                                                          │   ├── nyxt-xyz.scm                                                                             
+                                                                                                          │   ├── ocaml.scm                                                                                
+                                                                                                          │   ├── password-utils.scm                                                                       
+                                                                                                          │   ├── presets.scm                                                                              
+                                                                                                          │   ├── prolog.scm                                                                               
+                                                                                                          │   ├── python.scm                                                                               
+                                                                                                          │   ├── security-token.scm                                                                       
+                                                                                                          │   ├── shells.scm                                                                               
+                                                                                                          │   ├── shellutils.scm                                                                           
+                                                                                                          │   ├── sourcehut.scm                                                                            
+                                                                                                          │   ├── ssh.scm                                                                                  
+                                                                                                          │   ├── system.scm                                                                               
+                                                                                                          │   ├── terminals.scm                                                                            
+                                                                                                          │   ├── tmux.scm                                                                                 
+                                                                                                          │   ├── uml.scm                                                                                  
+                                                                                                          │   ├── version-control.scm                                                                      
+                                                                                                          │   ├── video.scm                                                                                
+                                                                                                          │   ├── virtualization.scm                                                                       
+                                                                                                          │   ├── web-browsers.scm                                                                         
+                                                                                                          │   ├── web.scm                                                                                  
+                                                                                                          │   ├── wm.scm                                                                                   
+                                                                                                          │   ├── xdg.scm                                                                                  
+                                                                                                          │   └── xdisorg.scm                                                                              
+                                                                                                          ├── features.scm                                                                                 
+                                                                                                          ├── gexp.scm                                                                                     
+                                                                                                          ├── home                                                                                         
+                                                                                                          │   └── services                                                                                 
+                                                                                                          │       ├── android.scm                                                                          
+                                                                                                          │       ├── bittorrent.scm                                                                       
+                                                                                                          │       ├── desktop.scm                                                                          
+                                                                                                          │       ├── emacs.scm                                                                            
+                                                                                                          │       ├── emacs-xyz.scm                                                                        
+                                                                                                          │       ├── gtk.scm                                                                              
+                                                                                                          │       ├── i2p.scm                                                                              
+                                                                                                          │       ├── keyboard.scm                                                                         
+                                                                                                          │       ├── lisp.scm                                                                             
+                                                                                                          │       ├── mail.scm                                                                             
+                                                                                                          │       ├── matrix.scm                                                                           
+                                                                                                          │       ├── ocaml.scm                                                                            
+                                                                                                          │       ├── shells.scm                                                                           
+                                                                                                          │       ├── shellutils.scm                                                                       
+                                                                                                          │       ├── video.scm                                                                            
+                                                                                                          │       ├── web-browsers.scm                                                                     
+                                                                                                          │       ├── wm.scm                                                                               
+                                                                                                          │       └── xdisorg.scm                                                                          
+                                                                                                          ├── lib                                                                                          
+                                                                                                          │   └── file.scm                                                                                 
+                                                                                                          ├── packages                                                                                     
+                                                                                                          │   ├── aspell.scm                                                                               
+                                                                                                          │   ├── emacs.scm                                                                                
+                                                                                                          │   ├── emacs-xyz.scm                                                                            
+                                                                                                          │   ├── fonts.scm                                                                                
+                                                                                                          │   ├── ghostty.scm                                                                              
+                                                                                                          │   ├── guile-xyz.scm                                                                            
+                                                                                                          │   ├── guix.scm                                                                                 
+                                                                                                          │   ├── mail.scm                                                                                 
+                                                                                                          │   ├── security-token.scm                                                                       
+                                                                                                          │   ├── video.scm                                                                                
+                                                                                                          │   ├── web-browsers.scm                                                                         
+                                                                                                          │   └── wm.scm                                                                                   
+                                                                                                          ├── packages.scm                                                                                 
+                                                                                                          ├── predicates.scm                                                                               
+                                                                                                          ├── serializers                                                                                  
+                                                                                                          │   ├── css.scm                                                                                  
+                                                                                                          │   ├── elisp.scm                                                                                
+                                                                                                          │   ├── ini.scm                                                                                  
+                                                                                                          │   ├── json.scm                                                                                 
+                                                                                                          │   ├── lisp.scm                                                                                 
+                                                                                                          │   ├── nginx.scm                                                                                
+                                                                                                          │   ├── utils.scm                                                                                
+                                                                                                          │   └── yaml.scm                                                                                 
+                                                                                                          ├── system                                                                                       
+                                                                                                          │   ├── bare-bone.scm                                                                            
+                                                                                                          │   ├── install.scm                                                                              
+                                                                                                          │   └── services                                                                                 
+                                                                                                          │       ├── accounts.scm                                                                         
+                                                                                                          │       ├── admin.scm                                                                            
+                                                                                                          │       ├── cloud-init.scm                                                                       
+                                                                                                          │       ├── greetd.scm                                                                           
+                                                                                                          │       ├── guix.scm                                                                             
+                                                                                                          │       ├── networking.scm                                                                       
+                                                                                                          │       └── web.scm                                                                              
+                                                                                                          └── transitive                                                                                   
+                                                                                                              ├── drafts.scm                                                                               
+                                                                                                              └── elixir.scm                                                                               
+
+./rosenthal/modules                                ./saayix/modules                                   ./sops-guix/modules                                                                                  
+├── guix                                           └── saayix                                         └── sops                                                                                             
+│   └── import                                         ├── build                                          ├── activation.scm                                                                               
+│       └── rosenthal-updaters.scm                     │   ├── binary-build-system.scm                    ├── build                                                                                        
+├── rosenthal                                          │   ├── chromium-binary-build-system.scm           │   ├── activation.scm                                                                           
+│   ├── bootloader                                     │   └── utils.scm                                  │   ├── age.scm                                                                                  
+│   │   ├── grub.scm                                   ├── build-system                                   │   ├── gnupg.scm                                                                                
+│   │   ├── limine.scm                                 │   ├── binary.scm                                 │   └── utils.scm                                                                                
+│   │   └── uki.scm                                    │   └── chromium-binary.scm                        ├── derive.scm                                                                                   
+│   ├── build                                          ├── packages                                       ├── home                                                                                         
+│   │   └── go-vendored-build-system.scm               │   ├── binaries.scm                               │   └── services                                                                                 
+│   ├── build-system                                   │   ├── browser-extensions.scm                     │       └── sops.scm                                                                             
+│   │   └── go-vendored.scm                            │   ├── emacs-xyz.scm                              ├── packages                                                                                     
+│   ├── ci                                             │   ├── file-managers.scm                          │   └── sops.scm                                                                                 
+│   │   └── tarball.scm                                │   ├── fonts.scm                                  ├── secrets.scm                                                                                  
+│   ├── home                                           │   ├── games.scm                                  ├── self.scm                                                                                     
+│   │   └── services                                   │   ├── gtk.scm                                    ├── services                                                                                     
+│   │       ├── desktop.scm                            │   ├── lua.scm                                    │   ├── configuration.scm                                                                        
+│   │       ├── emacs.scm                              │   ├── mail.scm                                   │   └── sops.scm                                                                                 
+│   │       ├── gtk.scm                                │   ├── messaging.scm                              ├── state.scm                                                                                    
+│   │       └── writable-files-manager.scm             │   ├── minecraft.scm                              ├── tests                                                                                        
+│   ├── packages                                       │   ├── pdf.scm                                    │   └── sops.scm                                                                                 
+│   │   ├── admin.scm                                  │   ├── productivity.scm                           ├── tests.scm                                                                                    
+│   │   ├── animation.scm                              │   ├── rust-crates.scm                            ├── utils.scm                                                                                    
+│   │   ├── authentication.scm                         │   ├── rust.scm                                   └── validation.scm                                                                               
+│   │   ├── binaries.scm                               │   ├── rust-sources.scm                                                                                                                            
+│   │   ├── bootloaders.scm                            │   ├── sddm.scm                                                                                                                                    
+│   │   ├── browser-extensions.scm                     │   ├── terminals.scm                                                                                                                               
+│   │   ├── busybox.scm                                │   ├── tex.scm                                                                                                                                     
+│   │   ├── ci.scm                                     │   ├── text-editors.scm                                                                                                                            
+│   │   ├── dns.scm                                    │   ├── toys.scm                                                                                                                                    
+│   │   ├── emacs-xyz.scm                              │   ├── video.scm                                                                                                                                   
+│   │   ├── games.scm                                  │   ├── virtualization.scm                                                                                                                          
+│   │   ├── golang.scm                                 │   └── wm.scm                                                                                                                                      
+│   │   ├── guile-xyz.scm                              ├── packages.scm                                                                                                                                    
+│   │   ├── messaging.scm                              ├── services                                                                                                                                        
+│   │   ├── networking.scm                             │   ├── home                                                                                                                                        
+│   │   ├── package-management.scm                     │   │   ├── dotfiles.scm                                                                                                                            
+│   │   ├── password-utils.scm                         │   │   ├── emacs.scm                                                                                                                               
+│   │   ├── python-xyz.scm                             │   │   ├── gammastep.scm                                                                                                                           
+│   │   ├── rust-apps.scm                              │   │   ├── hyprland.scm                                                                                                                            
+│   │   ├── rust-crates.scm                            │   │   ├── mako.scm                                                                                                                                
+│   │   ├── ssh.scm                                    │   │   ├── sway.scm                                                                                                                                
+│   │   ├── tree-sitter.scm                            │   │   ├── wlsunset.scm                                                                                                                            
+│   │   ├── version-control.scm                        │   │   └── wm.scm                                                                                                                                  
+│   │   ├── video.scm                                  │   └── system                                                                                                                                      
+│   │   ├── web.scm                                    │       ├── iwd.scm                                                                                                                                 
+│   │   ├── wm.scm                                     │       ├── mullvad.scm                                                                                                                             
+│   │   └── xorg.scm                                   │       ├── nvidia-unload.scm                                                                                                                       
+│   ├── services                                       │       └── rfkill.scm                                                                                                                              
+│   │   ├── base.scm                                   └── utils.scm                                                                                                                                       
+│   │   ├── bittorrent.scm                                                                                                                                                                                 
+│   │   ├── child-error.scm                                                                                                                                                                                
+│   │   ├── cuirass.scm                                                                                                                                                                                    
+│   │   ├── desktop.scm                                                                                                                                                                                    
+│   │   ├── dns.scm                                                                                                                                                                                        
+│   │   ├── file-systems.scm                                                                                                                                                                               
+│   │   ├── games.scm                                                                                                                                                                                      
+│   │   ├── keyboard.scm                                                                                                                                                                                   
+│   │   ├── mail.scm                                                                                                                                                                                       
+│   │   ├── messaging.scm                                                                                                                                                                                  
+│   │   ├── monitoring.scm                                                                                                                                                                                 
+│   │   ├── networking.scm                                                                                                                                                                                 
+│   │   ├── nix.scm                                                                                                                                                                                        
+│   │   ├── shellutils.scm                                                                                                                                                                                 
+│   │   └── web.scm                                                                                                                                                                                        
+│   └── utils                                                                                                                                                                                              
+│       ├── cargo.scm                                                                                                                                                                                      
+│       ├── download.scm                                                                                                                                                                                   
+│       ├── file.scm                                                                                                                                                                                       
+│       ├── nix.scm                                                                                                                                                                                        
+│       ├── packages.scm                                                                                                                                                                                   
+│       ├── predicates.scm                                                                                                                                                                                 
+│       ├── services.scm                                                                                                                                                                                   
+│       └── transformations.scm                                                                                                                                                                            
+└── rosenthal.scm                                                                                                                                                                                          
+
+#+end_verse
+
+
+**** Dotfiles
+:PROPERTIES:
+:header-args+: :dir "/data/ecto/x.files/"
+:END:
+
+For channels in x.files
+
+#+call: treepaste()
+
+#+RESULTS:
+#+begin_src shell :results output :wrap verse
+paste \
+  <(tree --prune -P '*.scm' ./SystemCrafters/site/.guix/modules --noreport) \
+  <(tree --prune -P '*.scm' ./whereiseveryone/dotfiles/conf --noreport) \
+  <(tree --prune -P '*.scm' ./jjba23/dotfiles/src --noreport) \
+  <(tree --prune -P '*.scm' ./akagi/dotfiles/src --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+paste \
+  <(tree --prune -P '*.scm' ./hako/dotfiles/modules --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+#+end_src
+
+#+RESULTS:
+#+begin_verse
+./SystemCrafters/site/.guix/modules                ./whereiseveryone/dotfiles/conf                    ./jjba23/dotfiles/src                              ./akagi/dotfiles/src                              
+└── systemcrafters                                 └── confetti                                       └── sss                                            └── magi                                          
+    ├── packages.scm                                   ├── features                                       ├── alacritty.scm                                  ├── features                                  
+    └── services.scm                                   │   ├── bower.scm                                  ├── bash.scm                                       │   ├── base.scm                              
+                                                       │   ├── copilot.scm                                ├── containers.scm                                 │   ├── docker.scm                            
+                                                       │   ├── coq.scm                                    ├── dconf.scm                                      │   ├── emacs.scm                             
+                                                       │   ├── c.scm                                      ├── defaults.scm                                   │   ├── emacs-xyz.scm                         
+                                                       │   ├── ellama.scm                                 ├── dirs.scm                                       │   ├── fontutils.scm                         
+                                                       │   ├── fj.scm                                     ├── emacs.scm                                      │   ├── gnupg.scm                             
+                                                       │   ├── flymake.scm                                ├── enchant.scm                                    │   ├── guile.scm                             
+                                                       │   ├── forth.scm                                  ├── fastfetch.scm                                  │   ├── networking.scm                        
+                                                       │   ├── general.scm                                ├── firefox.scm                                    │   ├── password-utils.scm                    
+                                                       │   ├── gnupg.scm                                  ├── fish.scm                                       │   ├── presets.scm                           
+                                                       │   ├── javascript.scm                             ├── fontconfig.scm                                 │   ├── shellutils.scm                        
+                                                       │   ├── just.scm                                   ├── git.scm                                        │   ├── ssh.scm                               
+                                                       │   ├── language.scm                               ├── gtk.scm                                        │   ├── substitutes.scm                       
+                                                       │   ├── lem.scm                                    ├── iptables.scm                                   │   ├── video.scm                             
+                                                       │   ├── lisp.scm                                   ├── keybindings-docs.scm                           │   ├── wm.scm                                
+                                                       │   ├── mail.scm                                   ├── labwc.scm                                      │   └── xdisorg.scm                           
+                                                       │   ├── mastodon.scm                               ├── mako.scm                                       ├── home                                      
+                                                       │   ├── nix.scm                                    ├── mime.scm                                       │   └── services                              
+                                                       │   ├── notebook.scm                               ├── niri.scm                                       │       ├── emacs.scm                         
+                                                       │   ├── ripgrep.scm                                ├── nix.scm                                        │       ├── i2p.scm                           
+                                                       │   ├── rmsbolt.scm                                ├── nyxt.scm                                       │       ├── kdeconnect.scm                    
+                                                       │   ├── rust.scm                                   ├── openpgp.scm                                    │       ├── minidlna.scm                      
+                                                       │   ├── shells.scm                                 ├── palette.scm                                    │       ├── notification.scm                  
+                                                       │   ├── site-lisp.scm                              ├── portals.scm                                    │       ├── password-utils.scm                
+                                                       │   ├── software-development.scm                   ├── prelude.scm                                    │       ├── pipewire.scm                      
+                                                       │   ├── supermaven.scm                             ├── qt.scm                                         │       ├── polybar.scm                       
+                                                       │   ├── tig.scm                                    ├── rofi.scm                                       │       ├── proxy.scm                         
+                                                       │   ├── tz.scm                                     ├── ssh.scm                                        │       ├── pueue.scm                         
+                                                       │   ├── visidata.scm                               ├── user-scripts.scm                               │       ├── wm.scm                            
+                                                       │   └── zk.scm                                     ├── user-timers.scm                                │       ├── xdisorg.scm                       
+                                                       ├── os.scm                                         ├── vars.scm                                       │       ├── xorg.scm                          
+                                                       ├── packages                                       ├── wallpaper.scm                                  │       └── xremap.scm                        
+                                                       │   ├── emacs-xyz.scm                              └── waybar.scm                                     ├── packages                                  
+                                                       │   ├── leapp.scm                                                                                     │   ├── admin.scm                             
+                                                       │   ├── lisp-xyz.scm                                                                                  │   └── emacs-xyz.scm                         
+                                                       │   ├── ocaml-xyz.scm                                                                                 ├── system                                    
+                                                       │   ├── perl-xyz.scm                                                                                  │   └── services                              
+                                                       │   └── python-xyz.scm                                                                                │       ├── dns.scm                           
+                                                       ├── serializers                                                                                       │       └── networking.scm                    
+                                                       │   └── visidata.scm                                                                                  └── utils.scm                                 
+                                                       ├── services                                                                                                                                        
+                                                       │   └── guilerc.scm                                                                                                                                 
+                                                       ├── tada.scm                                                                                                                                        
+                                                       ├── uninstall.scm                                                                                                                                   
+                                                       └── utils                                                                                                                                           
+                                                           ├── chuck-norris.scm                                                                                                                            
+                                                           ├── community-channels.scm                                                                                                                      
+                                                           ├── corporate-buzzword.scm                                                                                                                      
+                                                           ├── heredoc.scm                                                                                                                                 
+                                                           ├── macroexpand.scm                                                                                                                             
+                                                           ├── macros.scm                                                                                                                                  
+                                                           ├── more-macros.scm                                                                                                                             
+                                                           ├── pathlib.scm                                                                                                                                 
+                                                           ├── public-keys.scm                                                                                                                             
+                                                           └── sugar.scm                                                                                                                                   
+
+./hako/dotfiles/modules                                                                                                                                                                                    
+└── testament                                                                                                                                                                                              
+    ├── common.scm                                                                                                                                                                                         
+    └── linux.scm                                                                                                                                                                                          
+
+#+end_verse
+
 * Using find + tree
 
 =find . -maxdepth 3 -name '*.scm' -print | tree --fromfile .=
@@ -1637,8 +2144,6 @@ done
 8 directories, 43 files
 /data/ecto/x.files
 #+end_example
-
-
 * Top-level Modules
 
 ** Guix

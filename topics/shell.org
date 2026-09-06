@@ -62,35 +62,58 @@ Example input
 + but needs some manual munging to avoid dynamic re-evaluation of commands to
   discover widths. it's "good enough"
 
+From repo checkouts for guix
+
 #+begin_src shell :results output code :wrap "src shell :results output :wrap verse"
 channelspecs=$(fd -H '.guix-channel' .)
-channelroots=$(grep -H directory ${channelspecs[@]} |\
-    sed -E 's/.guix-channel: +\(directory "(.*)".*$/\1/g')
+channelroots=($(grep -H directory ${channelspecs[@]} |\
+    sed -E 's/.guix-channel: +\(directory "(.*)".*$/\1/g'))
 
 # this outputs a babel block that outputs a verse block, but needs some manual
 # munging to avoid dynamic re-evaluation of commands to discover widths.
-echo 'paste -sd" " \'
+
+i=0
+n=4
 for c in ${channelroots[@]}; do
-  echo '  <('"tree $c --noreport"') \'
+  last=$(($n - 1))
+  [[ $((i % n)) == 0 ]] && echo 'paste \'
+  
+  # errors will screw up paste lines
+  [[ -d "$c" ]] && echo '  <('"tree --prune -P '*.scm' $c --noreport"') \'
+  [[ $((i % n)) == $last ]] || [[ $((i + 1)) == ${#channelroots[@]} ]]  \
+      && echo '| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"'
+      && echo echo
+  # if ($((i % 3)) == $((3 - 1))); then
+  # if
+  i=$((i+1))
 done
 echo ''
 #+end_src
 
 #+RESULTS:
 #+begin_src shell :results output :wrap verse
-paste -sd" " \
-  <(tree ./baulig/packages --noreport) \
-  <(tree ./gocix/modules --noreport) \
-  <(tree ./guix-crypto/src --noreport) \
-  <(tree ./guix-deployments/modules --noreport) \
-  <(tree ./guix-systole/systole --noreport) \
-  <(tree ./mnt-reform-nonguix/.guix/modules --noreport) \
-  <(tree ./radix/modules --noreport) \
-  <(tree ./rde/src --noreport) \
-  <(tree ./rosenthal/modules --noreport) \
-  <(tree ./saayix/modules --noreport) \
-  <(tree ./sops-guix/modules --noreport) \
+paste \
+  <(tree --prune -P '*.scm' ./baulig/packages --noreport) \
+  <(tree --prune -P '*.scm' ./gocix/modules --noreport) \
+  <(tree --prune -P '*.scm' ./guix-crypto/src --noreport) \
+  <(tree --prune -P '*.scm' ./guix-deployments/modules --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+paste \
+  <(tree --prune -P '*.scm' ./guix-systole/systole --noreport) \
+  <(tree --prune -P '*.scm' ./radix/modules --noreport) \
+  <(tree --prune -P '*.scm' ./rde/src --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+paste \
+  <(tree --prune -P '*.scm' ./rosenthal/modules --noreport) \
+  <(tree --prune -P '*.scm' ./saayix/modules --noreport) \
+  <(tree --prune -P '*.scm' ./sops-guix/modules --noreport) \
+| awk -F"\t" "{printf \"%-50s %-50s %-50s %-50s\n\", \$1, \$2, \$3, \$4}"
+echo
+
 #+end_src
+
 
 ***** Dynamically
 :PROPERTIES:
@@ -150,7 +173,6 @@ paste <(echo ${p1[@]} | tr ' ' '\n' | tree --fromfile . --noreport) \
     { printf "%-*s  %-*s %-*s  %-s\n", w1, $1, w2, $2, w3, $3, $4 }
 '
 done
-
 #+end_src
 
 #+RESULTS:
