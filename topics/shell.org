@@ -46,6 +46,245 @@
 
 ** Topics
 
+*** =terminfo=
+
+**** Adjusting =paste= output while avoiding weird =tput=
+***** Original Attempt
+:PROPERTIES:
+:header-args+: :dir "/data/ecto/guix/channels"
+:END:
+
+From repo checkouts for guix
+
+Example input
+
++ this outputs a babel block that outputs a verse block...
++ but needs some manual munging to avoid dynamic re-evaluation of commands to
+  discover widths. it's "good enough"
+
+#+begin_src shell :results output code :wrap "src shell :results output :wrap verse"
+channelspecs=$(fd -H '.guix-channel' .)
+channelroots=$(grep -H directory ${channelspecs[@]} |\
+    sed -E 's/.guix-channel: +\(directory "(.*)".*$/\1/g')
+
+# this outputs a babel block that outputs a verse block, but needs some manual
+# munging to avoid dynamic re-evaluation of commands to discover widths.
+echo 'paste -sd" " \'
+for c in ${channelroots[@]}; do
+  echo '  <('"tree $c --noreport"') \'
+done
+echo ''
+#+end_src
+
+#+RESULTS:
+#+begin_src shell :results output :wrap verse
+paste -sd" " \
+  <(tree ./baulig/packages --noreport) \
+  <(tree ./gocix/modules --noreport) \
+  <(tree ./guix-crypto/src --noreport) \
+  <(tree ./guix-deployments/modules --noreport) \
+  <(tree ./guix-systole/systole --noreport) \
+  <(tree ./mnt-reform-nonguix/.guix/modules --noreport) \
+  <(tree ./radix/modules --noreport) \
+  <(tree ./rde/src --noreport) \
+  <(tree ./rosenthal/modules --noreport) \
+  <(tree ./saayix/modules --noreport) \
+  <(tree ./sops-guix/modules --noreport) \
+#+end_src
+
+***** Dynamically
+:PROPERTIES:
+:header-args+: :dir (getenv "OMARCHY_PATH")
+:END:
+
+And this monstrosity is what we call ~a solution looking for a problem~
+
+I subtly changed what i was querying and suddenly, it wasn't so simple
+
+#+begin_src shell :results output code :wrap verse
+# qmlfiles=$(fd -H '.*\.qml' .)
+# from $OMARCHY_PATH
+# manifestdir=$(dirname $m) # treeinput+=($m)
+# treeinput+=($(jq -r --arg p "$manifestdir" '[$path, (.entryPoints | to_entries[] | .value)] | join("/")' $m));
+
+# manifests=$(fd -L manifest.json "shell" | sort | uniq)
+get_plugin_entry_points() {
+    local path=$1
+    
+    manifests=$(fd -L manifest.json "$path" | sort | uniq)
+    treein=()
+    for m in ${manifests[@]}; do
+        mroot=$(dirname $m)
+        jqout=$(jq -r --arg d "$mroot" '[$d, (.entryPoints | to_entries[] | .value)] | join("/")' "$m")
+        treein+=($(echo $jqout))
+    done
+    echo "${treein[@]}" | tr ' ' '\n'
+}
+
+treedims=()
+plugin_roots=($(find -H "shell/plugins" -maxdepth 1 -type d | grep -v "shell/plugins\$"))
+for p in ${plugin_roots[@]}; do
+    treedims+=($(get_plugin_entry_points $p | tee -p >(wc -l) >(wc -L) | tail -n2))
+done
+echo ${treedims[@]}
+
+# terminate early bc i don't feel like it
+treeinputs=()
+for ((i=0; i<${#plugin_roots}-4; i+=4)); do
+#    paste <(get_plugin_entry_points $p | tree -l --fromfile . | tput)
+    p1=($(get_plugin_entry_points ${plugin_roots[$i]}))
+    p2=${plugin_roots[$((i+1))]}
+    p2=($(get_plugin_entry_points $p2))
+    p3=${plugin_roots[$((i+2))]}
+    p3=($(get_plugin_entry_points $p3))
+    p4=${plugin_roots[$((i+3))]}
+    p4=($(get_plugin_entry_points $p4))
+paste <(echo ${p1[@]} | tr ' ' '\n' | tree --fromfile . --noreport) \
+    <(echo ${p2[@]} | tr ' ' '\n' | tree --fromfile . --noreport) \
+    <(echo ${p3[@]} | tr ' ' '\n' | tree --fromfile . --noreport) \
+    <(echo ${p4[@]} | tr ' ' '\n' | tree --fromfile . --noreport) \
+   | awk -F'\t' -v w1="${treedims[$((2*i))]}" \
+    -v w2="${treedims[$((2*i+2))]}" \
+    -v w3="${treedims[$((2*i+4))]}" \
+    -v w4="${treedims[$((2*i+6))]}" \ '
+    { printf "%-*s  %-*s %-*s  %-s\n", w1, $1, w2, $2, w3, $3, $4 }
+'
+done
+
+#+end_src
+
+#+RESULTS:
+#+begin_example
+30 1 39 1 44 9 37 1 42 1 31 1 42 1 30 1 41 1 39 1 25 1 45 12 36 1 40 1 54 4
+.                               .                                       .                                             .
+└── shell                       └── shell                               └── shell                                     └── shell
+    └── plugins                     └── plugins                             └── plugins                                   └── plugins
+        └── agents                      └── background                          └── bar                                       └── clipboard
+            └── Panel.qml                   └── Background.qml                      ├── Bar.qml                                   └── Clipboard.qml
+                                                                                    └── widgets                       
+                                                                                        ├── ActiveWindow.qml          
+                                                                                        ├── Indicators.qml            
+                                                                                        ├── KeyboardLayout.qml        
+                                                                                        ├── Microphone.qml            
+                                                                                        ├── Spacer.qml                
+                                                                                        ├── SystemUpdate.qml          
+                                                                                        ├── Tray.qml                  
+                                                                                        └── Workspaces.qml            
+.                                           .                               .                                           .
+└── shell                                   └── shell                       └── shell                                   └── shell
+    └── plugins                                 └── plugins                     └── plugins                                 └── plugins
+        └── dev-gallery                             └── emojis                      └── image-picker                            └── lock
+            └── GalleryPanel.qml                        └── Emojis.qml                  └── ImagePicker.qml                         └── Service.qml
+.                                          .                                       .                          .
+└── shell                                  └── shell                               └── shell                  └── shell
+    └── plugins                                └── plugins                             └── plugins                └── plugins
+        └── menu                                   └── notifications                       └── osd                    └── panels
+            └── Menu.qml                               └── Service.qml                         └── Osd.qml                ├── audio
+                └── BarWidget.qml                                                                                         │   └── Panel.qml
+                                                                                                                          ├── bluetooth
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── clock
+                                                                                                                          │   └── BarWidget.qml
+                                                                                                                          ├── disk-speedtest
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── dropbox
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── monitor
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── network
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── power
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── speedtest
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── tailscale
+                                                                                                                          │   └── Panel.qml
+                                                                                                                          ├── weather
+                                                                                                                          │   └── BarWidget.qml
+                                                                                                                          └── wifiqr
+                                                                                                                              └── Panel.qml
+.                                     .                                        .                                                       .
+└── shell                             └── shell                                └── shell                                               
+    └── plugins                           └── plugins                              └── plugins                                         
+        └── polkit                            └── reminders                            └── services                                    
+            └── PolkitAgent.qml                   └── ReminderFlow.qml                     ├── battery                                 
+                                                                                           │   └── Service.qml                         
+                                                                                           ├── idle                                    
+                                                                                           │   └── Service.qml                         
+                                                                                           ├── media                                   
+                                                                                           │   └── Service.qml                         
+                                                                                           │       └── BarWidget.qml                   
+                                                                                           └── nightlight                              
+                                                                                               └── Service.qml                         
+#+end_example
+
+***** Looping over =DETERMINISTIC= outputs to discover
+
+Probably the simplest with re-evaluation
+
+#+begin_src shell
+# declare resWidth=()
+# declare resLength=()
+# resWidth+=($(tree "$pp" --noreport | wc -L))
+declare resDims=() # width, height
+for pp in ${paths[@]}; do
+    resDims+=(tree -P 'manifest.json' "$pp" | tee -p >(wc -l) >(wc -L) | tail -n2)
+done
+
+W1=$()
+W2=$(tree ./muh/result2 --noreport | wc -L)
+W3=$(tree ./muh/result3 --noreport | wc -L)
+
+# 2. Paste them side-by-side using the precise calculated widths (plus 2 spaces for padding)
+paste \
+  <(tree ./baulig/packages --noreport) \
+  <(tree ./gocix/modules --noreport) \
+  <(tree ./guix-crypto/src --noreport) \
+| awk -F'\t' -v w1="$W1" -v w2="$W2" -v w3="$W3" '
+    { printf "%-*s  %-*s  %-s\n", w1, $1, w2, $2, $3 }
+  '
+#+end_src
+
+***** LLM :crypt:urlllm:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ/+Jx39fSmbBvY39RcgkOjZIeKKkiFkFFTKQIqV5tqC7NK/
+DOlZByIeHRQstZ8yS4VWxcjahJDt24oMCIQf9+1cWgb9UqOmE+Ag/fOe53aHaaDy
+b+XzNfC9CNPLYF36XkpTNFno1d36yYn3CQYL38Q8Xbsq1Y0yzP3Hy+NhjAF10oJp
+BCSaIxQspZ+Slsxqs6him4a3AhOKFJYiGfYKAWOc/IRbQo63oa3L3MIiNrkaNUds
+3dlYWKvGBJkilWQ9aBxMQBfmKGSl2nsIu1N8OOuTOmhgbzNvkLZgEf9aM0UCCUku
+VheHQVbwN3mvjJrETVeyfea8xisaQmcey6nu2CkqO8CD6ZJOQaca+dR0w32rEYyV
+Qw2sfRjjyaG+l6dUA4fQwg/nLzlxcr2n5NB5Ogw1PKkNYHwu+cAVrAQdmttJ6eD1
+hbnyzmghZ7MgH4Qqldhi8w0VObywPlKDcc22rqO8LJTmrajjJ9HOhZP+jtxTw7eG
+Lxo7Fs1j9KPOWxz5ioVfk9nDUZcsMdWA+2TK/cEfqZvr5rMUCP1EoxFKYibUP+sE
+iGJHauh65mhg3tgt3EtKqV9wmvRSboM3jh3Qu8U2u85eftWk5ihkiL17j509uQ2Y
+B0ZpKKyklzn2WTrfxY+uEB06vy3i2EGmaJkiRNb7VZ6QRebX6+uHlSLARgULxEbS
+6QGf5UuDhMEbs4wAk1zsjrKDYfBGASjjn4prjHaX9gP+/2EJ1QFGKyfdaQleJIOi
+MrOoK+Fpvw5d/i05ygbLshA4mr3KKQeY11EXez+8+f5+NKmh+RfW5pkChjf+NXRS
+9ZAkFQQ1mGTfpQao0Mk41q6Dpd231ZYVHD/x7/Q2oOnTESglgkwHsUM/CK+UZxbL
+cg7nz98yxc+FNPawHimetKNs3hOp5mEMz+ycfZV24AQJssnZoc5DQR956L/XHU1p
+Pnj+9iNRU/riwj5DmtoJmpuK6htGaygBy4FzHkt1h16WjVuvd1v8SHu0gBynyr3p
+BmlDYY5kFMP2TSWpe+eelYDapiWI73Y9hTyTeRSfVmHXhJ8pmJmHu4dgTC5S66L/
+Jore7JvbRd+hRD6TLnO7h5u7ie/yB7Xy2GCLXQHKARgOOM70oE3UzWZQPS2tSLhL
+zr6s1EWBTFSSnSB6YvDOSKQbCJS53cprAre4j1tUiOIXvSy+Pa9ld4Qp7e5my04a
+ELyKmp2ZV+V1pBb09QrSmD4Zr+oh+xCt1SWNMDEgreP+517bEFUIwAgI3KtD/WBi
+isDOawQFisYyzwfqt6SrbCYpgYmBws22/cRpf6munkdVPcbAqA4ZtLRuWa7shFzG
+r5mlosUnR3ytW96x5j428NPe1xiLhTBWjH16eG+81/KYwFkqSQeChF87uWgGx8u5
+G+yPOMBJ6tYUw25h/56cpUZ6Gs8J5JfIpsJ7FatIoYQxvzZ3//SrbQDkWV9YRkOB
+BWvHW3Lmyqv14vBUIYrWNEQiJQlFkg74gviEGWZECi8SssF5g4t++9VRjgcoqnq+
+KzUIA7OLqjSRTXw+Ltf3YJx0rzY9NOV3rePNIIPGpSD8vsyCRf9Nc5mzJo0UTNuu
+iwclkNU7/Ql3Uei41+ZbsuFtOqM5uRpfKFW8aGCnym57O6D4M9jN30RQXAqppEtn
+Cspk7QH+RVer5Dypt5Ygxan7BLnIi5v/UmrvVk6MOPcYhHcJc2nP60B1m1hvuKg5
+/VQrC4yUzNn72374T8xTiJioSChvpTy7dqAIUg==
+=ed7t
+-----END PGP MESSAGE-----
+
+
+
 *** Job Management
 
 **** Killing Child Jobs
@@ -65,7 +304,6 @@ kill_child_jobs() {
     while kill %% 2>/dev/null; do sleep 0; done
 }
 #+end_src
-
 *** Commands
 
 **** tee
