@@ -213,6 +213,61 @@ So, officially, you can't specify the same value for =console= twice. Most kerne
 args will accept the last value (it does what makes sense: the earlier value
 allows for automated scripts to specify default values)
 
+** Omarchy's harness
+
+
++ Loads data in using a file system labeled =cidata=: [[https://github.com/omacom/omarchy-iso/blob/quattro/test/unit/cidata-load-test.sh][cidata-load-test.sh]]
++ To be able to test my nixos system, I'd need a custom system installed to a
+  qemu image, then [[https://github.com/omacom/omarchy-iso/blob/quattro/bin/omarchy-iso-test][omarchy-iso-test]] needs the =--reuse-base= flag
+
+From [[https://github.com/omacom/omarchy-iso/blob/quattro/bin/omarchy-iso-test#L201-L229][bin/omarchy-iso-test]] qemu harness
+
+#+begin_src shell
+start_vm() {
+  local disk="$1" serial="$2"
+  shift 2
+
+  # A viewer that resizes the guest display breaks the console driving: OCR
+  # cannot read the shrunken font, and a resize during early boot can wedge
+  # virtio-gpu before the system comes up.
+  log "Watch (do not resize): vncviewer -RemoteResize=0 127.0.0.1:5905"
+
+  qemu-system-x86_64 \
+    -cpu host -enable-kvm -machine q35,accel=kvm \
+    -smp "$(nproc)" \
+    -m "$MEMORY" \
+    -drive if=pflash,format=raw,readonly=on,file="$OVMF_CODE" \
+    -drive if=pflash,format=raw,file="$BASE_OVMF" \
+    -drive file="$disk",format=qcow2,if=none,id=drive0 \
+    -device virtio-blk-pci,drive=drive0,bootindex=1 \
+    -device virtio-vga \
+    -display none \
+    -vnc 127.0.0.1:5 \
+    -usb -device usb-tablet \
+    -netdev user,id=net0,hostfwd=tcp:127.0.0.1:$SSH_PORT-:22 \
+    -device virtio-net-pci,netdev=net0 \
+    -qmp "unix:$QMP_SOCK,server,nowait" \
+    -serial "file:$serial" \
+    -pidfile "$PIDFILE" \
+    -daemonize \
+    "$@"
+}
+#+end_src
+
+It just sets =-serial "file:$serial"=
+
+#+begin_src shell
+# in install_phase()
+qemu-img create -f qcow2 -b "$BASE_DISK" -F qcow2 "$RUN_DIR/run.qcow2" >/dev/null
+start_vm "$RUN_DIR/run.qcow2" "$RUN_DIR/serial.log"
+
+# in acceptance_phase()
+qemu-img create -f qcow2 -b "$BASE_DISK" -F qcow2 "$RUN_DIR/run.qcow2" >/dev/null
+start_vm "$RUN_DIR/run.qcow2" "$RUN_DIR/serial.log"
+#+end_src
+
+
+
 * Scripting
 
 ** Generate air-gapped GPG
@@ -417,16 +472,16 @@ Afterwards, just kinda rambling, i guess
 | 1:12:00 | A virtual serial port helps prep for iPXE workflows on bare metal                 |
 | 1:18:00 | Examples of bootloader build logic in the Guix codebase                           |
 | 1:23:00 | Comparing "systems vs programmer" perspectives as "top-down" vs "bottom-up"       |
-| 1:30:00 | Launching an repl from an impure guix time-machine profile                |
-| 1:35:00 | Moving the GPG ISO to an adhoc guile script |
+| 1:30:00 | Launching an repl from an impure guix time-machine profile                        |
+| 1:35:00 | Moving the GPG ISO to an adhoc guile script                                       |
 
 fdsa
 
-|---------+-----------------------------------------------------------------------------------|
-| 1:20:00 |                                                                                   |
-| 1:25:00 |                                                                                   |
-| 1:55:00 |                                                                                   |
-|---------+-----------------------------------------------------------------------------------|
+|---------+---|
+| 1:20:00 |   |
+| 1:25:00 |   |
+| 1:55:00 |   |
+|---------+---|
 *** Markdown
 
 + 3:00: Fixing `org-refile` for the current workflow
