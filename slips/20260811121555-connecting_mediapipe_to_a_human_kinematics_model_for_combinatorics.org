@@ -1,0 +1,134 @@
+:PROPERTIES:
+:ID:       7f935377-c026-48d0-8757-79bb0bb4ae5c
+:END:
+#+TITLE: Connecting Mediapipe to a Human Kinematics Model for Combinatorics
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:b3826464-5132-4a77-9707-93a72bd1d4a3][Blender]]
++ [[id:59f56c1a-d91e-48eb-88d9-868e6250465a][Biomechanics]]
++ [[id:fbf026c8-6c89-4ad3-a72e-2d693371c76a][Machine Learning]]
++ [[id:35da03b5-7810-40fc-ac9a-f7ae2ef06190][3D Modeling: Everything you need to know about topology]]
+
+* Resources
+** OpenSim
+
+Video: [[https://www.youtube.com/watch?v=SlGXLS5m27A&t=1004s][Jumping into Musculoskeletal Modeling with OpenSim]] Overview of GUI and
+usage: loading models, motions.
+
++ [[https://opensimconfluence.atlassian.net/wiki/spaces/OpenSim/pages/53090607/Musculoskeletal+Models][Open Sim: Musculoskeletal Models]]
++ [[https://github.com/Nyquixt/KinematicNet/tree/main/preprocessing][Nyquixt/KinematicNet: Preprocessing]]
+
+** KinematicNet
+
+This matches tracking points to points in a kinematic model.
+
+[[file:img/kinematic-net-model-scaling.png]]
+
+* Overview
+
+Given a body position with mediapipe coordinates -- synthetic, combinatorially
+enumerated or inferred from video -- map them to tracking points to estimate the
+level of effort required to hold the pose.
+
++ gradually explore the domain of possible poses by starting with many
+  constraints and relaxing them, freeing other parts of the simulated model to
+  move.
+  - discover the topology of movement of one arm, without approximating the
+    human joints. then gradually add overlapping subsets of joints. randomly
+    explore reachable surfaces of the manifold of human poses.
+  - gradually include actual translation or free movement.
++ maybe reinforcement learning using computational geometry metrics as a proxy
+  for energy -- e.g. use metrics like displaced volume/mass over motion arcs as
+  a proxy for energy to develop KinematicNet sequences
+  - not training motion patterns or tasks (at first)... just develop a "map" of
+    the topology of movement. I'm sure this has been overdone by this point, but
+    idk if it's done like this. maybe.
+
+** Challenges...
+
+How to actually um model the body's physics using tensors? something like:
+
++ convolutions over locally connected components of muscles to simulate
+  lengthwise tension and changing compression (with some approximation of fluid
+  dynamics)
++ statics/dynamics of tendons/ligaments
++ surface area of tendon/ligament/muscle connections
+
+I get the feeling the "kinematic net" model doesn't use GPU/CUDA... At least,
+not in this way. It may, but idk. Usually, research deals in spherical cows. I'm
+thinking crossing the "KinematicNet" above with "FEA" but for
+
+That would be needed later, not for initial exploration of the domain/topology
+-- just using computational geometry metrics as proxies to determine the
+manifold surfaces over which human joint poses can move. Then later, actually
+calculate lower-level details.
+
+(I'm interested in the manifold)
+
+** Deep thoughts
+
+#+begin_quote
+feel free to notice the overwhelming usage of airquotes here...
+#+end_quote
+
+Understanding how this works should develop insight into differences between
+human musculoskeletal design and whatever the robotic equivalent is.
+
++ The physical form that evolution produced can endure a lot more volatility...
+  with some constraints
++ Typical robot designs are highly linear. Relatively speaking, electric motors
+  and engineering design patterns are difficult to extend & to make more
+  flexible (e.g. "just add another motor" or whatever could totally overwhelm
+  the local strain tolerance ... if you can even fit it in).
++ It's "implicitly" assumed that programming motion for robots whose kinematics
+  are composed of "more linear" units -- like the joints & connections in a
+  kinematic chain -- would be simpler.
+  - however, (I think) human & animal nervous systems benefit from some kind of
+    "convexity", simplifying their motor coordination
+    - reduced computational hardness
+    - redundancy & ability to encounter volatility (variance in variance in
+      their environments)
+
+Think about the differences between electricity and hydrodynamics:
+
++ in/compressible fluids require design of surfaces to accomodate volumes, in
+  order to produce specific effects
++ electricity moves through components is like "2.5D". For some applications,
+  designs are nano-scopic & essentially 2-D
+  - (i don't have time to explain this)
+  - this is basically ignoring magnetism (and it's super-oversimplified)
+
+To compare robotics vs animal physiology:
+
++ Typical mechanical engineering designs move power through the interior (e.g.
+  gears _in_ a box; shaft in a motor). Wiring goes on the outside, but that's
+  problematic if it tangles.
++ With animal physiology, the power is transmitted on the outside (flexors &
+  extensors). we have an endoskeleton. But crucially, the muscles/tendons
+  connect to _surfaces_. These are often described by analogy to an enumeration of
+  motion without constraint
+
+| revolute | prismatic | cylindrical | spherical | universal |
+
+Anyways, for individual muscles, nerves should be able to shift the activation
+(in space) and modulate the different patterns of actuation across time -- i.e.
+nerve endings extending from ganglions are not like wires.
+
+This is profound to me: while the musculature is not part of the nervous system,
+its interface with nervous system seems to resemble a series of "neural network
+layers" ... which would certainly make sense, right? I mean neurons know how to
+talk "neural network".
+
+But wouldn't the increased complexity be more computationally difficult to
+coordinate? (unless... there is some "dual" connection between the anatomy it's
+motion/environment)
+
+#+begin_quote
+IDK understand how the last mile that connects ganglions to muscles though ...
+or how varied the control signals can be from neurons to muscles (and back)
+
+Probably wrong.
+#+end_quote
+
