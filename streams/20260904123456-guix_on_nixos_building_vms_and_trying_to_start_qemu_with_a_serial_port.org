@@ -153,37 +153,74 @@ digraph G {
 
 * Learning
 
+#+begin_src emacs-lisp
+;; ... can't use vars for org-babel's :session params
+
+(setq-local dc/ob-bash-session (format "*BASH-%s-SESSION*" (dc/org-roam-get-slug)))
+;; (setq guix-session-qemu (format "*GUIX-%s-SESSION*" (dc/org-roam-get-slug)))
+#+end_src
+
+Start an async bash session
+
+#+begin_src shell :session (identity dc/ob-bash-session) :async yes
+# echo $(basename $(dirname $PWD))
+#+end_src
+
 ** =$qemuscript=
 
 Given the script in =$qemuscript=
 
-#+begin_src shell
+#+begin_src shell :results silent :session (identity dc/ob-bash-session) :async yes :cache no
 # this is the image to build
-adhoc=$HOME/.dotfiles/guix/adhoc
-chan=$HOME/.dotfiles/guix/dc
-vmspec=$adhoc/isos/usb-gpg-vm.scm
+guixcheckout="$HOME/forge/guix/guix"
+adhoc="$HOME/.dotfiles/guix/adhoc"
+chan="$HOME/.dotfiles/guix/dc"
+usbgpg_vm="$adhoc/isos/usb-gpg-vm.scm"
+usbgpg_iso="$chan/systems/images/usb-gpg-tools.scm"
+guixvm_example="$guixcheckout/gnu/system/examples/vm-image.tmpl"
 #+end_src
 
 this builds it. if it suceeds, it outputs the path to a script to run
 
-#+begin_src shell
-qemuscript=$(guix system -L $chan vm "$vmspec")
+#+name: vmExampleOut
+#+begin_src shell :session (identity dc/ob-bash-session) :cache yes :async yes
+# qemuscript=$(guix system -L $chan vm "$vmspec")
+# echo $qemuscript
+
+guix system -L $chan vm "$guixvm_example" 2>/dev/null
 #+end_src
+
+#+RESULTS[4d8ceef93678b0a46e1b4bdd7fc03334af9bfff9]: vmExampleOut
+: /gnu/store/kclbk89lz0md9rr74gy5vpc3xg81z54l-run-vm.sh
 
 Building the actual disk image is always the last step and usually one of the
 longest. If the image is minimal, everything else is fast.
 
 What's it do?
 
-#+begin_src shell
-cat $qemuscript # -append 'noquiet console=ttyS0'"
+#+begin_src shell :var qrun=vmExampleOut :results output code :wrap example shell
+cat $qrun | sed -e 's/ -/ \\\n   -/g'
 #+end_src
+
+#+RESULTS:
+#+begin_example shell
+#!/gnu/store/vhkg4avy9zf0kj70dcsmfpymnllkjq1y-bash-5.2.37/bin/sh
+exec /gnu/store/vwrwmcs3593ki79rxc4iyh3kpl5qyzza-qemu-10.2.1/bin/qemu-system-x86_64 \
+   -kernel /gnu/store/sj7dsxn3jkmrlmwn1bhdx6k4vgya4kpl-linux-libre-7.1.8/bzImage \
+   -initrd /gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/initrd \
+   -append "root=/dev/vda1 gnu.system=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system gnu.load=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/boot modprobe.blacklist=usbmouse,usbkbd quiet" \
+   -object rng-random,filename=/dev/urandom,id=guix-vm-rng \
+   -device virtio-rng-pci,rng=guix-vm-rng \
+   -virtfs local,path=/gnu/store,security_model=none,mount_tag=TAGjoptajej2oynju6yvboauz7pl6uj \
+   -drive file=/gnu/store/k2j1ild5gisf6409m9g4z39rn2n1x2zz-disk-image,format=raw,if=virtio,cache=writeback,werror=report,readonly=on \
+   -m  512 "$@"
+#+end_example
 
 Launch directly to the terminal's =/dev/pty/n= with:
 
-#+begin_src shell
+#+begin_src shell :eval never
 # I got the main vm-image.tmpl working with serial output. 
-/bin/sh -c "$qemuscript -nographic -append 'noquiet console=ttyS0'"
+/bin/sh -c "$qrun -nographic -append 'noquiet console=ttyS0'"
 #+end_src
 
 + the =-append= arg adds some extra kernel cmdline flags, which need to agree with
@@ -213,8 +250,209 @@ So, officially, you can't specify the same value for =console= twice. Most kerne
 args will accept the last value (it does what makes sense: the earlier value
 allows for automated scripts to specify default values)
 
-** Omarchy's harness
+*** Help from LLM
 
+**** Serial configuration for headless qemu
+
+Starting from the original qemu launch script via [[https://codeberg.org/guix/guix/src/master/gnu/system/examples/vm-image.tmpl#L40-L57][vm-image.tmpl]] (links to
+relavant bootloader config in the image)
+
+#+begin_src shell :var qrun=vmExampleOut :results output code :wrap example shell
+cat $qrun | sed -e 's/ -/ \\\n   -/g'
+#+end_src
+
+#+RESULTS:
+#+begin_example shell
+#!/gnu/store/vhkg4avy9zf0kj70dcsmfpymnllkjq1y-bash-5.2.37/bin/sh
+exec /gnu/store/vwrwmcs3593ki79rxc4iyh3kpl5qyzza-qemu-10.2.1/bin/qemu-system-x86_64 \
+   -kernel /gnu/store/sj7dsxn3jkmrlmwn1bhdx6k4vgya4kpl-linux-libre-7.1.8/bzImage \
+   -initrd /gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/initrd \
+   -append "root=/dev/vda1 gnu.system=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system gnu.load=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/boot modprobe.blacklist=usbmouse,usbkbd quiet" \
+   -object rng-random,filename=/dev/urandom,id=guix-vm-rng \
+   -device virtio-rng-pci,rng=guix-vm-rng \
+   -virtfs local,path=/gnu/store,security_model=none,mount_tag=TAGjoptajej2oynju6yvboauz7pl6uj \
+   -drive file=/gnu/store/k2j1ild5gisf6409m9g4z39rn2n1x2zz-disk-image,format=raw,if=virtio,cache=writeback,werror=report,readonly=on \
+   -m  512 "$@"
+#+end_example
+
+***** Capture to =stdout= in the current terminal
+
+I basically just need =-nographic=.
+
+I also need to ensure that =-append noquiet= is added to the =qemu-system=
+invocation or the guix OS spec.
+
+#+begin_src shell :results output code :wrap example diff
+diff qemu{0,1}
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+5c5,6
+<    -append "root=/dev/vda1 gnu.system=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system gnu.load=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/boot modprobe.blacklist=usbmouse,usbkbd quiet" \
+---
+>    -append "root=/dev/vda1 gnu.system=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system gnu.load=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/boot modprobe.blacklist=usbmouse,usbkbd noquiet console=ttyS0" \
+>    -nographic \
+#+end_example
+
+***** Route virtual serial port explicitly using -chardev stdio
+
++ -chardev stdio,id=char0,signal=on :: defines standard i/o as a chardev
+  - Set =signal=off= to pass key combinations directly to the guest (instead of
+    signalling to the controlling qemu process)
++ -serial chardev:char0 :: Attaches =char0= to virt. serial port
+  - -device isa-serial,chardev=char0 :: alternatively, instantiate a virtual
+    device inside the guest.
+
+The above =-chardev= config needs to be paired with an allocated device (either
+=-serial= or =-device=)
+
+#+begin_src shell :results output code :wrap example diff
+diff qemu{1,2}
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1d0
+< #!/gnu/store/vhkg4avy9zf0kj70dcsmfpymnllkjq1y-bash-5.2.37/bin/sh
+6c5,7
+<    -nographic \
+---
+>    -chardev stdio,id=char0,signal=on \
+>    -serial chardev:char0 \
+>    -display none \
+11a13
+> 
+#+end_example
+
+***** Redirect to Unix domain socket
+
+You would connect with socat like:
+
+#+begin_src shell :eval never
+if [[ -S /tmp/qemu-serial.sock ]]; then
+    socat -,raw,echo=0 UNIX-CONNECT:/tmp/qemu-serial.sock \
+else
+    echo "fdskfljdsakl;"
+fi
+#+end_src
+
+To connect with =tmux= or =screen=:
+
+#+begin_src shell :eval never
+tmux new-session -s qemu-console "socat -,raw,echo=0 UNIX-CONNECT:/tmp/qemu-serial.sock"
+
+screen -S qemu-console socat -,raw,echo=0 UNIX-CONNECT:/tmp/qemu-serial.sock
+#+end_src
+
+
+#+begin_src shell :results output code :wrap example diff
+diff qemu{2,3}
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+5c5
+<    -chardev stdio,id=char0,signal=on \
+---
+>    -chardev socket,id=char0,path=/tmp/qemu-serial.sock,server=on,wait=off \
+13d12
+< 
+#+end_example
+
+**** When to use =-display none= and =-nographic=
+
++ -display none :: an alternate means of disabling display.
+  - when explicitly creating the serial devices above, it makes more sense to
+    use =-display none=
+  - Ordinarily, silences boot's console output (you just get login at agetty)
+  - With serial/device mapping, still get the console output.... while also
+    being able to pull from the host's side of the console output with other
+    tools (screen/tmux)
++ -nographic :: also disables display, but the options differ in how the host
+  terminal is able to connect to serial/parallel ports
+  - =-nographic= multiplexes the qemu monitor control signals, using =C-a= as a
+    prefix.
+
+|-----------------------------------------------------------+------------------------------------------|
+| ~-display none~                                             | ~-nographic~                             |
+|-----------------------------------------------------------+------------------------------------------|
+| Managing VM over a network (via SSH/VNC; req other flags) | QEMU is headless in text-only SSH term |
+| Want host term (no want boot logs)                        | Guest OS outputs to =console=ttyS0=   |
+| Scripting a background VM daemon                          |                                        |
+|-----------------------------------------------------------+----------------------------------------|
+
+***** LLM :urlllm:crypt:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ//W1hkmvdPa7Wfy2IoCZxe6s2MEL5LHfo/5e22CkHHwo97
+S/mtxvopXXX5fdYBxaNDH5V0aZb+nTLxZbqTM+U2sRRjq/Ffew9cshMRInnbiRTb
+L99u5Vuup2SaeTSPR0xBL/4F/k40EdhBx35bUc/qLxS3q9DKH+OWmRRAjDMnYhGv
+OgtT9OgP0jdc8xS2fCBRvIhbnh5kgwG0Vxt4ZdtUmh1IUMa/4miNxuclT2s3B34Z
+df0SaH19dwc6K3oU+bvG05x6XRyM6iTAIFw7YCgxAPSKO6ygEf7WwfkLasFWgz8J
+7Cf1nUHIp860LKoi2Z/vbcgHlP+o1/sn73j3OPQgPTN3bQRgprk5a/lvvlmkw/ZT
+r/wO+6mUlj+6iqsPM2HthqwF8AZjHEeQ6aqO/ilfbGHFVcPkkE5Cf4++m+kLIt5k
+Pbv/+4sHT/abqYwjXFFeGXVA50I5LnXdEuGfaTWlFmZTjyX8AXgCiHHYVlw+lfKv
+aiI2LHzoj96m7vwcoFrHoxQTLyeSJdrhMIkugnY80ESIZUIgy32PweHINCeAvk6x
+ZxANXQ1GQ7dILTZ7Fyo8nPyX8n0GrZXYI7IQd94OshMxzBWzhMjRr99ju2zmTvnw
+dMm/6dc5ffu3+PWaI6lPyTMcPGHpsRJ1dm6YzjDmBhZky7N6CXnd0TqYwTwORrPS
+6QGN1l1NzIWusk/l0LPzBLlx7hiL3S+GVN3/FnU2/8WAmbzKk+UcQoQXR+kc69Ac
+7Dd2rxro/5hvCG42lq0eWoNwXqoGwoafQ0sCBhTbEo1aIow6WdQH1eQ6pjux8qY+
+btLS4jU2Xz1jt52r4AGHxuhnFaCGiQOVdiPdTeNC6msbyE5poPGxeAxYe7aRU7sa
+C+UdjP+rpucn3z1YBlY17LdxuFC/pP2kPCKq9AKW0Me2g9k0Q9nlR0KiClzJmiwA
+WVOFgAAsLdjux2W27sA0It9b+lMCerU+HckkF+wtHltPK6hbuYzroYpGsYFdLrlT
+DQC/ZiDN55z2aKGoBO5a5AL/2+J90qqo/YHnh1FrYxm8F7xeZhsep17fwk5l39WT
+rZD+NqleJtg6de3k/XEn468RsNxZlSSNxx5wRY0+VzjODW7322vHArd/KYd0O8YS
+JLIgAQgEyhZXewX56AAoPy3aZQ1r4/7geJUegMuFR7fcek8grzv8f3QOCk1spIMv
+rF5/em2wjSZpnJnjFCi5ujMI578j5xw5YeHOssJWZFHidUjyjSxvoztF9EenvZqr
+EQ4eAu1Tbk3b8la4E4m8WyiBGK4pYC4ueZzqWWTQ91FnQWI+dOkeVmI3xoWwKeI9
+zZgwOQ2CX7CuVt8jZIlZJOgAIBGJsuaoODn/U8pQuj8kwGXikxn/p3MwM7ro8C4W
+4pYnnINAgBds/igXUt/kdZ/wNHIni5iJ+Xm0wyp1wjDuUeSlYIPFNZI6TPEBAe1q
+3J5LsYER7ru6ORBWMmF1HD2u51pdD5rKrbUiUzB0O4rQez/dBK9mWirPdEvcNMJy
+4Q7mghZp/cDq1040pIWE3KHAaLCf4IOUiLzWEitpyJwkjomzBMNmYKGZKYpJTq2e
+QEIQfZTWjKsqgzG52J1pnecvdbzJWf3m8L6TRoas6k1LSrL/CirfEQI99BBbuQ9U
+fieHCrfB/4fSKmtQ+LiO4ouN5ToiVZIDJkD6luWKnbpgd7sdAKZhvO8WKOhNrulK
+8yqiX5MyZGPDA0+HzjQ+Nmth1LUOjnkwKD3lSe0Fc4fyK7wl6kAP7g==
+=OJV3
+-----END PGP MESSAGE-----
+
+
+
+**** Specifying channels
+
+Since the following is in =vm-image.tmpl= for convenience, this configuration specifies that the initial channels in the VM should use the
+host's =(current-guix)=.
+
+#+begin_example scheme
+(guix-service-type config =>
+ (guix-configuration
+  (inherit config)
+  (guix (current-guix))))
+#+end_example
+
++ Since the host's =/gnu/store= gets shared inside the VM, this is efficient.
++ Changing this could require more builds than necessary inside the VM (after it
+  initializes)
++ Changes could affect the reproducibility, depending on how the channels are
+  specified. (i can't remember what guix =channels= would get installed if it
+  wasn't specified)
+**** Fixing the USB GPG Image
+
+The parameters are slightly different
+
+#+name: vmGpgOut
+#+begin_src shell :session (identity dc/ob-bash-session) :cache yes :async yes
+# qemuscript=$(guix system -L $chan vm "$vmspec")
+# echo $qemuscript
+
+guix system -L $chan vm "$guixvm_example" 2>/dev/null
+#+end_src
+
+** Omarchy's harness
 
 + Loads data in using a file system labeled =cidata=: [[https://github.com/omacom/omarchy-iso/blob/quattro/test/unit/cidata-load-test.sh][cidata-load-test.sh]]
 + To be able to test my nixos system, I'd need a custom system installed to a
@@ -222,7 +460,7 @@ allows for automated scripts to specify default values)
 
 From [[https://github.com/omacom/omarchy-iso/blob/quattro/bin/omarchy-iso-test#L201-L229][bin/omarchy-iso-test]] qemu harness
 
-#+begin_src shell
+#+begin_src shell :eval never
 start_vm() {
   local disk="$1" serial="$2"
   shift 2
@@ -256,7 +494,7 @@ start_vm() {
 
 It just sets =-serial "file:$serial"=
 
-#+begin_src shell
+#+begin_src shell :eval never
 # in install_phase()
 qemu-img create -f qcow2 -b "$BASE_DISK" -F qcow2 "$RUN_DIR/run.qcow2" >/dev/null
 start_vm "$RUN_DIR/run.qcow2" "$RUN_DIR/serial.log"
@@ -274,7 +512,7 @@ start_vm "$RUN_DIR/run.qcow2" "$RUN_DIR/serial.log"
 
 *** ISO
 
-#+begin_src shell
+#+begin_src shell :eval never
 make -C ~/.dotfiles/guix iso-gpg
 # guixexpr="(@ (dc system images usb-gpg-tools) usb-gpg-tools)"
 # guix system -L /home/dc/.dotfiles/guix/dc image \
@@ -285,29 +523,29 @@ make -C ~/.dotfiles/guix iso-gpg
 
 **** example template
 
-#+begin_src shell
+#+begin_src shell :eval never
 guixcheckout=~/forge/guix/guix
 imagespec="$guixcheckout/gnu/system/examples/vm-image.tmpl"
 guix system vm "$imagespec"
 #+end_src
 
-#+begin_src shell :results output code :wrap src shell
+#+begin_src shell :results output code :wrap example shell
 cat /gnu/store/kclbk89lz0md9rr74gy5vpc3xg81z54l-run-vm.sh | sed -e 's/ -/ \\\n   -/g'
 #+end_src
 
 #+RESULTS:
-#+begin_src shell
+#+begin_example shell
 #!/gnu/store/vhkg4avy9zf0kj70dcsmfpymnllkjq1y-bash-5.2.37/bin/sh
 exec /gnu/store/vwrwmcs3593ki79rxc4iyh3kpl5qyzza-qemu-10.2.1/bin/qemu-system-x86_64 \
    -kernel /gnu/store/sj7dsxn3jkmrlmwn1bhdx6k4vgya4kpl-linux-libre-7.1.8/bzImage \
    -initrd /gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/initrd \
-   -append "root=/dev/vda1 gnu.system=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system gnu.load=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/boot modprobe.blacklist=usbmouse,usbkbd noquiet" \
+   -append "root=/dev/vda1 gnu.system=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system gnu.load=/gnu/store/jd71lhg50jc0ykf0a60gv9zk3bk2jmn0-system/boot modprobe.blacklist=usbmouse,usbkbd quiet" \
    -object rng-random,filename=/dev/urandom,id=guix-vm-rng \
    -device virtio-rng-pci,rng=guix-vm-rng \
    -virtfs local,path=/gnu/store,security_model=none,mount_tag=TAGjoptajej2oynju6yvboauz7pl6uj \
    -drive file=/gnu/store/k2j1ild5gisf6409m9g4z39rn2n1x2zz-disk-image,format=raw,if=virtio,cache=writeback,werror=report,readonly=on \
-   -m 512 "$@"
-#+end_src
+   -m  512 "$@"
+#+end_example
 
 **** Connecting to a serial device
 
@@ -321,7 +559,7 @@ To troubleshoot the serial parameters & baud rate... this is awesome bc you're
 otherwise bumbling around in the dark. the host device needs to control access
 to the =/dev/pty/X= though (doesn't work over the network AFAI)
 
-#+begin_src shell  :results output
+#+begin_src shell :results output
 # /gnu/store/kclbk89lz0md9rr74gy5vpc3xg81z54l-run-vm.sh
 # /gnu/store/9v2a07hx0zbj6160ix5rjwrcdvx7mjb9-run-vm.sh
 #   -nographic -chardev pty,id=char0 -serial chardev:char0

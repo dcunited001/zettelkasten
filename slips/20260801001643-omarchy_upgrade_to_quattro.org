@@ -425,6 +425,79 @@ Fixing this will allow =guix copy= to succeed. Change to:
 PATH DEFAULT=@{HOME}/.config/guix/current/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:@{HOME}/.local/share/mise/shims:@{HOME}/.local/bin
 #+end_src
 
+** Hyprland
+
+*** Occasionaly Shows floating windows behind tiled windows on special workspaces
+
+=hyprctl clients -j | jq '.[] | select(.workspace.id == -91)'=
+
+#+begin_example yaml
+- address: '0x1234acbd'
+  mapped: true
+  hidden: false
+  visible: true
+  acceptsInput: true
+  at: [12, 998]
+  size: [1896, 990]
+  workspace: { id: -91, name: 'special:roam' }
+  floating: false
+  monitor: 3
+  class: emacs
+  title: 'Doom Emacs (tiled, only window)'
+  initialClass: emacs
+  initialTitle: 'Doom Emacs (tiled, only window)'
+  pid: 1234
+  xwayland: false
+  pinned: false
+  pinFullscreened: false
+  fullscreen: 0
+  fullscreenClient: 0
+  fullscreenHandler: default
+  allowedOverFullscreen: true
+  grouped: []
+  tags: ['default-opacity*']
+  swallowing: '0x0'
+  focusHistoryID: 3
+  inhibitingIdle: false
+  xdgTag: ''
+  xdgDescription: ''
+  contentType: none
+  tearingHint: false
+  stableId: '1234'
+- address: '0xdcba4321'
+  mapped: true
+  hidden: false
+  visible: true
+  acceptsInput: true
+  at: [ 674, 1053 ]
+  size: [ 890, 550 ]
+  workspace: { id: -91, name: 'special:roam' }
+  floating: true
+  monitor: 3
+  class: org.gnome.Nautilus
+  title: Home
+  initialClass: org.gnome.Nautilus
+  initialTitle: Loading…
+  pid: 4321
+  xwayland: false
+  pinned: false
+  pinFullscreened: false
+  fullscreen: 0
+  fullscreenClient: 0
+  fullscreenHandler: default
+  allowedOverFullscreen: true
+  grouped: []
+  tags: ['default-opacity*']
+  swallowing: '0x0'
+  focusHistoryID: 2
+  inhibitingIdle: false
+  xdgTag: ''
+  xdgDescription: ''
+  contentType: none
+  tearingHint: false
+  stableId: 5678
+#+end_example
+
 ** Quirks
 
 *** Default apps
@@ -436,7 +509,6 @@ initially require =mkdir -p ~/.local/state/omarchy/default=. Until then:
 + also checking that the editor exists fails (it fails for any command)
 
 This is likely because certain installation/setup scripts weren't run.
-
 ** Shell
 
 *** Notifications aren't showing up (v4.0.2)
@@ -486,6 +558,28 @@ journalctl -xb -p7 --user  -g omarchy-shell -r \
 **** Idle
 
 Run =omarchy-debug-idle= to get info there
+** Webapps
+*** Multi Profile
+
+Easier than adding in nixos/hjem
+
++ Add the webapp through chromium, ensure the supported links are set
++ Find the webapp that chromium installed, get the ~--profile="Profile N"~ arg
++ Add the webapp through omarchy's menu
++ Find the webapp's desktop file
++ Append the ~--profile="Profile N"~ arg
+
+Now this should work
+
+#+begin_src lua
+o.bind("SUPER + SHIFT + C", { webapp = "https://url.example.com", sole = true })
+#+end_src=
+
+However, =omarchy-webapp-launch= looks up ~Exec=~ by URL, so the first match wins.
+Anchor links could maybe break the tie... but for now, there are no additional
+args in the chain of calls that =o.bind()= leads to. This also requires a few
+changes in omarchy's bin scripts.
+
 ** TUIs
 
 *** Using =alacritty=
