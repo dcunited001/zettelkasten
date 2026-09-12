@@ -491,3 +491,64 @@ hyprctl clients -j \
 ]
 #+end_example
 
+* Kdenlive
+
+** Topics
+
+*** Markers
+
+**** Extracting from a clip
+
+It's frustrating, but these can't easily be transferred from clips to the
+timeline (or back again). The timeline markers won't follow edits on a clip.
+
+This xpath query will find all =kdenlive:markers= properties in a project file.
+Inside each instance of the tag is (inexplicably) a JSON list.
+
+To pass this to =xq=, you either need to handle it as a stream of XML docs (but =xq=
+isn't going to like the formatting) or you need to wrap it in a single document
+root.
+
+#+begin_src shell
+xmllint --xpath '//property[@name="kdenlive:markers"]' muhproject.kdenlive
+#+end_src
+ 
+Instead, for a relatively simple project, this works:
+
+#+begin_src shell
+cat muhproject.kdenlive \
+    | xq '.mlt.chain[].property[]
+  | select(."@name" == "kdenlive:markers")
+  | .["#text"] | fromjson' \
+      | jq 'map([
+[((.pos / 30 / 60 / 60) | floor),
+ ((.pos / 30 / 60) % 60 | floor),
+ ((.pos / 30) % 60 | floor)] | join(":")])'
+#+end_src
+
+This returns JSON seq, but the =.[].pos= field needs to be converted from frames
+to human times format... which depends on whether you went with NTSC like a
+caveman.
+
+... Or you can convert to ms and use =strftime("%H:%M:%S")=
+
+#+begin_src shell
+cat muhproject.kdenlive \
+    | xq '.mlt.chain[].property[]
+  | select(."@name" == "kdenlive:markers")
+  | .["#text"] | fromjson' \
+      | jq 'map({ hhmmss: (.pos / 30.0 ) | strftime("%H:%M:%S"), comment: .comment })
+| map("\(.hhmmss) \(.comment)")'
+#+end_src
+
+This should give you something like:
+
+#+begin_example
+[
+  "00:00:00 Intro",
+  "00:01:19 Outline",
+  "00:02:00 Goals for Github",
+  "00:02:21 Downloading a Repo",
+  "00:03:01 Our Repositories"
+]
+#+end_example
