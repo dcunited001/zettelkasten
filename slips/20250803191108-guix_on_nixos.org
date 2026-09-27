@@ -527,6 +527,33 @@ fdsa=$(locate '/home/*mimeapps.list' | tee -a >(locate '/etc*mimeapps.list'))
 echo $fdsa | while read -n p; do cat $p; done
 #+end_src
 
+**** Find matched app for mimetypes
+
+Find all mimetypes not defined by =/run/current-system/sw/share=
+
+#+begin_src shell
+comm -3 \
+    <(sort /run/current-system/sw/share/mime/types) \
+    <(for d in $(echo $XDG_DATA_DIRS | tr ':' ' ' | tee -a >(echo -n " $XDG_DATA_HOME")); do
+          cat $d/mime/types 2>/dev/null;
+      done | sort)
+#+end_src
+
+This takes a long time.
+
+#+begin_src shell :results output :eval never
+for d in $(echo $XDG_DATA_DIRS | tr ':' ' ' | tee -a >(echo -n " $XDG_DATA_HOME")); do
+    cat $d/mime/types 2>/dev/null;
+done | sort -u | while read -r mime; do
+    app=$(xdg-mime query default "$mime")
+    if [ -n "$app" ]; then
+        echo "$mime	$app"
+    fi
+done > mimesdb.tsv
+#+end_src
+
+Maybe now file-roller will stick to the winrars and tars it's used to
+
 *** Mime
 
 Dump a list of unique attributes and tags for mimetypes (a little hacky)
@@ -630,6 +657,7 @@ echo -n $XDG_DATA_DIRS | tr ':' '\n' \
 ├── x-content
 └── x-epoc
 #+end_example
+
 *** Data Dirs
 
 #+begin_src shell

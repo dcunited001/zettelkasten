@@ -63,10 +63,10 @@ Defaults
 
 Others
 
-| allow_tcp_ports      | deny_path            | mask |
+| allow_tcp_ports      | deny_path            | mask            |
 | claude_dir           | deny_path_exceptions | mask_exceptions |
-| env_pass             |                      |      |
-| trust_project_config |                      |      |
+| env_pass             |                      |                 |
+| trust_project_config |                      |                 |
 
 
 **** Project Template
@@ -124,6 +124,38 @@ mTNLtafzS9Ya9VM2
 -----END PGP MESSAGE-----
 
 ** Harnesses
+*** Opencode
+
+**** Traverse session history
+
+The JSON dumps preserving the relative order of indices (afaik after looking for
+5 seconds). The keys on =.messages= are out of order. idk if this holds generally 
+
+#+begin_src shell
+ses=$(opencode session list | tail -n-2 | cut -f1 -d' ')
+d=$(mktemp -d) && pushd $d
+
+# dump sessions
+for s in ${ses[@]}; do opencode export "$s" > "$s.dump.json"; done
+
+# dump paths
+for s in ${ses[@]}; do jq -r 'paths | join(".")' "$s" > "$s.paths.json"; done
+
+# check JSON encoding for total/partial ordering (or whatever)
+diff <(jq -r 'paths | join(".")' ${s[0]} | sort | uniq) \
+    <(jq  -r 'paths | join(".")' ${s[0]})
+
+# dump output, sloppily
+for s in ${ses[@]}; do 
+  jq -r '.messages[] | .parts | map(.state.output // "") | join("\n")' "$s" > "$s.output"
+  jq -r '.messages[] | .parts | map(.state.input.command // "") | join("\n")' > "$s.input.command"
+done
+#+end_src
+
+........ since these tools don't seem to advertise a GUI or provide simple &
+non-agentic means for seeing this. which is fine, for devs. idk i haven't
+figured out how to restrict it yet. it's unconfigured.
+
 *** Crush
 
 **** LSP

@@ -1,0 +1,355 @@
+:PROPERTIES:
+:ID:       73304335-44e7-4506-aff7-dd2b86925ba2
+:END:
+#+TITLE: LLM Learning: LaTeX
+#+CATEGORY: slips
+#+TAGS:
+#+PROPERTY: header-args:latex+ :dir img/20260927104906-llm_learning_latex
+
+* Roam
++ [[id:cea7d11c-8357-4e4f-90b3-fa8210eff796][AI]]
++ [[id:4cdfd5a2-08db-4816-ab24-c044f2ff1dd9][Programming]]
++ [[id:0bef6f3e-3007-4685-8679-e5edbcbb082c][LaTeX]]
+
+
+* Org
+
+** Render SVG from inline latex snippets
+
+#+begin_src emacs-lisp
+;; org-latex-default-packages-alist
+(setq-local org-latex-packages-alist
+            (append org-latex-packages-alist
+                    '(("" "tikz" t))))
+(setq-local org-preview-latex-default-process 'imagemagick) ;; from dvipng
+#+end_src
+
+Or include =:imagemagick yes :fit yes :headers '("\\usepackage{tikz}")= which is
+simpler with snippets
+
+#+header: :file my_circle.png
+#+header: :results file graphics
+#+header: :imagemagick yes
+#+header: :fit yes
+#+header: :headers '("\\usepackage{tikz}")
+#+begin_src latex
+\begin{tikzpicture}
+  \draw[fill=green!120] (0,0) circle (1.5cm);
+\end{tikzpicture}
+#+end_src
+
+#+RESULTS:
+[[file:my_circle.png]]
+
+Set =:dir= in =:PROPERTIES:= to run =org-babel= there
+
+=:header-args:latex:+ :dir img/20260927104906-llm_learning_latex=
+
+*** Ensure =gs= command is available
+
+Guix Emacs needs =gs= ghostscript in path, since =magick= relies on it. Adding it to
+the nix profile instead.
+
+
+The doom/emacs integration here is still calling =convert=, which is not a good
+sign once it hits v8 i guess?
+
+#+begin_example
+sh: line 1: gs: command not found
+convert: FailedToExecuteCommand `'gs'   -sstdout=%stderr   -dQUIET   -dSAFER   -dBATCH   -dNOPAUSE   -dNOPROMPT   -dMaxBitmap=500000000
+   -dAlignToPixels=0   -dGridFitTT=2 '-sDEVICE=png16malpha'   -dTextAlphaBits=4
+   -dGraphicsAlphaBits=4 '-r157.5x157.5'
+   -dPrinted=false  '-sOutputFile=/tmp/magick-Kxt4lDCB92oqPTMjG6yzIAfxpTiTyg25%d' '-f/tmp/magick-mj-vkz8RfJa6APL-hbdVUd0V8YHbvgl4' '-f/tmp/magick-3gKDaXOHVGRJv6W6hvfLHroCtQjQC7lr''
+
+   (32512) @ error/ghostscript-private.h/ExecuteGhostscriptCommand/75.
+convert: no images defined `/tmp/orgtextyy3Tu.png' @ error/deprecate.c/ConvertImageCommand/3375.
+#+end_example
+
+*** Ensure =texlive-svg= is included
+
+This will be useful later.
+
+Includes =\includesvg= and =\includeinkscape= (the latter is hilarious)
+
+
+* Prompt
+* AprilTags
+
+You can't actually print at 300 DPI, so you still need to buy these.
+
+** Specify dimensions and avoid antialiasing
+
+#+begin_example latex
+%% establish a unit length
+\newlength{\somelength} \setlength{\somelength}{0.5pt}
+
+%% this is not going to work with the later DPI
+\newlength{\tagpixel} \setlength{\tagpixel}{0.1015625in}
+
+%% fill a locked grid with \draw[fill=black]
+%% while coordinates are integer multiples of \tagmodule
+#+end_example
+
+Code (there is apparently a "standalone" class, which is nice)
+
+#+begin_export latex
+\documentclass{standalone}
+\usepackage{tikz}
+\begin{document}
+
+% anything go here and nothing(?) to reset
+
+\end{document}
+#+end_export
+
+Not sure whether to include the white around the black border? This probably
+helps, but would be better handled by padding
+
+#+header: :file tikztagtest.png
+#+header: :results file graphics
+#+header: :imagemagick yes
+#+header: :fit yes
+#+header: :headers '("\\usepackage{tikz}")
+#+begin_src latex
+\newlength{\tagpixel} \setlength{\tagpixel}{0.1015625in}
+\begin{tikzpicture}[x=\tagpixel, y=\tagpixel] % Each unit = 1mm (adjust for target DPI)
+
+    % 1. Draw the white quiet zone / background (8x8 total modules)
+    \fill[white] (0,0) rectangle (10,10);
+
+    % 2. Plot black modules using integer coordinates (x, y)
+    % Example data payload bits (replace with your specific AprilTag matrix)
+    \fill[black] (6,7) rectangle (7,8);
+    \fill[black] (3,3) rectangle (4,4);
+    \fill[black] (7,5) rectangle (8,6);
+    \fill[black] (5,3) rectangle (6,4);
+    \fill[black] (3,4) rectangle (4,5);
+    
+    % Draw outer orientation border / corner markers explicitly
+    \fill[black] (1,1) rectangle (9,2); % Bottom border row
+    \fill[black] (1,8) rectangle (9,9); % Top border row
+    \fill[black] (1,1) rectangle (2,9); % Left border column
+    \fill[black] (8,1) rectangle (9,9); % Right border column
+
+    % Optional: Overlay an engineering grid to verify alignment
+    % \draw[gray!30, very thin] (0,0) grid (8,8);
+
+\end{tikzpicture}
+#+end_src
+
+#+RESULTS:
+[[file:img/20260927104906-llm_learning_latex/tikztagtest.png]]
+
+
+* Intro Quiz :llmcontent:
+
+** 1-5
+*** Headless, Non-Interactive Compilation Loop
+
+Which configuration profile achieves a headless, non-interactive compilation
+loop using latexmk that updates immediately upon code modifications while hiding
+routine logs?
+
+=-pvc -interaction=batchmode -silent=
+
++ -pvc :: enables continuous preview monitoring
++ -interaction=batchmode -silent :: suppresses stdout logging unless critical
+  errors occur.
+  
+*** Glue and Infinities
+
+How does TeX distribute remaining white space across a layout line when it
+encounters multiple distinct instances of glue?
+
+TeX's glue system prioritizes infinite dimensions -- =fil=, =fill=, =filll=. Lower
+order elements or finite stretch elements are completely ignored if a higher
+order is present.
+
+#+begin_quote
+... huh?
+#+end_quote
+
+
+** 6-10
+*** PNG Scaling
+
+To scale a high-resolution PNG asset to exactly half the width of the text block
+while cropping 20 points from its bottom margin, which syntax parameter profile
+should be passed to =\graphicx=?
+
++ width=0.5\textwidth, viewport=0 20 {\the\width} {\the\height}, clip :: The
+  viewport parameters define the localized boundary window
+  - Setting the second coordinate to 20 clips the bottom.
+  - Enabling clip truncates the excess vector space.
+
+*** TiKz Relative Coordinates
+
+Which TikZ coordinate expression specifies a destination location located
+exactly 3 units away from the previous point at an upward angle of 60 degrees?
+
+
++ ++(60:3) :: the =++= prefix specifies a relative offset for global brush pos,
+  using polar coords. write as =(angle:dist)=
+** 11-15
+
+*** TiKz node anchoring
+
+When building layered diagrams in TikZ, how can you position a text description
+box perfectly aligned below an existing rectangular node named [processing]?
+
++ \node[below=of processing.south, anchor=north] {Text}; :: Specifying below=of
+  tracking the southern =anchor= and anchoring the new element's =north= edge yields
+  accurate, non-overlapping stacked placements.
+
+#+begin_quote
+This is the only one that seems like valid syntax with enough information to be
+"succinct" -- though =below=of= was throwing me off.
+
+The other options were similar, but didn't use grammar/syntax that would
+extend to common alternative usage. [[https://github.com/dcunited001/zettelkasten/blob/6c24af211d01a92d65be06badd1b623ed1dd17c7/resume/dodecahedron.tex#L1][TiKz seems weird]].
+#+end_quote
+
+*** KinemaTiKz
+
+When defining mechanical joints with the =kinematikz= package framework, what is
+the significance of mapping structural parameters into coordinate loops?
+
+It automates the progressive calculation of relative reference frames for
+chained robotic linkages. Looping coordinate parameters allows kinematikz to
+cascade positional orientations along complex forward-kinematic chains
+systematically.
+
+#+begin_quote
+That would be a nice feature to have for diagrams
+#+end_quote
+
+*** CircuiTiKz
+
+Which circuitikz snippet correctly paths a resistor element directly followed by
+a ground terminal connected from an active operational amplifier node named =A=?
+
++ \draw (A.out) to[R] ++(2,0) node[ground]{}; :: This syntax draws a bipole
+  component =to[R]=, offsets horizontally via relative positioning =++(2,0)=, and
+  defines a terminal node cleanly at that junction.
+
+#+begin_quote
+Same as above: only syntax that seemed extensible and vaguely valid.
+
++ Only asking for a oneliner so nodes like =[ground]= can't be used (probably).
++ I searched my org roam and found =--= to be valid. That's nice.
++ Relative coords are okay, but i'd rather avoid them.
+  - A previous question/answer implied that you can create maps of "points" as
+    path coordinates.
+
+Relative cartesian coords req. managing references to values repeatedly:
+
++ you either need to store metadata about coordinate transformations (plus
+  relationships if you backtrack them, dicey if they draw over your pretty TiKz)
+  - or you need to be deft with find/replace while somehow avoiding cognitive
+    overload. you could store relative brush state, but that could get messy
++ the alternative is to store metadata about relationships and let the PhD
+  authors of CircuiTiKz do it for you with magic macros
+
+Learn the basics, but don't reinvent the wheel.
+#+end_quote
+
+*** Ishikawa Diagrams and TiKz tree structures
+
+When converting an Ishikawa (fishbone) diagram into a programmatic TikZ tree
+structure, how should the hierarchical bones be declared to preserve structural
+flexibility?
+
+A. Bardcoding absolute geometric values for single text element block
+B. Forcing all category sub-branches to resolve under an automated radial
+   mindmap style profile.
+C. Utilizing standard tables wrapped tightly inside a series of rotated
+   paragraph environments.
+D. Nesting standard child paths off a central horizontal backbone coordinate
+   path.
+
+Modeling individual cause categories as nested children along an explicit
+coordinate line enables clean, parametric tracking adjustments.
+
+#+begin_quote
+A. Ooof! See previous q/a on juggling coords & constant FP numbers.
+B. No. It is _not_ a mindmap. That is not the design intent.
+C. Maybe, but that sounds painful, though if you're lucky the diagram won't look 
+   as bad as it does writing it   
+D. Obviously. Just.... It's obvious. That is almost by definition what the
+   ishkawa diagram is
+
+Though my score here so far is terrible. Several, i figured out with "hints",
+which were basically "hint, hint; it's the one with the keyword." although the
+coverage is great, given my initial prompt.
+#+end_quote
+
+** 16-20
+
+*** AprilTags
+
+Why does printing high-precision matrix tracking tags like AprilTags via
+standard LaTeX workflows require disabling anti-aliasing configurations?
+
+A. Anti-aliasing forces vector tracking paths to automatically translate into
+low-resolution JPEG data structures.
+B. Anti-aliasing blurs high-contrast edge boundaries into gradients, preventing
+computer-vision tracking tools from isolating discrete data bits accurately.
+  - AprilTags rely on sharp, single-pixel transitions. Interpolation introduces
+    grayscale borders that skew the geometry during optical scanning.
+
+#+begin_quote
+A. Umm kinda, but doesn't explicitly address the requirements. The second answer
+   does.
+   - Also, IIRC you don't put JPEGs anywhere near something that goes in a
+     printer, unless they're always high-fidelity.
+   - Even then, JPEG encoding doesn't work well. Ever resize them & it's
+     unpredictable garbage
+   - If you want to use =imagemagick= to transform/operate on them, filters are
+     hard to predict.
+   - Can't anticipate the effects of =magick= filters, especially with
+     resize/transform.
+
+So... in otherwords, you can't take an obnoxiously "dark mode" cheatsheet and
+run =negate + threshold + etc...= on it and easily anticipate effects you're
+starting from a JPEG. Pretty quickly, you'll find tons of artifacts.
+
+JPEG doesn't really have palettes (AFAIK), since the conservation of RGB/HSV/HSL
+color space values requires multi-scale interpolation. It's a _wavelet_ algorithm.
+I know that much.
+
++ e.g. in practice you can't take an FFT and just filter bands without affecting
+  related spectral bands (harmonics, phase and interference are complicated; see
+  the range of DSP parameters w.r.t. window size)
++ wavelets are just a different kind of transform (more or less)
+
+Gamut's are super complicated.
+
+B. Yes
+#+end_quote
+
+*** Managing interactions between top-level document, configuration and classes
+
+How should a custom class pass unhandled option configurations directly down to
+an internal base class like =article.cls= safely?
+
+
++ \DeclareOption*{\PassOptionsToClass{\CurrentOption}{article}} :: The fallback
+  option macro =\DeclareOption*= captures all unlisted options and relays them
+  down to the target class via =\PassOptionsToClass= _before it loads_.
+
+#+begin_quote
+this one, i guess.. didn't know what a LaTeX "macro modifier" is.
+
+"TeX doesn't natively allow the symbol =*= to be part of a macro's alphabetical
+name, LaTeX commands check for this modifier using a conditional macro called
+=\@ifstar=. If it detects a literal =*= character immediately following the command,
+it shifts to execute a completely different sub-macro"
+
+So this is another example of "find a decent character outside of a sub/set of
+characters. String-escaping and free-monoids and whatnot. This is one primary
+distinction between =LaTeX= and =TeX= then... okay.
+
+Given the domain problems -- and the cost of "doing it wrong" for code shared
+between documents -- actual macros (& argument handling/rebinding) would be
+important to know about.
+#+end_quote

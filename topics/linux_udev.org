@@ -28,3 +28,56 @@ udevadm monitor --subsystem-match="hidraw" --property --udev
 #+end_src
 
 ** TODO Checking response to test udev events
+
+** Setting group membership in arch for specific device
+
+Just walking through this. I don't want to use =uucp= group for everything, though
+i don't have =UUCP= services running.
+
+#+begin_src shell
+groupadd dialout
+usermod -aG dialout $(id -u)
+
+# uucp gets applied to tty in /usr/lib/udev/rules.d/50-udev-default.rules so,
+# overriding the group needs to happen after, as i discovered.. it works, then
+# gets the old group on reconnect
+cat >/etc/udev/rules.d/51-serial-dialout.rules <<EOF
+ACTION!="add|change", GOTO="serialdialout"
+
+ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", GROUP="dialout"
+
+LABEL="serialdialout"
+EOF
+
+udevadm control --reload-rules
+udevadm trigger
+#+end_src
+
+#+RESULTS:
+
+
+=udev= is useful to know about if you want to trigger services/automation based on
+device state changing. it can be a security issue though, so the interface
+should be pretty dumb -- low-bits: on/off; systemd if possible. probably better
+ways to do that.
+
+You can:
+
++ lock session when removing yubiky
+  - except it's difficult to avoid locking. otherwise it's a pretty secure way
+    to handle that (don't need to worry about silent deactivation of locking
+    scripts, etc)
++ start up services/scripts if testing a device
+  - kick off systemd timer to establish device state
++ prepare to change networking state based on plugging in a USB/ethernet dongle
+  - instead, maybe a docking station or USB hub
++ start up a service if an NFC device is plugged in
+  - e.g. to fire off other scripts on specific NFC scans/events
+
+Kinda difficult to do any of that if you don't know it's possible. it's simple,
+but not if you haven't done it. hard to discover how distributions structure
+their udev rules, but i'm guessing it's fairly uniform.
+
+The systemd/service integration implies you either have packaging skills (and
+COPR or PPA) or you're running nixos/guix, since otherwise you need to manage
+this with ansible or somehow idk.
