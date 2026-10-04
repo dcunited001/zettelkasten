@@ -1,0 +1,59 @@
+:PROPERTIES:
+:ID:       6592a8f5-480e-4ba5-91d2-510e67e98ac1
+:END:
+#+TITLE: VyOS: Troubleshooting VRRP, Conntrackd, OSPF for HA Failover
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:5aa36ac8-32b3-421f-afb1-5b6292b06915][VyOS]]
++ [[id:e967c669-79e5-4a1a-828e-3b1dfbec1d19][Route Switch]]
++ [[id:ea11e6b1-6fb8-40e7-a40c-89e42697c9c4][Networking]]
+
+* Notes
+
+#+begin_quote
+i'm coming to this after not touching it for 2+ months. it could be a bad cable
+or a switch misconfiguration. i'm looking at the ARP and it never makes it to
+the other side.
+
+Layer 0 and Layer 1 problems are the absolute worst. but nope. lights are green
+
+I also may have disabled the failover, since i get the feeling this is a
+"phyrric" design.
+
+Network went out today, magically. Needs to come back online in the right order
+bc... yeh. it just does. i don't have unlimited time. and i'm still not using
+prometheus/etc (bc i don't really have a network. I kinda do now, but i still
+need servers online to host the metrics)
+#+end_quote
+
+** BFD and OSPF
+
+These have an issue sharing a link. I'm probably "doing it wrong" and it may
+just be much easier with multicast.
+
++ If there's a static route, I have metric prioritization issues -- it's hard to
+  get the metrics/routes to "convexly" settle into few stable states. Convex
+  because concave can't "focus" the system into smaller spaces. The various
+  routing protocols should coordinate to minimize possible system states...
+  otherwise it's weird & highly stateful
+  - e.g. my cross-core link is on a =HALAN= interface, so when that goes down (...
+    actually this is wrong...
++ The OSPF routes should have priority over statics, but the latter are needed
+  until the former exists -- esp for the BFD connection over the cross-core
+  link. This seems to be happening now: if the BFD peering doesn't have a static
+  route, then it can't access the other side...
+  - hmmm nevermind that doesn't make sense. it's definitely not even close to
+    attempting to send traffic though. and =show protocols static arp= confirms
+    that the link doesn't know the other side is connected.
+
+*** =show protocols static arp=
+
+This command is useful for checking unroutable traffic. If the routing node like
+isn't aware of how it's addressing should be routed (if its address doesn't
+match in FIB), then it will end up here. I'm seeing ARPs for public IPs over the
+OSPF cross-core network.
+
+So, this shows addresses attempting ARP out of static links. It should show just
+the MACs for non-local/virtual addresses on the far end of direct connections.

@@ -1,0 +1,136 @@
+:PROPERTIES:
+:ID:       338ffe3c-2cb3-4cc6-a034-b98c8e45f410
+:END:
+#+TITLE: Forensics: Collect Filehash Database
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
+:PROPERTIES:
+:ID:       80482e84-de36-4f83-876c-ef06ffe5bc58
+:END:
++ [[id:45b0ba21-fb20-44dc-9ee9-c4fed32aba9c][Forensics]]
++ [[id:d7cc15ac-db8c-4eff-9a1e-f6de0eefe638][File Systems]]
++ [[id:22a7c273-2fa0-4675-bd33-da3e5b90792a][LVM]]
++ [[id:c25e908e-3223-4eca-b75c-173a4742c337][Forensics: Czkawka Filehash Database To Identify Duplicates]] previous method
+
+* Notes
+** Cloud
+
+TL;DR i still don't have cloud. If I don't get filesync, it will drive me crazy.
+Network issues wasted my day. The more stuff I'm doing for robotics, the more
+file-sprawl i'm getting.
+
++ i can't afford =dropbox=. i hadn't thought about it until recently, which is...
+  well probably isolation.
++ i need a stable network for =syncthing= to work. pretty much have this now, but
+  handling nix/guix secrets are a huge blocker. I can't seem to complete it in
+  the time horizon i have (NEVER longer than two weeks, since i'm off ADD meds
+  for a week, and there's also a week adjusting to going off AND going back on
+  them). so, once i have some plan, i quickly run out of steam.
++ i also want a backup node on my network available over my VPN
++ i need to avoid split-brain DNS, but apparently you can specify multiple hosts
+  for syncthing identities (i don't get out much)
++ rcloud doesn't work. it just does not work AFAIK. maybe for google drive to
+  since from remote to local, intended for read-only
++ =S3= buckets don't really work. Cloud storage is too expensive.
++ there are nearly zero cloud storage services available with software that runs
+  on linux, unless you use a rube-goldberg machine
++ =restic= doesn't work. it would for a different kind of backup
++ I can't afford a =NAS=. i had always considered =NAS= for =iSCSI= and kinda forgot
+  about using it for =NFS=. however, that has weird issues (locking/syncing/speed)
+  and is difficult to set up with TLS or whatever.
++ Windows/Mac do not help either. I cannot stand using their file systems and it
+  also drives sprawl. so much so, that I just =a priori= consider ANY file on
+  those systems to not be worth backing up. (in other words, every file i send
+  there will eventually be deleted.)
+
+in the past, any time i leave my house, i normally sync my laptop's dotfiles.
+usually the day before i have something to do. I can get files as needed, but it
+adds to sprawl.
+
+
+** LLM :urlllm:
+
+*** Remote collection
+
+**** Prompt
+
+#+begin_example markdown
+i need to clean up duplicate files across multiple laptops while specifying
+context-specific patterns to ignore (like `.git` or npm modules)
+#+end_example markdown
+
+Gives an ad-hoc python script
+
+#+begin_example markdown
+can you generate some example bash scripts to compile file hash databases using
+tools similar to what's included in `tsurugi` linux and `autopsy`? this needs to
+either work with `scp`-style network paths (slow), `sshfs` mounts (slightly
+faster...) or as a script available on the remote targe to be collected via
+`scp` (fastest by far)
+
+the goal is to identify the file trees that diverge the most to inspect them
+further. it would be much better if I could use fairly well-known tools that
+already exist to:
+
+- compiles file hash databases 
+- preferably using a simple sqlite schema 
+
+huge plus if the scripts include standard issue forensic cli tools
+
+czkawka works well, but the CLI is a bit weird. it produces json output instead
+of sqlite. i usually need to `rsync` to copy files locally and, by the time i'm
+halfway done, i get interrupted and some of these file trees have diverged
+again.
+#+end_example markdown
+
+Gives ad-hoc bash scripts (which i asked for), but with no references to
+standard forensics tools. i have no idea why usage of these are so unbelievably
+absent from the internet.
+
+**** Partial Response
+
+This is mostly pointless, except that it gave some insight (like =ATTACH
+DATABASE=). It loops on =find= to collect (slow) and 
+
+On this schema
+
+#+begin_src sqlite
+CREATE TABLE IF NOT EXISTS files (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filepath TEXT UNIQUE,
+    filename TEXT,
+    extension TEXT,
+    size INTEGER,
+    sha256 TEXT,
+    md5 TEXT,
+    mtime INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_sha256 ON files(sha256);
+CREATE INDEX IF NOT EXISTS idx_filepath ON files(filepath);
+#+end_src
+
+Suggests these queries
+
+#+begin_src sqlite
+ATTACH DATABASE '$DB1' AS host1;
+ATTACH DATABASE '$DB2' AS host2;
+
+CREATE TABLE unique_to_host1 AS 
+SELECT * FROM host1.files WHERE sha256 NOT IN (SELECT sha256 FROM host2.files);
+
+CREATE TABLE unique_to_host2 AS 
+SELECT * FROM host2.files WHERE sha256 NOT IN (SELECT sha256 FROM host1.files);
+
+CREATE TABLE modified_files AS
+SELECT 
+    h1.filepath, 
+    h1.size AS size_host1, h2.size AS size_host2,
+    h1.sha256 AS sha_host1, h2.sha256 AS sha_host2,
+    h1.mtime AS mtime_host1, h2.mtime AS mtime_host2
+FROM host1.files h1
+JOIN host2.files h2 ON h1.filepath = h2.filepath
+WHERE h1.sha256 != h2.sha256;
+#+end_src
+

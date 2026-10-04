@@ -1,0 +1,143 @@
+:PROPERTIES:
+:ID:       0455b0fc-39c3-4311-842d-697671bfe5f6
+:END:
+#+TITLE: Linux: Diagnosing a Silent Crash
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
++ [[id:584f8339-a893-40ab-b808-7b4f7046313c][Hardware]]
+
+* Overview
+
+Occasionally my computer will just be sitting at the LUKS prompt. Maybe once
+every two months. No load. I'm never around when it suddenly happens. It just
+does. There are never logs in the journal. Also, 90% of my journal are
+XWayland/XKB warnings about keybinds out of range.
+
+** Looking into =/var/log=
+
+On NixOS, this is mostly stuff for =last=
+
++ /var/log/wtmp :: these and similar files just record last login logouts
++ utmpdump /var/log/wtmp :: converts this format to
+
+Nothing in =/var/log/syslog= or =/var/log/messages=
+
+** RAS Daemon
+
+I set up RAS Daemon in case I needed logging in the future for
+
+#+begin_src shell
+sudo ras-mc-ctl --errors # doesn't show much useful
+sudo ras-mc-ctl --status # for daemon status
+#+end_src
+
+Check sqlite
+
+#+begin_src shell
+r=/var/lib/rasdaemon/ras-mc_event.db
+for t in $(sudo sqlite3 $r ".tables"); do
+    sudo sqlite3 $r "select '$t', count(*) from $t;"
+done
+#+end_src
+
+Some recent disk errors, but I think from a power loss. Only three tables have
+rows.
+
+Gemini recommended checking =mc_events= and =mce_record=. Not much there. =MCE= is a
+Machine Check Exception.
+
+** Core Dumps
+
+There are none for this.
+
+** System Architecture Logs
+
+LLM: "Look in =ls -la /sys/fs/pstore/=" ... nothing there. Panic dumps go here.
+This gets written to NVRAM, then read from it.
+
+** Check BIOS logs
+
+In BIOS? For a Gaming motherboard? Has two NICs from different manufacturers and
+doesn't even have =SR-IOV=. IDK that it expects you to look. (I didn't..)
+
+* Cause?
+
+No clue. It's weird that it always happens when I'm not looking. Maybe there are
+one or two exceptions... out of about 15 occurrances over <2 years?
+
+When this happens, I hit the power/reset buttons in strange order ... sometimes.
+The intent is to interrupt a halfway reboot during UEFI init and clear any
+residual state in case it's in [[https://www.youtube.com/watch?v=MRqfPmPaNgE&pp=ygUdbWluaW1hbCBib290bG9hZGVyIGdvIGJ1c3lib3g%3D][one of those weird UEFI modes]] that carries state
+to the next boot.
+
+IDK. didn't do that here.
+
+Paranoid? Yeh, but literally the next thing that I would type is my LUKS
+passphrase. That's a separate bootloader ... but idk. Why not? I should clearly
+have access to people who can learn me good on computers...
+
+The weird thing: there are no logs... but it reboots? BIOS config 4 response to
+power loss could explain it (I usually configure to avoid restart though)
+
+** Power Issues?
+
+Could be. IDK why though. No obvious power spike. Nothing else turned off.
+
++ LLM recommends NixOS =power.ups= module as =netclient= to read from =apcupsd= or =NUT=
+
+My UPS definitely sucks. And doesn't seem to work anymore. It's overloaded for
+sure, but never gave the =5:00= of =950VA= on the label anyways. I've never trusted
+it's power isolation for the USB interface.
+
+It also distributes its drivers on RPMs from a random site. =apcupsd= and =NUT=
+apparently make this a non-issue -- first i've really heard of it (I live on Tom
+Hanks Island btw).
+
+#+begin_quote
+I think someone kinda mentioned this about two months ago, but often it's just
+not obvious that the magic words don't mean the same thing to me as they do to
+everyone else who "just gets to have a job to talk homelab stuff around the
+water cooler" and stuff like that. I can't remember, but I think they were
+trying to help.
+
+And i'm glad... but it's not the same as an IRL conversation though.
+#+end_quote
+
+Anyways, now that I know the magic words, apparently people use =NUT= to script a
+shutdown of NAS to avoid disk corruption, which was always something I worried
+about while running Proxmox.
+
+* Getting deeper logs
+
+Need to be careful just permanently enabling some of these.
+
+** Force kernel dump
+
+#+begin_src nix
+boot.kernelParams = [ "panic=10" "oops=panic" ];
+#+end_src
+
+** Persistent Logs in Journal
+
+#+begin_src nix
+services.journald.extraConfig = ''
+  Storage=persistent
+  SyncIntervalSec=1
+'';
+#+end_src
+
+** Magic =SysRq=
+
+My Dell keyboard has this, but ... I'm using the =SysRq= button for =AltGr=...
+dammit. I guess that's stupid.
+
+#+begin_src nix
+boot.kernel.sysctl."kernel.sysrq" = 1;
+#+end_src
+
+Only works for a hard freeze, not a emergency reboot.
+

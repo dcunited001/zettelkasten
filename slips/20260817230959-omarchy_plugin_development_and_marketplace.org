@@ -25,6 +25,82 @@
 
 Can add =console.log()= and follow =journalctl -b -p7 -f=
 
+** Schema
+
+*** Are schema's flat?
+
+Technically, no. I've seen a =manifest.json= that includes two entrypoints
+
+#+begin_src shell
+checkouts=/data/ecto/omarchy/plugins
+
+# most widgets as of mid-august have one schema
+grep -rle 'schema"' -B20 --include="manifest.json" "$checkouts" \
+    | sort | uniq -c | grep -vE '^ +1'
+#+end_src
+
+schema types. apparently these
+
+#+begin_src shell
+checkouts=/data/ecto/omarchy/plugins
+
+# find $checkouts -name "manifest.json" -type f  -exec jq -r
+# ff=$(fd 'manifest.json' $checkouts)
+
+q='.. | (select(type=="object") | ."schema" // empty)
+    | map(.type) | sort | join("\n")'
+find "$checkouts" -name "manifest.json" -print0 \
+    | parallel -0 "jq -r '$q'" | sort -u
+#+end_src
+
+There are about 4,000 files here, though they end up being paged in memory (i
+think)... (i thought =jq= was python, but i guess that's yq/xq)
+
+|      | above     | below    |
+|------+-----------+----------|
+| real | 0m11.343s | 0m5.023s |
+| user | 0m15.646s | 0m5.359s |
+| sys  | 0m21.220s | 0m8.672s |
+
+=cat= is cheap (it's probably still got the sticky bit). Above, many =jq= are
+started. Below, there's only one memory image loaded (that contains all the
+state change inside a single process)
+
+I think jq's =..= is slow here
+
+#+begin_src shell
+q='.. | (select(type=="object") | ."schema" // empty)
+    | map(.type) | sort | join("\n")'
+# if doubling up the sort, should definitely double the unique (in jq) ... but
+# they're already uniq. most of these are single value as well...
+find "$checkouts" -name "manifest.json" -print0 \
+    | parallel -0 "cat" | jq -r "$q" | sort -u
+#+end_src
+
+#+RESULTS:
+| array       |
+| bool        |
+| boolean     |
+| command     |
+| enum        |
+| int         |
+| integer     |
+| list        |
+| multiselect |
+| number      |
+| object      |
+| password    |
+| path        |
+| select      |
+| string      |
+| stringList  |
+| text        |
+
++ ~parallel jq '.your_query' ::: *.json | sort -u~
+  - fast, but small in scope
++ ~parallel 'jq ".your_query" {} | sort -u' ::: *.json | sort -u~
+  - faster, but oof the quotes. still limited on files
+
 ** Verification
 
 *** validate no =QtWebEngine=
@@ -35,7 +111,7 @@ From [[https://github.com/stappmus/Omarchy-Spotify/blob/6c3af3d96aae1e967618ee0e
 if rg -n 'QtWebEngine|WebEngineView|WebView|playerctl|node_modules' \
     --glob '*.qml' --glob '*.js' --glob '*.sh' --glob '*.service' \
     --glob '!scripts/test.sh' .; then
-    echo "test.sh: forbidden heavyweight runtime dependency found" >&2
+    echo "forbidden heavyweight runtime dependency found" >&2
     exit 1
 fi
 #+end_src
@@ -82,9 +158,21 @@ There's also a ton of other lists of repos in ectorepo/ectorepo with some info o
 
 ** Plugins
 
+*** Meta
+
++ [[https://github.com/SmoothPixels/glyph-menu][SmoothPixels/glyph-menu]] pick a glyph for the menu widget in the top-left,
+  instead of the [[https://github.com/SmoothPixels/glyph-menu/blob/main/extensions/omarchy-menu.snippet.jsonc#L8C39-L8C40][omarchy]] [[https://github.com/SmoothPixels/glyph-menu/blob/main/Glyphs.js#L21][glyph]] "" which is codepoint =59648 #o164400 #xe900=
+  - In addition to helping suss out the patched font details (missing on my
+    nixos system), this repo also provides the raw unicode codepoints for a lot
+    of other symbols. It provides these mostly through font-awesome though
+  - Given this codepoint =e900=, grep takes me right to [[https://github.com/basecamp/omarchy/blob/quattro/agents/skills/icon-font.md?plain=1#L67-L71][agents/skills/icon-font.md]]
+    and the [[https://github.com/basecamp/omarchy/blob/quattro/shell/plugins/menu/BarWidget.qml#L11-L23][widget itself]] (which i already tried)
+  - The patched font details were a bit easier to suss out in v3
+  - These are in my =omarchy-quattro= nixos package, but i just need to properly
+    add =default/fonts/omarchy/omarchy.ttf= to the system's fonts ... somehow
+
 *** Graphical
 + [[https://github.com/28allday/Quattrolitaire][28allday/Quattrolitaire]]
-
 *** Hardware
 
 *** Networking
@@ -121,11 +209,65 @@ There's also a ton of other lists of repos in ectorepo/ectorepo with some info o
 *** Hyprland
 
 + [[https://github.com/crmne/omarchy-hyprmoncfg][crmne/omarchy-hyprmoncfg]]
+
+*** Workspaces
 + [[https://github.com/TheTrueFerret/omarchy-decent-workspaces/blob/main/Workspaces.qml][TheTrueFerret/omarchy-decent-workspaces]]
+  - only =special:scratchpad= is configurable
++ [[https://github.com/eddygarcas/omarchy-workspaces-preview][eddygarcas/omarchy-workspaces-preview]] 
+  - only =special:scratchpad= is configurable
++ [[https://github.com/wbuf81/omarchy-workspace-labels][wbuf81/omarchy-workspace-labels]] nice aesthetics, no special
++ jankeesvw/omarchy-workspace-name
++ tornikegomareli/omarchy-spaces
+  - great aesthetics, no special
+  
+
+**** Special
++ [[https://github.com/brandonpollack23/omarchy-beautiful-workspace-bar][brandonpollack23/omarchy-beautiful-workspace-bar]]
+  - based on wbuf81/omarchy-workspace-labels
+  - handles special workspcaes
++ [[https://github.com/zucram/omarchy-app-workspaces/blob/main/Workspaces.qml][zucram/omarchy-app-workspaces]]
+  - fork of TheTrueFerret/omarchy-decent-workspaces
+  - doesn't handle special workspaces well. (it does but it doesn't)
 
 *** Audio
+
++ [[https://github.com/WhoIsCalebBrown/mic-effects/blob/3a6e3ea71c6105abe30129f787bafe2948c073e9/README.md?plain=1#L2][WhoIsCalebBrown/mic-effects]]
 + [[https://github.com/SpoilHeap/Omarchy.SonyXM4][SpoilHeap.Omarchy.SonyXM4]]
 + [[https://github.com/salted-sorbet/salted.bar][salted-sorbet/salted.bar]]
 + [[https://github.com/AksharP5/omarchy-radio-atlas][AksharP5/omarchy-radio-atlas]]
 
+**** Pulse Audio
+
+[[https://github.com/WyattB111/omarchy-lull][WyattB111/omarchy-lull]] Python script is controlled over =lull.sock= to synthesize
+noise. Uses =paplay= for playback
+
+*** Streaming
+
++ [[https://github.com/data-goblin/omgato][data-goblin/omgato]] Omarchy Quattro panel for Key Lights, Stream Deck, Stream
+  Deck Pedal and Cam Link 4K, each with a command line tool
+
 *** By Category
+
+** Functionality
+*** Sockets
+
+See [[https://quickshell.org/docs/v0.3.0/types/Quickshell.Io/Socket/?highlight=socket][Quickshell.Io/Socket]].
+
++ Requires some state management and error handling.
+  - Checking socket status, responding to changes in socket accessibility
+  - Updating =connection= property to match connection status
+
+**** How to read from this socket
+
++ [[https://github.com/max-baz/yubikey-touch-detector#integrating-with-other-ui-components][max-baz/yubikey-touch-detector]]
+
+**** Which plugins read from a socket?
+
+#+begin_src shell
+rg -l ' +Socket \{' /data/ecto/omarchy/plugins/ \
+    | tree --fromfile . --noreport
+
+# or..
+rg -l 'XDG_RUNTIME_DIR.*sock' /data/ecto/omarchy/plugins/
+#+end_src
+
