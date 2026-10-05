@@ -12,9 +12,99 @@
 
 * Resources
 
+* Contributing
+** Running Tests
+
+| ./tests/test-*.scm          | actually tests specified in Makefile.am |
+| ./guix/tests/*.scm          | helpers for like git & https            |
+| ./gnu/tests/*.scm           |                                    |
+| ./build-aux/test-driver.scm | test driver wrapping srfi-64            |
+
+=./build-aux/test-driver.scm= is a guile script that loads tests like
+=./tests/test-set.scm=.
+
+#+begin_src shell
+# this is dirty if running the wrong tests
+GUILE_LOAD_PATH="myprojroot/test/guix:$GUILE_LOAD_PATH" \
+    ./build-aux/test-driver.scm \
+    --test-name=tests/sets.scm
+#+end_src
+
+The main issue with SRFI-64 is in output handling & error status (for
+make/scripts, apparently)
+
+*** Running tests outside out guix
+
+Better to extend from Guix's marionnette VM tests, like in [[https://codeberg.org/gofranz/panther/src/commit/dfda53f8e6a53f7fce31327d55f5711376f3b9fd/px/tests/forseti.scm#L16][pantherx]] or
+[[https://github.com/fishinthecalculator/sops-guix/blob/c53e27e533836ea8595626ba6796dee5362f8c4a/modules/sops/tests/sops.scm#L3][sops-guix]]. The latter also builds with blueprint.scm
+
+#+begin_quote
+probably a bad idea to run these outside of the pure =guix container= that builds
+=guix= from source. there's a lot of setup/teardown of derivations.
+
+... but idk. I can't seem to find consistent info on testing guile scheme --
+specifically for channels supplementing guix with similar stuff
+#+end_quote
+
+
+From =$guixcheckout=, this seems to run tests fine. No monads yet.
+
+#+begin_src shell
+dcasdf_root=/data/work/repos/src/guix/dcasdf
+
+# in guix codebase: ./build-aux/test-driver.scm
+GUILE_LOAD_PATH=$dcasdf_root/src/guix/dcasdf ./build-aux/test-driver.scm \
+  --test-name=$HOME/.dotsops/test/guix/tests/dcasdf.scm
+#+end_src
+
+With this structure
+
+#+begin_verse
+├── README.org
+├── scratch
+├── asdf
+│   └── ...
+├── src
+│   ├── guix
+│   │   └── dcasdf
+│   │       └── dcasdf.scm
+│   └── nix
+│       └── dcasdf
+│           └── asdfghjk.nix
+└── test/guix
+         └── tests
+             └── dcasdf.scm
+#+end_verse
+
+And this module/test pair
+
+#+begin_src scheme
+;; implementation
+(define-module (dcasdf)
+  #:use-module (srfi srfi-1)
+  #:export (dcasdf/foo))
+
+(define dcasdf/foo "bar")
+
+;; module name doesn't match for some reason
+(define-module (test-dcasdf)
+  #:use-module (dcasdf)
+  #:use-module (srfi srfi-1)
+  #:use-module (srfi srfi-26)
+  #:use-module (srfi srfi-64))
+
+(test-begin "sets")
+
+(test-assert "bar foo?"
+  (let* ((fdsa "asdf")) (and (= 4 (+ 2 2)))))
+
+(test-end)
+#+end_src
+
 * Quality of Life
 
 Mostly walking through some of the info in the manual
+
 
 ** =guix deploy=
 
@@ -32,7 +122,6 @@ guix archive --authorize < coordinator-public-key.txt
   + [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/hetzner.scm#L863-L870][hetzner-environment-type]] :: german cloud. [[https://guix.gnu.org/manual/devel/en/guix.html#index-hetzner_002dconfiguration][guix docs]]
   + [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/digital-ocean.scm#L428-L435][digital-ocean-environment-type]] :: converts digital ocean node to Guix
     - [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/digital-ocean.scm#L206-L297][guix-infect]] is an interesting script and it handles [[https://codeberg.org/guix/guix/src/commit/ae0aa97e5438af2b39e582a6fb88b72361c3d3ea/gnu/machine/digital-ocean.scm#L388][reboot over ssh]]
-
 ** Running =guix publish=
 
 My hope here is that I won't be downloading the =texlive-scheme-full= twice... but
@@ -185,4 +274,3 @@ ssh -o UserKnownHostsFile=/dev/null \
     -o StrictHostKeyChecking=no \
     -p 10022 root@localhost
 #+end_src
-
