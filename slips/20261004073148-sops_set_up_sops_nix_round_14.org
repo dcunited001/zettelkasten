@@ -30,6 +30,119 @@ Hoping that =secretspec= offers these
 
 *** Factory/Builder Patterns
 
+Including these "roles" from another project's =secretspec.toml= should allow them
+to compose into a factory/builder pattern.
+
++ using the =ref= feature could simplify references to these CA's certs/keys. e.g.
+  - from a "secops" project's top-level =secretspec.toml=, output certs/keys to to
+    a =sops://= uri.
+  - then in a dependent project/deployment, configure a provider to that =sops://=
+    uri. in the environments where it's needed use the =ref=
++ There may be an IPC with JSON-RPC later
+  - it supports reading/passing data over tunnels (easier to rely on service
+    when there's infrastructure and clear network boundaries)
+  - there are probably better ways to skip much/some of the sops (like just
+    using Cloud KMS URIs to secrets generated via their APIs)
+
+Getting it to work for a bundle of functionality is mainly a matter of planning
+the names/structure of secrets. then add one/more top-level =secretspec.toml='s.
+These can be ad-hoc and arbitrary (unless auditing is necessary)
+
+After the initial configuration (and rehashing what Step CA contexts/profiles
+are), the main next blockers:
+
++ the Go templates for profiles/contexts
++ polices for cert issuance.
+
+**** ./secretspec/roles/stepca.toml
+
+#+begin_src toml
+#:schema https://secretspec.dev/schema/secretspec.schema.json
+[project]
+name = "stepca"
+revision = "1.0"
+extends = ["stepyk.toml"]
+
+[providers]
+prod_sops = "sops://secrets/{project}/{profile}.enc.yaml"
+dev_sops = "sops://secrets/{project}/{profile}.enc.yaml"
+
+[profiles.default]
+# STEPPATH = { description = "", required = false }
+# STEP_ROOT = { description = "", required = false }
+
+STEP_PASSWORD = { description = "Password for --password-file", required = true, type = "password", as_path = true, generate = true }
+STEP_KEY = { description = "Root Key --root", required = true, as_path = true }
+STEP_CA_PASSWORD = { description = "Password for --ca-password-file", required = false, as_path = true }
+STEP_CA_KEY = { description = "CA Key --ca-key", required = false, as_path = true }
+#+end_src
+
+**** ./secretspec/roles/stepyk.toml
+
+Yubikey KMS
+
++ serial/slot/pin needs to be set for every leaf-issuing pair (root/ca; ca1/ca2)
+  in the tree. management key is likely also needed.
+  - to change between Step CA =context=, each Step CA =authority= needs its own
+    Secretspec =[profiles.$ENV]= environment block.
+  - this works alright if the base =secretspec.toml= is intended to provide
+    runtime environments for managing X509 certs.
+
+#+begin_src toml
+#:schema https://secretspec.dev/schema/secretspec.schema.json
+[project]
+name = "stepkms"
+revision = "1.0"
+
+[profiles.default]
+# to compose options to step: --kms and --key
+STEPYK_SERIAL = { description = "Root CA Yubikey Serial", required = true, type = "password" }
+STEPYK_SLOT = { description = "Root CA Yubikey Slot", required = true, type = "password" }
+STEPYK_PIN = { description = "Root CA Yubikey Pin", required = true, type = "password" }
+
+# to compose options to step: --ca-kms and --ca-key
+STEPYK_CA_SERIAL = { description = "ICA Yubikey Serial", required = false, type = "password" }
+STEPYK_CA_SLOT = { description = "ICA Yubikey Slot", required = false, type = "password" }
+STEPYK_CA_PIN = { description = "ICA Yubikey Pin", required = false, type = "password" }
+#+end_src
+
+**** ./secretspec/roles/stepjwt.toml
+
+Then to connect to an online Step CA and make/use JWT
+
++ receive SSH keys/certs, etc. 
+
+
+#+begin_src toml
+#:schema https://secretspec.dev/schema/secretspec.schema.json
+[project]
+name = "stepjkt"
+revision = "1.0"
+
+[profiles.default]
+
+# ... todo
+#+end_src
+
+**** ./secretspec/roles/stepdevice01.toml
+
+Merges info needed for auth to a CA and uses ACME's =DEVICE-01= method:
+
++ to fetch a cert that's bound to a device.
++ should support multiple KMS methods (TPM, YK) via =secretspec= environments (or
+  somehow)
+
+#+begin_src toml
+#:schema https://secretspec.dev/schema/secretspec.schema.json
+[project]
+name = "stepdevice01"
+revision = "1.0"
+
+[profiles.default]
+
+# ... todo
+
+#+end_src
 
 
 *** Tests
