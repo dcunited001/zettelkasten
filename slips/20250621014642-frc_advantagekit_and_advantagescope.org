@@ -16,6 +16,72 @@
 
 * Topics
 
+** Gradle
+
+*** Set =wpi.sim.addGui().defaultEnabled= based on env var
+
+Start from a script
+
+#+begin_src shell
+#!/usr/bin/env bash
+SIMBOT=true ./gradlew simulateJava
+#+end_src
+
+Ensure it's set here
+
+#+begin_src shell
+wpi.sim.addGui().defaultEnabled = System.getenv('SIMBOT') != null
+wpi.sim.addDriverstation()
+#+end_src
+
+In their =org.littletonrobotics.frc2026.Constants= class, they also switch on env
+vars for ergonomics; elsewhere, for other functionality (like vision/mechanisms)
+
+#+begin_src java
+  public static Mode getMode() {
+    return switch (getRobot()) {
+      case DARWIN, ALPHABOT -> IdunPlatform.isRobot ? Mode.REAL : Mode.REPLAY;
+      case SIMBOT -> Mode.SIM;
+    };
+  }
+
+  public static RobotType getRobot() {
+    boolean isDesktop = Constants.disableHAL || IdunPlatform.isDesktop;
+    return isDesktop && System.getenv("SIMBOT") != null ? RobotType.SIMBOT : robot;
+  }
+#+end_src
+
+*** Other Gradle Tasks
+
+Requires code in =org.littletonrobotics.frc2026=
+
+#+begin_src groovy
+// Setup extract fields task
+task(extractFields, type: JavaExec) {
+    mainClass = "org.littletonrobotics.frc2026.util.logging.WPILOGExtractor"
+    classpath = sourceSets.main.runtimeClasspath
+}
+
+// Generate drive trajectories when building
+task(generateDriveTrajectories, dependsOn: "classes", type: JavaExec) {
+    mainClass = "org.littletonrobotics.frc2026.util.vts.GenerateTrajectories"
+    classpath = sourceSets.main.runtimeClasspath
+}
+compileJava.finalizedBy generateDriveTrajectories
+
+// Check robot type when deploying
+task(checkConstantsDeploy, dependsOn: 'classes', type: JavaExec) {
+    mainClass = 'org.littletonrobotics.frc2026.Constants$CheckDeploy'
+    classpath = sourceSets.main.runtimeClasspath
+}
+deployroborio.dependsOn(checkConstantsDeploy)
+
+// Check constants for pull request
+task(checkConstantsPullRequest, dependsOn: 'classes', type: JavaExec) {
+    mainClass = 'org.littletonrobotics.frc2026.Constants$CheckPullRequest'
+    classpath = sourceSets.main.runtimeClasspath
+}
+#+end_src
 ** Config
 
 *** Inbox
@@ -25,7 +91,6 @@
 + [ ] extract schemas from?
 
 **** TODO tag ascope satellites
-
 ** Data
 *** Processing
 **** Extract structure

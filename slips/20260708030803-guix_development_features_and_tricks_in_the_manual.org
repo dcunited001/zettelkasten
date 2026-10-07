@@ -17,7 +17,7 @@
 
 | ./tests/test-*.scm          | actually tests specified in Makefile.am |
 | ./guix/tests/*.scm          | helpers for like git & https            |
-| ./gnu/tests/*.scm           |                                    |
+| ./gnu/tests/*.scm           |                                         |
 | ./build-aux/test-driver.scm | test driver wrapping srfi-64            |
 
 =./build-aux/test-driver.scm= is a guile script that loads tests like
@@ -105,6 +105,55 @@ And this module/test pair
 
 Mostly walking through some of the info in the manual
 
+** Channels Workflow
+
+*** Via =git clone= into =./channels=
+
+See [[https://codeberg.org/hako/Testament/src/branch/trunk/pre-inst-env][./pre-inst-env in hako/Testament]]
+
+I was wondering whether this was possible. it's essentially the same thing that
+=RDE= does with ares (to build all the guile modules into a single directory root,
+which helps with guile ... alot... somehow?)
+
+This allows you to contribute to multiple channels quickly. It's maybe a bit
+easier/natural to set up on a FHS install.
+
+#+begin_src shell
+#!/bin/sh
+
+# Run Guix + channels before they're built by guix time-machine / guix pull.
+# 1. Clone channel repositories under the `channels' directory.
+# 2. Compile guix locally.
+# 3. Adjust `set_guix_env' and `set_channel_env' calls to your channels.
+# 4. Run ./pre-inst-env guix ... or ./pre-inst-env blue ...
+
+set -e
+
+TOP_DIR="$(dirname "$(realpath "$0")")"
+
+set_guix_env () {
+    channel_path="$TOP_DIR/$1"
+    export GUILE_LOAD_COMPILED_PATH="${channel_path}${GUILE_LOAD_PATH:+:}${GUILE_LOAD_PATH}"
+    export GUILE_LOAD_PATH="${channel_path}${GUILE_LOAD_PATH:+:}${GUILE_LOAD_PATH}"
+    export PATH="${channel_path}/scripts:$PATH"
+    export GUIX="${channel_path}/scripts/guix"
+    export GUIX_UNINSTALLED=1
+}
+
+set_channel_env () {
+    channel_path="$TOP_DIR/$1"
+    export GUILE_LOAD_PATH="${channel_path}${GUILE_LOAD_PATH:+:}${GUILE_LOAD_PATH}"
+    export GUIX_PACKAGE_PATH="${channel_path}${GUIX_PACKAGE_PATH:+:}${GUIX_PACKAGE_PATH}"
+}
+
+set_guix_env    channels/guix
+set_channel_env channels/nonguix
+set_channel_env channels/rosenthal/modules
+set_channel_env channels/sops-guix/modules
+
+stat "$GUIX" >/dev/null
+exec "$@"
+#+end_src
 
 ** =guix deploy=
 

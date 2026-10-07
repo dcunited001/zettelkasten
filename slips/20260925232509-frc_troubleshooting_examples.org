@@ -1,0 +1,476 @@
+:PROPERTIES:
+:ID:       584b0c31-b41b-4a8e-a7a2-132af7c162db
+:END:
+#+TITLE: FRC: Troubleshooting Examples
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:c75cd36b-4d43-42e6-806e-450433a0c3f9][FRC]]
++ [[id:18b6e880-37af-4276-ae0a-9f92f02d0412][FRC: April Tags]]
+
+* Overview
+
+Some useful examples are categorized below. Not trying to single anyone out, but
+ChiefDelphi posts provide a lot of info that's more useful the more you analyze
+it.
+
+* By Category
+
+** Loop Overruns
+
+Very large category of problems with many potential Causes
+
++ Slow loops, slow =periodic()= methods
+  - Context dependent
++ Slow vision code
+  - Context dependent
++ Data structures
+  - Hashmap in the wrong place
++ Garbage Collection (too much allocation/deallocation)
++ RoboRIO ethernet connection to radio
+  - connection dependent! (USB vs. WiFi vs. Ethernet)
+
+*** Seems to happen when we start on the left side
+
+[[https://www.chiefdelphi.com/t/losing-comms-after-enabling/515567/15][Losing comms after enabling]] complex example of loop overruns
+
+**** Cause
+
+Loading the AprilTag map after seeing the first tag.
+
+How many matches does it take to figure that out? Probably 3-5 (just saying that
+it's an expensive symptom to trace, but here it turned out that it wasn't a Red
+Herring. That was very related to the cause)
+
+*** Our vision system is taking 0.5s to run
+
+[[https://www.chiefdelphi.com/t/loop-overruns-with-advantage-kit/516167][Loop Overruns With AdvantageKit]]
+
+**** Cause
+
+Maybe excess logging, but apparently their code was still running the
+PhotonVision simulation. =SIMBOT= had the wrong value, so photonvision was doing
+MPEG stuff
+
+**** Solution
+
+Ensure the apriltag layout gets loaded on =RobotInit=
+
+** Slow Boot
+
+*** TL;DR: If your robot stalls ~2s on the first enable
+
+[[https://www.chiefdelphi.com/t/elastic-2026-the-next-dimension/506888/79?u=aionfork][We encountered an interesting “bug“ in our code...]]
+
+**** Cause
+
++ Elastic was loading too late, causing slow behavior on =ENABLE=
++ "Jackson is very slow to load". Jackson is the JSON dependency that
+  AdvantageKit and Elastic use.
+
+Issues like this are tricky, since it's possible this doesn't happen when (in
+weeks 1 or 2), you're initially setting up your robot from the =AdvantageKit=
+template ... and instead only happens after:
+
++ small refactors: initial re-organization of subsystems code
++ setup of additional logging
++ tweaking some setup in =Robot.java= or in the initialization of the robot
++ adding vendor deps, or _removing_ them: setup should load Jackson early (AFAIK)
+  - removing a dependency may cause it to load later
++ adding Elastic API calls:
+
+I thought that elastic didn't really maintain their Java API anymore. Actually,
+401 and [[https://github.com/hammerheads5000/2026Rebuilt/blob/279745f273441470f86b78dece9d9c8653db0e2c/src/main/java/frc/robot/util/Elastic.java#L17-L25][5000 Hammerhead]] just have utility classes that interact with Elastic,
+via JSON. Adding the line to =robotInit()= is necessary, not just the util class.
+
++ Maybe =AdvantageKit= doesn't rely on Jackson, but I see that =import= everywhere
+  in the =MechanicalAdvantage= codebases
+
+**** Solution
+
+#+begin_src java
+public void robotInit() {
+  Elastic.someGenericMethodCall(); // or, any no-op
+  Elastic.selectTab("Autonomous"); // like this
+}
+#+end_src
+
+
+
+
+* Troubleshooting
+
+** Loop Overruns probably need =VisualVM= attached to RoboRIO/Systemcore
+
+Otherwise, you're operating on gut instincts or (at best, in my experience)
+vague intution about how the "containers" for variable values are being
+allocated.
+
++ Seeing lots of =new MyClassName()= typically means that java is creating a new
+  "refernce", which AFAIK should always/usually mean adding a new thing to the
+  heap.
++ ~double != Double~ the lowercase types are types. It's a PITA to work with
+  either in some places, especially for some calculations or OOP code
+
+See [[https://docs.wpilib.org/en/stable/docs/software/advanced-gradlerio/profiling-with-visualvm.html][Profiling with VisualVM]] and [[https://docs.wpilib.org/en/stable/docs/software/basic-programming/java-gc.html][Java Garbage Collection]]
+
+All of this second-guessing goes away when you're empirically analyzing the heap
+using =VisualVM=. You don't need to know lower-level details to anticipate memory
+usage, =VisualVM= just shows it to you.
+
+Using =VisualVM= to analyze heap dumps or to remotely debugging a program has some
+overhead:
+
++ Need to edit =build.gradle=. Any time this changes, VSCode instantly rebuilds
+  your program. This also means you need to change it back. Seeing =build.gradle=
+  in =git= is a pretty good reminder that it needs to revert. If the file's not in
+  git you won't see that.
++ Need to set an IP address for traffic between RoboRIO/SystemCore and VisualVM,
+  so network connectivity can introduce hiccups
++ If you're collecting a heap dump from RoboRIO, sometimes this can involve code
+  changes to the program AFAIK. It depends. 
+
+Those are risky at a competition, since you have about 15-30 minutes between
+matches.
+
+* +Best+ Fairly Good Practices
+
+Not complete by any means.
+
+** Robot Sanity Check
+
+*** Checklist of small items to fix
+
++ [ ] Did Pathplanner's JSON get updated after you tuned the Swerve modules?
+
+*** Cleanup in =robotInit()=
+
+Messing with code here is a bit risky.
+
+Here is [[https://github.com/FRCTeam2910/2025CompetitionRobot-Public/blob/1b9e161c7719da0522ec826e2a48d2afb63232a5/src/main/java/org/frc2910/robot/Robot.java#L44-L141][jack-in-the-bot's robotInit() from 2025]]
+
+*** Log Tuning
+
++ [ ] Remove all =System.out.println()= These should never be used anyways.
++ [ ] Remove CTRE's =hoot= logging unless you're using it. This requires the RoboRIO
+  device to emit way too many logs. The =hoot= logs are much larger.
+
+By default, CTRE PheonixApi will log during matches, since =enableAutoLogging=
+defaults to true. Team 401 handles like this in [[https://github.com/team401/2026-Robot-Code/blob/3de725bc898130884f1efff4349a89a2ef985968/src/main/java/frc/robot/Robot.java#L81-L89][robotInit()]]:
+
+#+begin_src java
+    // Disable CTRE hoot logging to prevent overruns
+    SignalLogger.enableAutoLogging(false);
+    SignalLogger.stop();
+
+    if (!FeatureFlags.usePhoenixDiagnosticServer) {
+      // Setting a negative value here disables/stops the server
+      Unmanaged.setPhoenixDiagnosticsStartTime(-1);
+      // This got our mean cycle time (admittedly while not seeing any tags) down to 15ms
+    }
+#+end_src
+
+*** Remove unnecessary file access
+
+This usually affects boot time & initialization.
+
+Regardless of the embedded platform, as long as it's a =Real-Time OS=, there will
+be some penalties for file-system access.
+
++ On SystemCore, this will simply be different (and less severe).
++ On RoboRIO 2.0, this is more of a problem.
+
+This is because file-system access always involves many system calls.
+
++ Network access perhaps requires less, but it depends (above my paygrade)
+
+**** Use =PathPlanner= constructors
+
+If possible
+
+Like =final= and =static=, what java compiles into bytecode goes into the binary.
+This includes classes. JSON files get sucked up into Java objects, but the files
+need to be parsed first. If there are many of them, then this will slow the
+robot startup.
+
+**** Log to USB
+
+The RoboRIO should +sometimes maybe+ _never_ log to an SD card. USB 2.0 (especially
+on older devices) is much faster than SD. This is also an alternate file system.
+
+
+** Vision Sanity Check
+
+** RoboRIO and Systemcore
+
+*** RoboRIO
+
++ RoboRIO is an embedded device that's closer to a (very beefy) Pi-Zero than to
+  a Raspberry Pi 2. It has a ton of memory, but it's optimized for low-level
+  programming.
++ RoboRIO runs a real-time OS, but when it runs its WPILib OS image, that
+  initializes some processes which include the WPILib Robot application.
+
+From LLM.
+
+#+begin_quote
+NI Linux Real-Time is a deterministic, hard real-time operating system (RTOS).
+It uses real-time kernel extensions (PREEMPT_RT) over a 64-bit/32-bit Linux
+foundation. This allows critical control loops (like motor control, PID
+calculations, and sensor sampling) to execute with microsecond-level precision
+and guaranteed priority over standard background processes.
+#+end_quote
+
+That a RoboRIO runs RT Linux means it's OS/Application interactions have special
+concerns. This, combined with being Embedded & ARM, means that you can
+potentially have some weird behavior that would never occur for "standard" JVM
+targets. The important TLDR is to keep things simple (e.g. don't import some
+standard Java WebSocket dependency or something)
+
+**** RoboRIO Java VM setup
+
+=RoboRIO 2.0= can constrain the JVM heap, like this:
+
+~MAX_JAVA_HEAP_SIZE_MB <= heap <= MAX_JAVA_HEAP_SIZE_MB~
+
+In other words, the JVM's heap never changes. It needs to be set to a reasonable
+size.
+
+#+begin_src groovy
+    frcJava(getArtifactTypeClass('FRCJavaArtifact')) {
+        jvmArgs.add("-XX:+UnlockExperimentalVMOptions")
+        jvmArgs.add("-XX:GCTimeRatio=5")
+        jvmArgs.add("-XX:+UseSerialGC")
+        jvmArgs.add("-XX:MaxGCPauseMillis=50")
+        
+        // The options below may improve performance,
+        // but should only be enabled on the RIO 2
+        //
+        final MAX_JAVA_HEAP_SIZE_MB = 100;
+        jvmArgs.add("-Xmx" + MAX_JAVA_HEAP_SIZE_MB + "M")
+        jvmArgs.add("-Xms" + MAX_JAVA_HEAP_SIZE_MB + "M")
+        jvmArgs.add("-XX:+AlwaysPreTouch")
+    }
+#+end_src
+
+=AlwaysPreTouch= should be combined with the other options. It writes zero's to
+all memory regions, which speeds up the program initialization time.
+
+
+
+** Performance
+
+*** Try to avoid logging strings
+
+Putting strings into memory is weird. Memory pages have a fixed size.
+
++ When you run =System.out.println("really big string")= and it prints to console,
+  this ends up being sent over networktables.
++ When you run =System.out.println("really small string")=, this could still
+  result in system calls, depending on how Linux or the RTOS batches updates to
+  the terminal/tty.
+
+#+begin_quote
+The pseudo-terminal (PTY) driver maintains a finite kernel ring buffer (often
+around 4096 bytes). If an application generates strings faster than the
+terminal emulator can parse and render them, the buffer fills up. The
+application's write() call blocks, putting the process into an interruptible
+sleep state until space clears.
+#+end_quote
+
++ When you run =Logger.recordOutput(key, "string of unpredictable length")=,
+  AdvantageKit works with different types underneath than it would if you're
+  logging =enum= or something like that.
++ Alot of stuff ends up hitting =NetworkTables= anyways.
+
+*** Be careful with large logs
+
++ Objects like =new MyWrapperToPrettyPrint()= are useful, but in a loop can be a
+  problem.
++ There are often type conversions that happen when writing code to log data.
+  This can be problematic when converting =Double= or =NumberWrapper= or =Transform3d=
+  into objects/types to compare (or to log deltas)
+  - this gets worse when dealing with arrays.
+  - you can shuffle code around to create a container whose size doesn't change
+    (e.g. an =Array= or a =HashMap= whose keys don't change). This is faster and
+    allocates less memory, but can result in many lines changing
+
+My gut instinct was to turn off our =LoggedProfiler()= was turned off during
+competition, though I felt like it wasn't doing much. It turns out that this may
+have been correct.
+
+The values in =/AdvantageKit/RealOutputs/Targeting/Zones/*= logs once, not in a
+loop. The values never change.
+
+*** Condition on Robot State or FMS State
+
+**** Condition behavior in =Constants=
+
+Or consider [[https://github.com/team401/2026-Robot-Code/blob/3de725bc898130884f1efff4349a89a2ef985968/src/main/java/frc/robot/constants/FeatureFlags.java#L12-L67][FeatureFlags (Team 401)]]
+
+
+
+**** Checking =DriverStation.isFMSAttached()=
+
+[[https://github.com/team401/2026-Robot-Code/blob/3de725bc898130884f1efff4349a89a2ef985968/src/main/java/frc/robot/CoordinationLayer.java#L874-L882][Team 401 sends a Low Battery alert via Elastic ... but not in competition]]
+
+#+begin_src java
+    if (DriverStation.isDisabled()) {
+      boolean lowVoltage =
+          JsonConstants.robotInfo.batteryVoltageAlert.isBatteryBelowThreshold(
+              RobotController.getBatteryVoltage());
+      lowBatteryAlert.set(lowVoltage);
+      lowBatteryAlertRateLimiter.increment();
+      if (lowVoltage
+          && lowBatteryAlertRateLimiter.consumeTokens(TOKENS_PER_ALERT)
+          && !(DriverStation.isFMSAttached())) {
+        Elastic.sendNotification(
+            new Elastic.Notification(
+                Elastic.NotificationLevel.WARNING,
+                "Low Battery Voltage",
+                "Battery Voltage is below threshold."));
+      }
+    } else {
+      // This alert is only for disabled mode.
+      lowBatteryAlert.set(false);
+    }
+#+end_src
+* Misc
+
+** PathPlanner API Usage
+
+
+#+begin_verse
+.
+├── 1086-bluecheese
+│   └── FRC-1086-Offseason-2025-Stringray
+│       └── src/main/java
+│           └── frc
+│               └── robot
+│                   └── util
+│                       └── LocalADStarAK.java
+├── 2052-knightkrawler
+│   └── 2025-Reefscape
+│       └── src/main/java
+│           └── frc
+│               └── robot
+│                   ├── auto
+│                   │   └── common
+│                   │       └── AutoBase.java
+│                   ├── Constants.java
+│                   └── subsystems
+│                       └── drive
+│                           └── DrivetrainSubsystem.java
+├── 254-cheesy-poofs
+│   ├── FRC-2024-public
+│   │   └── src/main/java
+│   │       └── com/team254
+│   │           ├── frc2024
+│   │           │   ├── commands
+│   │           │   │   └── autocommands
+│   │           │   │       └── PathFollowingAutoModeCommandGroup.java
+│   │           │   ├── Constants.java
+│   │           │   ├── RobotContainer.java
+│   │           │   └── subsystems
+│   │           │       └── drive
+│   │           │           └── DriveSubsystem.java
+│   │           └── lib
+│   │               └── auto
+│   │                   └── AutoUtil.java
+│   └── FRC-2025-public
+│           └── com/team254
+│               ├── auto
+│               │   ├── PathfindingAuto.java
+│               │   └── PathfindingWarmupCommand.java
+│               ├── commands
+│               │   └── PathfindingAutoAlignCommand.java
+│               ├── factories
+│               │   └── AutoFactory.java
+│               ├── Robot.java
+│               ├── simulation
+│               │   └── SimulatedRobotState.java
+│               └── subsystems
+│                   ├── drive
+│                   │   └── DriveSubsystem.java
+│                   └── superstructure
+│                       └── SuperstructureStateMachine.java
+├── 401-copperhead
+│   ├── 2025-Robot-Code
+│   │   └── src/main/java
+│   │       └── frc
+│   │           └── robot
+│   │               ├── subsystems
+│   │               │   └── drive
+│   │               │       ├── Drive.java
+│   │               │       └── states
+│   │               │           └── OTFState.java
+│   │               └── util
+│   │                   └── LocalADStarAK.java
+│   └── 2026-Robot-Code
+│       └── src/main/java
+│           └── frc
+│               └── robot
+│                   ├── auto
+│                   │   ├── AutoAction.java
+│                   │   ├── Autos.java
+│                   │   └── drive
+│                   │       └── FollowPathPlannerPath.java
+│                   ├── autogen
+│                   │   └── Dsl.java
+│                   ├── subsystems
+│                   │   └── drive
+│                   │       └── Drive.java
+│                   └── util
+│                       └── LocalADStarAK.java
+├── 5000-hammerheads
+│   ├── 2025Reefscape
+│   │   └── src/main/java
+│   │       └── frc
+│   │           └── robot
+│   │               ├── commands
+│   │               │   └── autos
+│   │               │       ├── ApproachCoralStationCommands.java
+│   │               │       ├── ApproachReefCommand.java
+│   │               │       ├── Pathfinding.java
+│   │               │       └── TestPathCommands.java
+│   │               ├── Constants.java
+│   │               ├── Robot.java
+│   │               └── subsystems
+│   │                   └── Swerve.java
+│   └── 2026Rebuilt
+│       └── src/main/java
+│           └── frc
+│               └── robot
+│                   ├── Constants.java
+│                   ├── RobotContainer.java
+│                   ├── Robot.java
+│                   └── subsystems
+│                       ├── drive
+│                       │   └── Drive.java
+│                       └── turret
+│                           └── Turret.java
+└── 6941-iron-pulse
+    └── 2025-competition-robot
+        └── src
+            └── main
+                └── java
+                    ├── frc
+                    │   └── robot
+                    │       ├── auto
+                    │       │   ├── basics
+                    │       │   │   ├── CustomAutoChooser.java
+                    │       │   │   ├── FollowPath.java
+                    │       │   │   └── FollowTrajectory.java
+                    │       │   └── fullAutos
+                    │       │       ├── AutoActions.java
+                    │       │       └── AutoFile.java
+                    │       └── subsystems
+                    │           └── swerve
+                    │               └── Swerve.java
+                    └── org
+                        └── frcteam6941
+                            └── control
+                                ├── HolonomicTrajectoryFollower.java
+                                └── PathPlannerTrajectoryFollowerBase.java
+#+end_verse
