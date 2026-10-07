@@ -1,0 +1,95 @@
+:PROPERTIES:
+:ID:       38d00db7-e0bf-48d1-af5a-9973ad2d837c
+:END:
+#+TITLE: Emacs: Org Babel bug with :stdin and :dir
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:6f769bd4-6f54-4da7-a329-8cf5226128c9][Emacs]]
++ [[id:33cee19d-b67b-429c-963b-29209d0982bc][Orgmode]]
+
+* Bug
+:PROPERTIES:
+:ID:       0b0f8ce5-4f86-4c13-bf53-ba1a55c5701f
+:END:
+
+something wierd happens with =:stdin fdsa= using =:dir relative= where:
+
++ subsequent blocks making references to named blocks
++ attempt to run in =./relative/relative= which doesn't exist
++ seems to stack for every new block
+
+This happens whether setting headers in:
+
++ properties: =PROPERTY: header-args+ :dir "watchexec"=
++ headlines: =:header-args+: :dir "watchexec"=
+
+** Demo
+
+testdirs
+
+
+#+name: testbabel0
+#+begin_src shell :results output
+echo 'src
+src/nix
+src/guix
+test
+test/nix
+test/guix
+secrets
+secretspec
+secretspec/roles
+secretspec/bundles'
+#+end_src
+
+#+RESULTS: testbabel
+: /home/dc/org/roam/cheatsheets
+
+Now make the directories:
+
+#+name: testbabel1
+#+header: :stdin testbabel0
+#+begin_src shell :results output
+pwd
+# while read -r d; do
+#    echo mkdir -p $d
+#done
+#+end_src
+
+#+RESULTS: testbabel
+: /home/dc/org/roam/cheatsheets
+
+#+name: testbabel2
+#+header: :stdin testbabel1
+#+begin_src shell :results output
+cat 
+# while read -r d; do
+#    echo mkdir -p $d
+#done
+#+end_src
+
+#+RESULTS: testbabel2
+: /home/dc/org/roam/cheatsheets
+
+#+RESULTS: testbabel
+
+#+begin_example
+Executing Shell code block (testbabel1)...
+Executing Shell code block (testbabel0)...
+Wrote /tmp/babel-AU5NAw/ob-input-29oyTx
+process-file: Setting current directory: No such file or directory, /home/dc/org/roam/cheatsheets/watchexec/watchexec/
+#+end_example
+
+Running named =testbabel2= that refers to =testbabel1=
+
+#+begin_example
+Executing Shell code block (testbabel2)...
+Executing Shell code block (testbabel1)...
+Executing Shell code block (testbabel0)...
+Wrote /tmp/babel-AU5NAw/ob-input-mz6PEz
+process-file: Setting current directory: No such file or directory, /home/dc/org/roam/cheatsheets/watchexec/watchexec/watchexec/
+#+end_example
+
+
