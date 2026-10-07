@@ -371,7 +371,7 @@ cp -f $ykpem rootCA/certs/
 
 Then, the context configurations need to be in place, along with configured:
 
-| policies | templates | 
+| policies | templates |
 
 + For ACME to LetsEncrypt, that info needs to be provided/available
 
@@ -709,3 +709,135 @@ digraph G {
 
 #+RESULTS:
 [[file:img/sopsnix-degrees-of-abstraction.png]]
+
+* Secretspec Schema
+
+** Schema Dep Graph
+
+ugh
+
+#+name: putastaronthefridgeialmostgotitafter5years
+#+begin_src jq :stdin secretspecSchema
+. as $dot
+  | path(.. | select(objects and ."$ref")) as $paths
+  | [{ (($paths + ["$ref"]) | join("/")): getpath($paths)."$ref" }]
+  | add # | reduce .[] as $rdot ({}; . += $rdot)
+
+# why was jq so obtusely difficult to learn from tom hanks island? i had no idea
+# "add" existed, though i looked for "sum" when i first started learning. so
+# many early problems bc idiomatic examples of jq were impossible to find THOUGH
+# IT'S APPARENTLY NECESSARY FOR CLI THAT HAS -J OPTIONS.......
+#+end_src
+
+#+begin_src dot :results output file :file img/secretspec-schema-deps.png :noweb yes
+digraph G {
+    <<jsonSchemaDeps()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/secretspec-schema-deps.png]]
+
+
+#+name: jsonSchemaDeps
+#+begin_src jq :stdin jsonSchemaWalkRefs :var q=".*" :cmd-line "-r"
+# with_entries(. += { key: (.key | gsub("^definitions/(?<def>[^/]+)/.*"; "\(.def)")) })
+#   | with_entries(. += { key: (.key | gsub("^definitions/(?<def>[^/]+)/.*"; "\(.def)")) })
+#   | with_entries(. += { key: (.key | gsub("^properties/(?<prop>[^/]+)/.*"; "\(.prop)")) })
+
+to_entries | map(. += { value: (.value | gsub("^#/definitions/(?<def>[^/]+)"; "\(.def)")) })
+  | map(. += { key: (.key | gsub("^definitions/(?<def>[^/]+)/.*"; "\(.def)")) })
+  | map(. += { key: (.key | gsub("^properties/(?<prop>[^/]+)/.*"; "\(.prop)")) })
+  | map("\(.key) -> \(.value)")
+  | join("\n")
+#+end_src
+
+#+RESULTS: jsonSchemaDeps
+#+begin_example
+CredentialSource -> NativeAddress
+GenerateConfig -> GenerateOptions
+Profile -> Secret
+Profile -> ProfileDefaults
+Project -> RequireReason
+ProviderAlias -> ProviderCache
+ProviderAlias -> CredentialSource
+ProviderAlias -> NativeAddressTemplate
+RequiredGroups -> GroupNames
+RequiredGroups -> GroupNames
+RequiredSetting -> RequiredGroups
+Secret -> SecretEncoding
+Secret -> SecretExtract
+Secret -> GenerateConfig
+Secret -> NativeAddress
+Secret -> NativeAddress
+Secret -> RequiredSetting
+SecretExtract -> ExtractFormat
+defaults -> ProjectDefaults
+profiles -> Profile
+project -> Project
+providers -> ProviderAlias
+scopes -> Scope
+#+end_example
+
+**** Thanks LLM :llmcontent:
+
+Close to a dependency graph of references to help select slices of a json schema
+to produce diagrams that are not visually murderous.
+
+#+name: jsonSchemaWalkRefs
+#+begin_src jq :stdin secretspecSchema
+[ path(.. | select(objects and ."$ref")) as $p
+  | { ($p + ["$ref"] | join("/"))
+      : getpath($p)."$ref"
+    }
+] | add
+
+# [.. | paths | select(last == "$ref")]
+#   | getpath(.)
+
+# walk(if type == "object"
+#      then (to_entries | map(select(.key == "$ref")) | from_entries)
+#      else . end)
+#+end_src
+
+#+RESULTS:
+#+begin_example
+{
+  "definitions/CredentialSource/anyOf/1/properties/ref/anyOf/0/$ref": "#/definitions/NativeAddress",
+  "definitions/GenerateConfig/anyOf/1/allOf/0/$ref": "#/definitions/GenerateOptions",
+  "definitions/Profile/additionalProperties/$ref": "#/definitions/Secret",
+  "definitions/Profile/properties/defaults/anyOf/0/$ref": "#/definitions/ProfileDefaults",
+  "definitions/Project/properties/require_reason/anyOf/0/$ref": "#/definitions/RequireReason",
+  "definitions/ProviderAlias/anyOf/1/properties/cache/anyOf/0/$ref": "#/definitions/ProviderCache",
+  "definitions/ProviderAlias/anyOf/1/properties/credentials/additionalProperties/$ref": "#/definitions/CredentialSource",
+  "definitions/ProviderAlias/anyOf/1/properties/ref/anyOf/0/$ref": "#/definitions/NativeAddressTemplate",
+  "definitions/RequiredGroups/properties/at_least_one/anyOf/0/$ref": "#/definitions/GroupNames",
+  "definitions/RequiredGroups/properties/exactly_one/anyOf/0/$ref": "#/definitions/GroupNames",
+  "definitions/RequiredSetting/anyOf/1/$ref": "#/definitions/RequiredGroups",
+  "definitions/Secret/properties/encoding/anyOf/0/$ref": "#/definitions/SecretEncoding",
+  "definitions/Secret/properties/extract/anyOf/0/$ref": "#/definitions/SecretExtract",
+  "definitions/Secret/properties/generate/anyOf/0/$ref": "#/definitions/GenerateConfig",
+  "definitions/Secret/properties/ref/anyOf/0/$ref": "#/definitions/NativeAddress",
+  "definitions/Secret/properties/refs/additionalProperties/$ref": "#/definitions/NativeAddress",
+  "definitions/Secret/properties/required/anyOf/0/$ref": "#/definitions/RequiredSetting",
+  "definitions/SecretExtract/properties/format/allOf/0/$ref": "#/definitions/ExtractFormat",
+  "properties/defaults/anyOf/0/$ref": "#/definitions/ProjectDefaults",
+  "properties/profiles/additionalProperties/$ref": "#/definitions/Profile",
+  "properties/project/allOf/0/$ref": "#/definitions/Project",
+  "properties/providers/additionalProperties/$ref": "#/definitions/ProviderAlias",
+  "properties/scopes/additionalProperties/$ref": "#/definitions/Scope"
+}
+#+end_example
+
+*** The actual schema
+
+#+name: secretspecSchema
+#+begin_src restclient :jq "." :results value code :wrap example json
+:schema-url = https://secretspec.dev/schema/secretspec.schema.json
+
+GET :schema-url
+
+# nope, just use :jq and :jq-args above.
+# -> jq-set-var :repo-sizes map(.owner)
+# -> jq-set-var :repo-sizes map(. | "(.owner.login)")
+#+end_src
