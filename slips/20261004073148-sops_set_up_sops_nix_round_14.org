@@ -118,9 +118,10 @@ STEPYK_CA_PIN = { description = "ICA Yubikey Pin", required = false, type = "pas
 
 **** ./secretspec/roles/stepjwk.toml
 
-Then to connect to an online Step CA and make/use JWK
+JWK is used to connect to an online Step CA.
 
-+ receive SSH keys/certs, etc. 
++ receive signed SSH/X509 certs, etc.
++ see [[https://smallstep.com/docs/step-ca/provisioners/#decrypting-the-private-key][decrypting the private key]] for info on rekeying, mgmt, etc
 
 #+begin_src toml
 #:schema https://secretspec.dev/schema/secretspec.schema.json
@@ -128,10 +129,54 @@ Then to connect to an online Step CA and make/use JWK
 name = "stepjwk"
 revision = "1.0"
 
-[profiles.default]
+# `echo "$somejwk" | step ca jwe encrypt` should generate these (or CLI setup)
 
+[profiles.default]
+STEPJWK_PASSWORD = { description = "JWK Provisioner", required = true, type = "password" }
+STEPJWK_KEY = { description = "JWK Provisioner", required = false, type = "password" }
 # ... todo
 #+end_src
+
+Then to reference these in alternate environments:
+
+#+begin_src toml
+#:schema https://secretspec.dev/schema/secretspec.schema.json
+[project]
+name = "stepjwk-proj"
+revision = "1.0"
+extends = [ "./stepjwk.toml" ]
+
+# note: this is untested
+
+[providers]
+sops-stepjwk-prov-default = { "sops://secrets/{project}/{profile}.enc.yaml" }
+sops-stepjwk-prov2 = { "sops://secrets/{project}/{profile}.enc.yaml" }
+
+# push when updating: shared -> {prov-default,prov2}
+sops-stepjwk-shared = { "sops://secrets/stepjwk-proj/shared.enc.yaml" }
+
+[profiles.prov-default]
+STEPJWK_PASSWORD = { providers = [ "sops-stepjwk-prov-default" ] }
+STEPJWK_KEY = { providers = [ "sops-stepjwk-prov-default" ] }
+
+[profiles.prov2] # if using shared sops
+STEPJWK_PASSWORD = { providers = [ "sops-stepjwk-shared" ], ref = { item = "prov2_password" } }
+STEPJWK_KEY = { providers = [ "sops-stepjwk-shared" ], ref = { item = "prov2_key" } }
+#+end_src
+
+***** Decrypting the JWK
+
+The =JWK= provisioner issues signed JWTs. It's protected by =.encryptedKey= which is
+a password-protected =JWK= inside =JWE=.
+
+#+begin_example shell
+q='.[] | select(.name == "you@smallstep.com") | .encryptedKey'
+step ca provisioner list | jq -r "$q" | step crypto jwe decrypt | jq
+# the decrypt step prompts for the password.
+#+end_example
+
+#+RESULTS:
+[[file:img/sopsnix-stepca-jwk-in-jwe.png]]
 
 **** ./secretspec/roles/stepdevice01.toml
 
@@ -210,11 +255,6 @@ env = "env://"
 
 Default profile: always loaded first.
 
-+ probably keep providers out of here: force a specified environment... Or maybe
-  not, since this generates credentials using the developer's global config
-
-[[file:img/npc-squarepeg-roundhole.webp]]
-
 #+begin_src toml
 [profiles.default]
 APP_NAME = { description = "Application name", required = false, default = "MyApp" }
@@ -240,6 +280,20 @@ API_URL = { description = "Production API endpoint", required = true }
 SENTRY_DSN = { description = "Error tracking service", required = true, providers = [ "shared", ] }
 REDIS_URL = { description = "Redis cache connection", required = true }
 #+end_src
+
+
+Probably keep providers out of here (for flexibility): from the top-level
+=secretspec.toml= extend a =secretspec.base.toml= and specify the profile in CLI...
+
+Otherwise it could be easy for a dev to default to =dotenv://= ... (which i have
+configured below, but will always change adhoc). Allowing your average
+plagiocephalic devs to generate/access/move using the developer's global config.
+
+... i almost went with lepto-[[https://en.wiktionary.org/wiki/-cephalic#English][cephalic]] there. [[https://en.wiktionary.org/wiki/hydrocephalus][tough choices]]. anyways. here's a
+meme. vague is usually the safe bet. words imply too much effort. effort is
+_always_ bad in post-social western culture.
+
+[[file:img/npc-squarepeg-roundhole.webp]]
 
 *** Iterating
 
