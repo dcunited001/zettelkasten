@@ -36,7 +36,7 @@ Only when a =sops= provider points to _another single-file =sops= provider_ can 
 =ref= to point existing secrets.
 
 + This is a bit confusing & important to understand early on (unless it changes
-  in secretspec later). It's not a huge deal, but creates 
+  in secretspec later). It's not a huge deal, but creates
 
 *** Factory/Builder Patterns
 
@@ -64,7 +64,8 @@ are), the main next blockers:
 + the Go templates for profiles/contexts
 + polices for cert issuance.
 
-**** ./secretspec/roles/stepca.toml
+**** With Step CA
+***** ./secretspec/roles/stepca.toml
 
 #+begin_src toml
 #:schema https://secretspec.dev/schema/secretspec.schema.json
@@ -87,7 +88,7 @@ STEP_CA_PASSWORD = { description = "Password for --ca-password-file", required =
 STEP_CA_KEY = { description = "CA Key --ca-key", required = false, as_path = true }
 #+end_src
 
-**** ./secretspec/roles/stepyk.toml
+***** ./secretspec/roles/stepyk.toml
 
 Yubikey KMS
 
@@ -116,7 +117,7 @@ STEPYK_CA_SLOT = { description = "ICA Yubikey Slot", required = false, type = "p
 STEPYK_CA_PIN = { description = "ICA Yubikey Pin", required = false, type = "password" }
 #+end_src
 
-**** ./secretspec/roles/stepjwk.toml
+***** ./secretspec/roles/stepjwk.toml
 
 JWK is used to connect to an online Step CA.
 
@@ -164,7 +165,7 @@ STEPJWK_PASSWORD = { providers = [ "sops-stepjwk-shared" ], ref = { item = "prov
 STEPJWK_KEY = { providers = [ "sops-stepjwk-shared" ], ref = { item = "prov2_key" } }
 #+end_src
 
-***** Decrypting the JWK
+****** Decrypting the JWK
 
 The =JWK= provisioner issues signed JWTs. It's protected by =.encryptedKey= which is
 a password-protected =JWK= inside =JWE=.
@@ -178,7 +179,7 @@ step ca provisioner list | jq -r "$q" | step crypto jwe decrypt | jq
 #+RESULTS:
 [[file:img/sopsnix-stepca-jwk-in-jwe.png]]
 
-**** ./secretspec/roles/stepdevice01.toml
+***** ./secretspec/roles/stepdevice01.toml
 
 Merges info needed for auth to a CA and uses ACME's =DEVICE-01= method:
 
@@ -281,7 +282,6 @@ SENTRY_DSN = { description = "Error tracking service", required = true, provider
 REDIS_URL = { description = "Redis cache connection", required = true }
 #+end_src
 
-
 Probably keep providers out of here (for flexibility): from the top-level
 =secretspec.toml= extend a =secretspec.base.toml= and specify the profile in CLI...
 
@@ -308,6 +308,7 @@ debounce=1s
 watchexec -pd $debounce --workdir . --filter $filter \
     --fs-events=modify --emit-events-to=environment "$cmd"
 #+end_src
+
 *** URIs
 
 There's no comprehensive doc that densely lists URI formats. Extracted from
@@ -349,7 +350,7 @@ There's no comprehensive doc that densely lists URI formats. Extracted from
 | k8s         | ~k8s+KIND://NAME[@NAMESPACE]~                                                                     | Kubernetes                                                                          |
 
 + gopass :: multi-user, multi-store abstraction over ~pass~, with GPG encryption
-  
+
 *** Inheritance with =extends=
 
 + Unsupported secretspec revision '0.1'. This version of secretspec only supports revision '1.0'
@@ -434,7 +435,7 @@ Then, the context configurations need to be in place, along with configured:
 The point of the YK CA is to keep the potential for signing "offline" while
 still secure/accessible. However, doing things in a non-standard way like this
 requires thinking through all the exceptions (lots of practical gotchas)
-    
+
 + The root should be offline and CA1 should be on a separate server
   - Root & CA1 should use different keys, unless personal or testing
 + The v3 path length needs to be considered _very_ early on
@@ -474,7 +475,7 @@ ca1_key=yubikey:serial=$ca1Card&slot-id=$ca1Slot
 
 #+begin_src nix
 { lib, pkgs, config, ...}: {
-  
+
   services.step-ca.enable = true
   services.step-ca = {
     package = pkgs.step-ca;
@@ -490,7 +491,7 @@ ca1_key=yubikey:serial=$ca1Card&slot-id=$ca1Slot
     openFirewall = true;
 
     # Then configure environment in systemd unit:
-    # 
+    #
     # STEPPATH, STEP_ROOT
     # STEP_CA_URL: for one-shot units to interact with step ca
     #
@@ -525,7 +526,7 @@ Some things I want to run are random:
   schemas
 
 Other things are standard, but I don't like the idea that the
-networking/infrastructure is completely open. 
+networking/infrastructure is completely open.
 
 *** Infra
 
@@ -621,9 +622,9 @@ digraph G {
     <<depApps>>
 
     {GraphIQL} -> Podman
-    
+
     blank[fontcolor=white, color=lightpink]
-    
+
     node[color=darkorange]
     StepApps[label="Step CA\n(Apps)"]
 
@@ -636,18 +637,18 @@ digraph G {
 
     node[color=blue]
     YKOffline[label="Yubikey Root\n(Offline Root)"]
-    
+
     node[color=turquoise]
     K8S -> K8SCA [color=turquoise]
     {JupyterLab,GiteaApps} -> K8SCA [color=turquoise]
-    
+
     edge[color=darkorange]
     K8SCA -> StepApps
     {Podman,CaddyApps,PostgresApps,Harbor} -> StepApps
-    
+
     edge[color=pink]
     {CaddyInfra,Nautobot,PostgresInfra,GiteaIAC,Grafana} -> StepInfra
-    
+
     edge[color=red]
     StepInfra -> blank -> StepOffline
     // edge[color=seagreen]
@@ -738,7 +739,7 @@ processes.
 #+begin_src dot :results output file :file img/sopsnix-degrees-of-abstraction.png
 digraph G {
     rankdir=LR
-    
+
     a[label="Defaults\n0°"]
     b[label="Role\n1°"]
     c[label="Service Deps\n2°"]
