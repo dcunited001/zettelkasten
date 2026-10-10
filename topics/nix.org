@@ -99,11 +99,12 @@
 + [[https://www.tweag.io/blog/2021-03-04-gomod2nix/][Announcing Gomod2nix]] (2021) not sure whether this is like [[https://gitlab.com/martin-baulig/config-and-setup/guix-packages/-/tree/work-wal-g/packages/baulig/build-system?ref_type=heads][baulig's go-module]]
   build system or not.
 
++ [[https://github.com/NixOS/nixpkgs/blob/master/doc/languages-frameworks/rust.section.md][nixpkgs rustPlatform]]
+
 ** Packaging
 *** Variants
 + [[https://github.com/NixOS/rfcs/blob/c655bdaab40f7a467f75dbb5af4325d991874e44/rfcs/0140-simple-package-paths.md?plain=1#L164][RFC 0140 simple package paths]] explans the =with import <nixpkgs> {};
   callPackage pkgs/applications/misc/hello.nix {}= pattern
-
 ** Containers
 + [[https://blog.nicholaszolton.dev/posts/taking-control-of-your-code/][Taking Control of Your Code]]: podman,nginx,gitlab,https
 *** Podman
@@ -131,8 +132,58 @@ explains config for user-constrained OCI services:
 
 * Topics
 
+** Build Systems
+*** Cargo
+
+**** Auto Update a derivation's =sha256= and =cargoSha256=
+
+[[https://github.com/numtide/nixpkgs/blob/008deafb4bce465ffea22b998fc0129f0ac46cb8/pkgs/applications/networking/nym/update.sh#L27-L36][nym in numtide's nixpkgs fork]] uses =nix-prefetch= to sequentially =sed= the =.nix=
+file twice.
+
+#+begin_src shell
+sha256=$(nix-prefetch -f "$nixpkgs" nym.src --rev "$rev")
+# Clear cargoSha256 to avoid inconsistency.
+sed -e "s/version = \".*\"/version = \"$version\"/" \
+    -e "s/sha256 = \".*\"/sha256 = \"$sha256\"/" \
+    -e "s/cargoSha256 = \".*\"/cargoSha256 = \"\"/" \
+    --in-place ./default.nix
+
+echo "Prebuilding for cargoSha256"
+cargo_sha256=$(nix-prefetch "{ sha256 }: (import $nixpkgs {}).nym.cargoDeps.overrideAttrs (_: { outputHash = sha256; })")
+sed "s/cargoSha256 = \".*\"/cargoSha256 = \"$cargo_sha256\"/" \
+    --in-place ./default.nix
+
+#+end_src
 
 
+
+**** Overrides by commit
+
+See [[https://github.com/NixOS/nixpkgs/blob/eaf066ffc52fb96d433d75bac80f675bc0672928/doc/languages-frameworks/rust.section.md?plain=1#L440-L498][Vendoring of Dependencies]] in rustPlatform docs for =importCargoLock=
+
+Overriding a =rust= package with a commit requires removing =fetchCrate= and
+recalculating the hash from =**/Cargo.toml= state at that commit.
+
++ [[https://github.com/reverb256/Reverb-OS/blob/8ba8f786922c6ab65784abd19fb422f8a9f5c073/pkgs/niri-hdr.nix#L86-L94][reverb256/dotfiles pkgs/niri-hdr.nix]]
++ or [[https://github.com/budimanjojo/dotfiles/blob/5c993fe348945bc7dc326a1e7cc34f0f9e0cc56e/overlays/default.nix#L73-L77][budimanjojo/nix-config/overlays/default.nix]]
++ or [[https://github.com/nix-community/poetry2nix/blob/ce2369db77f45688172384bbeb962bc6c2ea6f94/overrides/default.nix#L3660-L3670][nix-community/poetry2nix overrides/default.nix]]
+
+#+begin_src nix
+{
+  cargoDeps = let hash = getCargoHash prev.ruff.version; in
+  if (hash == null || builtins.isAttrs hash) then
+    pkgs.rustPlatform.importCargoLock
+      (
+        {
+          lockFile = "${src.out}/Cargo.lock";
+        } // (if hash == null then { } else hash)
+      ) else
+    pkgs.rustPlatform.fetchCargoTarball {
+      name = "ruff-${old.version}-cargo-deps";
+      inherit src hash;
+    };
+}
+#+end_src
 ** Containers
 *** NixOS Containers
 

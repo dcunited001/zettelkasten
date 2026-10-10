@@ -1,0 +1,367 @@
+:PROPERTIES:
+:ID:       b5159c4d-269a-49ca-a95a-d6ce6ecaacba
+:END:
+#+TITLE: Smallstep: Walking Through Federated Roots
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:0a01903a-3126-4ac6-a2c8-3b6135821ef3][Kubernetes]]
++ [[id:f38730e0-1f42-42e3-b173-e12535e55bcd][Smallstep: CA, Policy and Provisioner Configuration]]
++ [[id:49373db0-532d-4b0f-b8ec-3f9a3f897895][StepCA]]
+
+* Small Step JWK/Federated Tutorial
+:PROPERTIES:
+:header-args+: :dir /data/ecto/crypto/smallstep/certificates/examples/basic-federation
+:END:
+
+From JWT interaction: [[https://smallstep.com/docs/tutorials/pki-trust-model-federation/][Tutorial: pki-trust-model-federation]]
+
+#+begin_src shell
+git clone https://github.com/smallstep/certificates \
+    && cd certificates/examples/basic-federation
+step-ca ./pki/kubernetes/config/ca.federated.json # runs on :2443
+step-ca ./pki/cloud/config/ca.federated.json      # runs on :1443
+#+end_src
+
+Get tokens
+
++ not always possible to work with crypto objects without pipe/etc, but these
+  are web-native & base64.
+
+Fetch token to authorize signing with Cloud ICA
+
+#+name: jwtCloud
+#+begin_src shell :results output silent
+cert="./pki/cloud/certs/root_ca.crt"; port=1443
+step ca token --ca-url "https://localhost:$port" \
+    --root $cert --password-file=<(echo password) 127.0.0.1
+#+end_src
+
+And for Kubernetes ICA
+
+#+name: jwtKubernetes
+#+begin_src shell :results output silent
+cert="./pki/kubernetes/certs/root_ca.crt"; port=2443
+step ca token --ca-url "https://localhost:$port" \
+    --root $cert --password-file=<(echo password) 127.0.0.1
+#+end_src
+
+Then launch =server/main.go=. Can run client/server without nix develop, but
+probably better with.
+
+#+begin_src shell :var jwtCloud=jwtCloud
+nix develop nixpkgs#step-ca
+go run server/main.go "$jwtCloud" # token via babel
+#+end_src
+
+Then client connects to server.
+
+#+begin_src shell :var jwtKubernetes=jwtKubernetes
+export jwtKubernetes # lazy; token via babel
+nix develop nixpkgs#step-ca --command bash -c \
+    'go run client/main.go "$jwtKubernetes"' 
+#+end_src
+
+It polls
+
+#+begin_example
+Server responded: Hello 127.0.0.1 (cert issued by 'Smallstep Kubernetes Root CA') at 2026-10-10 09:11:57.306592261 +0000 UTC
+Server responded: Hello 127.0.0.1 (cert issued by 'Smallstep Kubernetes Root CA') at 2026-10-10 09:12:02.306992761 +0000 UTC
+Server responded: Hello 127.0.0.1 (cert issued by 'Smallstep Kubernetes Root CA') at 2026-10-10 09:12:07.307506313 +0000 UTC
+#+end_example
+
+#+RESULTS:
+
+** Inspect JWT Tokens
+
+#+name: jwtDump
+#+begin_src shell :stdin jwtCloud
+step crypto jwt inspect --insecure
+#+end_src
+
+Get token
+
+#+name: jwtGet
+#+header: :var cert="./pki/cloud/certs/root_ca.crt" port=1443
+#+begin_src shell :results output code :wrap example text
+step ca token --ca-url "https://localhost:$port" \
+    --root $cert --password-file=<(echo password) 127.0.0.1
+#+end_src
+
+*** What does =server/main.go= connect to?
+
+This was somewhat hidden for me. The =:8443= server doesn't have much code.
+
++ it doesn't seem to enumerate for Step CA config files
++ lacks references to other port numbers (where =client/main.go= does).
+
+The JWT tokens returned for =:1443= and =:2443= include =.header.kid= and, once
+decryped, the =.payload.aud= audience field.
+
+#+begin_src shell :results output table
+k8s_root="./pki/kubernetes/certs/root_ca.crt"; k8s_port=2443;
+k8s_pem=k8s_root_federated.pem
+cloud_root="./pki/cloud/certs/root_ca.crt"; cloud_port=1443
+cloud_pem=cloud_root_federated.pem
+
+curl -sqk  --cacert "$cloud_root" "https://127.0.0.1:$cloud_port/provisioners" \
+    | jq -r '["cloud", ".header.kid", .provisioners[].key.kid ] | @csv'
+curl -sqk  --cacert "$k8s_root" "https://127.0.0.1:$k8s_port/provisioners" \
+    | jq -r '["k8s", ".header.kid", .provisioners[].key.kid ] | @csv'
+#+end_src
+
+#+RESULTS:
+| cloud | .header.kid | EE1ZiqkMaxsUdpz8SCSkRBzwK9TWUoidQnMnJ8Eryn8 |
+| k8s   | .header.kid | S5gYgpeqcIAgc1Zr4myZXpgJ_Ao4ryS6F6wqg9o8RYo |
+
+=curl -k= is required =--cacert= doesn't work here, since SANs aren't in the
+intermediate certs. There are several assumptions made about the deployent
+details, but the =/provisioners= url can be disabled/firewalled (which i remember
+now.) If so, there's an identity-key coordination problem (which bootstrapping solves.)
+
+**** 1443
+
+| .header.kid   | EE1ZiqkMaxsUdpz8SCSkRBzwK9TWUoidQnMnJ8Eryn8 |
+| .payload.aud  |             https://localhost:1443/1.0/sign |
+| .payload.sans |                                   127.0.0.1 |
+| .payload.sub  |                                   127.0.0.1 |
+
+
+#+call: jwtDump() :stdin jwtGet() :results output code :wrap example json
+
+#+RESULTS:
+#+begin_example json
+{
+  "header": {
+    "alg": "ES256",
+    "kid": "EE1ZiqkMaxsUdpz8SCSkRBzwK9TWUoidQnMnJ8Eryn8",
+    "typ": "JWT"
+  },
+  "payload": {
+    "aud": "https://localhost:1443/1.0/sign",
+    "exp": 1791628717,
+    "iat": 1791628417,
+    "iss": "sebastian@smallstep.com",
+    "jti": "9da6a3855df03c5bc7c10df02b47eed62f5bd4aa1e4c79078ca00302debc68f2",
+    "nbf": 1791628417,
+    "sans": [
+      "127.0.0.1"
+    ],
+    "sha": "19a60023ff9ffe11723ff236106794a117e43dcf9d4ba22c24df4a618f2c61de",
+    "sub": "127.0.0.1",
+    "user": {}
+  },
+  "signature": "spae-HpUrMsR6LoMwhMnQnGrz8P52hJv_u0i1yoQcenknw10UueSGyhk4lvud2Sr_nDP8cmtpcabr-BSpmCiRA"
+}
+#+end_example
+
+**** 2443
+
+| .header.kid   | S5gYgpeqcIAgc1Zr4myZXpgJ_Ao4ryS6F6wqg9o8RYo |
+| .payload.aud  |             https://localhost:2443/1.0/sign |
+| .payload.sans |                                   127.0.0.1 |
+| .payload.sub  |                                   127.0.0.1 |
+
+#+call: jwtDump() :stdin jwtGet(cert="./pki/kubernetes/certs/root_ca.crt", port=2443) :results output code :wrap example json
+
+#+RESULTS:
+#+begin_example json
+{
+  "header": {
+    "alg": "ES256",
+    "kid": "S5gYgpeqcIAgc1Zr4myZXpgJ_Ao4ryS6F6wqg9o8RYo",
+    "typ": "JWT"
+  },
+  "payload": {
+    "aud": "https://localhost:2443/1.0/sign",
+    "exp": 1791628843,
+    "iat": 1791628543,
+    "iss": "sebastian@smallstep.com",
+    "jti": "d473f2c12c0571bbc7938ff217d526f78c90b37d04f5912957ea7cbc150cadcb",
+    "nbf": 1791628543,
+    "sans": [
+      "127.0.0.1"
+    ],
+    "sha": "fb30876a9c4787a82c130f253b76b1a7c96da434fe9b60b12f66024847dcff29",
+    "sub": "127.0.0.1",
+    "user": {}
+  },
+  "signature": "clHLjcR01BnAW42vDEq05R-CR5bEf-LPxAkCl3Xyq7YMKQ-r-JUWSTkH_i5gnK-GTMO-9ldE81kaN3ocLg5PUg"
+}
+#+end_example
+
+** Get cert/key for =kubectl=
+:PROPERTIES:
+:ID:       db6d35e3-d81b-404f-a571-6f1bac8ea956
+:END:
+
+Request a Kubernetes CA cert from =:2443= 
+
+#+begin_src shell :results output verbatim
+ica_root_crt="./pki/kubernetes/certs/root_ca.crt"; port=2443
+subject=kube_client; cert=kube_client.crt; key=kube_client.key
+step ca certificate "$subject" "$cert" "$key" \
+    --ca-url "https://localhost:$port" --root "$ica_root_crt" \
+    --password-file <(echo password)
+#+end_src
+
+#+begin_example
+✔ Provisioner: sebastian@smallstep.com (JWK) [kid: S5gYgpeqcIAgc1Zr4myZXpgJ_Ao4ryS6F6wqg9o8RYo]
+✔ CA: https://localhost:2443
+✔ Certificate: kube_client.crt
+✔ Private Key: kube_client.key
+#+end_example
+
+Get the federated PEM bundles from =Cloud CA= and =Kubernetes CA=. These aren't in
+the project. I probably should've run through this awhile ago bc now the example
+is more clear.
+
+#+begin_src shell
+k8s_root="./pki/kubernetes/certs/root_ca.crt"; k8s_port=2443;
+k8s_pem=k8s_root_federated.pem
+cloud_root="./pki/cloud/certs/root_ca.crt"; cloud_port=1443
+cloud_pem=cloud_root_federated.pem
+
+step ca federation --ca-url "https://localhost:$cloud_port" \
+    --root "$cloud_root" "$k8s_pem"
+step ca federation --ca-url "https://localhost:$k8s_port" \
+    --root "$k8s_root" "$cloud_pem"
+#+end_src
+
+#+RESULTS:
+
+Then compare
+
+#+begin_src shell :results output verbatim
+echo '======= in the bundle from K8S CA ======='
+while openssl x509 -noout -subject -issuer; do :; done < k8s_root_federated.pem 2>/dev/null
+
+echo
+echo '======= in the bundle from Cloud CA ======='
+while openssl x509 -noout -subject -issuer; do :; done < cloud_root_federated.pem 2>/dev/null
+#+end_src
+
+#+RESULTS:
+#+begin_example
+======= in the bundle from K8S CA =======
+subject=CN=Smallstep Kubernetes Root CA
+issuer=CN=Smallstep Kubernetes Root CA
+subject=CN=Smallstep Public Cloud Root CA
+issuer=CN=Smallstep Public Cloud Root CA
+
+======= in the bundle from Cloud CA =======
+subject=CN=Smallstep Public Cloud Root CA
+issuer=CN=Smallstep Public Cloud Root CA
+subject=CN=Smallstep Kubernetes Root CA
+issuer=CN=Smallstep Kubernetes Root CA
+#+end_example
+
+Either of these =pem= files can be supplied to =curl= requests to either =:1443= or
+=:2443=.
+
+=server/main.go= binds to =:8443= and fetches its config from =ca.BoostrapCA()=
+
+#+begin_src shell
+server_port=8443
+
+curl -i --cacert federated.pem --cert "$cert" --key "$key" "https://127.0.0.1:$server_port"
+#+end_src
+
+
+** Examining the PEM
+
+The order is according to =ca-federated.json=. And the keys/sigs are swapped up.
+
+#+begin_src shell :results output code :wrap example diff
+diff <(openssl storeutl -text -noout -certs cloud_root_federated.pem)  \
+    <(openssl storeutl -text -noout -certs k8s_root_federated.pem)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+6c6
+<             fc:a4:85:d9:43:9d:e5:06:53:da:c8:d6:0f:98:e3:43
+---
+>             aa:8a:66:10:c6:57:1f:1d:73:14:c3:1a:9a:30:cc:d1
+8c8
+<         Issuer: CN=Smallstep Public Cloud Root CA
+---
+>         Issuer: CN=Smallstep Kubernetes Root CA
+10,12c10,12
+<             Not Before: Jan 18 21:06:13 2019 GMT
+<             Not After : Jan 15 21:06:13 2029 GMT
+<         Subject: CN=Smallstep Public Cloud Root CA
+---
+>             Not Before: Jan 18 21:06:47 2019 GMT
+>             Not After : Jan 15 21:06:47 2029 GMT
+>         Subject: CN=Smallstep Kubernetes Root CA
+17,21c17,21
+<                     04:49:cf:73:63:be:e0:7f:85:e1:08:23:b3:b0:08:
+<                     6f:31:38:55:dd:6a:e8:e8:45:67:7c:16:92:96:69:
+<                     a7:ab:5e:55:68:e3:46:e8:53:fb:91:5c:89:10:cf:
+<                     97:0f:be:53:86:ed:74:02:cc:70:07:4c:38:5b:12:
+<                     88:27:ad:d3:35
+---
+>                     04:ac:b7:6d:76:03:c6:bd:87:50:c1:14:4c:c2:80:
+>                     86:a8:64:45:96:7f:42:65:06:44:a6:9e:51:c2:1d:
+>                     92:ca:da:8a:24:34:a6:3a:93:c5:00:92:2e:28:d7:
+>                     1a:58:8d:e2:ed:94:be:31:9f:85:8b:98:c1:1a:7c:
+>                     2d:ad:3d:0b:f1
+30c30
+<                 8C:39:4D:6F:62:8B:75:A9:F0:DA:4C:6D:AE:63:D9:76:9D:03:52:00
+---
+>                 D7:E8:9A:D1:1F:06:35:66:17:82:CE:EA:91:B5:C7:CE:29:E0:86:51
+33,36c33,36
+<         30:44:02:20:25:72:97:21:19:7c:10:62:97:02:8d:d6:7b:d2:
+<         e2:3f:4b:6e:de:bf:9e:11:79:0c:7f:4a:ff:08:cf:20:18:62:
+<         02:20:59:a2:30:ef:31:98:63:9a:b7:ae:b8:57:d1:0b:89:16:
+<         13:f3:94:1b:92:33:da:a5:54:b6:5b:cb:fc:d6:97:5d
+---
+>         30:45:02:20:0d:09:5b:0d:0c:67:37:14:6c:47:c7:7f:95:08:
+>         81:4b:2e:af:d2:ee:81:3a:67:ed:7d:b0:77:cb:40:9c:18:8e:
+>         02:21:00:b6:77:19:14:be:2e:86:b1:f1:ec:cd:18:14:e5:93:
+>         c8:4f:bb:15:11:f3:62:f4:6d:c6:64:00:63:d2:f3:a7:bd
+42c42
+<             aa:8a:66:10:c6:57:1f:1d:73:14:c3:1a:9a:30:cc:d1
+---
+>             fc:a4:85:d9:43:9d:e5:06:53:da:c8:d6:0f:98:e3:43
+44c44
+<         Issuer: CN=Smallstep Kubernetes Root CA
+---
+>         Issuer: CN=Smallstep Public Cloud Root CA
+46,48c46,48
+<             Not Before: Jan 18 21:06:47 2019 GMT
+<             Not After : Jan 15 21:06:47 2029 GMT
+<         Subject: CN=Smallstep Kubernetes Root CA
+---
+>             Not Before: Jan 18 21:06:13 2019 GMT
+>             Not After : Jan 15 21:06:13 2029 GMT
+>         Subject: CN=Smallstep Public Cloud Root CA
+53,57c53,57
+<                     04:ac:b7:6d:76:03:c6:bd:87:50:c1:14:4c:c2:80:
+<                     86:a8:64:45:96:7f:42:65:06:44:a6:9e:51:c2:1d:
+<                     92:ca:da:8a:24:34:a6:3a:93:c5:00:92:2e:28:d7:
+<                     1a:58:8d:e2:ed:94:be:31:9f:85:8b:98:c1:1a:7c:
+<                     2d:ad:3d:0b:f1
+---
+>                     04:49:cf:73:63:be:e0:7f:85:e1:08:23:b3:b0:08:
+>                     6f:31:38:55:dd:6a:e8:e8:45:67:7c:16:92:96:69:
+>                     a7:ab:5e:55:68:e3:46:e8:53:fb:91:5c:89:10:cf:
+>                     97:0f:be:53:86:ed:74:02:cc:70:07:4c:38:5b:12:
+>                     88:27:ad:d3:35
+66c66
+<                 D7:E8:9A:D1:1F:06:35:66:17:82:CE:EA:91:B5:C7:CE:29:E0:86:51
+---
+>                 8C:39:4D:6F:62:8B:75:A9:F0:DA:4C:6D:AE:63:D9:76:9D:03:52:00
+69,72c69,72
+<         30:45:02:20:0d:09:5b:0d:0c:67:37:14:6c:47:c7:7f:95:08:
+<         81:4b:2e:af:d2:ee:81:3a:67:ed:7d:b0:77:cb:40:9c:18:8e:
+<         02:21:00:b6:77:19:14:be:2e:86:b1:f1:ec:cd:18:14:e5:93:
+<         c8:4f:bb:15:11:f3:62:f4:6d:c6:64:00:63:d2:f3:a7:bd
+---
+>         30:44:02:20:25:72:97:21:19:7c:10:62:97:02:8d:d6:7b:d2:
+>         e2:3f:4b:6e:de:bf:9e:11:79:0c:7f:4a:ff:08:cf:20:18:62:
+>         02:20:59:a2:30:ef:31:98:63:9a:b7:ae:b8:57:d1:0b:89:16:
+>         13:f3:94:1b:92:33:da:a5:54:b6:5b:cb:fc:d6:97:5d
+#+end_example

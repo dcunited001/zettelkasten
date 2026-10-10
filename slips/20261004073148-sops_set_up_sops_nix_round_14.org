@@ -10,6 +10,123 @@
 + [[id:d4acf534-f60c-4471-bee8-f4b925dd0d90][SOPS]]
 + [[id:6ed5eaea-447b-44c6-b020-95629b0c619f][Crypto: JWK and JWT Schema]]
 
+* Resources
+
+** Esoterica
+
++ =snmptranslate= describes OIDs like =1.3.6.1.5.5.7.3.2=
+
+** Warnings
+
+Note that automating this is risky
+
++ With two yubikeys plugged: =serial= is basically required in the URI!
+  - Configuring =reader-port= in =scdaemon.conf= is probably a good idea.
+  - =GnuPG 2.4= has =gpg-card= and can manage =piv=, but its SSH socket only permits
+    =Authentication= usage.
+  - I haven't determined whether =gpgsm= can drive =X509= signing operations when it
+    requires =pkgs11=
++ With CCID: can't simultaneously use/configure yubikey apps (piv, openpgp)
++ Without CCID (=shared-access=, etc): other applications permitted to interface
+  with =pcscd= can interact with your card.
+
+**** Other misc issues
+
++ Changing management key MUST be done BEFORE anything else is set on yubikey
+  - Without it, many security guarantees lost (of applications, math, physical)
++ Keys generated on a card are the ONLY copy of a key. Without X509 restrictions
+  (on lower-tier certs), keys should never leave an airgapped network.
+  
+**** Boot-time and activation
+
++ Need to determine what's required various activation phases of boot. This is
+  different for CentOS or NixOS/Guix. Later activation phases are still a PITA
+  to troubleshoot, but you need to think about the blast-radius of
+  service/secret failure. (circumvent with truly immutable provisioning)
++ Really avoid yubikey dependencies at boot.
++ Deploying multiple =sops.enc.yaml= files with =ACLs= helps address service scopes
+  - risk: "some BS bloatlang app escapes, elevates and reads =/etc/pki=" and "it
+    takes you too long to rotate keys, so you don't"
+  - sops protects you from some risks by noncing copies of encrypted data... but
+    it's tricky to think about, since designing environments/scopes/etc and
+    keygroups in =.sops.yaml= is _already complicated enough_
+
+**** Death by 1,000 plugins/algorithms
+
++ Each additional plugin for =age= requires checking things:
+  - [[https://github.com/Mic92/ssh-to-age][Mic92/ssh-to-age]] works, but not if 
++ Multiple agents =piv-agent= circumvent some issues
+  - introduce potential supplychain & vibechain risks
+  - connect to too many concepts (agent to algo/hardware, etc)
++ Each additional algorithm can cause issues
+  - SSH with 25519 can require changing =/etc/ssh/sshd_config.conf=
+  - Yubikeys/TPMs have device-specific application & algo support
+  - Reasoning about PCRs and TPM 2.0 applications at a low-level is umm... i
+    don't even know what to google half the time.
+
+**** Death by 1,000 bidirectional service dependencies
+
+When secrets need to "agree" on both ends:
+
++ mTLS to some extent, some types of tunnels, BGP/GRE
++ things that cross trust domains
++ telemetry (sometimes... it probably should)
+
+... then it creates cycles in the service dep. graph.
+
++ Then updating services or rotating secrets becomes order-dependent (or much
+  more order dependent).
++ You should just build disposable immutable infrastructure at that point.
+
+**** Death by channel/flake
+
+Secrets & some configuration should be completely isolated. Bad dev habits
+requiring frequent commits increase the frequency by which flakes/channels need
+to be synced or their pins evaluated.
+
+Fine for dotfiles, but there should be clear division between:
+
+| your dotfiles | your homelab | your secrets |
+
+This obviously increases cognitive load, but otherwise adding catpuccin cat-ears
+to your login textbox adds =refs= to git history. So when you update that server,
+you need to check more things ... more times.
+
+With k8s/gitops, the configuration has declared the state in a repo (or helm
+built into k8s yaml), but online SoA services will dynamically fetch from cloud
+secrets APIs as needed. so you get that nice SoA decoupling where things can
+operate independently and be substituted using load balancing or DNS.
+
+... but you will probably need to pay your cloud bill to get much done.
+
+*** Others :crypt:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0AQ/+LSwvF8QeIFgaCSHWkawAHBmSeEEr6AqHLd6R8p7pBTq9
+n1rpxjsa67xCZFMOpJt49IhydzX8qH40hmvs0SINm3lkBzDiKG6X+7KGP9BxwGxV
+OWB93f9AciffZNNrB3laAnQunVG+9ekrznCP6pWOHaCPaRVhOHur0b8Ntplf/O3d
+LWoljx7zP2jSuX0TkQ6ofXeShU9RstYhzkDyErs/rUmap+O0kQ2Yw9MRxinozdIm
+a8PRRpObXvgBIrACLJGNeYmcDkerj+oLKraGeLopM3qSrOB1rG+hvCpShJ8LNDvv
+ejtzy6MlM4PCpWOiL+Tlk38JGLJcB2hGs/xA15trZwuLxe7fWfXiMZsltuCjQs8l
+dWFhVL9spmNNR+vRcBiE1udlHS/Ok5ho2hkiXzN8wMeJBHnRgnI0STWn3fhdUNDC
+Ff4U9PJ/IXzWGO7F3nnYKN6q9qhKXDADie+B4bCrICpjmWhVSOjPjV59OIa5HBXV
+t7WiE9wdvY4Z3a0Ferwz14/5qGPVPL8405sQktWWzO1oJ7GB1Db/bC5Yb85J9Ccf
+bt3vNuTa/7zWqdKn55WznWChT1+SIU3Os7bjSkXFNijAYK/L98tH108Ajm5KJcSK
+GCwLZgmJbAftdNkX6vx7yfFHnB9pNALzVDi6EHON92nI75ydmW7cCIjkMp+h3hfS
+wGwBjvuJknB4CesQSh5NcZVyAmBOf6PMLuEhlVA1nRs8Yh6EP4cMuDdwzf98TAwN
+xX/q5pibgu13ctgSVFTUBiBhHq62GD3iBD7g4zIrQkyCcztcNRoq5tAqf961JVA4
+QdcukyF85qeXK4R4w9ceIFW6Ex/tHv4S9LihFFC5DTpK9jgwT9YxxPStg/tNeuiy
+Yiy6mybFStWDIsqsDkdzw65YIWzkvUiqMay7MBhi30aO0c4rRvKW57scQEtJL6uM
+2bRvfmq4JPdxsc3CyuxkBkueI0BmjSAiqrwlR36fBeaXtEMf3PF/jftzKJIMF6TI
+j9ZkYtt8sKUOx+87y0V06de7ptJ4rFSb5tD6GobfKDBGfWt1VIxyD3sMyj4+01SM
+brIBtZkY0YEs9MVIJ6U=
+=xdOl
+-----END PGP MESSAGE-----
+
 * Overview
 
 ** Design
@@ -65,6 +182,7 @@ are), the main next blockers:
 + polices for cert issuance.
 
 **** With Step CA
+
 ***** ./secretspec/roles/stepca.toml
 
 #+begin_src toml
@@ -500,15 +618,84 @@ ca1_key=yubikey:serial=$ca1Card&slot-id=$ca1Slot
 }
 #+end_src
 
+** GPG, SSH, PIV, CCID
+
+These are painful to configure. The absolute newest yubikeys support =25519=.
+Anything =5.7.x= and older doesn't.
+
++ scdaemon.conf :: needs restrictions
+
+*** Convo on GPG, SSH, PIV, CCID, etc :urlllm:crypt:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0ARAAgfeNUDJXATVtI3cA+KEApsZIAs09Y1hcOB7kxGB498iJ
+grIrKrc+9zFYtNiZWLBPNVXMhaLnSXk74rNQ/bju+l67MZaT/H57A0MyANcKGRzq
+08cAuhaya76A3TVYSw0gteKUBCJjBhTxbTXItUi7I05gWa0NFhsOj59CnhwUwa5T
+3XwSEXUVLhzV2SSNsp744hI9I65MZeOcKBk3R3mZ+MzsReQM+wDxpOERyD2gx/fM
+N5O0kfPGRmhb+2I5Uc6l4aLEo+n6TpDaB4FsLPWO0wvF56zcmrqn1na29qIjCw/q
+6BVI29/0VgMhAIt99aLulLX6N56sEBy0lrEwEipMdCh76kvMTTWZUyMJg8GvIYCh
+AFsea1HTMoPc5l0KwUwoOZJcHlfLl+PpIdeBMq0ymzFFOKVmAy+a6jundOO1MD1V
+uZjYko1f5/A6ylhBCrbW0VjhnPU5gziiSPFEjsYSKEHlTh0GdcyxhTimurMPZeyt
+bxcWLlXOMwoTYwC/+OpkDfZFT4Lz21HID7ukefbtX9SH1WTIj6/6m36Evf5wdRPT
+CVuGk9/uQLqIjqUujT5h0MUtSGV+3CoqUbEJymCBt+Xk896gQnylscZs+3+1nSmO
+CMqqxWzG6WkA+8F7lEM8xnAE3uYy9dwuGrGu4/yR2L5DIZDl+csElls0B5jRBdvS
+6QES2dszwaUydBzkYs6omoqG8Jn8CbtgQj3uAaWm7QMP+y6pf3cAKb8+oEpjLPwt
+b3jLYFgNvjQlCun/bpfaOQOy29+utYNdyCIF4Y47YWZJPUo4Zzrf4I21ZflAAWzx
+OQWBTLxmXYFuhpRuxY1tQ0Vv744LMmCXDF2wu127n6ufQoKptdpE2L0OMOCa3ruS
+p6bS83x6MsrlEqmxK5OnKZD7LKs+hYyAPxd+P/p2/eJb90eA3jUq1yvVHPY6COhg
+nL6ffvuc6KJA1Shc71nPH6bYyfg7/1UHuQ3vtu3orlZBPmEO/ph8yQTEW129Xpzx
+/5SoQGlAQJ6os7XnnPDz/ybiJFy/cyclF7ykD3QR52C+NjABxvpLpMHHC+pFRFHK
+3Zf06a01wu4a3g+VpiVBbdGosXqKCAorROTStFHE5TjepCvriWL4mwQVfnCuU22Q
+HUFQk0NwGKCJOmF/wRfbZSbquDGBf2uw3IiumA3u7o+Xjd2D+1AYp9Y/Atue/qPQ
+fdV+HtRYj6Ue8VmIsNjzq7rT6JJ41jYRvXSbcAit3COgAzwj4Qxxm2QxM4z0/zee
+Fq3NdbNJMILJ9DioSWZtsIAi8iTcJk20chhl3/7KMwQ8TI1bpkJKTdutuPHf+jrS
+CCW9SGINrNK3W346OcKfdX0UvUnlD0ELYoZ3RqpW3KcqwGPvLR0fHQUy0HuITazr
+P9FaTcmvgS22x411hYMZTQ1xrmZG8o5kfouc5Ye6L2BzVYf8CwF9Mmqdir00D71Z
+AVH3ngUU0ZlfEQnin/4fvFI9af2yoEKVlTp+l/pM+h97DvOiFzmWcTUXXOBmo+cZ
+MYO2eVhCRbnW6ePASXMivFE3vMc9cpxf80e+qbYyXXUbanPpO2esYAsqsxWI/mxS
+qRcwZobgpeY3y8+4DY84e9+zwBL6LUGFHnA6rB2t+FmTr7xz+zgvxTIBU00/mhBr
+g/e6Ujdjsxz/Pf7yACGRON1rJDJpU9AXno+IbtX4NYRnkft7GATDa8GRC+fUV4Yy
+Q3/y3K/xLqNRFHQEYjWlUYFeU6VfVx74J9+QwhttFx5LaWued0A=
+=waqt
+-----END PGP MESSAGE-----
 
 ** Step CA Examples
+
+*** Templates
+
+**** fdsa
+
+#+begin_example json
+{
+    "subject": {
+        "commonName": {{ toJson .Subject.CommonName }}
+    },
+    "keyUsage": ["digitalSignature", "keyEncipherment"],
+    "extKeyUsage": [
+        "clientAuth",
+        "1.3.6.1.5.5.7.3.2",
+        "1.3.6.1.4.1.311.20.2.2"
+    ],
+    "extensions": [
+        {
+            "id": "1.3.6.1.4.1.311.20.2.3",
+            "critical": false,
+            "value": "MBUGU3NoLXVzZXJAZG9tYWluLmNvbQ=="
+        }
+    ]
+}
+#+end_example
+
 
 *** Postgres with =TLS= where user authenticates with =mTLS=
 
 [[https://smallstep.com/hello-mtls/doc/server/postgresql][Configuring Your PostgreSQL Server for Mutual TLS]]
 
 Lots of good guides under "Hello mTLS"
-
 *** =SSHPOP= Short-lived SSH
 
 *** =JWT= to sign =X509=
