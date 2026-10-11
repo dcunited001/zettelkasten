@@ -82,7 +82,6 @@ renewal for a K8S cluster]] (see diff)
   typical =pkcs11= lib is sufficient.
 
 
-
 * Signing Certs with Keys in Yubikey PIV Slots
 
 You need something like =step kms=.
@@ -830,6 +829,97 @@ In both the source directories above, files of interest are:
 
 + Can assign a principle for the =step= OIDC & Cloud provisioners
 
+* Step Agent
+
+** Resources
+
+[[https://github.com/smallstep/nur/blob/main/nixos-modules/step-agent.nix][smallstep/nur]] is a flake containing release history of =step-agent= builds with a
+nixos module for deploying it. See
+
++ [[https://smallstep.com/docs/tutorials/protect-wireless-networks/][Protect Wireless Networks with 802.1X EAP-TLS]] The RADIUS server interactions
+  are overviewed here
++ [[https://smallstep.com/docs/tutorials/protect-wired-networks/][Protect Wired Networks with 802.1X EAP-TLS]]
++ [[https://smallstep.com/docs/platform/smallstep-agent/][Install the Smallstep Agent]]
+
+** Overview
+
+Using the TPM for device identity requires:
+
+|---------------+-----------------------------+--------------------+---------------------------------------------|
+| API Desc      | API                         | CA Desc            | CA                                          |
+|---------------+-----------------------------+--------------------+---------------------------------------------|
+| Telemetry     | ~tel.smallstep.com~           | Your CA            | ~<your-team>.ca.smallstep.com~ and subdomains |
+| Agent API     | ~control.infra.smallstep.com~ | TPM Attestation CA | ~att.smallstep.com~                           |
+| Smallstep API | ~gateway.smallstep.com~       |                    |                                             |
+|---------------+-------------------------------+--------------------+---------------------------------------------|
+While =step-agent= is closed-source, i think you can configure it to represent an
+alternative config. This is risky without experience, since ... idk? They've no
+doubt structured their product correctly. It requires a ton of effort to get
+this to work, so it makes sense that some components are closed off.
+
+But there is space for a JSON config. By testing out their product (if some
+device identity usage is free), then I think you can get an example config to
+submit to =step-agent=
+
+*** Service Deps
+
+From their mermaid graph
+
+#+begin_src dot :results output file :file img/smallstep-radius-services.png
+# to avoid npm install -g mermaid-headless-chrome-thing
+digraph G {
+  rankdir=LR
+  cred [label="Credential\n(client certificate)"]
+  wifi [label="Wi-Fi\nresource\n(SSID + trust)"]
+  radius [label="Managed\nRADIUS\nserver"]
+  ap [label="Access point"]
+  clients [label="Clients\n(Agent or MDM)"]
+
+  cred -> wifi [label="credential ID"]
+  radius -> wifi [label="server CA"]
+  radius -> ap [label="IP, port, shared secret"]
+  wifi -> clients
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/smallstep-radius-services.png]]
+
+*** Management Plane
+
+The reason I'm interested is obviously _not_ for WI-FI. It's because an =EAP-TLS=
+ethernet connection is a secure tunnel, which more than acceptable as a
+management plane. I've also been looking into IPSec tunnels, but those are
+difficult to configure across redundant routers.
+
++As long as VyOS can manage the tunnel state (and _not_ my aging Cisco switch)+ and
+as long as the setup isn't too much, then =step-agent= is actually doing a TON of
+heavy lifting here -- implementing something like [[https://github.com/tpm2-software/tpm2-abrmd][tpm2-software/tpm2-abrmd]] is
+super hard.
+
++ Radius :: idk where this would live.
++ TPM CA :: this is hard, but not that hard. Some mistakes are unforgiveably bad
+  though (I once almost trusted the Yubikey Attestation Cert)
++ EAP-TLS :: this does happen on the switch though. it may be on handmedown IOS
+  - maybe the vyos docs just describe configuring the router as a client
+
+For a management plane, the main gains here:
+
++ An adversary really needs to exploit multiple devices to pivot or move
+  laterally into the management plane.
++ To do so requires compromising multiple services.
++ But when frames contain 100% encrypted tunnel traffic, not even reading frames
+  will help you much, even to discover details. Other side channels could be
+  available: telemetry, perf, etc.
++ Device Identity establishes the trust in the layer-2 links. You can =sudo
+  tamper= with TPM data all you want, but if you can't sign that cert, you can't
+  do shit to the link.
+
+It restricts degrees of freedom when attempting to "enter that room" (the mgmt
+network), so that it constrains the adversary's approach. Because of this, with
+the right analytics, you're more likely to detect that. It requires a ton of
+other configurations though (firewall, etc)
+
 * Guix
 
 ** Packaging =step=,  =step-ca= and =step-kms-plugin=
@@ -852,7 +942,6 @@ Still, whatever is needed is going to be a bit more complicated.
   other deps -- do not quite match. Here, I think the early segfault means that
   the addressing in the binaries do not "agree".
 + If they need to be relinked or something.... that's way out of my league.
-
 * StepCA: Yubikey
 
 
