@@ -1,0 +1,93 @@
+:PROPERTIES:
+:ID:       50717c11-a2d5-4652-90f8-9701dc9da356
+:END:
+#+TITLE: Linux: Coredumps for GPU Crash
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:bdae77b1-d9f0-4d3a-a2fb-2ecdab5fd531][Linux]]
+
+* ugh.
+
+Never finished... got distracted (from a distraction)
+
+* Extract data
+
+Into =$(mktemp -d)=
+
+#+begin_src shell
+stamp=$(date +%Y-%m-%d)
+topic=crash-blender-hyprland-chromium-amd
+log="$stamp-$topic.journal"
+
+dest=$(pwd); mkdir -p "$dest"
+d=$(mktemp -d); pushd $d
+mkdir ./{dump,log} "$dest/"{dump,log}
+
+touch $dest/README.org
+extract_coredumps # into ./dump
+extract_journal # into ./log
+encrypt_incident
+retain_copies # send to storage
+#+end_src
+
+** coredumps
+
+#+name: jqCoredumps
+#+begin_example jq
+map([ .pid
+      , (.exe | gsub(".*\/[.]?"; "") | gsub("-wrapped"; ""))
+    ] | join(" ")) | join("\n")
+#+end_example
+
+This is all probably a little dangerous
+
+check that =${dumps[@]}= looks correct
+
+- you don't want to write to the wrong files/directories, etc
+- bashism have lots of implicit wierdness, whether at terminal or inside =set
+  -euo pipefail=
+
+#+begin_src sh :var q=jqCoredumps
+export q;
+declare -a dumps
+dumps=()
+while read -a recs; do
+    pid=${recs[0]}; prog=${recs[1]};
+    dump="$stamp-$pid-$prog.dump"
+    dumps+=($dump)
+done <<< $(coredumpctl list  --since "160 minutes ago" --json=short | jq -rj "$q")
+
+for dump in ${dumps[@]}; do
+    coredumpctl dump "$pid" --output="$dump"
+done
+#+end_src
+
+
+** Journal
+
+#+begin_src shell
+stamp=$(date +%Y-%m-%d)
+topic=crash-blender-hyprland-chromium-amd
+log="$stamp-$topic.journal"
+
+journalctl -b-1 -p7 -r > "log/$log.original.log"
+
+# need original boot details, but not content from the middle
+journalctl -b-1 -p7 -r | grep -ve '^Oct 21' \
+    | grep -vE 'uwsm_hyprland.desktop\[[0-9]+\]: .*xkbcomp' \
+    | grep -vE 'uwsm_hyprland.desktop\[[0-9]+\]: >' \
+    > "log/$log.brief.log"
+
+# xkbcomp BS is 30% of loglines. also eliminates that
+#+end_src
+
+Encrypt
+
+#+begin_src shell
+for dump in $dumps; do
+    gpg -er "$me" "$dump"
+done
+
+#+end_src
