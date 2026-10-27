@@ -16,6 +16,49 @@
 + https://gateway.smallstep.com/v2025-01-01
 + [[https://github.com/aspauldingcode/.dotfiles/blob/5ba6990d9f82a4b24f2144fc8413992a9f88ff53/scripts/password-store-secrets-smoke.yml#L78][scripts/password-store-secrets-smoke.yml#L78]]
 + [[https://github.com/redxtech/nixfiles/blob/1b173e6c253dbba89650346882b9b96d92fa6311/packages/secretspec/package.nix#L11][redxtech/nixfiles packages/secretspec/package.nix#L11]] secretspec override
+
+** Age
+
+From [[https://fr0stb1rd.gitlab.io/posts/a-modern-and-simple-alternative-to-gpg-age-and-its-cryptographic-engineering/][Alternative to GPG: age and Crypto Engineering]]
+
+encryption data flow
+
+#+begin_src mermaid :results file :file img/sops-age-encryption.svg
+graph TD
+    A[Original File] --> STREAM[STREAM Encryption - ChaCha20Poly1305]
+    B[16-byte Random File Key] --> STREAM
+    STREAM --> C[Encrypted Payload]
+    
+    B --> W1[Encrypt for Recipient 1 - X25519]
+    B --> W2[Encrypt for Recipient 2 - SSH-RSA]
+    B --> W3[Encrypt for Recipient 3 - Post-Quantum]
+    
+    W1 --> H[Header]
+    W2 --> H
+    W3 --> H
+    
+    H --> F[Final .age File]
+    C --> F
+#+end_src
+
+encryption
+
+#+begin_src mermaid :file img/sops-age-encryption2.png
+sequenceDiagram
+    participant Plaintext
+    participant Chunk as 64KB Chunk
+    participant Cipher as ChaCha20-Poly1305
+    participant Output as Encrypted File
+
+    Plaintext->>Chunk: Data Stream
+    loop For each 64 KB
+        Chunk->>Cipher: Data + StreamKey + Nonce (Counter: N)
+        Cipher->>Output: Encrypted Data + Poly1305 MAC
+    end
+    Note over Cipher: For the last chunk, the last byte<br/>of the Nonce is set to 0x01.
+#+end_src
+
+
 * X-509
 
 ** Trust Bundle
@@ -69,6 +112,48 @@ You can switch between multiple =--context=ica2=, etc, but you really don't want
 that data existing everywhere all the time. Also, if some contexts use remote
 provisioner management, this data needs to be persisted (I think this is
 supposed to be online)
+
+
+** LLM Responses
+
+*** On yubikey, crypto, 25519 and =age-plugin-yubikey= limitations :urlllm:crypt:
+:PROPERTIES:
+:CRYPTKEY: David Conner <aionfork@gmail.com>
+:END:
+
+-----BEGIN PGP MESSAGE-----
+
+hQIMAz05LBTqCkO0ARAAmusZmyPXIqe4+Od2E6/jqyp0pccKoh+dEvT4JIbIDh3k
+GZlizt/byO1FhsUsWh6wYsBpPvNRzlOFsvL1596OxtaEUGJ5TDUgZmphrmlNjEGw
+IEUmW4CJ+SpX8JKCPTOZakQxvMqb85wnlxRaZy3kGLkNgqfMGxzHNszi+iDGDcRo
+N1/HnwTvf7c7ZRlC0UMQz9aTmtaBVUe01CgJBqCD0cixL/5xApmf2lklJCwy/uvk
+8k8yLWr21IE2LRYgeiQrXEKtUAzsoooWtN5qvNtDn3tMILdF/eJvO7zGWSR25J7C
+09RJ4I1DCl7N3iTVZZXJfS7tGzoOyEnVJNCz4hOPCvO1F4cp4Z0RhLFpcV1veXvK
+GNe2JuSYmReesLkjhu8O+RLWGGOWPeIoMbkWS79cQ70UGP+w8WUjnFocM55cVgbE
+NfZZ7VZSRI/mj8ZlwD/u5w81dKBT1XsNHZVMw+/xKHeMuGlzEVsJa0RWD469DId7
+GyyCtzAp03dKc1zllzQEqTET3Oxv8OCGiT/oGvYcbR+ldWX8Xk07MlBS6F7LBPgy
+FNliPtCckSX2es4eLRf9+SUSJy3Q1UJiwS/zxILc2nY7wjaSG6qVWPdhqxj3Wl1f
+XclqreDCFJAOixJEEtldWzlebdVhxpD/q0oIlZucMx1Dk/PgXJFlzAr+tt8KzWrS
+6QEJIsRxneU6DfMZfEwS4kkusyw0tppUnVqo5hhdVeeGoSHSP0dswzIi015u7bc2
+9j1yBTY1LAhCaHNDJEBbeYPKB5hLvxOxrZjCWbgzTjm5ZfwQRPgtYy2Vlt9VCV06
+Ib12rx+cYtfYE1K9NDmgx5/lPJvF/zNMHLYEYM5THL6K/xLqGBHqa40Cd35L4hq6
+tw0nhWz+Xa9v0yQu7UbUFlxisNgMvu7K3fijaq0fRtK4dsz1qD/DNca/zzk2ec9F
+zLO4hzd1QHt6BfYbbAgbVv7IZTjI7Flj5TXvYBdwCNs8kWnzTJr9G1nPpsRm+nJB
+DWrfRoSag/jsagK7ZZsUD9AIkMqmDue/CU378WrsTyPqOksEsGZswNz/5NFmOBvC
+r7V4Bq1YdXx4Q5GTMbNSWCT6dj1QTnOyiGNHEjXu5hPFNoIcRLmVCMc810t9fdt1
+zcwa9NP/vNEz1FBfoUrR+afghzxfCgChbRLYy7gluzipiRyXx0GSkPh7QCnYJ2Dr
+A5wumINy5ceyb7K+WL3saI7j6uuIollYw5B0D/deOcDVG7bwSj1agCesSl0wH4h/
+oeAYJoR9UBezZGMMh50Gw/gYlIamALtRpvEwCh7AYUabWuMYLCqtVBK1SE/P0+iz
+Zr1MWDnjqImW2rEalTCKG0nJBWoUPtABWa6OLhP/lhcTwG/edo0HdaEluwlYfSuA
+WOQm+IIXutBwbjvTwUmOwM7JcRrg3EagVlsqnvBRBkROvotbZSC49Sw8zfX/6tmt
+15AIjZQqbnirTVJTSoSdhOpLMosnw1YDvWkk6qJIR0ac395hSqJImNq2FK6S2H3o
+3Gk5lMxzPDHAwXLE6ElTOTJSM/Au6q+Bs0aE9SjHMZeAB7+5nVTJH1HAL4jge9iA
+vU/THrpSQDcZXBqvcA838pumXJ00NbCaOIOqZH7z03teN21ruLwJw8p1f18fjqJe
+cSK+O5M24ePaF3CoudzTshNb92f4FbZCktqOh9mq71H6vFZtPHvfgXWUepcftuZa
+6SDIjb+oFPPZb0/gDj3CPuLHUiscf9sH1CM5D2Kx5MLtJUxiRGcoL+aFgvjJwYZp
+I34=
+=JrCo
+-----END PGP MESSAGE-----
 
 
 

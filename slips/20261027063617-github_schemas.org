@@ -1,0 +1,251 @@
+:PROPERTIES:
+:ID:       b7b0aea8-43d6-4b4a-ab27-8d91617323ca
+:END:
+#+TITLE: Github: Schemas
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
++ [[id:bb8bbe7c-6d49-4088-9161-2ae2edb4abd6][Ontology]]
++ [[id:a3dd53f7-b708-47a1-88e6-56f5c60f0576][JSON Schema Store: Extract Schemas In Bulk]]
++ [[id:96ea2679-1c00-4144-a97a-c1db570b7407][Github]]
+
+* Github
+
+* Schemas
+
+** fdsa
+
+Unsure whether these are 100% correct
+
+*** github-workflow-schema.json
+
+#+name: githubWorkflowSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-workflow")
+
+#+begin_src dot :results output file :noweb yes :file img/devops/jsonschema-github-workflow.png
+digraph G {
+    <<githubWorkflowSchema()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/jsonschema-github-workflow.png]]
+
+*** github-action.json
+
+#+name: githubActionSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-action")
+
+#+begin_src dot :results output file :noweb yes :file img/devops/jsonschema-github-action.png
+digraph G {
+    <<githubActionSchema()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/jsonschema-github-action.png]]
+
+*** github-cli-hosts.json
+
+additionalProperties/$ref -> "host"
+
+#+name: githubCliHostsSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-cli-hosts")
+
+#+RESULTS: githubCliHostsSchema
+: "host" -> "configOptions"
+: "host" -> "user"
+: "user" -> "configOptions"
+
+*** github-issue-forms.json
+
+#+name: githubIssueFormsSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-issue-forms")
+
+#+RESULTS: githubIssueFormsSchema
+#+begin_example
+"assignees" -> "assignee"
+"body" -> "form_item"
+"form_item" -> "description"
+"form_item" -> "id"
+"form_item" -> "label"
+"form_item" -> "placeholder"
+"form_item" -> "type"
+"form_item" -> "upload_validations"
+"form_item" -> "validations"
+"form_item" -> "value"
+#+end_example
+
+#+begin_src dot :results output file :noweb yes :file img/devops/jsonschema-github-issue-forms.png
+digraph G {
+    <<githubIssueFormsSchema()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/jsonschema-github-issue-forms.png]]
+
+*** github-pages-jekyll.json
+
+#+name: githubPagesJekyllSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-pages-jekyll")
+
+#+RESULTS: githubPagesJekyllSchema
+: "gems" -> "supportedPluginList"
+: "plugins" -> "supportedPluginList"
+: "supportedPluginList" -> "supportedPlugin"
+: "theme" -> "supportedTheme"
+: "whitelist" -> "supportedPluginList"
+
+#+begin_src dot :results output file :noweb yes :file img/devops/jsonschema-github-pages-jekyll.png
+digraph G {
+    <<githubPagesJekyllSchema()>>
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/devops/jsonschema-github-pages-jekyll.png]]
+
+** tofix
+
+too specific
+
+*** github-issue-config.json
+
+null (null) has no keys
+
+#+name: githubIssueConfigSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-issue-config")
+
+#+RESULTS: githubIssueConfigSchema
+: jq: error (at <stdin>:55): null (null) has no keys
+
+*** github-funding.json
+
+null (null) has no keys
+
+#+name: githubFundingSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-funding")
+
+#+RESULTS: githubFundingSchema
+: jq: error (at <stdin>:113): null (null) has no keys
+
+*** github-discussion.json
+
+null (null) has no keys
+
+#+name: githubDiscussionSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-discussion")
+
+#+RESULTS: githubDiscussionSchema
+: jq: error (at <stdin>:71): null (null) has no keys
+
+*** github-workflow-cli-config.json
+
+null (null) has no keys
+
+#+name: githubCliConfigSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-cli-config")
+
+*** github-workflow-template-properties.json
+
+null (null) has no keys
+
+#+name: githubWorkflowTemplatePropertiesSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-workflow-template-properties")
+
+*** github-release-config.json
+
+null (null) has no keys
+
+#+name: githubReleaseConfigSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-release-config")
+
+*** github-secret-scanning.json
+
+null (null) has no keys
+
+#+name: githubSecretScanningSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-secret-scanning")
+
+
+*** github-prompt.json
+
+null (null) has no keys
+
+#+name: githubPromptSchema
+#+call: jsonSchemaWalkDeps() :stdin fetchSchema(name="github-prompt")
+
+* Babel
+
+#+name: fetchSchema
+#+header: :jq . :var name="github-action"
+#+begin_src restclient :results value code :wrap example json
+:schema-url = https://json.schemastore.org/:name.json
+GET :schema-url
+#+end_src
+
+#+RESULTS: fetchSchema
+#+begin_example json
+jq: parse error: Invalid numeric literal at line 1, column 10
+#+end_example
+
+#+name: jsonSchemaWalkRefs
+#+begin_src jq :stdin fetchSchema
+[ path(.. | select(objects and ."$ref")) as $p
+  | { ($p + ["$ref"] | join("/"))
+      : getpath($p)."$ref"
+    }
+] | add
+#+end_src
+  
+#+name: jsonSchemaDeps
+#+begin_src jq :stdin jsonSchemaWalkRefs :var q=".*" :cmd-line "-r"
+to_entries
+  | map(select((.key | match("(definitions|properties)")) or (.value | match("(definitions|properties)"))))
+  | map(. += { value: (.value | gsub("^#/definitions/(?<def>[^/]+)/?.*"; "\"\(.def)\"")) })
+  | map(. += { key: (.key | gsub("^definitions/(?<def>[^/]+)/.*"; "\"\(.def)\"")) })
+  | map(. += { key: (.key | gsub("^(then/|else/)?properties/(?<prop>[^/]+)/.*"; "\"\(.prop)\"")) })
+  | map("\(.key) -> \(.value)")
+  | sort | unique | join("\n")
+
+# getting impatient with some of the corrections
+#+end_src
+
+#+RESULTS: jsonSchemaDeps
+#+begin_example
+"outputs" -> "outputs"
+"outputs" -> "outputs-composite"
+"runs" -> "runs-composite"
+"runs" -> "runs-docker"
+"runs" -> "runs-javascript"
+"runs-composite" -> "expressionSyntax"
+"runs-composite" -> "stringContainingExpressionSyntax"
+"runs-docker" -> "post-if"
+"runs-docker" -> "pre-if"
+"runs-docker" -> "stringContainingExpressionSyntax"
+"runs-javascript" -> "post-if"
+"runs-javascript" -> "pre-if"
+#+end_example
+
+Both (bc babel)
+
+#+name: jsonSchemaWalkDeps
+#+begin_src jq :stdin jsonSchemaWalkRefs :var q=".*" :cmd-line "-r"
+[ path(.. | select(objects and ."$ref")) as $p
+  | { ($p + ["$ref"] | join("/"))
+      : getpath($p)."$ref"
+    }
+] | add
+| to_entries
+  | map(select((.key | match("(definitions|properties)")) or (.value | match("(definitions|properties)"))))
+  | map(. += { value: (.value | gsub("^#/definitions/(?<def>[^/]+)/?.*"; "\"\(.def)\"")) })
+  | map(. += { key: (.key | gsub("^definitions/(?<def>[^/]+)/.*"; "\"\(.def)\"")) })
+  | map(. += { key: (.key | gsub("^properties/(?<prop>[^/]+)/.*"; "\"\(.prop)\"")) })
+  | map(. += { key: (.key | gsub("^(then/|else/|allOf/[0-9]+/)?properties/(?<prop>[^/]+)/.*"; "\"\(.prop)\"")) })
+  | map("\(.key) -> \(.value)")
+  | sort | unique | join("\n")
+#+end_src
+
+

@@ -21,20 +21,145 @@
 After generating the "Commands v3 REBUILT" project, needed to check vendor dep
 availability to gauge support at launch, esp. for hardware.
 
-| advantage kit      | logging    |
-| choreo             | trajectory |
-| phoenix v6         | hw         |
-| phoenix v6 replay  | hw         |
-| doglog             | logging    |
-| pathplannerlib     | trajectory |
-| reduxlib           | hw         |
-| revlib             | hw         |
-| yams (commands v2) | mechanism  |
-| yams (commands v2) | mechanism  |
+|                     | type       | c++ | java | python | notes                                    |
+|---------------------+------------+-----+------+--------+------------------------------------------|
+| advantage kit       | logging    | ✓   | ✓    | no     | [[https://github.com/1757WestwoodRobotics/PyKit][1757WestwoodRobotics/PyKit]]               |
+| choreo              | trajectory | ✓   | ✓    | ✓      | Java only: AutoFactory, etc              |
+| phoenix v6          | hw         | ✓   | ✓    | ✓      |                                          |
+| phoenix v6 replay   | hw         | ✓   | ✓    | ?      |                                          |
+| doglog              | logging    | n/a | ✓    | n/a    |                                          |
+| pathplannerlib      | trajectory | ✓   | ✓    | exp    | python looks early                       |
+| reduxlib            | hw         | ✓   | ✓    | ?      |                                          |
+| revlib              | hw         | ✓   | ✓    | exp    | python still early, no official examples |
+| yams (commands v2)  | mechanism  | ✓   | ✓    | no     |                                          |
+| yagsl (commands v2) | mechanism  | ✓   | ✓    | no     |                                          |
 
 Some hardware support is missing for now. Photonvision is experimental for now,
 but needs a =dev= build.
 
+** Python
+
+Just analyzing the support here.
+
+Could be wrong about some of this... but what's confusing is that it will change
+quite quickly, but not if you're waiting on it. Progress will likely be seasonal
+
+Almost all aspects of developer workflow assume CLI usage (i.e. Git-Bash)
+
+*** Developer environment
+
++ Configure LSP and =mypy= (or navigation, completion, etc have partial support)
++ Configure ty, ruff, uv, etc. Projects use =pyproject.toml=
++ Probably build on the systemcore target to avoid issues (=ssh=?)
+
+**** Developer UI/UX
+
++ Strongly influenced by the domain modeling in WPILib's C/C++ code, which is
+  heavily object-oriented.
+  - This means that =Meters.of(1.0)= is still =Meters.of(1.0)=.
+  - Some code is still somewhat verbose (bc OOP ends up that way).
+  - So even though it's python, the lower-level code will feel like building on
+    the java. Java feels heavy if you don't use IDE features (like the
+    "Problems" tab, references or code-refactoring)
++ Most libraries expect =mypy=. This is better, assuming LSP config goes smoothly.
+  - In my experience, LSP is usually left to the developer to configure, but you
+    can't easily distribute/update configuration for multiple developer
+    machines.
+  - If LSP isn't configured consistently, it makes the learning experience weird
+    bc sometimes features work, sometimes they don't.
+
+**** Tests
+
+[[https://robotpy.readthedocs.io/en/stable/testing.html][Docs: Unit Testing]] does indicate that robotpy makes testing a bit easier to work
+with. implies that =py -3 -m robotpy coverage test= will also run test coverage.
+
+*** Vendordeps
+
+**** Pathplanner
+
+Python support looks experimental for now.
+
++ mostly from 2 years ago. mostly version bumps since then
++ python does not bind to pathplannerlib FFI. not sure if this is a big deal
+  
+**** Photonvision
+
+Supports python
+
++ project relies heavily on native dependencies (rknn, tflite, tensorrt) though
+  these are almost entirely on the photonvision server (i.e. not a problem)
++ =photonvisionlib= does require a lot of math. Its python code definitely falls
+  through to WPILib. pathplanner does somewhat
+
+*** Templates
+
+For now, projects can't be generated using VSCode. Most vendordeps lack as many
+examples.
+
++ [[https://github.com/1757WestwoodRobotics/PyKit/tree/main/template_projects][1757WestwoodRobotics/PyKit ./template_projects]]
+
+*** Installation
+
+Instructions are still unclear about windows installation
+
++ The "Latest 2027" docs are still largely the same, except for sections
+  covering clear changes which are mostly complete. That's how it goes for large
+  documentation sites that's not generated from code. It will be updated when
+  design is complete.
++ =choreo= and =pathplannerlib-python= recommend using =uv=, but this gives few
+  guarantees about how a cross-compiled target will be built, _especially when
+  native compilation is required for e.g. numpy_. 
+
+Closer review of wpilib 2027 sources would make intended installation and gradle
+support more clear.
+  
+**** Developer vs Target Platform
+
++ Bad news: target doesn't match the developer platform.
++ Good news: only =3.14= is supported on systemcore. This means that developers on
+  need to manage one python version (dependency conflicts slightly less likely)
+  - also good news: =astral-sh/uv= sources are used by [[https://github.com/robotpy/robotpy-installer/blob/f4e4f3fd2bab8f965f80efa2fbf0a0afad694f81/README.rst?plain=1#L1][robotpy-installer]], however
+    its a bit complicated.
+
+#+begin_quote
+You must install a supported version of Python on a supported operating system.
+Every year we upgrade RobotPy to the latest available version of Python. In 2027
+we support Python =3.11/3.12/3.13/3.14=, but only =3.14= is available for the
+Systemcore.
+#+end_quote
+
+IDK everything about how =uv= downloads dependencies, but its binary builds would
+_not_ work for roborio. If systemcore is a typical RPi CM ARM target, then =uv=
+downloads for pip packages requiring native compilation would be transparent.
+
+Since =choreo= and =pathplannerlib= recommend =uv=, this is probably a non-issue.
+
+** WPILibJ
+
+*** Testing
+
+**** Examples
+
+Examples and some snippets have tests (like [[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/wpilibjExamples/src/test/java/org/wpilib/examples/unittest/subsystems/IntakeTest.java#L18][IntakeTest.java]]), setup here:
+[[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/wpilibjExamples/src/main/java/org/wpilib/examples/unittest/Robot.java#L5][wpilibjExamples/src/main/java/org/wpilib/examples/unittest/Robot.java#L5]]
+
++ I'm not sure how to adapt the RobotContainer to match the runtime requirements
+  of the gradle test targets.
++ [[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/wpilibjExamples/build.gradle#L210-L240][wpilibExamples/build.gradle]] sets up multiple test targets for CI/CD, but these
+  gradle files are set up slightly differently. having multiple targets in an
+  application makes it simpler to do small unit tests (I think...)
+
+**** Mocks
+
+Internal testing makes heavy use of [[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/wpilibj/src/test/java/org/wpilib/framework/OpModeRobotTest.java#L116-L140][mocked classes]] (similar [[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/wpilibc/src/test/python/framework/test_opmode_robot.py#L1445-L1459][python test]]), though
+those are just thin classes. These are more like mocks
+
++ [[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/tunables/src/main/java/org/wpilib/tunable/MockTunableBackend.java#L16][MockTunableBackend.java]]
+  - Usage: [[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/tunables/src/test/java/org/wpilib/tunable/TunableTest.java#L35][TunableTest.java]] and [[https://github.com/dcunited001/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/tunables/src/test/python/test_tunable.py#L22][test_tunable.py]]
++ [[https://github.com/wpilibsuite/allwpilib/blob/4817543253e343afcf2b630537e995d74d21db62/telemetry/src/main/java/org/wpilib/telemetry/MockTelemetryBackend.java#L22][MockTelemetryBackend.java]]
+  - These could be difficult to work with (at the user level), unless you watch
+    for subsystem/mechanism state changes or something. Definitely need the
+    design intent to mock/test ahead of time.
 ** SystemCore
   
 *** Driver Station
@@ -125,7 +250,7 @@ theme when first starting the editor.
 
 | extra                                |    new | version | default                       |      old |              new | microsoft                             |     old |     new |
 |--------------------------------------+--------+---------+-------------------------------+----------+------------------+---------------------------------------+---------+---------|
-| huntertran.auto-mardown-toc          |        |  3.0.15 | redhat.java                   |   1.38.0 |           1.55.0 | ms-vscode-remote.remote-containers    | 0.469.0 | 0.469.0 |
+| huntertran.auto-markdown-toc         |  3.1.2 |  3.0.15 | redhat.java                   |   1.38.0 |           1.55.0 | ms-vscode-remote.remote-containers    | 0.469.0 | 0.469.0 |
 | richardwillis.vscode-spotless-gradle |  1.2.1 |   1.2.1 | wpilibsuite.vscode-wpilib     | 2026.2.1 | 2027.0.0-alpha-7 | vscjava.vscode-gradle                 |  3.17.2 |         |
 | takumii.markdowntable                | 0.13.0 |  0.13.0 | vscjava.vscode-java-depenency |   0.24.1 |           0.27.6 | vscjava.vscode-java-test              |  0.44.0 |  0.46.0 |
 | mermaidchart.vscode-mermaid-chart    |        |   2.5.9 | vscjava.vscode-java-debug     |   0.58.2 |           0.59.0 | ms-vscode-remote.remote-ssh           | 0.120.0 | 0.128.0 |
@@ -154,6 +279,57 @@ other tools to fill the gaps leads you to strengthen skills which just aren't
 "super employable".
 
 A bit of a sore spot... Anyways
+
+*** Other extensions
+
+| extra                                |       new | version |
+|--------------------------------------+-----------+---------|
+| astral-sh.ty                         | 2026.84.0 |         |
+| richardwillis.vscode-spotless-gradle |           |         |
+| takumii.markdowntable                |    0.13.0 |  1.13.0 |
+| mermaidchart.vscode-mermaid-chart    |           |   2.5.9 | 
+
+**** astral-sh.ty
+
+hmmm. can't launch from shell either
+
+#+begin_example
+/nix/store/asdf1234-vscode-extension-astral-sh-ty-2026.84.0/share/
+ ...vscode/extensions/astral-sh.ty/bundled/libs/bin/ty
+
+bash: /nix/store/asdf1234-vscode-extension-astral-sh-ty-2026.84.0/share/
+ ...vscode/extensions/astral-sh.ty/bundled/libs/bin/ty: cannot execute binary file: Exec format error
+#+end_example
+
+**** Rust Analyzer
+
+Rust requires =rustup= and =rust-analyzer=
+
++ =rustup= is installed in my user's nixos profile
++ using the 2026 version of nixos =vscode-with-extensions= and =nix-ld=
+  - =vscode-extensions.rust-lang.rust-analyzer= is installed here
++ then =rustup toolchain install This seems sufficient for LSP to start in my workspace 
+
+Choreo uses rust for a few features
+
++ =src/codegen/java= (interesting)
++ serde, packing and re/serialization (=*.traj= json files)
+
+=./choreolib= needs to be =working-directory= for gradle builds
+
+#+begin_src yaml
+      - name: Set version (release)
+        if: github.repository_owner == 'SleipnirGroup' && startsWith(github.ref, 'refs/tags/v')
+        working-directory: choreolib
+        run: sed -i "s/0.0.0/${GITHUB_REF##*v}/g" publish.gradle
+
+      - name: Build with Gradle
+        working-directory: choreolib
+        run: ./gradlew build ${{ matrix.build-options }}
+#+end_src
+
+Probably want the docker image... But there's also a =shell.nix=
+
 
 *** VSCode =settings.json=
 
