@@ -16,7 +16,42 @@
 
 ** fdsa
 
-Unsure whether these are 100% correct
+Unsure whether these are 100% correct. It's really just an abbreviation of the
+definitions of =$ref='s found at =jq= paths in the JSON Schema.
+
++ it depicts the composition
++ not the logic of type validation
++ and coalescesces the aggregation relationships
+
+*** Explanation
+
+The following short-curcuits the =pull_request= object with no clear definition
+(the paths would be different if there was a definition).
+
+#+begin_example
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/branches/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/branches-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/tags/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/tags-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/paths/$ref": "#/definitions/path",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/paths-ignore/$ref": "#/definitions/path",
+#+end_example
+
+Instead of =.parent > .child= for all child nodes, it's like CSS =html >
+.root-defintion .some-ref=. It focuses on the entity types that can be contained
+under under nodes and coalesces the above into:
+
+#+begin_example dot
+digraph G {
+  on -> { types, branch, path }
+}
+#+end_example
+
+It's cheap, but I can run quick commands, somewhat reuse this code and I don't
+need to maintain an environment where the code lives (nor deal with boilerplate
+or =uv=, or typescript's =ajv= etc). It also requires less paper, space, filtering,
+time.
 
 *** github-workflow-schema.json
 
@@ -180,16 +215,12 @@ null (null) has no keys
 * Babel
 
 #+name: fetchSchema
-#+header: :jq . :var name="github-action"
+#+header: :jq . :var name="github-workflow"
 #+begin_src restclient :results value code :wrap example json
 :schema-url = https://json.schemastore.org/:name.json
+
 GET :schema-url
 #+end_src
-
-#+RESULTS: fetchSchema
-#+begin_example json
-jq: parse error: Invalid numeric literal at line 1, column 10
-#+end_example
 
 #+name: jsonSchemaWalkRefs
 #+begin_src jq :stdin fetchSchema
@@ -199,6 +230,156 @@ jq: parse error: Invalid numeric literal at line 1, column 10
     }
 ] | add
 #+end_src
+
+#+RESULTS: jsonSchemaWalkRefs
+#+begin_example
+{
+  "definitions/branch/$ref": "#/definitions/globs",
+  "definitions/concurrency/properties/cancel-in-progress/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/configuration/oneOf/3/additionalProperties/$ref": "#/definitions/configuration",
+  "definitions/configuration/oneOf/4/items/$ref": "#/definitions/configuration",
+  "definitions/jobContainer/properties/env/$ref": "#/definitions/env",
+  "definitions/serviceContainer/properties/env/$ref": "#/definitions/env",
+  "definitions/defaults/properties/run/properties/shell/$ref": "#/definitions/shell",
+  "definitions/defaults/properties/run/properties/working-directory/$ref": "#/definitions/working-directory",
+  "definitions/permissions/oneOf/1/$ref": "#/definitions/permissions-event",
+  "definitions/permissions-event/properties/actions/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/artifact-metadata/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/attestations/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/checks/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/code-quality/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/contents/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/deployments/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/discussions/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/issues/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/packages/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/pages/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/pull-requests/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/repository-projects/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/security-events/$ref": "#/definitions/permissions-level",
+  "definitions/permissions-event/properties/statuses/$ref": "#/definitions/permissions-level",
+  "definitions/env/oneOf/1/$ref": "#/definitions/stringContainingExpressionSyntax",
+  "definitions/environment/properties/deployment/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/path/$ref": "#/definitions/globs",
+  "definitions/step/properties/working-directory/$ref": "#/definitions/working-directory",
+  "definitions/step/properties/shell/$ref": "#/definitions/shell",
+  "definitions/step/properties/with/$ref": "#/definitions/env",
+  "definitions/step/properties/with/anyOf/0/$ref": "#/definitions/env",
+  "definitions/step/properties/env/$ref": "#/definitions/env",
+  "definitions/step/properties/continue-on-error/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/step/properties/timeout-minutes/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/step/properties/parallel/items/$ref": "#/definitions/step",
+  "definitions/jobNeeds/oneOf/0/items/$ref": "#/definitions/name",
+  "definitions/jobNeeds/oneOf/1/$ref": "#/definitions/name",
+  "definitions/matrix/oneOf/0/patternProperties/^(in|ex)clude$/oneOf/0/$ref": "#/definitions/expressionSyntax",
+  "definitions/matrix/oneOf/0/patternProperties/^(in|ex)clude$/oneOf/1/items/additionalProperties/$ref": "#/definitions/configuration",
+  "definitions/matrix/oneOf/0/additionalProperties/oneOf/0/items/$ref": "#/definitions/configuration",
+  "definitions/matrix/oneOf/0/additionalProperties/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/matrix/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/reusableWorkflowCallJob/properties/needs/$ref": "#/definitions/jobNeeds",
+  "definitions/reusableWorkflowCallJob/properties/permissions/$ref": "#/definitions/permissions",
+  "definitions/reusableWorkflowCallJob/properties/cache-mode/$ref": "#/definitions/cacheMode",
+  "definitions/reusableWorkflowCallJob/properties/with/$ref": "#/definitions/env",
+  "definitions/reusableWorkflowCallJob/properties/secrets/oneOf/0/$ref": "#/definitions/env",
+  "definitions/reusableWorkflowCallJob/properties/strategy/properties/matrix/$ref": "#/definitions/matrix",
+  "definitions/reusableWorkflowCallJob/properties/concurrency/oneOf/1/$ref": "#/definitions/concurrency",
+  "definitions/normalJob/properties/needs/$ref": "#/definitions/jobNeeds",
+  "definitions/normalJob/properties/snapshot/$ref": "#/definitions/snapshot",
+  "definitions/normalJob/properties/permissions/$ref": "#/definitions/permissions",
+  "definitions/normalJob/properties/cache-mode/$ref": "#/definitions/cacheMode",
+  "definitions/normalJob/properties/runs-on/anyOf/3/$ref": "#/definitions/stringContainingExpressionSyntax",
+  "definitions/normalJob/properties/runs-on/anyOf/4/$ref": "#/definitions/expressionSyntax",
+  "definitions/normalJob/properties/environment/oneOf/1/$ref": "#/definitions/environment",
+  "definitions/normalJob/properties/env/$ref": "#/definitions/env",
+  "definitions/normalJob/properties/defaults/$ref": "#/definitions/defaults",
+  "definitions/normalJob/properties/steps/items/$ref": "#/definitions/step",
+  "definitions/normalJob/properties/timeout-minutes/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/normalJob/properties/strategy/properties/matrix/$ref": "#/definitions/matrix",
+  "definitions/normalJob/properties/continue-on-error/oneOf/1/$ref": "#/definitions/expressionSyntax",
+  "definitions/normalJob/properties/container/oneOf/1/$ref": "#/definitions/jobContainer",
+  "definitions/normalJob/properties/services/additionalProperties/$ref": "#/definitions/serviceContainer",
+  "definitions/normalJob/properties/concurrency/oneOf/1/$ref": "#/definitions/concurrency",
+  "definitions/workflowDispatchInput/oneOf/4/properties/options/$ref": "#/definitions/workflowDispatchInput/properties/options",
+  "properties/on/oneOf/0/$ref": "#/definitions/event",
+  "properties/on/oneOf/1/items/$ref": "#/definitions/event",
+  "properties/on/oneOf/2/properties/branch_protection_rule/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/branch_protection_rule/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/check_run/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/check_run/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/check_suite/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/check_suite/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/create/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/delete/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/deployment/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/deployment_status/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/discussion/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/discussion/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/discussion_comment/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/discussion_comment/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/fork/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/gollum/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/issue_comment/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/issue_comment/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/issues/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/issues/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/label/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/label/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/merge_group/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/merge_group/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/milestone/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/milestone/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/page_build/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/project/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/project/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/project_card/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/project_card/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/project_column/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/project_column/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/public/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/branches/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/branches-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/tags/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/tags-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/paths/$ref": "#/definitions/path",
+  "properties/on/oneOf/2/properties/pull_request/oneOf/1/allOf/0/properties/paths-ignore/$ref": "#/definitions/path",
+  "properties/on/oneOf/2/properties/pull_request_review/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/pull_request_review/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/pull_request_review_comment/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/pull_request_review_comment/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/pull_request_target/oneOf/1/allOf/0/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/pull_request_target/oneOf/1/allOf/0/properties/branches/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request_target/oneOf/1/allOf/0/properties/branches-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request_target/oneOf/1/allOf/0/properties/tags/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request_target/oneOf/1/allOf/0/properties/tags-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/pull_request_target/oneOf/1/allOf/0/properties/paths/$ref": "#/definitions/path",
+  "properties/on/oneOf/2/properties/pull_request_target/oneOf/1/allOf/0/properties/paths-ignore/$ref": "#/definitions/path",
+  "properties/on/oneOf/2/properties/push/oneOf/1/allOf/0/properties/branches/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/push/oneOf/1/allOf/0/properties/branches-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/push/oneOf/1/allOf/0/properties/tags/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/push/oneOf/1/allOf/0/properties/tags-ignore/$ref": "#/definitions/branch",
+  "properties/on/oneOf/2/properties/push/oneOf/1/allOf/0/properties/paths/$ref": "#/definitions/path",
+  "properties/on/oneOf/2/properties/push/oneOf/1/allOf/0/properties/paths-ignore/$ref": "#/definitions/path",
+  "properties/on/oneOf/2/properties/registry_package/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/registry_package/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/release/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/release/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/status/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/watch/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/workflow_dispatch/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/workflow_dispatch/oneOf/1/properties/inputs/patternProperties/^[_a-zA-Z][a-zA-Z0-9_-]*$/$ref": "#/definitions/workflowDispatchInput",
+  "properties/on/oneOf/2/properties/workflow_run/$ref": "#/definitions/eventObject",
+  "properties/on/oneOf/2/properties/workflow_run/oneOf/1/properties/types/$ref": "#/definitions/types",
+  "properties/on/oneOf/2/properties/repository_dispatch/$ref": "#/definitions/eventObject",
+  "properties/env/$ref": "#/definitions/env",
+  "properties/defaults/$ref": "#/definitions/defaults",
+  "properties/concurrency/oneOf/1/$ref": "#/definitions/concurrency",
+  "properties/cache-mode/$ref": "#/definitions/cacheMode",
+  "properties/jobs/patternProperties/^[_a-zA-Z][a-zA-Z0-9_-]*$/oneOf/0/$ref": "#/definitions/normalJob",
+  "properties/jobs/patternProperties/^[_a-zA-Z][a-zA-Z0-9_-]*$/oneOf/1/$ref": "#/definitions/reusableWorkflowCallJob",
+  "properties/permissions/$ref": "#/definitions/permissions"
+}
+#+end_example
   
 #+name: jsonSchemaDeps
 #+begin_src jq :stdin jsonSchemaWalkRefs :var q=".*" :cmd-line "-r"

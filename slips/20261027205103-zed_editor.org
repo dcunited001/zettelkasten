@@ -1,0 +1,686 @@
+:PROPERTIES:
+:ID:       ac58e7e7-31ad-4be1-9eef-ab2558bffdaf
+:END:
+#+TITLE: Zed Editor
+#+CATEGORY: slips
+#+TAGS:
+
+* Roam
+
+
+* Docs
+
+* Resources
+
+* Topics
+
+** Misc
+
+Zed didn't launch with a Linux version. That's happened frequently enough with
+=k8s lens=, =DockerDesktop=, =GithubDesktop=, etc... so when I learn that an
+"enthusiastic developer-centric business/product" explicitly _does not_ support
+Linux on the desktop, i just really stop listening to everything about it.
+
+... Why? Because i'm not waiting around one week at time just *hoping* for that
+shit to arrive when it's frustrating you wouldn't launch with linux support --
+this "anima" isn't directed at zed, per se. it's just accumulated residue from
+isolation where I can't even see the tools software developers use on other
+desktops.
+
+Like i have no idea what features exist and it's frustrating when i learn years
+later that "oh now there was a linux version for 2 years already". It's like
+quadruple jeopardy for trauma (getting hurt like four times in rapid succession
+the instant i discover whatever it is). anyways, i've known for awhile
+
+anyways, it looks like _maybe_ i can remotely pair program. It's funny how large
+of an effect that could've had on my life over the past 5-10 years.
+
+
+** Keymaps
+
+Keybindings mostly overlap with VSCode, i guess. That keymap has minimal
+content.
+
+#+begin_quote
+There's no "zed stan at the office" who's broadcasting "tacit knowledge" about
+application usage. So I don't magically things like this
+
+I also didn't know about:
+
++ Remote coding features (i mean kinda, but way late, after i decided I wasn't
+  interested in zed)
++ The Linux version of =zeditor=
+
+i really don't like VSCode's bindings: they're too electron-centric. so they
+come with weird browser quirks. but they're not terrible.
+#+end_quote
+
+
+*** Comparison
+:PROPERTIES:
+:header-args+: :dir "/tmp/tmp.h8P1sgxv2a/zed"
+:END:
+
+In =./assets/keymaps=, but run =sed -i -E 's/\/\/.*$//g' assets/keymaps/**/*.json=
+after clone, since it's =jsonc=. This still leaves errant commas, but =yq -y= will
+tolerate these.
+
+#+begin_example emacs-lisp
+(setq-local org-babel-jq-command "yq -y")
+#+end_example
+
+
+#+name: extractBindings
+#+begin_src jq :in-file "assets/keymaps/default-linux.json"
+[path(.. | select(objects and .bindings)) as $p
+  | { ($p + ["bindings"] | join("."))
+      : (getpath($p)."bindings"
+        | to_entries | map(if (.value | (type == "array"))
+                           then [.key, (.value | first)]
+                           else [.key, .value]
+                           # then (.key + (.value | first))
+                           # else (.key + .value)
+                           # then ({(.key): (.value | first)})
+                           # else {(.key): .value}
+                           end | join(" ")))
+    }
+] | add | add | sort | unique
+# | [.key, .value] | join("\n")
+#+end_src
+
+#+name: cutBindings
+#+header: :stdin extractBindings
+#+begin_src shell :results output code :results silent
+cut -b3-
+#+end_src
+
+
+**** Emacs vs Defaults
+
+These =./assets/keymaps= are successively merged, so comparing ={Defaults,Emacs}= is
+misleading
+
+#+begin_src shell :results output code :wrap example diff
+# diff keysLinux{Defaults,Emacs}
+diff <(cat keysLinuxDefaults | sort) \
+    <(cat keysLinux{Defaults,Emacs} | sort)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+25a26,28
+> alt-backspace editor::DeleteToPreviousWordStart
+> alt-b editor::MoveToPreviousWordStart
+> alt-b editor::SelectToPreviousWordStart
+26a30
+> alt-c editor::ConvertToUpperCamelCase
+46a51,52
+> alt-d editor::DeleteToNextWordEnd
+> alt-delete editor::DeleteToPreviousWordStart
+51a58,59
+> alt-? editor::FindAllReferences
+> alt-. editor::GoToDefinition
+53a62,66
+> alt-^ editor::JoinLines
+> alt-< editor::MoveToBeginning
+> alt-> editor::MoveToEnd
+> alt-} editor::MoveToEndOfParagraph
+> alt-{ editor::MoveToStartOfParagraph
+55a69,72
+> alt-< editor::SelectToBeginning
+> alt-> editor::SelectToEnd
+> alt-} editor::SelectToEndOfParagraph
+> alt-{ editor::SelectToStartOfParagraph
+56a74
+> alt-; editor::ToggleComments
+67a86,87
+> alt-f editor::MoveToNextWordEnd
+> alt-f editor::SelectToNextWordEnd
+70a91
+> alt-g alt-g go_to_line::Toggle
+71a93
+> alt-g g go_to_line::Toggle
+77a100
+> alt-l editor::ConvertToLowerCase
+78a102,103
+> alt-left editor::MoveToPreviousWordStart
+> alt-left editor::SelectToPreviousWordStart
+79a105,106
+> alt-m editor::MoveToBeginningOfLine
+> alt-m editor::SelectToBeginningOfLine
+83a111,112
+> alt-, pane::GoBack
+> alt-q editor::Rewrap
+84a114,115
+> alt-right editor::MoveToNextWordEnd
+> alt-right editor::SelectToNextWordEnd
+106a138
+> alt-u editor::ConvertToUpperCase
+111a144,146
+> alt-v editor::MovePageUp
+> alt-v editor::SelectPageUp
+> alt-w editor::Copy
+113a149
+> alt-x command_palette::Toggle
+149a186
+> ctrl-a editor::MoveToBeginningOfLine
+150a188
+> ctrl-a editor::SelectToBeginningOfLine
+189a228
+> ctrl-alt-left pane::GoBack
+197a237
+> ctrl-alt-right pane::GoForward
+248a289,290
+> ctrl-b editor::MoveLeft
+> ctrl-b editor::SelectLeft
+258a301
+> ctrl-d editor::Delete
+264a308,309
+> ctrl-down editor::MoveToEndOfParagraph
+> ctrl-down editor::SelectToEndOfParagraph
+270a316
+> ctrl-@ editor::SetMark
+275a322,323
+> ctrl-/ editor::Undo
+> ctrl-_ editor::Undo
+276a325,326
+> ctrl-e editor::MoveToEndOfLine
+> ctrl-e editor::SelectToEndOfLine
+279a330,331
+> ctrl-end editor::MoveToEnd
+> ctrl-end editor::SelectToEnd
+305a358,359
+> ctrl-f editor::MoveRight
+> ctrl-f editor::SelectRight
+306a361
+> 'ctrl-g '
+308a364
+> ctrl-g buffer_search::Dismiss
+311a368
+> ctrl-g editor::Cancel
+312a370
+> ctrl-g menu::Cancel
+319a378,379
+> ctrl-home editor::MoveToBeginning
+> ctrl-home editor::SelectToBeginning
+371a432
+> ctrl-k editor::KillRingCut
+397a459
+> ctrl-l editor::ScrollCursorCenterTopBottom
+407a470,473
+> ctrl-n editor::ContextMenuNext
+> ctrl-n editor::MoveDown
+> ctrl-n editor::SelectDown
+> ctrl-n editor::SignatureHelpNext
+410a477
+> ctrl-n zed::Unbind
+421a489,492
+> ctrl-p editor::ContextMenuPrevious
+> ctrl-p editor::MoveUp
+> ctrl-p editor::SelectUp
+> ctrl-p editor::SignatureHelpPrevious
+423a495
+> ctrl-p zed::Unbind
+425a498
+> ctrl-r buffer_search::Deploy
+429a503
+> ctrl-r search::SelectPreviousMatch
+430a505
+> ctrl-s buffer_search::Deploy
+523a599
+> ctrl-space editor::SetMark
+526a603
+> ctrl-s search::SelectNextMatch
+531a609
+> ctrl-t editor::Transpose
+536a615,616
+> ctrl-up editor::MoveToStartOfParagraph
+> ctrl-up editor::SelectToStartOfParagraph
+537a618
+> ctrl-v editor::MovePageDown
+538a620
+> ctrl-v editor::SelectPageDown
+539a622
+> ctrl-w editor::Cut
+543a627,645
+> 'ctrl-x '
+> ctrl-x 0 pane::CloseActiveItem
+> ctrl-x 1 pane::CloseOtherItems
+> ctrl-x 2 pane::SplitDown
+> ctrl-x 3 pane::SplitRight
+> ctrl-x 5 0 workspace::CloseWindow
+> ctrl-x 5 2 workspace::NewWindow
+> ctrl-x b tab_switcher::Toggle
+> ctrl-x ctrl-b tab_switcher::Toggle
+> 'ctrl-x ctrl-c '
+> ctrl-x ctrl-c zed::Quit
+> ctrl-x ctrl-; editor::ToggleComments
+> 'ctrl-x ctrl-f '
+> ctrl-x ctrl-f file_finder::Toggle
+> 'ctrl-x ctrl-s '
+> ctrl-x ctrl-s workspace::Save
+> 'ctrl-x ctrl-w '
+> ctrl-x ctrl-w workspace::SaveAs
+> ctrl-x ctrl-x editor::SwapSelectionEnds
+544a647,653
+> ctrl-x [ editor::MoveToBeginning
+> ctrl-x ] editor::MoveToEnd
+> ctrl-x [ editor::SelectToBeginning
+> ctrl-x ] editor::SelectToEnd
+> ctrl-x h editor::SelectAll
+> ctrl-x k pane::CloseActiveItem
+> ctrl-x o workspace::ActivateNextPane
+545a655,658
+> 'ctrl-x s '
+> ctrl-x s workspace::SaveAll
+> ctrl-x u editor::Undo
+> ctrl-y editor::KillRingYank
+567a681
+> down editor::SelectDown
+577a692,693
+> end editor::MoveToEndOfLine
+> end editor::SelectToEndOfLine
+632a749,750
+> home editor::MoveToBeginningOfLine
+> home editor::SelectToBeginningOfLine
+638a757
+> left editor::SelectLeft
+656a776
+> pagedown editor::SelectPageDown
+663a784
+> pageup editor::SelectPageUp
+676a798
+> right editor::SelectRight
+709a832
+> shift-end editor::SelectToEndOfLine
+734a858
+> shift-home editor::SelectToBeginningOfLine
+790a915
+> up editor::SelectUp
+#+end_example
+
+Emacs - VSCode
+
+#+begin_src shell :results output code :wrap example diff
+diff <(cat keysLinuxVSCode | sort) \
+    <(cat keysLinuxEmacs | sort)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1,21c1,125
+< alt-z editor::ToggleSoftWrap
+< ctrl-alt-i agent::ToggleFocus
+< ctrl-/ editor::ToggleComments
+< 'ctrl-enter '
+< ctrl-enter editor::NewlineBelow
+< ctrl-i assistant::InlineAssist
+< ctrl-k ctrl-c editor::ToggleComments
+< ctrl-k ctrl-f editor::FormatSelections
+< ctrl-k f12 editor::GoToDefinitionSplit
+< ctrl-k z workspace::ToggleCenteredLayout
+< ctrl-shift-a editor::ToggleBlockComments
+< ctrl-shift-space editor::ShowSignatureHelp
+< f10 debugger::StepOver
+< f11 debugger::StepInto
+< 'f5 '
+< f5 debugger::Continue
+< f5 debugger::Start
+< shift-alt-f editor::Format
+< shift-alt-h call_hierarchy::ShowIncomingCalls
+< shift-alt-h call_hierarchy::ToggleDirection
+< shift-alt-i editor::SplitSelectionIntoLines
+---
+> alt-backspace editor::DeleteToPreviousWordStart
+> alt-b editor::MoveToPreviousWordStart
+> alt-b editor::SelectToPreviousWordStart
+> alt-c editor::ConvertToUpperCamelCase
+> alt-d editor::DeleteToNextWordEnd
+> alt-delete editor::DeleteToPreviousWordStart
+> alt-? editor::FindAllReferences
+> alt-. editor::GoToDefinition
+> alt-^ editor::JoinLines
+> alt-< editor::MoveToBeginning
+> alt-> editor::MoveToEnd
+> alt-} editor::MoveToEndOfParagraph
+> alt-{ editor::MoveToStartOfParagraph
+> alt-< editor::SelectToBeginning
+> alt-> editor::SelectToEnd
+> alt-} editor::SelectToEndOfParagraph
+> alt-{ editor::SelectToStartOfParagraph
+> alt-; editor::ToggleComments
+> alt-f editor::MoveToNextWordEnd
+> alt-f editor::SelectToNextWordEnd
+> alt-g alt-g go_to_line::Toggle
+> alt-g g go_to_line::Toggle
+> alt-l editor::ConvertToLowerCase
+> alt-left editor::MoveToPreviousWordStart
+> alt-left editor::SelectToPreviousWordStart
+> alt-m editor::MoveToBeginningOfLine
+> alt-m editor::SelectToBeginningOfLine
+> alt-, pane::GoBack
+> alt-q editor::Rewrap
+> alt-right editor::MoveToNextWordEnd
+> alt-right editor::SelectToNextWordEnd
+> alt-u editor::ConvertToUpperCase
+> alt-v editor::MovePageUp
+> alt-v editor::SelectPageUp
+> alt-w editor::Copy
+> alt-x command_palette::Toggle
+> ctrl-a editor::MoveToBeginningOfLine
+> ctrl-a editor::SelectToBeginningOfLine
+> ctrl-alt-left pane::GoBack
+> ctrl-alt-right pane::GoForward
+> ctrl-b editor::MoveLeft
+> ctrl-b editor::SelectLeft
+> ctrl-d editor::Delete
+> ctrl-down editor::MoveToEndOfParagraph
+> ctrl-down editor::SelectToEndOfParagraph
+> ctrl-@ editor::SetMark
+> ctrl-/ editor::Undo
+> ctrl-_ editor::Undo
+> ctrl-e editor::MoveToEndOfLine
+> ctrl-e editor::SelectToEndOfLine
+> ctrl-end editor::MoveToEnd
+> ctrl-end editor::SelectToEnd
+> ctrl-f editor::MoveRight
+> ctrl-f editor::SelectRight
+> 'ctrl-g '
+> ctrl-g buffer_search::Dismiss
+> ctrl-g editor::Cancel
+> ctrl-g menu::Cancel
+> ctrl-home editor::MoveToBeginning
+> ctrl-home editor::SelectToBeginning
+> ctrl-k editor::KillRingCut
+> ctrl-l editor::ScrollCursorCenterTopBottom
+> ctrl-n editor::ContextMenuNext
+> ctrl-n editor::MoveDown
+> ctrl-n editor::SelectDown
+> ctrl-n editor::SignatureHelpNext
+> ctrl-n zed::Unbind
+> ctrl-p editor::ContextMenuPrevious
+> ctrl-p editor::MoveUp
+> ctrl-p editor::SelectUp
+> ctrl-p editor::SignatureHelpPrevious
+> ctrl-p zed::Unbind
+> ctrl-r buffer_search::Deploy
+> ctrl-r search::SelectPreviousMatch
+> ctrl-s buffer_search::Deploy
+> ctrl-space editor::SetMark
+> ctrl-s search::SelectNextMatch
+> ctrl-t editor::Transpose
+> ctrl-up editor::MoveToStartOfParagraph
+> ctrl-up editor::SelectToStartOfParagraph
+> ctrl-v editor::MovePageDown
+> ctrl-v editor::SelectPageDown
+> ctrl-w editor::Cut
+> 'ctrl-x '
+> ctrl-x 0 pane::CloseActiveItem
+> ctrl-x 1 pane::CloseOtherItems
+> ctrl-x 2 pane::SplitDown
+> ctrl-x 3 pane::SplitRight
+> ctrl-x 5 0 workspace::CloseWindow
+> ctrl-x 5 2 workspace::NewWindow
+> ctrl-x b tab_switcher::Toggle
+> ctrl-x ctrl-b tab_switcher::Toggle
+> 'ctrl-x ctrl-c '
+> ctrl-x ctrl-c zed::Quit
+> ctrl-x ctrl-; editor::ToggleComments
+> 'ctrl-x ctrl-f '
+> ctrl-x ctrl-f file_finder::Toggle
+> 'ctrl-x ctrl-s '
+> ctrl-x ctrl-s workspace::Save
+> 'ctrl-x ctrl-w '
+> ctrl-x ctrl-w workspace::SaveAs
+> ctrl-x ctrl-x editor::SwapSelectionEnds
+> ctrl-x [ editor::MoveToBeginning
+> ctrl-x ] editor::MoveToEnd
+> ctrl-x [ editor::SelectToBeginning
+> ctrl-x ] editor::SelectToEnd
+> ctrl-x h editor::SelectAll
+> ctrl-x k pane::CloseActiveItem
+> ctrl-x o workspace::ActivateNextPane
+> 'ctrl-x s '
+> ctrl-x s workspace::SaveAll
+> ctrl-x u editor::Undo
+> ctrl-y editor::KillRingYank
+> down editor::SelectDown
+> end editor::MoveToEndOfLine
+> end editor::SelectToEndOfLine
+> home editor::MoveToBeginningOfLine
+> home editor::SelectToBeginningOfLine
+> left editor::SelectLeft
+> pagedown editor::SelectPageDown
+> pageup editor::SelectPageUp
+> right editor::SelectRight
+> shift-end editor::SelectToEndOfLine
+> shift-home editor::SelectToBeginningOfLine
+> up editor::SelectUp
+#+end_example
+
+Jetbrains - VSCode 
+
+#+begin_src shell :results output code :wrap example diff
+diff <(cat keysLinuxVSCode | sort) \
+    <(cat keysLinuxJetbrains | sort)
+#+end_src
+
+#+RESULTS:
+#+begin_example diff
+1,2c1,54
+< alt-z editor::ToggleSoftWrap
+< ctrl-alt-i agent::ToggleFocus
+---
+> alt-0 git_panel::ToggleFocus
+> alt-0 workspace::CloseActiveDock
+> alt-1 project_panel::ToggleFocus
+> alt-1 workspace::CloseActiveDock
+> 'alt-2 '
+> 'alt-3 '
+> 'alt-4 '
+> alt-5 debug_panel::ToggleFocus
+> alt-5 workspace::CloseActiveDock
+> alt-6 diagnostics::Deploy
+> alt-6 pane::CloseActiveItem
+> alt-7 outline_panel::ToggleFocus
+> alt-7 workspace::CloseActiveDock
+> 'alt-8 '
+> 'alt-9 '
+> alt-c search::ToggleCaseSensitive
+> alt-enter editor::ToggleCodeActions
+> alt-e search::ToggleSelection
+> alt-f12 terminal_panel::Toggle
+> alt-f12 workspace::CloseActiveDock
+> alt-f7 editor::FindAllReferences
+> alt-j editor::SelectNext
+> alt-left editor::MoveToPreviousSubwordStart
+> alt-left pane::ActivatePreviousItem
+> alt-right editor::MoveToNextSubwordEnd
+> alt-right pane::ActivateNextItem
+> alt-shift-f10 task::Spawn
+> alt-shift-f9 debugger::Start
+> alt-shift-g editor::SplitSelectionIntoLines
+> alt-shift-j editor::SelectPrevious
+> alt-w search::ToggleWholeWord
+> alt-x search::ToggleRegex
+> backspace project_panel::Trash
+> ctrl-alt-b editor::GoToImplementation
+> ctrl-alt-enter editor::NewlineAbove
+> ctrl-alt-f7 editor::FindAllReferences
+> ctrl-alt-h call_hierarchy::ShowIncomingCalls
+> ctrl-alt-h call_hierarchy::ToggleDirection
+> 'ctrl-alt-l '
+> ctrl-alt-l editor::Format
+> ctrl-alt-left pane::GoBack
+> ctrl-alt-n file_finder::Toggle
+> ctrl-alt-o editor::OrganizeImports
+> ctrl-alt-right pane::GoForward
+> ctrl-alt-shift-b editor::GoToTypeDefinitionSplit
+> ctrl-alt-shift-down editor::GoToHunk
+> ctrl-alt-shift-n project_symbols::Toggle
+> ctrl-alt-shift-up editor::GoToPreviousHunk
+> ctrl-alt-s zed::OpenSettings
+> ctrl-alt-z git::Restore
+> ctrl-\ assistant::InlineAssist
+> ctrl-b editor::GoToDefinition
+> ctrl-d editor::DuplicateSelection
+> ctrl-down terminal::ScrollLineDown
+4,21c56,126
+< 'ctrl-enter '
+< ctrl-enter editor::NewlineBelow
+< ctrl-i assistant::InlineAssist
+< ctrl-k ctrl-c editor::ToggleComments
+< ctrl-k ctrl-f editor::FormatSelections
+< ctrl-k f12 editor::GoToDefinitionSplit
+< ctrl-k z workspace::ToggleCenteredLayout
+< ctrl-shift-a editor::ToggleBlockComments
+< ctrl-shift-space editor::ShowSignatureHelp
+< f10 debugger::StepOver
+< f11 debugger::StepInto
+< 'f5 '
+< f5 debugger::Continue
+< f5 debugger::Start
+< shift-alt-f editor::Format
+< shift-alt-h call_hierarchy::ShowIncomingCalls
+< shift-alt-h call_hierarchy::ToggleDirection
+< shift-alt-i editor::SplitSelectionIntoLines
+---
+> ctrl-e file_finder::Toggle
+> ctrl-end editor::MoveToEnd
+> ctrl-f12 outline::Toggle
+> ctrl-f2 debugger::Stop
+> ctrl-f5 task::Rerun
+> ctrl-f8 editor::ToggleBreakpoint
+> ctrl-g go_to_line::Toggle
+> ctrl-~ git::Branch
+> ctrl-home editor::MoveToBeginning
+> 'ctrl-k '
+> ctrl-k git_panel::ToggleFocus
+> ctrl-m editor::ScrollCursorCenter
+> ctrl-n project_symbols::Toggle
+> ctrl-pagedown editor::MovePageDown
+> ctrl-pageup editor::MovePageUp
+> ctrl-} pane::ActivateNextItem
+> ctrl-{ pane::ActivatePreviousItem
+> ctrl-p editor::ShowSignatureHelp
+> ctrl-q editor::Hover
+> ctrl-r buffer_search::Deploy
+> ctrl-shift-a command_palette::Toggle
+> ctrl-shift-b editor::GoToTypeDefinition
+> ctrl-shift-end editor::SelectToEnd
+> ctrl-shift-enter editor::NewlineBelow
+> ctrl-shift-f12 workspace::ToggleAllDocks
+> ctrl-shift-f8 editor::EditLogBreakpoint
+> ctrl-shift-f project_panel::NewSearchInDirectory
+> ctrl-shift-home editor::SelectToBeginning
+> ctrl-shift-j editor::JoinLines
+> ctrl-shift-k git::Push
+> ctrl-shift-n file_finder::Toggle
+> ctrl-shift-r pane::DeploySearch
+> ctrl-shift-t workspace::NewTerminal
+> ctrl-shift-u editor::ToggleCase
+> ctrl-shift-w editor::SelectSmallerSyntaxNode
+> ctrl-space editor::ShowCompletions
+> ctrl-up terminal::ScrollLineUp
+> ctrl-w editor::SelectLargerSyntaxNode
+> ctrl-y editor::DeleteLine
+> ctrl-< zed::DecreaseBufferFontSize
+> ctrl-> zed::IncreaseBufferFontSize
+> delete project_panel::Trash
+> enter project_panel::Open
+> escape editor::Cancel
+> escape editor::ToggleFocus
+> f2 editor::GoToDiagnostic
+> f6 debugger::Pause
+> f7 debugger::StepInto
+> f8 debugger::StepOver
+> f9 debugger::Continue
+> shift-alt-down editor::MoveLineDown
+> shift-alt-l agent::OpenRulesLibrary
+> shift-alt-left editor::SelectToPreviousSubwordStart
+> shift-alt-right editor::SelectToNextSubwordEnd
+> shift-alt-up editor::MoveLineUp
+> shift-delete project_panel::Delete
+> shift-enter agent::SelectPreviousThreadMatch
+> shift-enter editor::Newline
+> shift-enter editor::NewlineBelow
+> shift-enter search::SelectPreviousMatch
+> 'shift-escape '
+> shift-escape workspace::CloseActiveDock
+> shift-f10 task::Spawn
+> shift-f2 editor::GoToPreviousDiagnostic
+> shift-f6 editor::Rename
+> shift-f6 project_panel::Rename
+> shift-f8 debugger::StepOut
+> shift-f9 debugger::Start
+> shift-pagedown terminal::ScrollPageDown
+> shift-pageup terminal::ScrollPageUp
+> shift shift command_palette::Toggle
+#+end_example
+
+
+**** Bindings
+
+Linux Defaults
+
+#+name: bindingsLinuxDefaults
+#+call: extractBindings() :in-file "assets/keymaps/default-linux.json"
+
+#+RESULTS: bindingsLinuxDefaults
+
+#+name: keysLinuxDefaults
+#+call: cutBindings() :stdin bindingsLinuxDefaults :results output file :file "keysLinuxDefaults"
+
+Linux Emacs
+
+#+name: bindingsLinuxEmacs
+#+call: extractBindings() :in-file "assets/keymaps/linux/emacs.json"
+
+#+name: keysLinuxEmacs
+#+call: cutBindings() :stdin bindingsLinuxEmacs :results output file :file "keysLinuxEmacs"
+
+Linux VSCode
+
+#+name: bindingsLinuxVSCode
+#+call: extractBindings() :in-file "assets/keymaps/linux/vscode.json"
+
+#+name: keysLinuxVSCode
+#+call: cutBindings() :stdin bindingsLinuxVSCode :results output file :file "keysLinuxVSCode"
+
+Linux Jetbrains
+
+#+name: bindingsLinuxJetbrains
+#+call: extractBindings() :in-file "assets/keymaps/linux/jetbrains.json"
+
+#+name: keysLinuxJetbrains
+#+call: cutBindings() :stdin bindingsLinuxJetbrains :results output file :file "keysLinuxJetbrains"
+
+* Dammit
+
+For some reason, =ob-jq= handles =yq= output differently (won't render to joined
+string with =-rj= no matter the args)
+
+
+#+name: diffBindingsNope
+#+header: :var src1=bindingsLinuxDefaults src1=bindingsLinuxEmacs
+#+begin_src shell :results output code :wrap example diff
+# diff <(echo ${src1[@]} | tee -a ${src2[@]} | tr '-' '\n') \
+#      <(echo ${src2[@]} | tr '-' '\n')
+
+# for s in ${src1[@]}; do echo $s; done
+#+end_src
+
+Nope, it's a bash array with ambiguous IFS
+
+#+name: diffBindingsfdsa
+#+header: :var src1=keysLinuxDefaults src1=keysLinuxEmacs
+#+begin_src shell :results output code :wrap example diff
+# diff <(for s in ${src1[@]}; do echo $s; done) \
+#      <(for s in ${src2[@]}; do echo $s; done)
+for s in ${src1[@]}; do echo $s; done
+
+# echo ${src1[@]} | tee -a ${src2[@]} 
+# for s in ${src1[@]}; do echo $s; done
+#+end_src
+
+Same

@@ -17,6 +17,50 @@ Reorganized/archived projects
 | hipcc               | moved to AMD fork of LLVM |
 | rocm-opencl-runtime |                           |
 
+* Resources
+
++ =pkgs.pkgsRocm= [[https://lunnova.dev/articles/nixos-nixpkgs-rocm-usage/][Using ROCm with NixOS or Nixpkgs (2026/2)]]
+
+* =pkgs.pkgsRocm=
+
+** ISA-specific builds
+
+From [[https://lunnova.dev/articles/nixos-nixpkgs-rocm-usage/][Using ROCm with NixOS or Nixpkgs (2026/2)]]
+
+#+begin_src nix
+{nixpkgs, ...}:
+let pkgs = import nixpkgs {
+  inherit system;
+  overlays = [
+    (final: prev: {
+      rocmPackages = prev.rocmPackages.overrideScope (
+        fs: ps: {
+          # gfx1030 = RX 6xxx, W6800
+          clr = ps.clr.override { localGpuTargets = [ "gfx1030" ];};
+        }
+      );
+    })
+  ];
+}; in {
+    # ...
+}
+# `pkgs.pkgsRocm.llama-cpp` is now only built for gfx1030
+#+end_src
+
+For a system:
+
+#+begin_src nix
+{
+	# I want ROCm support for just llama-cpp and blender
+	environment.systemPackages = [
+		pkgs.pkgsRocm.blender
+		pkgs.pkgsRocm.llama-cpp
+		# … non-GPU packages accessed normally
+		pkgs.nurl
+	];
+}
+#+end_src
+
 * TinyGrad
 
 IDK whether this is an easy fix and I haven't thought about hacking on a local
@@ -45,7 +89,6 @@ tinygrad/runtime/support/compiler_amd.py:18:  for p in ['/opt/rocm/llvm/bin/llvm
 tinygrad/runtime/support/compiler_amd.py:74:      "-I/opt/rocm/include", "-Xclang -disable-llvm-passes", "-Xclang -aux-triple", "-Xclang x86_64-unknown-linux-gnu"]
 tinygrad/runtime/support/compiler_amd.py:111:                        f"--offload-arch={self.arch}", "-I/opt/rocm/include/hip", "-o", bcf.name, srcf.name] + self.extra_options, check=True)
 #+end_src
-
 * ROCm 6.4.3
 
 + [[https://rocm.docs.amd.com/en/latest/_images/hpc-stack-2024_6_20.png][Diagram of ROCm Components]]
