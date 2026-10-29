@@ -1,0 +1,142 @@
+:PROPERTIES:
+:ID:       c2c65206-2018-49be-bdb2-a5d3aa741390
+:END:
+#+TITLE: Devenv
+#+DESCRIPTION: 
+#+TAGS:
+
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:c2c65206-2018-49be-bdb2-a5d3aa741390][Devenv]]
+
+* Docs
+* Resources
+* Topics
+** Basics
+
+** Docs
+
+#+begin_quote
+Trying to start =devenv up= in =./docs=. So i could kinda scrape the astro output
+and make dashdocs for Zeal... but if fails. needed =devenv upgrade= to 
+
+after that, the changelog showed up. so then i find this... which is
+super helpful. I guess building the docs is a good place to test the HTTP/S
+proxy stuff.
+#+end_quote
+
+*** Build
+
+#+begin_src shell
+# after clone
+devenv upgrade
+devenv shell
+devenv up
+#+end_src
+
+** Features
+
+
+
+*** Proxies
+
+**** filosottile/mkcert
+
++ =mkcert -install= installs certs into the "Local Certificates" of the browser
++ =mkcert -uninstall= will uninstall them, but it's probably easier to do that if
+  you keep track of the certificate
++ you can select additional names to include, which user-level stores to install
+  them in, etc.
++ details are on filosottile/mkcert. (i guess i've missed out on a lot of webdev
+  tools)
+
+#+begin_src shell
+openssl x509 -in $proj/path/to/rootCA.pem -noout -text
+#+end_src
+
+Multiple =devenv= processes can share this trust store extension (node, etc). for
+single one-off webservers, this is simple.
+
+For dataflows that don't require coordination of trust relationships, this is a
+huge PITA... but you shouldn't automate devops/sdn scripts with =curl -k= or
+whatever the equivalent is for scripting languages hitting HTTP API endpoints.
+
+... that was a huge stumbling block for things like writing ansible scripts to
+hit OPNSense APIs. let's encrypt would suffice... i can't remember exactly.
+
+**** As services
+
+See [[https://devenv.sh/services/caddy/#servicescaddyca][services.caddy.ca]], which actually falls through to =processes.caddy.exec=
+
+**** As processes
+
++ See [[https://devenv.sh/blog/2026/09/07/devenv-23-portless-and-tui-configuration/#https-when-you-need-it][Portless and TUI Configuration (HTTPS when you need it)]]
++ Devenv [[
+  processes.web.ports.http.proxy.hostname = "public.localhost";
+  processes.web.ports.admin.proxy.hostname = "control.localhost";][manages Friendly HTTP localhost URLs]]
+
+#+begin_src nix
+{
+  process.proxy.enable = true;
+
+  processes.web = {
+    exec = "${pkgs.python3}/bin/python -m http.server $PORT";
+    ports.http.allocate = 8000;
+    env.PORT = builtins.toString config.processes.web.ports.http.value;
+  };
+  processes.web.proxy.https.enable = true;
+  processes.web.proxy.hostname = "app.localhost";
+  processes.web.ports.http.proxy.hostname = "public.localhost";
+  processes.web.ports.admin.proxy.hostname = "control.localhost";
+
+  processes.web2 = {
+    exec = "caddy run";
+    linux.capabilities = [ "net_bind_service" ];
+  };
+}
+#+end_src
+
+From changelog
+
+#+begin_quote
+2026-08-24: =mkcert= no longer fails when the local CA cannot be trusted
+
+=mkcert -install= needs sudo and, on darwin, security to add the local CA to the
+system trust stores.
+
+Those tools are unavailable on machines without a system PATH or without a way
+to gain privileges, such as CI runners. =devenv= now prints a warning instead of
+failing when the local CA cannot be trusted. The certificates are generated in
+either case, and =env.CAROOT= and =env.NODE_EXTRA_CA_CERTS= point at the local CA.
+
+devenv also adds the system directories to the PATH of the mkcert calls, so the
+tools are found when they exist.
+
++ /usr/bin, /bin, /usr/sbin, /sbin on darwin
++ /run/wrappers/bin on NixOS
+#+end_quote
+
+*** Packages
+
++ meta.priority :: set higher to prioritize that packages outputs on =PATH=
+  + "so scripts and packages wrapped with =lib.hiPrio= shadow other packages that
+    ship a program with the same name. Previously the raw package could win on
+    PATH even though =$DEVENV_PROFILE/bin="
+
+**** Profile Linking
+
+From the changelog (since it seems important for later)
+
+#+begin_quote
+=$DEVENV_PROFILE= used to link every output of each package in packages, including
+doc, debug and static outputs, and outputs that collide with each other, such as
+the individual certificate files of pkgs.cacert.
+
+=$DEVENV_PROFILE= links outputs in the package's =meta.outputsToInstall= (what =nix
+profile= install would pick) plus the =out=, =bin=, =lib=, =dev= and =include= outputs the
+shell already exposes. Selecting an output explicitly, such as =pkgs.sqlite.dev=,
+links only that output.
+
+If you relied on another output being in the profile, add it to packages
+explicitly, for example =pkgs.openssl.doc=.
+#+end_quote
