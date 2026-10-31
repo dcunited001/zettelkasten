@@ -190,6 +190,100 @@ LEDs
 
 *** ConnectorX
 
+** Simulation
+
+*** DifferentialDrive
+
+See [[https://github.com/wpilibsuite/allwpilib/blob/7ca35e5678cf32caec6a1a866ca51d0136c4c398/wpilibj/src/main/java/edu/wpi/first/wpilibj/simulation/DifferentialDrivetrainSim.java#L455-L467][DifferentialDrivetrainSim.createKitbotSim]] which should be fairly similar to
+the XRP differential drive setup...
+
+**** Example
+
+After writing some simulation code, these examples make a lot more sense.
+
++ Diagram below may not be 100% accurate though
++ It's also definitely forward kinematics (i think)
+  - backwards kinematics, esp with chained joints, is like backpropagation
+    (kinda). it's much more difficult esp topology, control theory, electrical
+
+[[https://github.com/wpilibsuite/allwpilib/blob/7ca35e5678cf32caec6a1a866ca51d0136c4c398/wpilibjExamples/src/main/java/edu/wpi/first/wpilibj/examples/simpledifferentialdrivesimulation/Drivetrain.java#L137][simpledifferentialdrivesimulation/Drivetrain.java#L137]] calculation of updates to
+odometry, fieldSim, etc based on robot state.
+
+#+begin_src dot :results output file :file img/frc/diff-drive-sim-signals.png
+digraph G {
+    rankdir=LR
+
+    graph[label="Motors (Sim)"]
+    subgraph cluster_motors {
+        leftMotors[label="L"]
+        rightMotors[label="R"]
+    }
+     
+    graph[label="DrivetrainSimulator"]
+    subgraph cluster_drivetrain {
+      {leftVolts,rightVolts} -> {leftVel,rightVel,leftPos,rightPos,heading}
+    }
+    
+    leftMotors -> leftVolts
+    rightMotors -> rightVolts
+    
+    graph[label="Encoder (L)"]
+    subgraph cluster_leftencoder {
+        leftDist[label="Dist"]
+        leftRate[label="Rate"]
+        leftPos -> leftDist
+        leftVel -> leftRate
+    }
+    graph[label="Encoder (R)"]
+    subgraph cluster_rightencoder {
+        rightDist[label="Dist"]
+        rightRate[label="Rate"]
+        rightPos -> rightDist
+        rightVel -> rightRate
+    }
+    graph[label="Gyro"]
+    subgraph cluster_gyro {
+        gyroAngle[label="Angle"]
+    }
+    heading -> gyroAngle 
+    graph[label="Odometry"]
+    subgraph cluster_odometry {
+        kinematics[label="Kinematics"]
+        wheelPos[label="Wheel\nPositions"]
+        wheelSpeeds[label="Wheel\nSpeeds"]
+        angle[label="Heading\n(Odometry)"]
+        {wheelSpeeds,wheelPos,angle} -> kinematics
+    }
+    graph[label="Field2D"]
+    subgraph cluster_field {
+        Pose2D[label="Pose2D"]
+    }
+    {gyroAngle,leftDist,rightDist} -> kinematics -> {wheelPos,wheelSpeeds,angle} -> Pose2D
+    
+    graph[label="Control"]
+    subgraph cluster_control {
+        {leftRate,wheelSpeeds} -> PIDController
+        {wheelSpeeds} -> FeedForward
+        Outputs[label="Voltage\nOutputs"]
+        {PIDController,FeedForward} -> Outputs
+    }
+    
+    graph[label="Motors (Sim)\nt := t+1"]
+    subgraph cluster_motors2 {
+        leftMotors2[label="L"]
+        rightMotors2[label="R"]
+    }
+    
+    Outputs -> {leftMotors2,rightMotors2}
+    
+    // gyroSim.setAngle(-drivetrain.getHeading().getDegrees());
+    graph[label="motorDutyCycle * inputVoltage\n\n-1.0 < d < +1.0"]
+}
+#+end_src
+
+#+RESULTS:
+[[file:img/frc/diff-drive-sim-signals.png]]
+
 ** Kitbot (2026)
 
 *** Specs
@@ -240,6 +334,23 @@ Chassis Dims (requires cuts)
 | End Plates   | 22.5" |
 
 
+
+** Codespaces
+*** Issues
+
+On the discord, these are reported to have performance issues (need a beefer VM
+from GH).
+*** WPILib 2026
++ Last build of 2026 containers is here in [[https://github.com/wpilibsuite/docker-images/commit/2e87bea10c6d48365419458a44d0e190e2f6b12d][wpilibsuite/docker-images (2e87bea)]]
+  ... maybe
+
+*** Devenv
+*** Example
+
+[[https://github.com/DylanB5402/Stage1A-Template-9452/blob/main/.devcontainer/post-create.sh][DylanB5402/Stage1A-Template-9452 .devcontainer/post-create.sh]]
+
+This adds [[https://github.com/devcontainers/features/tree/main/src/desktop-lite][ghcr.io/devcontainers/features/desktop-lite]]= into =.features=.
+Overkill, but interesting.
 
 ** VSCode
 
