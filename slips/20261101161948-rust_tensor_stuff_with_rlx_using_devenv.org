@@ -15,11 +15,16 @@
 + [[https://github.com/asriniket/File-Format-Testing][asriniket/File-Format-Testing]] from [[https://arxiv.org/abs/2207.09503v2][A Comparison of HDF5, Zarr, and netCDF4 in
   Performing Common I/O Operations]]
  
+*** Formats
++ [[https://github.com/lutzroeder/netron/blob/main/source/tflite-schema.js][lutzroeder/netron source/tflite-schema.js]] contains parsers translating each
+  model format into a common format for display
+   
 *** Examples
 
 + [[https://github.com/openPMD/openPMD-example-datasets][openPMD/openPMD-example-datasets]] particle-mesh datasets
 + [[https://www.neonscience.org/resources/learning-hub/tutorials/explore-data-hdfview][Tutorial from NEON (hyperspectral data)]] on using [[https://www.hdfgroup.org/download-hdfview/][HDFView]] which is available on
   nixos.
+  
 *** HDF5
 + [[https://github.com/aldanor/hdf5-rust][aldanor/hdf5-rust]] older, C-based
 
@@ -34,6 +39,7 @@ straightforward)
 *** H3
 + [[https://github.com/HydroniumLabs/h3o-cli][hydroniumlabs/h3o-cli]]
 + [[https://github.com/HydroniumLabs/h3o][hydroniumlabs/h3o]]
+* RLX
 ** Check Usage
 
 Either =watch -d= or add it into devenv scripts/tasks
@@ -59,6 +65,53 @@ This is a statically compiled site. Getting it to work with devenv requires:
 + Adding =wasm32-unknown-unknown= to =rust-toolchain.toml=
 + Adding =languages.python.enable= and =wasm-bindgen-cli= to pkgs
 + Adding caddy config to =devenv.nix=
+
+Apparently needs a TURN relay for testing: [[https://github.com/MIT-RLX/rlx/blob/main/crates/bindings/rlx-web/tools/turn.py#L2][crates/bindings/rlx-web/tools/turn.py]]
+
+** Building RLX
+
+*** Example Targets
+
+#+begin_src shell
+fd --full-path 'examples$' | grep -v bindings | tree --fromfile . --noreport
+#+end_src
+
+*** Check Rust configuration inside =devenv shell=
+
+#+begin_src shell
+rustup show
+rustup toolchain list
+#+end_src
+
+*** Fixing missing =rocBLAS=
+
+#+begin_src shell
+# after setting this, cargo will recompile cached builds... which now fail bc
+# hip/clang/rocm linking stuff
+export OPENBLAS_LIB_DIR="$ROCM_PATH/lib"
+#+end_src
+
+Note: this wasn't really necessary
+
+**** Matching =rustc= to ROCm's =llvm=, =clang= and =linker-plugin-lto=
+
++ Check =$ROCM_PATH/llvm/bin --version=, which is =22.0.0=
++ Compare =/nix/store/...-devenv-rust-linker-clang --version=, which is =21.1.8=
+
+Need to ensure that =rust= uses the =LLVM= that ships with =/opt/rocm= (the
+symlinkJoin profile is effectively the same as that)
+
++ The instant =OPENBLAS_LIB_DIR= gets set/exported, builds start failing.
+  - the compiler infrastructure =cargo= funnels through avoids "mixxing rocm's
+   hip stuff in" ... in some way.
+  - AFAIK it still uses ROCm's APIs to direct CUDA kernels to the GPU. So =cargo
+    run -p rlx-bench --example bench_all --features rocm= still works, unless
+    setting =OPENBLAS_LIB_DIR= bc at that point, the compilation gets all
+    "hipify'd"
+  - It even fails without =--features rocm=, since I'm setting =OPENBLAS_LIB_DIR= to
+    path containing =.so= libs for BLAS that expect to use =hipCC=, etc
++ [[https://github.com/meillaya/kernscope/blob/1c69ae251e3c22c3189d8a2e04cc5b15ea8624c6/devenv.nix][meillaya/kernscope devnix.nix]] mixes CUDA, ROCm and hipcc ... but it doesn't
+  need to go through =cargo=, =rustc=, etc
 * Devenv
 ** ROCm
 
@@ -274,52 +327,6 @@ in
 
 }
 #+end_src
-
-* Devenv
-
-** Building RLX
-
-*** Example Targets
-
-#+begin_src shell
-fd --full-path 'examples$' | grep -v bindings | tree --fromfile . --noreport
-#+end_src
-
-*** Fixing missing =rocBLAS=
-
-#+begin_src shell
-# after setting this, cargo will recompile cached builds... which now fail bc
-# hip/clang/rocm linking stuff
-export OPENBLAS_LIB_DIR="$ROCM_PATH/lib"
-#+end_src
-
-*** Matching =rustc= to ROCm's =llvm=, =clang= and =linker-plugin-lto=
-
-+ Check =$ROCM_PATH/llvm/bin --version=, which is =22.0.0=
-+ Compare =/nix/store/...-devenv-rust-linker-clang --version=, which is =21.1.8=
-
-Need to ensure that =rust= uses the =LLVM= that ships with =/opt/rocm= (the
-symlinkJoin profile is effectively the same as that)
-
-+ The instant =OPENBLAS_LIB_DIR= gets set/exported, builds start failing.
-  - the compiler infrastructure =cargo= funnels through avoids "mixxing rocm's
-   hip stuff in" ... in some way.
-  - AFAIK it still uses ROCm's APIs to direct CUDA kernels to the GPU. So =cargo
-    run -p rlx-bench --example bench_all --features rocm= still works, unless
-    setting =OPENBLAS_LIB_DIR= bc at that point, the compilation gets all
-    "hipify'd"
-  - It even fails without =--features rocm=, since I'm setting =OPENBLAS_LIB_DIR= to
-    path containing =.so= libs for BLAS that expect to use =hipCC=, etc
-+ [[https://github.com/meillaya/kernscope/blob/1c69ae251e3c22c3189d8a2e04cc5b15ea8624c6/devenv.nix][meillaya/kernscope devnix.nix]] mixes CUDA, ROCm and hipcc ... but it doesn't
-  need to go through =cargo=, =rustc=, etc
-
-**** Check Rust configuration inside =devenv shell=
-
-#+begin_src shell
-rustup show
-rustup toolchain list
-#+end_src
-
 
 
 
