@@ -149,6 +149,20 @@ difficult to grok.
 + There are options to narrow built RDNA/CDNA architectures, but this requires
   rebuilds.
 
+*** =rust-toolchain.toml=
+
+#+begin_example toml
+[toolchain]
+channel = "nightly"
+# channel = "1.92.0"
+
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "wasm32-unknown-unknown",    # added to build wasm for cluster-site
+]
+#+end_example
+
 *** with =symlinkJoin=
 
 This seems to work, but I need to test more
@@ -162,8 +176,6 @@ This seems to work, but I need to test more
   ...
 }:
 let
-  fdsa = "fasd";
-
   rocmOptBuildEnv = pkgs.symlinkJoin {
     name = "rocmOptBuildEnv";
     paths = with pkgs.rocmPackages; [
@@ -214,7 +226,7 @@ let
 
       # llvm -----------------------
       llvm.bintools
-      # llvm.clang-unwrapped
+      llvm.clang-unwrapped
       llvm.compiler-rt
       llvm.libcxx
       llvm.llvm
@@ -251,8 +263,8 @@ let
 
 in
 {
+  languages.rust.enable = true;
   languages.rust = {
-    enable = true;
     toolchainFile = ./rust-toolchain.toml;
   };
 
@@ -265,6 +277,7 @@ in
     pkgs.pkg-config
     pkgs.libxml2
     pkgs.numactl
+    pkgs.wasm-bindgen-cli
 
     rocmOptBuildEnv
     pkgs.rocmPackages.amdsmi
@@ -274,6 +287,12 @@ in
 
   env = {
     HSA_OVERRIDE_GFX_VERSION = "10.3.0";
+
+    # testing this out (needed rustc to be compatible with LLVM 22.0.0)
+    # ... but apparently it's a non-issue
+    #
+    # CC = "${rocmOptBuildEnv}/bin/clang";
+    # CXX = "${rocmOptBuildEnv}/bin/clang++";
 
     # ROCM_PATH = "/opt/rocm";
     ROCM_PATH = "${rocmOptBuildEnv}";
@@ -288,9 +307,32 @@ in
       pkgs.numactl
       pkgs.libxml2
       rocmOptBuildEnv
+      "${rocmOptBuildEnv}/llvm"
       pkgs.rocmPackages.clr
       pkgs.rocmPackages.clr.icd
     ];
+  };
+
+  languages.python.enable = true;
+  # languages.python = {
+  # }
+  services.caddy.enable = true;
+  services.caddy = {
+    config = ''
+        # Global options block
+      {
+        debug
+      }
+    '';
+    virtualHosts."http://localhost:8080" = {
+      extraConfig = ''
+        encode gzip
+        log
+        root * examples/tab-cluster
+        try_files {path} {path}/ /index.html
+        file_server
+      '';
+    };
   };
 
   # https://devenv.sh/processes/
@@ -327,9 +369,6 @@ in
 
 }
 #+end_src
-
-
-
 * ROCm
 ** Checking ROCm features
 
