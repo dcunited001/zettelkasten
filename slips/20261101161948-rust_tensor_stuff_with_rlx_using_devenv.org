@@ -1,0 +1,544 @@
+:PROPERTIES:
+:ID:       3e1d2d1b-ad16-4a68-af6b-7e0e2818fa57
+:END:
+#+TITLE: Rust: Tensor Stuff With RLX Using Devenv
+#+CATEGORY: slips
+#+TAGS:
+
+
+* Roam
++ [[id:79d41758-7ad5-426a-9964-d3e4f5685e7e][Compute]]
++ [[id:304b3279-25ba-41f1-a4fc-4215c143ab35][Rust]]
+
+* Data
+** Sources
++ [[https://github.com/asriniket/File-Format-Testing][asriniket/File-Format-Testing]] from [[https://arxiv.org/abs/2207.09503v2][A Comparison of HDF5, Zarr, and netCDF4 in
+  Performing Common I/O Operations]]
+ 
+*** Examples
+
++ [[https://github.com/openPMD/openPMD-example-datasets][openPMD/openPMD-example-datasets]] particle-mesh datasets
++ [[https://www.neonscience.org/resources/learning-hub/tutorials/explore-data-hdfview][Tutorial from NEON (hyperspectral data)]] on using [[https://www.hdfgroup.org/download-hdfview/][HDFView]] which is available on
+  nixos.
+*** HDF5
++ [[https://github.com/aldanor/hdf5-rust][aldanor/hdf5-rust]] older, C-based
+
+Pure rust, claims WASM-compat
+
++ [[https://github.com/CramBL/hdf5-pure][CramBL/hdf5-pure]]
++ [[https://github.com/physwkim/rust-hdf5][physwkim/rust-hdf5]]
+
+They each speak NDArrays, which corresponds to hlx-tensors (idk whether it's
+straightforward)
+  
+*** H3
++ [[https://github.com/HydroniumLabs/h3o-cli][hydroniumlabs/h3o-cli]]
++ [[https://github.com/HydroniumLabs/h3o][hydroniumlabs/h3o]]
+** Check Usage
+
+Either =watch -d= or add it into devenv scripts/tasks
+
+#+begin_src shell
+# watch -d this script
+rocm-smi --showuse --showmemuse --json \
+    | jq -r '.card0 | [(keys | @csv), ((to_entries | map(.value) | @csv) )] | join("\n")'
+#+end_src
+
+** Just
+
+| task               | desc                                       |
+|--------------------+--------------------------------------------|
+| env-catalog        | builds RLX environment variables reference |
+| test-rocm          | tests rocm targets                         |
+| build-cluster-site | rust make webgpu go vroom?                 |
+
+*** =build-cluster-site=
+
+This is a statically compiled site. Getting it to work with devenv requires:
+
++ Adding =wasm32-unknown-unknown= to =rust-toolchain.toml=
++ Adding =languages.python.enable= and =wasm-bindgen-cli= to pkgs
++ Adding caddy config to =devenv.nix=
+* Devenv
+** ROCm
+
+*** Nixpkgs
+
+Flake inputs go in =./devenv.yaml=. This is sufficient, but i'm unsure how to pin
+=nixpkgs=... I never really am, since commits are arbitrary.
+
+#+begin_example yaml
+# yaml-language-server: $schema=https://devenv.sh/devenv.schema.json
+inputs:
+  git-hooks:
+    url: github:cachix/git-hooks.nix
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
+  nixpkgs:
+    url: github:nixos/nixpkgs/nixos-unstable
+    
+  rust-overlay:
+    url: github:oxalica/rust-overlay
+    inputs:
+      nixpkgs:
+        follows: nixpkgs
+allow_unfree: true
+#+end_example
+
+There is a =devenv.lock=, which is =flake.lock= json. That shows a distinct =nixpkgs=
+ref from my dotfiles. Getting overlays/overrides/outputs to sync could be
+difficult to grok.
+
++ Ideally, whatever nixpkgs supplies is sufficient.
++ It will be large for ROCm (and it will supply ROCm-built kernels for all
+  architecture outputs)
++ There are options to narrow built RDNA/CDNA architectures, but this requires
+  rebuilds.
+
+*** with =symlinkJoin=
+
+This seems to work, but I need to test more
+
+#+begin_src nix
+{
+  pkgs,
+  lib,
+  config,
+  inputs,
+  ...
+}:
+let
+  fdsa = "fasd";
+
+  rocmOptBuildEnv = pkgs.symlinkJoin {
+    name = "rocmOptBuildEnv";
+    paths = with pkgs.rocmPackages; [
+      # primatives -----------------------
+      hipcub
+      rocprim
+      rocthrust
+
+      # math -----------------------
+      hipfort
+      hipblas-common
+      hipblaslt
+      hipblas # libhipblas.so.XX
+      rocblas # librocblas.so.XX
+
+      hiprand
+      rocrand
+      rocsparse # librocsparse.so.XX
+      hipsparse
+      # rocalution
+      hipfft
+      rocfft # librocfft.so.XX
+      hipsolver
+      rocsolver
+
+      composable_kernel
+      # composable_kernel_base # not intended to build directly
+
+      # # TODO remove: fixed upstream https://github.com/NixOS/nixpkgs/pull/550465/changes
+      # (ck4inductor.overrideAttrs (old: {
+      #   dontCheckPythonMetadata = true;
+      # }))
+
+      # graphics -----------------------
+      hiprt # raytracing used by blender
+
+      # vision -----------------------
+      miopen # libMIOpen.so.XX
+      migraphx
+      mivisionx
+      mivisionx-hip
+      # mivisionx-cpu
+
+      # rpp
+      rpp-hip
+      # rpp-cpul
+      # rpp-opencl
+
+      # llvm -----------------------
+      llvm.bintools
+      # llvm.clang-unwrapped
+      llvm.compiler-rt
+      llvm.libcxx
+      llvm.llvm
+      llvm.lld
+      llvm.openmp
+      # llvm.rocmClangStdenv
+
+      # build -----------------------
+      rocm-comgr
+      rocm-device-libs
+      rocm-cmake
+
+      # runtime -----------------------
+      rocm-core
+      rocm-runtime
+      hsakmt # libhsa-runtime64.so.1.15.0 (not included with runtime)
+      clr
+      clr.icd
+      hipify
+      rccl # librccl.so.XX (when rcclSupport is enabled)
+
+      # debug -----------------------
+      rocgdb
+      rocdbgapi
+      rocr-debug-agent
+      roctracer
+      rocprofiler
+      rocprofiler-sdk
+      rocprofiler-sdk.dev
+      rocprofiler-register
+      aqlprofile
+    ];
+  };
+
+in
+{
+  languages.rust = {
+    enable = true;
+    toolchainFile = ./rust-toolchain.toml;
+  };
+
+  # https://github.com/meillaya/kernscope/blob/1c69ae251e3c22c3189d8a2e04cc5b15ea8624c6/devenv.nix
+
+  # https://devenv.sh/packages
+  packages = [
+    pkgs.git
+    pkgs.just
+    pkgs.pkg-config
+    pkgs.libxml2
+    pkgs.numactl
+
+    rocmOptBuildEnv
+    pkgs.rocmPackages.amdsmi
+    pkgs.rocmPackages.rocminfo
+    pkgs.rocmPackages.rocm-smi
+  ];
+
+  env = {
+    HSA_OVERRIDE_GFX_VERSION = "10.3.0";
+
+    # ROCM_PATH = "/opt/rocm";
+    ROCM_PATH = "${rocmOptBuildEnv}";
+    HIP_VISIBLE_DEVICES = "0";
+    HCC_AMDGPU_TARGET = "gfx1030";
+    ROCPROF_SDK_DEV = "${pkgs.rocmPackages.rocprofiler-sdk.dev}";
+    ROCPROF_SDK_OUT = "${pkgs.rocmPackages.rocprofiler-sdk}";
+
+    AMD_VULKAN_ICD = "RADV";
+
+    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+      pkgs.numactl
+      pkgs.libxml2
+      rocmOptBuildEnv
+      pkgs.rocmPackages.clr
+      pkgs.rocmPackages.clr.icd
+    ];
+  };
+
+  # https://devenv.sh/processes/
+  # processes.dev.exec = "${lib.getExe pkgs.watchexec} -n -- ls -la";
+
+  scripts.hello.exec = ''
+    echo hello from $GREET
+  '';
+
+  enterShell = ''
+    hello         # Run scripts directly
+    git --version # Use packages
+  '';
+
+  # tasks = {
+  #   "myproj:setup".exec = "mytool build";
+  #   "devenv:enterShell".after = [ "myproj:setup" ];
+  # };
+
+  enterTest = ''
+    echo "Running tests"
+    git --version | grep --color=auto "${pkgs.git.version}"
+  '';
+
+  git-hooks.hooks = {
+    clippy = {
+      enable = true;
+      settings.offline = false;
+      extraPackages = [ pkgs.openssl ];
+    };
+    rustfmt.enable = true;
+  };
+  git-hooks.settings.rust.cargoManifestPath = "./Cargo.toml";
+
+}
+#+end_src
+
+* Devenv
+
+** Building RLX
+
+*** Example Targets
+
+#+begin_src shell
+fd --full-path 'examples$' | grep -v bindings | tree --fromfile . --noreport
+#+end_src
+
+*** Fixing missing =rocBLAS=
+
+#+begin_src shell
+# after setting this, cargo will recompile cached builds... which now fail bc
+# hip/clang/rocm linking stuff
+export OPENBLAS_LIB_DIR="$ROCM_PATH/lib"
+#+end_src
+
+*** Matching =rustc= to ROCm's =llvm=, =clang= and =linker-plugin-lto=
+
++ Check =$ROCM_PATH/llvm/bin --version=, which is =22.0.0=
++ Compare =/nix/store/...-devenv-rust-linker-clang --version=, which is =21.1.8=
+
+Need to ensure that =rust= uses the =LLVM= that ships with =/opt/rocm= (the
+symlinkJoin profile is effectively the same as that)
+
++ The instant =OPENBLAS_LIB_DIR= gets set/exported, builds start failing.
+  - the compiler infrastructure =cargo= funnels through avoids "mixxing rocm's
+   hip stuff in" ... in some way.
+  - AFAIK it still uses ROCm's APIs to direct CUDA kernels to the GPU. So =cargo
+    run -p rlx-bench --example bench_all --features rocm= still works, unless
+    setting =OPENBLAS_LIB_DIR= bc at that point, the compilation gets all
+    "hipify'd"
+  - It even fails without =--features rocm=, since I'm setting =OPENBLAS_LIB_DIR= to
+    path containing =.so= libs for BLAS that expect to use =hipCC=, etc
++ [[https://github.com/meillaya/kernscope/blob/1c69ae251e3c22c3189d8a2e04cc5b15ea8624c6/devenv.nix][meillaya/kernscope devnix.nix]] mixes CUDA, ROCm and hipcc ... but it doesn't
+  need to go through =cargo=, =rustc=, etc
+
+**** Check Rust configuration inside =devenv shell=
+
+#+begin_src shell
+rustup show
+rustup toolchain list
+#+end_src
+
+
+
+
+* ROCm
+** Checking ROCm features
+
+Includes a "run anywhere" python script under =rlx-
+
+#+begin_src shell
+python3 crates/backends/rlx-cuda/tools/kernel-inspect/kinspect.py run --target rocm
+
+# error: linking with `/nix/store/wz3zhpf6avhr0i6frj3a39kih78kb25i-devenv-rust-linker-clang` failed: exit status: 1
+# ... with a bunch of "unable to find -lopenblas" errors
+#+end_src
+
+
+** Manually checking ROCm features
+
+*** With =Justfile=
+
+You should be able to run =just test-rocm=, the script for which includes info on
+how =cargo= expects =ROCm= stuff to be presented to the compilation environment.
+Stuff like =llvm= and =clang=
+
+*** Without =Justfile=
+
+#+begin_quote
+just was failing for missing python deps and i didn't feel like messing with
+that shit (that's exactly what prompted me to explore this RLX thing)
+#+end_quote
+
+Before testing for =rocm=, test the basic =cpu= functionality. Run the basic example
+from the top-level README.md.
+
+#+begin_src shell
+cargo run -p rlx-runtime --example int8_qat_train --features cpu
+
+# I couldn't get this one to run faster... but idk that it even touches rocm
+# features. in any case, the runtime my not select the GPU, since there's no
+# discernable performance benefit anyways.
+cargo run -p rlx-runtime --example int8_qat_train --features rocm
+#+end_src
+
+The =rlx-bench= crate will run against both targets.
+
+#+begin_src shell
+cargo run -p rlx-bench --example bench_all --features rocm
+#+end_src
+
+That builds =targets/debug/examples/bench_all=, important to note, since analyzing
+the targets is useful.
+
+That produces output like this
+
+#+begin_example
+...
+   Compiling rlx-bench v0.2.19 (/home/dc/forge/rlx/crates/tooling/rlx-bench)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 9.98s
+     Running `target/debug/examples/bench_all`
+warning: `rlx-model-plugin` (manifest) generated 1 warning
+warning: rlx-cpu@0.2.19: rlx-cpu: no OpenBLAS for x86_64-linux; using the pure-Rust fallback
+ (correct but slower — install libopenblas-dev, or set RLX_BLAS_LINK="<libs>" / OPENBLAS_LIB
+_DIR to link a tuned BLAS)
+...
+rlx-bench / PLAN L5 — devices: ["cpu", "rocm"]
+
+  cpu   L1/Cpu "matmul": n=20 mean=290.34µs median=278.33µs min=269.77µs max=343.60µs
+  rocm  L1/Rocm "matmul": n=20 mean=72.44µs median=67.64µs min=63.95µs max=157.59µs
+
+# matmul
+  cpu   L1/Cpu "matmul": n=20 mean=88603.05µs median=88405.16µs min=84840.70µs max=93981.27µs
+  rocm  L1/Rocm "matmul": n=20 mean=329.28µs median=325.38µs min=314.82µs max=361.39µs
+# layer_norm
+  cpu   L1/Cpu "layer_norm": n=20 mean=155.95µs median=127.83µs min=108.84µs max=334.42µs
+# layer_norm
+  cpu   L1/Cpu "layer_norm": n=20 mean=155.95µs median=127.83µs min=108.84µs max=334.42µs
+  rocm  L1/Rocm "layer_norm": n=20 mean=80.51µs median=80.23µs min=76.80µs max=89.63µs
+
+# matmul_bias_relu
+  cpu   L2/Cpu "matmul_bias_relu": n=20 mean=313.62µs median=311.07µs min=303.29µs max=359.39µs
+  rocm  L2/Rocm "matmul_bias_relu": n=20 mean=107.45µs median=107.26µs min=102.46µs max=113.30µs
+#+end_example
+
+Then there are the =rlx-rocm= example targets:
+
+#+begin_src shell
+cargo run -p rlx-rocm --example rocm_static_pack_bench
+#+end_src
+
+#+begin_example
+static weight packs on ROCm — 28 layers, decode shape (seq=1)
+  skip: ON (default)
+  packs: 140 steps marked, skip armed = true
+  9.050 ms/iter over 50 iters
+#+end_example
+
+#+begin_src shell
+cargo run -p rlx-rocm --example rocm_bench_attention
+#+end_src
+
+#+begin_example
+rlx-rocm flash-attention bench (BSHD, D<=128)
+--------------------------------------------
+  B=1 S=  512 H= 8 D= 64      1.939 ms
+  B=1 S= 1024 H= 8 D= 64      6.282 ms
+  B=1 S= 1024 H=16 D= 64     12.181 ms
+  B=1 S= 2048 H= 8 D=128     71.273 ms
+  B=4 S= 1024 H= 8 D= 64     23.800 ms
+#+end_example
+** Misc
+
+*** rocm_schedule_matmul_ab
+
+The bench protocol is described here in [[https://github.com/MIT-RLX/rlx/blob/main/crates/backends/rlx-rocm/examples/rocm_schedule_matmul_ab.rs#L35-L50][rocm_schedule_matmul_ab.rs]]. It mentions
+=rocBLAS=, which some debug outputs mention is still not enabled. it requires
+setting =RLX_BLAS_LINK= or =OPENBLAS_LIB_DIR=.
+
+**** Without hinting
+
+#+begin_src shell
+cargo run -p rlx-rocm \
+    --features schedule-codegen --example rocm_schedule_matmul_ab
+#+end_src
+
+Output
+
+#+begin_example
+rocm_schedule_matmul_ab — is the emitted HIP faster than matmul.cu?
+
+  workload   : dense f32 GEMM via rlx's own tiled `matmul`, rocBLAS disabled
+  oracle     : the `default` arm's output, same device, same tile, same K order
+  tolerance  : bit-exact; any differing element disqualifies the arm
+  references : rlx's own default schedule only — NOT rocBLAS
+  target     : portable-floor
+  arch       : gfx1030
+  protocol   : warm all arms, round-robin samples, median of 30 (5 warmup)
+
+  device     : rocm-smi unavailable — cannot verify the GPU is idle
+
+  decode, LM hidden: arm `serial` NOT bit-exact (element 2: 1.0202068e3 vs 1.02020685e3)
+  decode, LM hidden: arm `pipe:2` NOT bit-exact (element 1: 1.0152695e3 vs 1.0152694e3)
+  decode, LM hidden: arm `pipe:3` NOT bit-exact (element 1: 1.0152695e3 vs 1.0152694e3)
+  decode, mlp up: arm `serial` NOT bit-exact (element 3: 5.0261975e2 vs 5.0261978e2)
+  decode, mlp up: arm `pipe:2` NOT bit-exact (element 3: 5.0261975e2 vs 5.0261978e2)
+  decode, mlp up: arm `pipe:3` NOT bit-exact (element 3: 5.0261975e2 vs 5.0261978e2)
+shape                  tile                 default ms  spread       serial       pipe:2       pipe:3
+-----------------------------------------------------------------------------------------------------
+decode, LM hidden      64x64x16_t4x4_b16x16     0.2969   1.03x        WRONG        WRONG        WRONG
+decode, mlp up         64x64x16_t4x4_b16x16     0.2987   2.95x        WRONG        WRONG        WRONG
+tiny batch             64x64x16_t4x4_b16x16     0.7084   1.01x       0.999x       0.963x       0.968x
+small batch            64x64x16_t4x4_b16x16     0.8171   1.02x       1.000x       0.965x       0.969x
+medium batch           64x64x16_t4x4_b16x16     1.5002   1.40x       1.004x       0.600x       0.554x
+short prefill          64x64x16_t4x4_b16x16     0.8953   1.59x       0.999x       0.677x       0.643x
+medium prefill         64x64x16_t4x4_b16x16     1.7947   1.77x       1.014x       0.659x       0.590x
+prefill, wide hidden   64x64x16_t4x4_b16x16     5.4231   1.24x       1.011x       0.601x       0.559x
+large prefill          64x64x16_t4x4_b16x16     7.3758   1.54x       1.004x       0.705x       0.642x
+large square           64x64x16_t4x4_b16x16    99.2098   1.18x       1.005x       0.774x       0.739x
+fat k, small mn        64x64x16_t4x4_b16x16     1.0697   1.12x       1.003x       0.744x       0.728x
+tall, short k (dW)     64x64x16_t4x4_b16x16     1.7794   1.85x       1.035x       0.748x       0.732x
+-----------------------------------------------------------------------------------------------------
+geomean (bit-exact)                              1.000               1.007x       0.734x       0.699x
+
+Noise floor from the `serial` control (same kernel as the baseline, so it must read 1.000):
+  worst deviation 3.5%, tolerance 10%
+
+The `pipe:*` arms here carry NO async copy — HIP gets the rotation only. That is
+the whole point of this arm: it isolates the half of the CUDA treatment that is
+portable. Compare against the CUDA sweep to see what cp.async is worth.
+#+end_example
+
+**** With hinting
+
+#+begin_src shell
+RLX_ROCM_NO_VENDOR_GEMM=1 cargo run -p rlx-rocm \
+    --features schedule-codegen --example rocm_schedule_matmul_ab
+#+end_src
+
+#+begin_example
+rocm_schedule_matmul_ab — is the emitted HIP faster than matmul.cu?
+
+  workload   : dense f32 GEMM via rlx's own tiled `matmul`, rocBLAS disabled
+  oracle     : the `default` arm's output, same device, same tile, same K order
+  tolerance  : bit-exact; any differing element disqualifies the arm
+  references : rlx's own default schedule only — NOT rocBLAS
+  target     : portable-floor
+  arch       : gfx1030
+  protocol   : warm all arms, round-robin samples, median of 30 (5 warmup)
+
+  device     : rocm-smi unavailable — cannot verify the GPU is idle
+
+  decode, LM hidden: arm `serial` NOT bit-exact (element 2: 1.0202068e3 vs 1.02020685e3)
+  decode, LM hidden: arm `pipe:2` NOT bit-exact (element 1: 1.0152695e3 vs 1.0152694e3)
+  decode, LM hidden: arm `pipe:3` NOT bit-exact (element 1: 1.0152695e3 vs 1.0152694e3)
+  decode, mlp up: arm `serial` NOT bit-exact (element 7: 5.18276e2 vs 5.1827606e2)
+  decode, mlp up: arm `pipe:2` NOT bit-exact (element 3: 5.0261975e2 vs 5.0261978e2)
+  decode, mlp up: arm `pipe:3` NOT bit-exact (element 3: 5.0261975e2 vs 5.0261978e2)
+shape                  tile                 default ms  spread       serial       pipe:2       pipe:3
+-----------------------------------------------------------------------------------------------------
+decode, LM hidden      64x64x16_t4x4_b16x16     0.2944   1.03x        WRONG        WRONG        WRONG
+decode, mlp up         64x64x16_t4x4_b16x16     0.2966   1.07x        WRONG        WRONG        WRONG
+tiny batch             64x64x16_t4x4_b16x16     0.7118   1.01x       1.001x       0.964x       0.970x
+small batch            64x64x16_t4x4_b16x16     0.7758   1.03x       1.001x       0.936x       0.937x
+medium batch           64x64x16_t4x4_b16x16     1.4755   1.04x       1.010x       0.616x       0.547x
+short prefill          64x64x16_t4x4_b16x16     0.8877   1.03x       1.000x       0.691x       0.655x
+medium prefill         64x64x16_t4x4_b16x16     1.7212   1.03x       1.021x       0.659x       0.580x
+prefill, wide hidden   64x64x16_t4x4_b16x16     5.2924   1.02x       1.007x       0.598x       0.550x
+large prefill          64x64x16_t4x4_b16x16     7.1808   1.03x       1.005x       0.702x       0.641x
+large square           64x64x16_t4x4_b16x16    97.2330   1.08x       1.000x       0.771x       0.729x
+fat k, small mn        64x64x16_t4x4_b16x16     1.0655   1.03x       1.003x       0.832x       0.796x
+tall, short k (dW)     64x64x16_t4x4_b16x16     1.8330   1.07x       1.044x       0.775x       0.751x
+-----------------------------------------------------------------------------------------------------
+geomean (bit-exact)                              1.000               1.009x       0.745x       0.702x
+
+Noise floor from the `serial` control (same kernel as the baseline, so it must read 1.000):
+  worst deviation 4.4%, tolerance 10%
+
+The `pipe:*` arms here carry NO async copy — HIP gets the rotation only. That is
+the whole point of this arm: it isolates the half of the CUDA treatment that is
+portable. Compare against the CUDA sweep to see what cp.async is worth.
+#+end_example
+
+

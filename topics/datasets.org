@@ -66,6 +66,97 @@ hard: [[https://framagit.org/tyreunom/guile-rdf][tyreunom/guile-rdf]]
 + schemas (and probably OpenAPI docs)
 + The metabrainz github org has projects like [[https://github.com/metabrainz][metabrainz/picard]] (which tags a
   music library)
+
+** HDF5
++ [[https://hdfeos.org/zoo/index.php][HDF5 Zoo (comprehensive examples)]] Probably the best place to start, after
+  downloading [[https://www.hdfgroup.org/download-hdfview/][HDFView]]
+
+** GIS
+*** Finding Data
+**** Earthdata
+
++ [[https://search.earthdata.nasa.gov/search?q=graph][Earth Data]] (maybe)
+  - [[https://www.earthdata.nasa.gov/about/esdis/esco/standards-practices/hdf5][overview of HDF5 format]]
+  - [[https://www.youtube.com/watch?v=QtfMlkd7kII][Discover and Access Earth Science Data Using Earthdata Search]]
++ [[https://openscapes.cloud/][Openscapes (jupyterhub)]] and [[https://nasa-openscapes.github.io/][NASA Openscapes]]
+  - NASA Openscapes [[https://nasa-openscapes.github.io/earthdata-cloud-cookbook/our-cookbooks.html][Cookbooks]]
+  - [[https://nsidc.github.io/NSIDC-Data-Cookbook/tutorials/working_with_icesat2_sea_ice_data.html][Working with ICESat-2 Sea Ice Products]] uses =earthaccess= python lib to search
+    NASA Earthdata
+***** Metadata
+
++ EOSDIS [[https://www.earthdata.nasa.gov/about/esdis/eosdis/cmr][CMR (Common Metadata Repository)]]
++ EMFD (EOSDIS Metadata Format Depot)
+  - [[https://ecsinfo.gsfc.nasa.gov/projects/EMFD/repos/unified-metadata-model/browse][Unified Metadata Model]] it's a repo. everything's json schema. clone and
+    =locate= json, filter for the highest semver.
+  - DIF9 and DIF10 are at [[https://git.earthdata.nasa.gov/scm/emfd/dif-schemas.git][emfd/dif-schemas.git]] on git.earthdata.nasa.gov. It's a
+    private repo. You have to be in the club. If you have to ask, you probably
+    can't afford it (student loans joke; it's free, but meaninglessly
+    inefficient if your social network doesn't include exclusionary libs)
++ UMM is like a [[https://www.earthdata.nasa.gov/about/esdis/eosdis/cmr/umm][Crosswalk for CMR formats]] (very interesting writeup)
+  - Crosswalk is jargon for political desk jockeys with discretionary budgets
+
+**** GeoLibre
++ [[https://github.com/opengeos/GeoLibre][opengeos/GeoLibre]] the source describes how to download/merge 1000s of datasets
+  - Plugins in the default build connect to [[WASM][five major federal data brokers]],
+    including NASA Eartdata & EPA EnviroAtlas
++ [[https://github.com/opengeos/geolibre-rust][opengeos/geolibre-rust]] builds to WASM
+
+*** Bathymetry
+
++ [[https://nauticalcharts.noaa.gov/data/bluetopo.html][BlueTopo]] (composed from merged contributions)
++ [[https://www.gebco.net/data-products/gridded-bathymetry-data][GEBCO]]
+
+**** Projects
++ [[https://github.com/Field-Robotics-Lab/Bathymetry_Converter][Field-Robotics-Lab/Bathymetry_Converter]] merges multiscale datasets (including
+  GEBCO)
+
+*** DGGS: Discrete Global Grid Systems
+
+**** H3
+
+Computed with the "authalic radius", which means an ideal spheroid (or sphere?)
+that maps to an ideal placement of the equator.
+
+#+begin_quote
+Cell areas are computed with a spherical model of the earth using the authalic
+radius given by WGS84/EPSG:4326.
+#+end_quote
+
+From [[https://h3geo.org/docs/core-library/restable][Tables of Cell Statistics Across Resolutions]]
+
+So this is why there's no "Download H3 Index" link... which is why Time/Space
+Complexity is useful. I can stop looking now. It doesn't exist. ~P(room) = 0~ and
+~P(oom) = 1~. Yottabytes to keep a list of 64b numbers with each ID, without a map
+of indices.
+
+| hexagons |   x2048 B |                                                 |
+|----------+-----------+-------------------------------------------------|
+|      110 |    225280 | 110                                             |
+|      842 |   1724416 | (110)*7 + 12*6                                  |
+|     5882 |  12046336 | ((110)*7 + 12*5)*7 + 12*6                       |
+|    41162 |  84299776 | (((110)*7 + 12*5)*7 + 12*5)*7 + 12*6            |
+|   288122 | 590073856 | ((((110)*7 + 12*5)*7 + 12*5)*7 + 12*5)*7 + 12*6 |
+
++ Already at =res=9=, there are over =2**32= hexagons.
++ Cells have 1 parent, 6 neighbors at each resolution and 7 direct descendents
+  - With 32b integers, that's =4*14B + 4B= to give each an =id= to fully connect
+    hexagons in a pair of layers. So... =60 B=
+
+| res | x2048 B (in MB) |     total |       hex | penta |
+|-----+-----------------+-----------+-----------+-------|
+|   0 |        0.000233 |       122 |       110 |    12 |
+|   1 |        0.001606 |       842 |       830 |    12 |
+|   2 |        0.011219 |      5882 |      5870 |    12 |
+|   3 |        0.078510 |     41162 |     41150 |    12 |
+|   4 |        0.549549 |    288122 |    288110 |    12 |
+|   5 |        3.846821 |   2016842 |   2016830 |    12 |
+|   6 |       26.927723 |  14117882 |  14117870 |    12 |
+|   7 |      188.494040 |  98825162 |  98825150 |    12 |
+|   8 |     1319.458200 | 691776122 | 691776110 |    12 |
+|-----+-----------------+-----------+-----------+-------|
+|     |     1539.367900 | 807072138 |           |       |
+#+TBLFM: $2=$3*2048/2**30;%2f
+#+TBLFM: @>$3=vsum(@2..@>>)
 ** OAI
 
 *** CKAN Integration
