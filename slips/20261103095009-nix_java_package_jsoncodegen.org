@@ -1,0 +1,207 @@
+:PROPERTIES:
+:ID:       f562a6cc-a97e-4da1-8059-e2046ab127aa
+:END:
+#+TITLE: Nix Java: Package jsonCodeGen
+#+CATEGORY: slips
+#+TAGS:
+* Roam
++ [[id:2049060e-6755-4a64-b295-F7B563B41505][NixOS]]
++ [[id:97ae00f5-9337-4108-b85f-1edfc7f86ed7][Java]]
++ [[id:bb8bbe7c-6d49-4088-9161-2ae2edb4abd6][Ontology]]
+
+
+
+* Overview
+
+Mainly wanted to finish this bc:
+
++ good examples of reflection (and on ontological data with code generation)
++ need to know more about java build tooling (from the distribution side)
++ found there's a good way to learn about =nix-update= scripts
+
+** Docker
+
+Usually, you run via docker: [[https://github.com/schlothauer-wauer/jsoncodegen/tree/0.12.0?search=1#usage-of-the-release][Usage of the release]]
+
+* jsoncodegen
+
+** Features
+
++ It templates plantuml via [[https://github.com/schlothauer-wauer/jsoncodegen/blob/0.12.0/src/test/groovy/de/lisaplus/atlas/codegen/test/PlantUml.groovy][PlantUml.groovy]] and [[https://github.com/schlothauer-wauer/jsoncodegen/blob/0.12.0/src/main/resources/templates/meta/plantuml.txt][plantuml.txt]] implies there's a
+  way to restrict the output
+
+#+begin_src  groovy
+def ignoreAttribs = extraParam.ignoreAttribs=='true' ? true : false
+def ignoreRefs = extraParam.ignoreRefs=='true' ? true : false
+def ignoreImplicitRefs = extraParam.ignoreImplicitRefs=='true' ? true : false
+def ignoreCompositions = extraParam.ignoreCompositions=='true' ? true : false
+def printTypeTagsValue = extraParam.printTypeTags=='false' ? false : true
+def printPropTagsValue = extraParam.printPropTags=='true' ? true : false
+def ignoreUnRefTypes = extraParam.ignoreUnRefTypes=='true' ? true : false
+#+end_src
+** Build
+
+from =build.gradle=
+
+#+begin_src groovy
+  dependenciesToLibDir.dependsOn jar
+  buildRelease.dependsOn dependenciesToLibDir
+  buildRelease.dependsOn assemble
+  buildDockerImage.dependsOn buildRelease
+  check.dependsOn integrationTest
+  integrationTest.mustRunAfter test
+  buildRelease.dependsOn test
+#+end_src
+
+* Package** Updates
+*** Dependencies
+
+#+begin_src groovy
+  compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.25'
+  compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.2.3'
+  compile group: 'com.beust', name: 'jcommander', version: '1.69'
+  compile 'org.apache.commons:commons-lang3:3.3'
+  compile 'org.codehaus.groovy:groovy-all:2.5.7'
+  compile group: 'org.apache.xmlbeans', name: 'xmlbeans', version: '3.0.0'
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+#+end_src
+
+** Remaining
+
+*** TODO =installPhase= and
+
++ Installing =.jar= and etc from =./release/**= may need some of the scripts in [[
+   https://github.com/schlothauer-wauer/jsoncodegen/tree/0.12.0/docker][./docker]]
+
+*** TODO Versions: jdk, jre, gradle
+
+maybe patch =build.gradle= to replace:
+
+#+begin_src groovy
+apply plugin: 'maven' => apply plugin: 'maven-publish'
+#+end_src
+  
++ nixpkgs uses gradle 8.0, whereas this project is a bit older.
++ There is a java11 branch somewhere, but idk whether it got merged.
++ there wasn't a =gradle.properties= AFAIK
+
+LLM says: use the =build.gradle= instead, which is what gradle falls back to
+
+*** TODO finish mitmCache and =deps.json=
+
+works a bit differently, since it's not inside a nixpkgs fork. needed to run
+
+#+begin_src shell
+# to check script content (didn't quite understand what this was doing)
+cat $(nix build --no-link --print-out-paths .#jsoncodegen.mitmCache.updateScript)
+#+end_src
+
++ without =--no-link=, this links the script, but its =outPath= is from my dotfiles'
+  repo root, so i needed to run =./nixos/result= from repo root.
+
+~$(nix-build -A jsoncodegen.mitmCache.updateScript)~ is used in the nixpkgs gradle
+docs. idk why. i know this CLI is a bit older (i still haven't reconciled my
+lack of CLI knowledge; tried when first learning, then forgot after Makefile)
+
+For some reason, this causes the build daemon to look for =pname= in nixpkgs
+
+#+begin_src nix
+  mitmCache = gradle.fetchDeps {
+    # inherit (finalAttrs) pname;
+    pkg = finalAttrs.finalPackage;
+    data = ./deps.json;
+  };
+#+end_src
+
+** Derivation
+
+#+begin_src nix
+{
+  lib,
+  stdenv,
+  gradle,
+  fetchFromGitHub,
+  makeWrapper,
+  nix-update,
+  writeShellScript,
+  jdk21,
+  # jre_minimal, # idk whether sufficient
+  jre,
+  # ...
+  pdftk,
+}:
+
+stdenv.mkDerivation (finalAttrs: {
+  pname = "jsoncodegen";
+  # name = "jsoncodegen";
+  version = "0.12.0"; # TODO this needs to be extracted from gradle.properties or something (updater requires it)
+  commit = "b5c69b0385ea73dba5a9f0bde9a69908e078c425";
+
+  src = fetchFromGitHub {
+    owner = "schlothauer-wauer";
+    repo = "jsoncodegen";
+    # tag = "v${finalAttrs.version}";
+    rev = "b5c69b0385ea73dba5a9f0bde9a69908e078c425";
+    hash = "sha256-6s0qslk/V0koDABBBKzoHFaRBpEkWRKAoFmQO3Iq0kg=";
+  };
+
+  nativeBuildInputs = [
+    gradle
+    jdk21
+    makeWrapper
+  ];
+
+  # this is required for using mitm-cache on Darwin
+  __darwinAllowLocalNetworking = true;
+
+  # ---------------------------------------------
+  # build tasks
+  gradleFlags = [ "-Dfile.encoding=utf-8" ];
+
+  # defaults to "assemble"
+  gradleBuildTask = "buildRelease";
+  gradleUpdateTask = "dependenciesToLibDir";
+  # gradleCheckTask
+
+  # will run the gradleCheckTask (defaults to "test")
+  doCheck = true;
+
+  installPhase = ''
+    ls -al release
+    ls -al release/*
+    mkdir -p $out/{bin,share/jsoncodegen}
+    # mkdir -p $out/share/jsoncodegen/{conf,lib}
+    cp -r release $out/share/jsoncodegen
+
+    makeWrapper ${lib.getExe jre} $out/bin/jsoncodegen \
+      --add-flags "-jar $out/share/jsoncodegen/"
+
+    # cp ${finalAttrs.src}/pdftk.1 $out/share/man/man1
+  '';
+
+  mitmCache = gradle.fetchDeps {
+    # inherit (finalAttrs) pname;
+    pkg = finalAttrs.finalPackage;
+    data = ./deps.json;
+  };
+
+  passthru.updateScript = writeShellScript "update-jsoncodegen" ''
+    ${lib.getExe nix-update} jsoncodegen
+
+    $(nix build --no-link --print-out-paths .#jsoncodegen.mitmCache.updateScript)
+  '';
+
+  meta = {
+    homepage = "https://github.com/schlothauer-wauer/jsoncodegen";
+    description = "Groovy based generation tasks from JSON schema";
+    license = lib.licenses.mit;
+    sourceProvenance = with lib.sourceTypes; [
+      fromSource
+      binaryBytecode
+    ];
+    inherit (jre.meta) platforms;
+    # maintainers = with lib.maintainers; [ msgilligan ];
+  };
+})
+
+#+end_src

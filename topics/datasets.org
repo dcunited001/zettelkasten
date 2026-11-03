@@ -68,9 +68,11 @@ hard: [[https://framagit.org/tyreunom/guile-rdf][tyreunom/guile-rdf]]
   music library)
 
 ** HDF5
-+ [[https://hdfeos.org/zoo/index.php][HDF5 Zoo (comprehensive examples)]] Probably the best place to start, after
-  downloading [[https://www.hdfgroup.org/download-hdfview/][HDFView]]
++ [[https://hdfeos.org/zoo/index.php][HDF5 Zoo (comprehensive examples)]] Probably the best place to start,
 
+*** Viewers
++ [[https://www.hdfgroup.org/download-hdfview/][HDFView]]
++ [[https://github.com/silx-kit/h5web][silx-kit/h5web]]
 ** GIS
 *** Finding Data
 **** Earthdata
@@ -114,11 +116,73 @@ hard: [[https://framagit.org/tyreunom/guile-rdf][tyreunom/guile-rdf]]
 *** DGGS: Discrete Global Grid Systems
 
 + [[https://arxiv.org/abs/2111.00970][hex2vec: Context-Aware Embedding H3 Hexagons with OSM Tags]]
++ [[https://www.researchgate.net/publication/369482091_Research_and_Construction_of_a_Global_Hexagonal_Marine_Gravity_Gradient_Reference_Map_for_Navigation][Research and Construction of a Global Hexagonal Marine Gravity Gradient
+  Reference Map for Navigation]] covers mapping ISEA4H hexagons to indices for
+  CUDA thread blocks
 
+
+**** DGGS
+
+***** dggrid
+
+Works, but needed a [[https://github.com/dcunited001/ellipsis/blob/master/nixos/pkgs/common/dggrid/package.nix#L48][nix derivation]]
+
++ [[https://discreteglobalgrids.org/wp-content/uploads/2019/05/dggridManualV64.pdf][DGGRID v6.4 (Standard)]]
+  - [[https://github.com/sahrk/DGGRID][sahrk/dggrid]] cli to generate icosahedral DGG's 
+
+****** Examples
+
+Check using web.geolibre.app
+
++ ivea3hGen :: generates KML for points/cells. The points work well. They don't
+  cover the poles though.
+  
+
+***** vgrid
+
++ [[https://github.com/opengeoshub/vgrid][opengeoshub/vgrid]] see [[https://vgrid.gishub.vn/][docs]]
+  - list of [[https://vgrid.gishub.vn/#acknowledgements][alternative DGGS libraries]] here
+  - doesn't have as much support for ISEA4H as ISEA3H
 **** H3
 
 + [[https://towardsdatascience.com/spatial-index-tessellation-aca39463fe9f/][Spatial index: Tesselation]] Intuition behind why H3 is mostly optimal
+***** Postgres =h3-pg=
 
+Installing on NixOS. you'll probably want to use a nixos-container, which will
+require a tiny bit of networking. That's easier than maintaining a =Dockerfile= or
+whatever.
+
++ ~services.postgresql.extensions = [ h3-pg ];~
++ create database/user/auth/etc...
++ enable extension within the database (however that is done)
+
+****** Select all indices at a specific resolution
+
+This recursively expands until it reaches =res=3=. You'll likely want to cache
+each result if getting close to =res=6=. After that, you'll probably need to
+partition each resolution's results (while exporting results to a more compact
+format)
+
+#+begin_src sql
+-- Example: Get all H3 index IDs at a specific resolution (e.g., resolution 3)
+WITH RECURSIVE h3_tree AS (
+    -- Base case: get all 122 resolution 0 cells
+    SELECT h3_get_res_0_cells() AS cell, 0 AS res
+    
+    UNION ALL
+    
+    -- Recursive step: expand each cell to its children until target resolution is reached
+    SELECT (h3_cell_to_children(cell, res + 1))[i] AS cell, res + 1
+    FROM h3_tree,
+         LATERAL generate_subscripts(h3_cell_to_children(cell, res + 1), 1) AS i
+    WHERE res < 3 -- Replace '3' with your target resolution (0-15)
+)
+SELECT cell 
+FROM h3_tree 
+WHERE res = 3;
+#+end_src
+
+***** Indexing
 Computed with the "authalic radius", which means an ideal spheroid (or sphere?)
 that maps to an ideal placement of the equator.
 
