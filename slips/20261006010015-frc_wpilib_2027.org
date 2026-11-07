@@ -16,6 +16,136 @@
 
 ** Project Templates
 
+** Cheesy Areny
+
+*** VH-113
+
+There are no official docs on this device AFAIK.
+
+**** Firmware
+
+I'm not sure what firmware it runs. The hardware is supposed to be identical,
+which is why the same releases work for both VH-109 and VH-113. 
+
+This is clarified by looking at the FCC License Identifier. The =VH-113= is under
+the same licensing, since this reduces maintainence costs & makes turnaround
+faster (I learned this last year while digging into these devices & Wifi 6e LAR)
+
+| Device | Firmware         | Version                            |    Config IP |                                                       |
+|--------+------------------+------------------------------------+--------------+-------------------------------------------------------|
+| VH-113 | VH-109 (shipped) | VH-109_1.3.0-02142025              |     10.0.1.1 | ~.4~ as access point                                    |
+| VH-113 | VH-113 Offseason | VH-109_AP_OFFSEASON_1.2.9-02102025 |   10.0.100.1 | Firewall Enforced, No DHCP                            |
+| VH-113 | VH-109 Practice  | VH-109_AP_PRACTICE_1.2.9-02102025  | 193.168.69.1 | No Firewall, VH-113 manages DHCP pooling and bridging |
+|--------+------------------+------------------------------------+--------------+-------------------------------------------------------|
+
++ The JSON does show ="syslogIpAddress: "10.0.100.40"=, but this is outside of the
+  admin subnet. It may be accessible by creating an extra subnet for a =TE.AM 100=
+  ... or maybe not. Dammit. Configuring a second IP address on an interface
+  plugged into the radio may work.
+
+***** Overthinking it
+
++ what are valid migration paths? Can you move from one firmware to another?
+  - i.e. is there NVRAM that preserves state between firmware versions (this is
+    how it is for DDWRT, which is related to why an initial install or a refresh
+    of OEM device firmware can require TWO installations. it's possible to get
+    bricked in between)
+  - I'm going to assume that's not a problem bc it's not easy. so i should just
+    assume that it's a non-issue, whereas most people would not anticipate it.
+
+They did have some of these firmware migration issues, though I'm not sure what.
+
+**** Networking Constraints
+
+This thread from [[https://www.chiefdelphi.com/t/frc-6328-mechanical-advantage-2025-build-thread/477314/833][MechanicalAdvantage]] gives a ton of insight into networking
+quirks. Also an earlier iteration of the [[https://www.chiefdelphi.com/t/frc-6328-mechanical-advantage-2025-build-thread/477314/722?u=aionfork][Ultimate Field Network]]
+
+A key takeaway of this diagram is that =192.168.69.x= _may_ be handled in a special
+way by the radios' firmwares.
+
+[[img/frc/vh113networking.jpeg]]
+
+***** VyOS
+
+This should work.
+
++ =AP_OFFSEASON= firmware: has firewall rules that apparently interfere with code
+  deployment. (can't deploy on the field at competitions i guess?)
++ =AP_PRACTICE= manages DHCP, but has no firewall. Any vyos config offering DHCP
+  will be brittle, unless some care is taken. (and maybe even if)
+
+Need to know:
+
++ What VLANs are retransmitted out of which ports? Diagrams show that the
+  "managed switch" sees everything.
++ Can a VyOS not be plugged directly into the VH-109? diagrams strongly imply
+  that you need the managed switch, when clearly the VH-109 /could/ do that (if it
+  propagated the VLAN frames out the AUX ports, but I guess it doesn't)
+
+***** DHCP and Wireless bridging
+
+Because of the Wifi bridging and VLANs, having a second device that also manages
+DHCP pool state will cause issues. DHCP is a protocol where:
+
++ clients mostly remember assignment in ARP (though OS/Drivers/Software retains
+  a bit of info about DHCP lease/assignment/state)
++ servers need to retain active leases and configuration state that
+  - they don't /naturally/ handle multiple pools well when these are distributed
+    across multiple devices.
+
+DHCP is a "network application", so it doesn't really "live on a device", per
+se. its a set of protocols and interface specifications that need to be
+implemented by various endpoints/services which must have compatible network
+configuration state (ports, vlans, mac's, ip's).
+
++ FreshTomato (DD-WRT) was doing some weird stuff with a second DHCP pool where
+  the addressing was completely separate.
++ VH-109 in AP Mode bridges the Wifi connections (layer two) and needs to decide
+  whether to propagate frames across the bridge. When FreshTomato was also
+  bridging (paired to VH-109's 2.4Ghz), it did _not_ work very well
+
+TLDR: don't expect a second wireless bridge to work very well. Your Robot-to-AP
+bridge is already one more than you should want to have anyways: ideally, zero,
+but at most one. e.g.
+
++ Is it plugged in? Idk
++ Is it propagating frames? Idk
++ Can you wireshark it? Probably not
+
+**** Config
+
+For some reason, I had to set configuration multiple times before SSID's started
+broadcasting.
+
+***** HTTP Post =./configuration=
+
+#+begin_example
+channel: 53
+channelBandwidth: 40MHz
+redVlans: '10_20_30'
+blueVlans: '40_50_60'
+stationConfigurations:
+  red1:
+    ssid: '1'
+    wpaKey: theteam12345
+  red2:
+    ssid: '2'
+    wpaKey: theteam12345
+  red3:
+    ssid: '3'
+    wpaKey: theteam12345
+  blue1:
+    ssid: '10004'
+    wpaKey: theteam12345
+  blue2:
+    ssid: '9998'
+    wpaKey: theteam12345
+  blue3:
+    ssid: '9999'
+    wpaKey: theteam12345
+#+end_example
+
+
 ** Vendor Deps
 
 After generating the "Commands v3 REBUILT" project, needed to check vendor dep
@@ -173,7 +303,7 @@ those are just thin classes. These are more like mocks
 + [[https://www.chiefdelphi.com/t/lumyn-labs-2026-product-releases-and-updates-faster-smarter-more-intuitive/508159/24][Lumyn Labs 2026 Product Releases (chiefdelphi thread)]]
 + STEP/STL in [[https://github.com/Lumyn-Labs/Downloads][Lumyn-Labs/Downloads]]
 
-| Controller         | Headers | 
+| Controller         | Headers |
 |--------------------+---------|
 | ConnectorX         |     320 |
 | ConnectorX Animate |    1280 |
@@ -295,7 +425,11 @@ digraph G {
 | [[https://andymark.com/products/rev-neo-brushless-motor-v1-1?Pinion=No%20Pinion%20%28am-4258a%29&_su_rec=LLXehrs3fzDhU2kSPf0ojjGxFRTDKYLdfTfVo1-WTrU6IfNvjoLJdiRSvXmnlraSD1Eb_8SxUmzK_QG76AKKIkkv71tJhk7EuG2AaOJu1vlWn5E4uN3IATV6jd0bNYjbamYbYAGnGutEgOZ9Py-9gTapYE7wYipE4gidp-XRlMsXxwAb8qonojr0CPte1KxRrNuhxdJ7tg13wShQ-ZBnzrO0nIwfjP94ARt6ElV1qF8vNlqQjaddzm4unU35GqeIIQFCqM_OGy5g_n9l_19lq2d-Yp0GVxFUTDIAn_3mViNh947TzZRYHlQxKKVjPMlpkZGyko_bH8ThOBNUMpQ&_su_rec_id=6cd4d397-f570-410f-9cdf-2c1ddc2960df-1792831738][am-4258a]]     |          | REV NEO          | Motor x2         |      |             | [[https://documents.andymark.com/54c3d1c84dfcc7d91a8c190247ecc7908ab63ba20cada78c9cd79d0229bf428c/am-4258%20NEO%20Brushless%20Motor%20-%20Data%20Sheet.pdf][datasheet]]                       |
 | am-0940b     |          | 6" HiGrip Wheels | Wheel x6         |      | 6in         |                                 |
 | am2234a-half |          |                  | Pulley halves x8 |      | 42 tooth    |                                 |
-| am-2266      |          | Gates HTD Belt   |                  |      | 160 tooth   | 15mm                                  |
+| am-2266      |          | Gates HTD Belt   |                  |      | 160 tooth   | 15mm                            |
+| [[https://andymark.com/products/am14u-family-end-plate][am-3920]]      |          | Family Plate     |                  |      |             | ~0.201"~ holes, ~0.5"x1"~  spacing  |
+| am-3921b     |          | Outer Plate      |                  |      |             | ~#10~ holes, ~1.0"~ spacing         |
+| am-3922b     |          | Inner Plate      |                  |      |             |                                 |
+
 
 Gearbox:
 
@@ -352,6 +486,8 @@ from GH).
 This adds [[https://github.com/devcontainers/features/tree/main/src/desktop-lite][ghcr.io/devcontainers/features/desktop-lite]]= into =.features=.
 Overkill, but interesting.
 
+** GarageDocs
+
 ** VSCode
 
 Managing multiple installs is a problem. Team members should select a distinct
@@ -398,7 +534,7 @@ A bit of a sore spot... Anyways
 | astral-sh.ty                         | 2026.84.0 |         |
 | richardwillis.vscode-spotless-gradle |           |         |
 | takumii.markdowntable                |    0.13.0 |  1.13.0 |
-| mermaidchart.vscode-mermaid-chart    |           |   2.5.9 | 
+| mermaidchart.vscode-mermaid-chart    |           |   2.5.9 |
 
 **** astral-sh.ty
 

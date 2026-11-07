@@ -39,6 +39,258 @@ straightforward)
 *** H3
 + [[https://github.com/HydroniumLabs/h3o-cli][hydroniumlabs/h3o-cli]]
 + [[https://github.com/HydroniumLabs/h3o][hydroniumlabs/h3o]]
+* Visualization/Workflow
+** Equivalent Libs For Rust
+
+Looking for some equivalents to these which would permit viewing data:
+
++ without changing frontend code or recompiling sources.
++ but definitely without touching a fucking =package.json=
+
+It could be a Qt window like PyVista or a VTK integration
+
+*** Trame
+
+WASM that builds on VTK, ParaView and Vega (See [[https://kitware.github.io/trame/guide/][Trame: Guide]])
+
+*** VTK
+
++ [[https://github.com/jonaspleyer/vtk-rs][jonaspleyer/vtk-rs]] is sadly probably incompatible with my workflow goals
+
+VTK is used by Trame and others
+
++ [[https://docs.vtk.org/en/latest/design_documents/PolyhedronAlgorithms.html][vtkPolyhedron]] implements the [[https://doi.org/10.17632/4rcf98s74c.1][isoap library (DOI: 10.17632/4rcf98s74c.1)]]
+  - from [[https://doi.org/10.1016/j.jcp.2021.110579][A new isosurface extraction method on arbitrary grids]]
+
+For frontend
+
++ [[https://discourse.vtk.org/t/vtk-s-webgpu-backend-now-selects-its-implementation-at-runtime/16568][VTK's WebGPU backend now selects impl. at runtime (dawn vs. wgpu-native)]]
+
+** Multi-Crate Workflows
+
+TLDR: WASM is [[https://discourse.vtk.org/t/vtk-s-webgpu-backend-now-selects-its-implementation-at-runtime/16568][barely even compatible with itself]]. It makes me nervous (though
+the link points to an example where this is now resolved)
+
++ working with it in a Rust application that consumes RLX would probably
+  require multi-crate workflows
++ to some extent, that's already true anyways: a WASM application will need to
+  be a leaf build target that integrates other crate builds
+
+*** Ingest HDF5 -> Load Buffers For RLX -> Compute Output -> Visualize
+
+Working to ingest HDF5 for any application is complicated.
+
++ The format's design was basically specified by mad-scientists in the 1970's
+  (1990's is probably more accurate, since NetCDF has had several revisions.)
+  - These are like your NASA/NOAA/YAPA folks (yet-another-particle-accelerator)
+    and they're crazy
++ The main point: HDF5-producing applications consume complicated data at,
+  potentially, LHC speeds,
+  - intermediate applications & networking are required to transform it to the
+    endpoint actually producing HDF5 or producing the last grouping/aggregation
+    that gets converted to HDF5
+  - Not only is it a "read-fast" format, it's also a "write-fast" format
+  - and it's not just "write real super-fast" it's like "write from these memory
+    addresses with =memcpy= from complicated, proprietary/bespoke scientific
+    instrumentation fast"
+
+So, there's that. But as consequences of that:
+
++ Code in ETL stages must reference specific keys/structure in HDF5
++ Quick transforms before loading RTX buffers probably references keys/structure
+  which would change if HDF5 format changed
++ Then the actual relationships/dimensionality of tensors also depends on the
+  ingested HDF5(s)
++ Then it produces complicated output which needs to be visualized. Guess what?
+  That also changes when you make arbitrary changes to your input format.
+
+So that's like 4+ places where a change in one place ripples a "naming problem"
+throughout the rest of your code. It's all fun & games until hitting =F5= in
+VSCode (lol) costs $10,000.
+
+Changed formatting not a problem when you have no design control over the format
+(someone far above your paygrade made those decisions and they may have
+literally landed robots on space-things) but...
+
++ if the format needs to specify arbitrary mesh/face/vertex buffer attribute
+  layouts for esoteric geometry... well now it is your problem, isn't it?
++ Who are you going to call for support? Ghostbusters? It's not like you have a
+  rolodex of MIT scientists to ask for advice.
+
+Anyways, so asking "Claude" to assemble this shit is probably a huge mistake --
+agents require evaluation loops or tooling for mocks, which can't catch
+everything.
+
+**** VTKHDF
+
+There are limitations on types/naming
+
+| "Primative"      | Composite                    |
+|------------------+------------------------------|
+| PolyData         | OverlappingAMR               |
+| UnstructuredGrid | MultiBlockDataSet            |
+| ImageData        | PartitionedDataSetCollection |
+| RectilinearGrid  |                              |
+| StructuredGrid   |                              |
+| HyperTreeGrid    |                              |
+| Table            |                              |
+
++ [[https://docs.vtk.org/en/latest/vtk_file_formats/vtkhdf_file_format/vtkhdf_specifications.html][VTKHDF Specification]], which i believe lists more types than above.
++ [[https://gitlab.kitware.com/keu-public/vtkhdf/vtkhdf-scripts/-/tree/main/vtkxml-to-vtkhdf][vtkxml-to-vtkhdf]] a script to convert between the two
++ [[https://gitlab.kitware.com/keu-public/vtkhdf/vtkhdf-scripts/-/tree/main/tutorial][Tutorial]] and [[https://www.kitware.com/vtk-hdf-reader/][VTK HDF Reader]], an explainer (with diagrams... yay)
+
+#+begin_quote
+"Unlike XML formats, VTKHDF does not support field names containing / and .
+characters, because of a limitation in the HDF5 format specification."
+
+booooo
+#+end_quote
+
+**** VTK File Formats
+
+[[https://docs.vtk.org/en/latest/vtk_file_formats/index.html][VTK File Formats]] ... see? these people understand the above
+
+#+begin_quote
+The main reason for creating yet another data file format is to offer a
+*consistent data representation scheme* for a variety of dataset types, and to
+provide a *simple method to _communicate data_ between software*. Whenever possible,
+we recommend that you use formats that are more widely used. But if this is not
+possible, the Visualization Toolkit formats described here can be used instead
+#+end_quote
+
+VTK also "has no stable API" which is why vtk-rs uses =vtkWrap*= classes
+
+#+begin_src shell
+curl  https://github.com/elrnv/vtkio/raw/refs/heads/master/assets/point_cloud.vtp | xq . | yq -y .
+#+end_src
+
+Anyways, those are base64-encoded vertex-buffer arrays, which are part of
+[[https://github.com/elrnv/vtkio/tree/master/assets][elnrv/vtkio]]'s test suite. Data can also have ~format="appended"~, which encodes
+data like SOPS (in a separate container in the same file, at the root of the XML
+or binary encoding)
+
+#+begin_example yaml
+VTKFile:
+  '@type': PolyData
+  '@version': '1.0'
+  '@byte_order': BigEndian
+  '@header_type': UInt64
+  PolyData:
+    Piece:
+      '@NumberOfPoints': '3'
+      '@NumberOfVerts': '3'
+      Points:
+        DataArray:
+          '@type': Float32
+          '@Name': Points
+          '@NumberOfComponents': '3'
+          '@format': binary
+          '@RangeMin': '-1'
+          '@RangeMax': '1'
+          '#text': AAAAAAAAACQAAAAAAAAAAAAAAAA/gAAAAAAAAAAAAAAAAAAAAAAAAL+AAAA=
+      Verts:
+        DataArray:
+          - '@type': UInt64
+            '@Name': connectivity
+            '@format': binary
+            '@RangeMin': '0'
+            '@RangeMax': '2'
+            '#text': AAAAAAAAABgAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAI=
+          - '@type': UInt64
+            '@Name': offsets
+            '@format': binary
+            '@RangeMin': '1'
+            '@RangeMax': '3'
+            '#text': AAAAAAAAABgAAAAAAAAAAQAAAAAAAAACAAAAAAAAAAM=
+#+end_example
+
+There are a lot of nuances with parsing this. The base64 also carries the
+length (in four or eight bytes)
+*** Tooling
+
+**** Prompt
+
+"Why do you wanna do that? That's hard... I don't enver understand why you want
+a homewab. It look hard." Yeh because MLOps -- or "Running LLM Privately" as it's
+colloquially known -- is fucking hard.
+
+#+begin_quote
+I'm planning to use RLX for tensor computations on data with arbitrary
+input/output structure and intermediate structure. I need something like what
+visualizes data for Game Engines, GPU programming, ML, or scientific computing.
+
+I found HDF5 for input and maybe output, but the data needs to be visualized and
+since the formating is arbitrary (esp. if dumping RLX tensors), then writing
+code to visualize that using Rust-based WASM frontend is way too much friction.
+
+VTK seems like it may help with this, while requiring some coding. However, not
+all of the data will be inherently visualizable.
+
+Some background:
+
+The specific project needs to start with a mesh from a DGGS system like H3. The
+mesh is at a single resolution.
+
+- The meshes vertices and faces then need consistent identifiers
+- with lists of neighbor data encoded to load into vertex buffer arrays
+- accumulated results with consistent indexing in memory
+
+This will be used to compute functions across surfaces with the topology of a
+sphere. The functions could be arbitrary with either scalar, vector or tensor
+outputs.
+
+Given that background, what software is appropriate for scientific computing
+which functions like a GPU Debugger (i.e. it allows you to inspect/visualize
+textures)
+#+end_quote
+
+**** Response
+
++ ParaView (python)
++ Ansys EnSight (looks expensive)
+***** Rerun.io
+
++ [[https://rerun.io/examples/generative-vision/tfrecord_loader][TFRecord Loader]] example. This reads TFRecord files (recorded iterations of
+  Tensorflow trainings... which is basically what i was going to need anyways)
++ This is basically a professional version of AdvantageKit. It has many
+  integrations specifically for Robotics and ComputerVision.
++ It transforms to/from many data types (like ROS1 and ROS2). It actually
+  reads MCAP files, which AdvantageKit can export.
++ It's a rust project that allows you to build a [[https://github.com/rerun-io/rerun/tree/main/examples/rust/custom_importer][custom_importer]]. See [[https://rerun.io/docs/concepts/logging-and-ingestion/importers/overview#external-importers][importer
+  overview]]
++ offers WASM tooling to visualize obtuse data
+
+Examples of "obtuse data":
+
++ [[https://rerun.io/examples/robotics/kiss-icp][robotics kiss-icp]]
++ [[https://rerun.io/examples/video-image/tapir][TAPIR: Tracking any point with per-frame initialization and temporal
+  refinement]]
++ [[https://rerun.io/examples/feature-showcase/graphs][Graphs with lattices]]
++ [[https://rerun.io/examples/integrations/revy][Revy via Rerun]]. Revy is a type-travel debugger for Bevy, the rust game engine.
+  - would be awesome if i can just encode data using Revy's format
++ [[https://rerun.io/examples/generative-vision/shape_pointe][Point-E and Shap-E]] visualizes the intermediate values for tensor-based
+  diffusion of text-to-3d generation
++ [[https://rerun.io/examples/robotics/animated_urdf][Has a `URDFTree` data type]] to visualize forward/backward kinematics for
+  arbitrary robotics mechanisms.
+
+If integrated into a python application (without separation into components) ...
+rerun-io could add about [[https://github.com/rerun-io/differentiable-blocksworld/blame/8ca0d8ce1c9590c6201ca73ac197d82f3a996381/requirements.txt#L63-L108][50 lines to requirements.txt]]
+
+[[https://rerun.io/examples/robotics/droid_semantic_search][DROID semantic frame search]]. This example uses reflection for "Schema
+introspection and DataFusion content-filtered reads." so it's probably a good
+one to read through
+
+#+begin_quote
+Find moments in robot demonstrations by describing them in plain language.
+Embeddings flow from a Rerun dataset into a vector store and deep-link back into
+the viewer.
+#+end_quote
+
++ [[https://rerun.io/examples/feature-showcase/notebook_callbacks][Viewer callbacks]], [[https://rerun.io/examples/feature-showcase/multiprocess_logging][Multiprocess Logging]]
++ [[https://rerun.io/examples/video-image/sam2_depthanything][Depth Anything 2]] (interactive video segmentation example with a bboy)
++ [[https://rerun.io/examples/video-image/egoexo_forge][EgoExo Forge]] merge mediapipe-like data into a discrete graph from distinct
+  video streams
+
 * RLX
 ** Check Usage
 
